@@ -1,0 +1,1 @@
+insert into movimientos(fecha,cuenta,subcuenta,contraparte,detalle,ingreso,egreso,moneda) values ('2026-01-01','Saldo Inicial','','àndale','Saldo acumulado al 31/12/2025',3198477.28,0,'ARS'),('2026-01-01','Saldo Inicial','','àndale','Saldo acumulado al 31/12/2025',6708.72,0,'USD');
