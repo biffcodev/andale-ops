@@ -143,7 +143,7 @@ end $$;
 do $$ declare t text; begin
   foreach t in array array['clientes_admin','precios_abono','proyecto_facturacion','resumenes','facturas','cajas','plan_cuentas','movimientos','gestiones'] loop
     execute format('alter table public.%I enable row level security', t);
-    execute format('create policy %I on public.%I for all using (public.es_admin()) with check (public.es_admin())', t||'_admin', t);
+    execute format('create policy %I on public.%I for all to authenticated using (public.es_admin()) with check (public.es_admin())', t||'_admin', t);
   end loop;
 end $$;
 
@@ -157,3 +157,5 @@ from public.facturas f where not f.anulada;
 do $$ begin
   alter publication supabase_realtime add table public.clientes_admin, public.precios_abono, public.proyecto_facturacion, public.resumenes, public.facturas, public.cajas, public.movimientos, public.gestiones;
 exception when others then null; end $$;
+
+revoke all on all tables in schema public from anon;

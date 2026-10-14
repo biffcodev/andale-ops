@@ -9,7 +9,7 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 -- ---------- utilidades ----------
-create or replace function public.set_updated_at() returns trigger language plpgsql as $$
+create or replace function public.set_updated_at() returns trigger language plpgsql set search_path = public as $$
 begin new.updated_at = now(); return new; end $$;
 
 -- ---------- personas (equipo + accesos) ----------
@@ -36,9 +36,9 @@ create or replace function public.mi_rol() returns rol_t
 language sql stable security definer set search_path = public as $$
   select rol from personas where id = public.mi_persona()
 $$;
-create or replace function public.es_admin() returns boolean language sql stable as $$ select coalesce(public.mi_rol() = 'admin', false) $$;
-create or replace function public.es_staff() returns boolean language sql stable as $$ select coalesce(public.mi_rol() in ('admin','equipo'), false) $$;
-create or replace function public.es_miembro() returns boolean language sql stable as $$ select public.mi_persona() is not null $$;
+create or replace function public.es_admin() returns boolean language sql stable set search_path = public as $$ select coalesce(public.mi_rol() = 'admin', false) $$;
+create or replace function public.es_staff() returns boolean language sql stable set search_path = public as $$ select coalesce(public.mi_rol() in ('admin','equipo'), false) $$;
+create or replace function public.es_miembro() returns boolean language sql stable set search_path = public as $$ select public.mi_persona() is not null $$;
 
 -- Datos de quien está logueado (para la interfaz)
 create or replace function public.yo() returns table(id uuid, alias text, nombre text, rol rol_t)
@@ -169,38 +169,38 @@ alter table public.proyecto_responsables enable row level security;
 alter table public.comunicaciones enable row level security;
 alter table public.listas enable row level security;
 
-create policy personas_sel on public.personas for select using (public.es_miembro());
-create policy personas_adm on public.personas for all using (public.es_admin()) with check (public.es_admin());
+create policy personas_sel on public.personas for select to authenticated using (public.es_miembro());
+create policy personas_adm on public.personas for all to authenticated using (public.es_admin()) with check (public.es_admin());
 
-create policy clientes_sel on public.clientes for select using (public.es_staff() or id in (select public.mis_clientes()));
-create policy clientes_ins on public.clientes for insert with check (public.es_staff());
-create policy clientes_upd on public.clientes for update using (public.es_staff()) with check (public.es_staff());
-create policy clientes_del on public.clientes for delete using (public.es_staff());
+create policy clientes_sel on public.clientes for select to authenticated using (public.es_staff() or id in (select public.mis_clientes()));
+create policy clientes_ins on public.clientes for insert to authenticated with check (public.es_staff());
+create policy clientes_upd on public.clientes for update to authenticated using (public.es_staff()) with check (public.es_staff());
+create policy clientes_del on public.clientes for delete to authenticated using (public.es_staff());
 
-create policy cresp_sel on public.cliente_responsables for select using (public.es_staff() or cliente_id in (select public.mis_clientes()));
-create policy cresp_w on public.cliente_responsables for all using (public.es_staff()) with check (public.es_staff());
+create policy cresp_sel on public.cliente_responsables for select to authenticated using (public.es_staff() or cliente_id in (select public.mis_clientes()));
+create policy cresp_w on public.cliente_responsables for all to authenticated using (public.es_staff()) with check (public.es_staff());
 
-create policy abonos_sel on public.abonos for select using (public.es_staff() or id in (select public.mis_abonos()));
-create policy abonos_w on public.abonos for all using (public.es_staff()) with check (public.es_staff());
+create policy abonos_sel on public.abonos for select to authenticated using (public.es_staff() or id in (select public.mis_abonos()));
+create policy abonos_w on public.abonos for all to authenticated using (public.es_staff()) with check (public.es_staff());
 
-create policy aresp_sel on public.abono_responsables for select using (public.es_staff() or abono_id in (select public.mis_abonos()));
-create policy aresp_w on public.abono_responsables for all using (public.es_staff()) with check (public.es_staff());
+create policy aresp_sel on public.abono_responsables for select to authenticated using (public.es_staff() or abono_id in (select public.mis_abonos()));
+create policy aresp_w on public.abono_responsables for all to authenticated using (public.es_staff()) with check (public.es_staff());
 
-create policy proy_sel on public.proyectos for select using (public.es_staff() or id in (select public.mis_proyectos()));
-create policy proy_ins on public.proyectos for insert with check (public.es_staff());
-create policy proy_upd on public.proyectos for update using (public.es_staff() or id in (select public.mis_proyectos())) with check (public.es_staff() or id in (select public.mis_proyectos()));
-create policy proy_del on public.proyectos for delete using (public.es_staff());
+create policy proy_sel on public.proyectos for select to authenticated using (public.es_staff() or id in (select public.mis_proyectos()));
+create policy proy_ins on public.proyectos for insert to authenticated with check (public.es_staff());
+create policy proy_upd on public.proyectos for update to authenticated using (public.es_staff() or id in (select public.mis_proyectos())) with check (public.es_staff() or id in (select public.mis_proyectos()));
+create policy proy_del on public.proyectos for delete to authenticated using (public.es_staff());
 
-create policy presp_sel on public.proyecto_responsables for select using (public.es_staff() or proyecto_id in (select public.mis_proyectos()));
-create policy presp_w on public.proyecto_responsables for all using (public.es_staff()) with check (public.es_staff());
+create policy presp_sel on public.proyecto_responsables for select to authenticated using (public.es_staff() or proyecto_id in (select public.mis_proyectos()));
+create policy presp_w on public.proyecto_responsables for all to authenticated using (public.es_staff()) with check (public.es_staff());
 
-create policy com_sel on public.comunicaciones for select using (public.es_staff() or responsable_id = public.mi_persona());
-create policy com_ins on public.comunicaciones for insert with check (public.es_staff() or (cliente_id in (select public.mis_clientes()) and responsable_id = public.mi_persona()));
-create policy com_upd on public.comunicaciones for update using (public.es_staff() or responsable_id = public.mi_persona()) with check (public.es_staff() or responsable_id = public.mi_persona());
-create policy com_del on public.comunicaciones for delete using (public.es_staff());
+create policy com_sel on public.comunicaciones for select to authenticated using (public.es_staff() or responsable_id = public.mi_persona());
+create policy com_ins on public.comunicaciones for insert to authenticated with check (public.es_staff() or (cliente_id in (select public.mis_clientes()) and responsable_id = public.mi_persona()));
+create policy com_upd on public.comunicaciones for update to authenticated using (public.es_staff() or responsable_id = public.mi_persona()) with check (public.es_staff() or responsable_id = public.mi_persona());
+create policy com_del on public.comunicaciones for delete to authenticated using (public.es_staff());
 
-create policy listas_sel on public.listas for select using (public.es_miembro());
-create policy listas_w on public.listas for all using (public.es_staff()) with check (public.es_staff());
+create policy listas_sel on public.listas for select to authenticated using (public.es_miembro());
+create policy listas_w on public.listas for all to authenticated using (public.es_staff()) with check (public.es_staff());
 
 -- Un externo no puede mover un proyecto a otro cliente
 create or replace function public.proyectos_guard() returns trigger language plpgsql security definer set search_path = public as $$
@@ -216,3 +216,7 @@ create trigger proyectos_guard before update on public.proyectos for each row ex
 do $$ begin
   alter publication supabase_realtime add table public.personas, public.clientes, public.cliente_responsables, public.abonos, public.abono_responsables, public.proyectos, public.proyecto_responsables, public.comunicaciones, public.listas;
 exception when others then null; end $$;
+
+-- Sin acceso para anon
+revoke all on all tables in schema public from anon;
+revoke execute on all functions in schema public from anon;
