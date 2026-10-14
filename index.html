@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>àndale Operaciones</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<div id="app">
+  <header class="top" id="top" hidden>
+    <div class="wrap">
+      <div class="top-row">
+        <div class="brand">àndale <small>Operaciones</small></div>
+        <div class="top-meta"><span id="hoy"></span><span id="me"></span><span id="sync" class="sync"><i></i><span>Conectando</span></span><button class="btn ghost sm" data-act="logout">Salir</button></div>
+      </div>
+      <nav class="tabs" id="nav" aria-label="Secciones"></nav>
+    </div>
+  </header>
+  <div class="wrap">
+    <div id="banner" class="banner" hidden></div>
+    <main id="view"></main>
+  </div>
+</div>
+<div id="scrim" class="scrim" data-act="close" hidden></div>
+<aside id="panel" class="panel" hidden aria-modal="true" role="dialog" aria-labelledby="panel-title"></aside>
+<div id="toast" class="toast" hidden></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

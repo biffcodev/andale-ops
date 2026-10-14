@@ -1,0 +1,725 @@
+import './style.css';
+import * as data from './data.js';
+
+/* ---------- Constantes ---------- */
+const DEF = {
+  tipos: ['Redes', 'Branding', 'Web', 'Ads', 'Diseño', 'Audiovisual', 'Otro'],
+  tiposAbono: ['Redes', 'Ads'],
+  estadosProyecto: ['Por empezar', 'En curso', 'En revisión', 'Entregado', 'Pausado', 'Cancelado', 'A confirmar'],
+  estadosCliente: ['Activo', 'A confirmar', 'Proyectos', 'Pausado', 'Inactivo'],
+  canales: ['Reunión', 'Videollamada', 'WhatsApp', 'Email', 'Llamada', 'Instagram', 'Otro'],
+  servicios: ['Redes sociales', 'Ads', 'Redes sociales + Ads', 'Branding', 'Web', 'Diseño', 'Audiovisual', 'Comunicación integral', 'Asesoramiento', 'Otro'],
+  planes: ['SMALL', 'MEDIUM', 'PREMIUM', 'LARGE', 'SMALL+ADS', 'PACK RRSS', 'ESPECIAL'],
+};
+const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes' };
+const ESTADOS_ABONO = ['Activo', 'Pausado', 'Baja'];
+const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
+const CERRADOS = new Set(['Entregado', 'Cancelado']);
+const ST_COLOR = { 'Por empezar': '--s-empezar', 'En curso': '--s-curso', 'En revisión': '--s-revision', 'Entregado': '--s-entregado', 'Pausado': '--s-pausado', 'Cancelado': '--s-cancelado', 'A confirmar': '--s-confirmar' };
+const CL_COLOR = { 'Activo': '--s-entregado', 'A confirmar': '--s-confirmar', 'Proyectos': '--s-curso', 'Pausado': '--s-pausado', 'Inactivo': '--s-empezar' };
+const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': '--s-empezar' };
+const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
+const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Comunicaciones'], ['listas', 'Listas']];
+const EXT_VIEWS = ['mis', 'proyectos', 'abonos', 'clientes', 'comunicaciones'];
+
+/* ---------- Utilidades ---------- */
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const ym = d => d.getFullYear() + '-' + pad(d.getMonth() + 1);
+const today = () => iso(new Date());
+const thisMonth = () => ym(new Date());
+const addMonth = (m, n) => { const [y, mm] = m.split('-').map(Number); return ym(new Date(y, mm - 1 + n, 1)); };
+const monthLabel = m => { if (!/^\d{4}-\d{2}$/.test(m || '')) return m || ''; const [y, mm] = m.split('-').map(Number); return new Date(y, mm - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }); };
+const parse = s => { if (!s) return null; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const diff = s => Math.round((parse(s) - parse(today())) / 864e5);
+const fmt = s => { if (!s) return ''; const p = s.split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : p[1] + '/' + p[0]; };
+const fmtShort = s => { if (!s) return ''; const [, m, d] = s.split('-'); return d + '/' + m; };
+const cmp = (a, b) => String(a || '').localeCompare(String(b || ''), 'es', { sensitivity: 'base' });
+const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const isOpen = p => !CERRADOS.has(p.estado);
+const initials = s => String(s || '?').trim().slice(0, 2).toUpperCase();
+const stVar = e => ST_COLOR[e] || '--muted';
+const isUrl = s => /^https?:\/\//i.test(String(s || ''));
+const resp = o => Array.isArray(o.responsables) ? o.responsables : [];
+const hasResp = (o, p) => resp(o).includes(p);
+function lsGet(k) { try { return localStorage.getItem('andale-ops:' + k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem('andale-ops:' + k, v); } catch (e) { } }
+
+/* ---------- Estado ---------- */
+const S = {
+  me: null, status: 'loading',
+  P: [], C: [], E: [], M: [], A: [], L: JSON.parse(JSON.stringify(DEF)),
+  view: 'inicio', mode: lsGet('mode') || 'lista',
+  f: { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true },
+  af: { q: '', tipo: '', estado: 'Activo', resp: '' },
+  cf: { q: '', estado: 'Activo' }, ficha: null,
+  cal: null, yo: lsGet('yo') || '',
+  mf: { q: '', cliente: '', pend: false },
+  form: null, listDraft: {}, openPick: null, busy: false,
+};
+const isAdmin = () => S.me && S.me.rol === 'admin';
+const isStaff = () => S.me && (S.me.rol === 'admin' || S.me.rol === 'equipo');
+const isExt = () => S.me && S.me.rol === 'externo';
+const canEditProj = p => isStaff() || (S.me && hasResp(p, S.me.alias));
+const views = () => isStaff() ? ALL_VIEWS : ALL_VIEWS.filter(v => EXT_VIEWS.includes(v[0]));
+{ const h = location.hash.slice(1); if (ALL_VIEWS.some(v => v[0] === h)) S.view = h; }
+
+/* ---------- Selects ---------- */
+const opt = (v, label, cur) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label ?? v) + '</option>';
+function optsFrom(arr, cur, blank) {
+  let h = blank !== undefined ? opt('', blank, cur) : '';
+  h += arr.map(v => opt(v, v, cur)).join('');
+  if (cur && !arr.includes(cur)) h += opt(cur, cur + ' (fuera de lista)', cur);
+  return h;
+}
+const personas = () => S.E.filter(e => e.activo !== false && e.persona).map(e => e.persona).sort(cmp);
+function clienteOpts(cur, blankLabel) {
+  let h = opt('', blankLabel || 'Elegí un cliente', cur); const seen = new Set();
+  for (const g of S.L.estadosCliente) {
+    const cs = S.C.filter(c => c.estado === g).sort((a, b) => cmp(a.nombre, b.nombre));
+    if (!cs.length) continue;
+    h += '<optgroup label="' + esc(g) + '">' + cs.map(c => { seen.add(c.nombre); return opt(c.nombre, c.nombre, cur); }).join('') + '</optgroup>';
+  }
+  const rest = S.C.filter(c => !seen.has(c.nombre)).sort((a, b) => cmp(a.nombre, b.nombre));
+  if (rest.length) h += '<optgroup label="Otros">' + rest.map(c => opt(c.nombre, c.nombre, cur)).join('') + '</optgroup>';
+  if (cur && !S.C.some(c => c.nombre === cur)) h += opt(cur, cur, cur);
+  return h;
+}
+
+/* ---------- Piezas ---------- */
+const pill = (txt, v) => txt ? '<span class="pill" style="--c:var(' + v + ')">' + esc(txt) + '</span>' : '<span class="muted">—</span>';
+const stPill = e => pill(e, stVar(e));
+const clPill = e => pill(e, CL_COLOR[e] || '--muted');
+const abPill = e => pill(e, AB_COLOR[e] || '--muted');
+function whos(arr) {
+  if (!arr || !arr.length) return '<span class="muted">Sin asignar</span>';
+  return '<span class="whos"><span class="avs">' + arr.map(p => '<span class="av" title="' + esc(p) + '">' + esc(initials(p)) + '</span>').join('') + '</span><span class="wn">' + esc(arr.join(', ')) + '</span></span>';
+}
+function picker(kind, o) {
+  const sel = resp(o), key = kind + ':' + o._id;
+  if (!isStaff()) return whos(sel);
+  const ps = personas(); const all = [...ps, ...sel.filter(p => !ps.includes(p))];
+  return '<details class="pick" data-pick="' + esc(key) + '"' + (S.openPick === key ? ' open' : '') + '><summary title="Cambiar responsables">' + whos(sel) + '</summary><div class="menu">' +
+    all.map(p => '<label class="chk"><input type="checkbox" data-rtoggle="' + kind + '" data-id="' + esc(o._id) + '" value="' + esc(p) + '"' + (sel.includes(p) ? ' checked' : '') + '> ' + esc(p) + '</label>').join('') + '</div></details>';
+}
+function daysBadge(p) {
+  if (!p.entrega || !isOpen(p)) return '';
+  const d = diff(p.entrega);
+  if (d < 0) return '<span class="days late">Atrasado ' + (-d) + ' d</span>';
+  if (d === 0) return '<span class="days soon">Hoy</span>';
+  if (d <= 7) return '<span class="days soon">En ' + d + ' d</span>';
+  return '<span class="days far">En ' + d + ' d</span>';
+}
+function links(o) {
+  const L = [['drive', 'Drive'], ['slides', 'Slides'], ['canva', 'Canva']].filter(([k]) => isUrl(o[k]));
+  return L.length ? '<span class="links">' + L.map(([k, l]) => '<a href="' + esc(o[k]) + '" target="_blank" rel="noopener">' + l + '</a>').join('') + '</span>' : '';
+}
+const emptyBox = (title, text) => '<div class="empty"><b>' + esc(title) + '</b>' + (text || '') + '</div>';
+function addBtn(kind, label, preset, cls) {
+  const ok = kind === 'comunicacion' ? (isStaff() || isExt()) : kind === 'persona' ? isAdmin() : isStaff();
+  return ok ? '<button class="btn ' + (cls || 'primary') + '" data-act="new" data-kind="' + kind + '"' + (preset ? ' data-preset="' + esc(JSON.stringify(preset)) + '"' : '') + '>+ ' + esc(label) + '</button>' : '';
+}
+
+/* ---------- Derivados ---------- */
+function plazoOk(p, plazo) {
+  if (!plazo) return true;
+  if (plazo === 'sinfecha') return isOpen(p) && !p.entrega;
+  if (!p.entrega || !isOpen(p)) return false;
+  const d = diff(p.entrega);
+  if (plazo === 'atrasados') return d < 0;
+  if (plazo === '7dias') return d >= 0 && d <= 7;
+  return true;
+}
+function filtrarProyectos(ignoreAbiertos) {
+  const f = S.f, q = norm(f.q);
+  return S.P.filter(p =>
+    (!q || norm(p.cliente + ' ' + p.proyecto + ' ' + (p.notas || '') + ' ' + (p.entregables || '')).includes(q)) &&
+    (!f.estado || p.estado === f.estado) && (!f.tipo || p.tipo === f.tipo) &&
+    (!f.resp || (f.resp === '__none' ? !resp(p).length : hasResp(p, f.resp))) &&
+    (!f.cliente || p.cliente === f.cliente) && plazoOk(p, f.plazo) &&
+    (ignoreAbiertos || !f.abiertos || isOpen(p)));
+}
+const sortByEntrega = (a, b) => (a.entrega || '9999').localeCompare(b.entrega || '9999') || cmp(a.cliente, b.cliente) || cmp(a.proyecto, b.proyecto);
+const proyectosDe = n => S.P.filter(p => p.cliente === n);
+const abonosDe = n => S.A.filter(a => a.cliente === n);
+const pendientes = () => S.M.filter(m => !m.hecho && m.proximo).sort((a, b) => (a.fechaProximo || '9999').localeCompare(b.fechaProximo || '9999'));
+const abonoLabel = a => (a.tipo || 'Abono') + (a.plan ? ' · ' + a.plan : '');
+const abonoTags = n => { const as = abonosDe(n).filter(a => a.estado === 'Activo'); return as.length ? '<span class="tags">' + as.map(a => '<span class="tag">' + esc(abonoLabel(a)) + '</span>').join('') + '</span>' : ''; };
+
+/* ---------- Vistas ---------- */
+const kpiBtn = (n, label, sub, attrs, cls) => '<button class="kpi ' + (cls || '') + '" ' + attrs + '><span class="eyebrow">' + label + '</span><b>' + n + '</b><span>' + sub + '</span></button>';
+
+function vInicio() {
+  const t = today(), open = S.P.filter(isOpen);
+  const late = open.filter(p => p.entrega && p.entrega < t);
+  const in7 = open.filter(p => plazoOk(p, '7dias'));
+  const pend = pendientes();
+  const ab = S.A.filter(a => a.estado === 'Activo');
+  const abR = ab.filter(a => a.tipo === 'Redes').length, abA = ab.filter(a => a.tipo === 'Ads').length;
+  const conf = S.P.filter(p => p.estado === 'A confirmar').length;
+  const sinResp = open.filter(p => !resp(p).length).length + ab.filter(a => !resp(a).length).length;
+
+  let h = '<section class="kpis">' +
+    kpiBtn(ab.length, 'Abonos activos', abR + ' de redes · ' + abA + ' de Ads', 'data-act="go" data-view="abonos"') +
+    kpiBtn(open.length, 'Proyectos abiertos', S.P.filter(p => p.estado === 'En curso').length + ' en curso', 'data-act="goProy"') +
+    kpiBtn(late.length, 'Atrasados', in7.length + ' entregan en 7 días', 'data-act="goProy" data-plazo="' + (late.length ? 'atrasados' : '7dias') + '"', late.length ? 'alert' : (in7.length ? 'warn' : '')) +
+    kpiBtn(pend.length, 'Próximos pasos', 'Pendientes con clientes', 'data-act="go" data-view="comunicaciones" data-pend="1"') +
+    '</section>';
+
+  if (conf || sinResp) {
+    const parts = [];
+    if (conf) parts.push('<b>' + conf + ' proyectos</b> están "A confirmar": vienen de la facturación y les falta estado y fechas');
+    if (sinResp) parts.push('<b>' + sinResp + '</b> trabajos abiertos no tienen responsable');
+    h += '<section class="callout"><p>' + parts.join('. ') + '. Estado y responsables se cambian directo en la fila de cada lista.</p><button class="btn" data-act="goProy" data-estado="' + (conf ? 'A confirmar' : '') + '">Revisar proyectos</button></section>';
+  }
+
+  const estados = S.L.estadosProyecto.map(e => [e, S.P.filter(p => p.estado === e).length]);
+  const maxE = Math.max(1, ...estados.map(x => x[1]));
+  const tipos = S.L.tipos.map(t => [t, open.filter(p => p.tipo === t).length]).filter(x => x[1]);
+  const maxT = Math.max(1, ...tipos.map(x => x[1]));
+  const bars = (arr, max, colorFn, attr) => '<div class="bars">' + arr.map(([k, n]) => '<button class="bar" data-act="goProy" ' + attr + '="' + esc(k) + '" style="--c:var(' + colorFn(k) + ')"><span class="lab">' + esc(k) + '</span><span class="track"><span class="fill" style="width:' + (n / max * 100).toFixed(1) + '%"></span></span><span class="n">' + n + '</span></button>').join('') + '</div>';
+  h += '<div class="grid2">' +
+    '<section class="sheet"><div class="sheet-h"><h2>Proyectos por estado</h2><span class="muted num">' + S.P.length + ' en total</span></div><div class="sheet-b">' + bars(estados, maxE, stVar, 'data-estado') + '</div></section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Proyectos abiertos por tipo</h2><span class="muted num">' + open.length + ' abiertos</span></div><div class="sheet-b">' + (tipos.length ? bars(tipos, maxT, () => '--accent', 'data-tipo') : emptyBox('Sin proyectos abiertos', '')) + '</div></section>' +
+    '</div>';
+
+  const prox = open.filter(p => p.entrega).sort(sortByEntrega).slice(0, 12);
+  const proxHtml = prox.length ? '<div class="rows">' + prox.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + fmt(p.entrega) + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc(p.cliente) + ' · ' + (resp(p).length ? esc(resp(p).join(', ')) : 'sin responsable') + '</span></span>' + daysBadge(p) + '</button>').join('') + '</div>'
+    : emptyBox('Todavía no hay fechas de entrega cargadas', 'Cargá la entrega pactada en cada proyecto y acá aparece lo que viene.');
+  const pasosHtml = pend.length ? '<div class="rows">' + pend.slice(0, 12).map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : 'sin fecha') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + (m.responsable ? ' · ' + esc(m.responsable) : '') + '</span></span>' + (m.fechaProximo && diff(m.fechaProximo) < 0 ? '<span class="days late">Vencido</span>' : '') + '</button>').join('') + '</div>'
+    : emptyBox('No hay pasos pendientes', 'Registrá reuniones y acuerdos en Comunicaciones con un próximo paso.');
+  h += '<div class="grid2">' +
+    '<section class="sheet"><div class="sheet-h"><h2>Próximas entregas</h2><button class="btn ghost sm" data-act="calendar">Ver calendario</button></div>' + proxHtml + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos con clientes</h2>' + addBtn('comunicacion', 'Comunicación') + '</div>' + pasosHtml + '</section>' +
+    '</div>';
+  return h;
+}
+
+function vProyectos() {
+  const f = S.f;
+  const modes = [['lista', 'Lista'], ['tablero', 'Tablero'], ['calendario', 'Calendario']];
+  let h = '<div class="head"><div><h1>Proyectos</h1><p>' + (isExt() ? 'Los proyectos donde figurás como responsable.' : 'Trabajos puntuales con inicio y entrega. Los servicios que se repiten todos los meses van en Abonos.') + '</p></div>' +
+    '<div class="toolbar"><div class="seg" role="group" aria-label="Vista">' + modes.map(([k, l]) => '<button data-act="mode" data-mode="' + k + '" aria-pressed="' + (S.mode === k) + '">' + l + '</button>').join('') + '</div>' + addBtn('proyecto', 'Proyecto') + '</div></div>';
+  h += '<div class="toolbar">' +
+    '<input class="in" type="search" id="pq" data-bind="f.q" placeholder="Buscar cliente o proyecto" value="' + esc(f.q) + '">' +
+    '<select class="in" id="pe" data-bind="f.estado" aria-label="Estado">' + optsFrom(S.L.estadosProyecto, f.estado, 'Todos los estados') + '</select>' +
+    '<select class="in" id="pt" data-bind="f.tipo" aria-label="Tipo">' + optsFrom(S.L.tipos, f.tipo, 'Todos los tipos') + '</select>' +
+    (isStaff() ? '<select class="in" id="pr" data-bind="f.resp" aria-label="Responsable">' + opt('', 'Todo el equipo', f.resp) + opt('__none', 'Sin asignar', f.resp) + personas().map(p => opt(p, p, f.resp)).join('') + '</select>' : '') +
+    '<select class="in" id="pc" data-bind="f.cliente" aria-label="Cliente">' + clienteOpts(f.cliente, 'Todos los clientes') + '</select>' +
+    '<select class="in" id="pp" data-bind="f.plazo" aria-label="Plazo">' + opt('', 'Cualquier plazo', f.plazo) + opt('atrasados', 'Atrasados', f.plazo) + opt('7dias', 'Entregas en 7 días', f.plazo) + opt('sinfecha', 'Sin fecha pactada', f.plazo) + '</select>' +
+    (S.mode === 'tablero' ? '' : '<label class="chk"><input type="checkbox" id="pa" data-bind="f.abiertos"' + (f.abiertos ? ' checked' : '') + '> Solo abiertos</label>') +
+    (f.q || f.estado || f.tipo || f.resp || f.cliente || f.plazo ? '<button class="btn ghost sm" data-act="clearF">Limpiar filtros</button>' : '') +
+    '</div>';
+  if (S.mode === 'tablero') return h + vTablero();
+  if (S.mode === 'calendario') return h + vCalendario();
+  return h + vLista();
+}
+
+function vLista() {
+  const list = filtrarProyectos(false).sort(sortByEntrega);
+  if (!list.length) return '<section class="sheet">' + emptyBox(S.P.length ? 'Ningún proyecto coincide con los filtros' : 'Todavía no hay proyectos', S.P.length ? 'Probá limpiar los filtros.' : (isStaff() ? 'Cargá el primero con “+ Proyecto”.' : '')) + '</section>';
+  const rows = list.map(p => {
+    const dis = canEditProj(p) ? '' : ' disabled';
+    return '<tr>' +
+      '<td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente || '—') + '</button></td>' +
+      '<td><button class="btn link" style="font-weight:500" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">' + esc(p.proyecto) + '</button><span class="sub">' + esc(p.tipo || '') + '</span></td>' +
+      '<td>' + picker('proyecto', p) + '</td>' +
+      '<td class="n">' + (p.entrega ? '<span class="mono">' + fmt(p.entrega) + '</span><span class="sub">' + daysBadge(p) + '</span>' : '<span class="muted">Sin fecha</span>') + '</td>' +
+      '<td><select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado"' + dis + '>' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select></td>' +
+      '<td>' + links(p) + '</td>' +
+      '<td class="r"><button class="btn ghost sm" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">' + (canEditProj(p) ? 'Editar' : 'Ver') + '</button></td>' +
+      '</tr>';
+  }).join('');
+  return '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Responsables</th><th>Entrega pactada</th><th>Estado</th><th>Links</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' de ' + S.P.length + ' proyectos</div></section>';
+}
+
+function vTablero() {
+  const list = filtrarProyectos(true);
+  const cols = S.L.estadosProyecto.map(e => {
+    const items = list.filter(p => p.estado === e).sort(sortByEntrega);
+    return '<div class="col" data-drop="' + esc(e) + '"><div class="col-h">' + stPill(e) + '<span class="n">' + items.length + '</span></div>' +
+      items.map(p => {
+        const late = p.entrega && isOpen(p) && diff(p.entrega) < 0;
+        return '<button class="card' + (late ? ' late' : '') + '" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '" data-drag="' + esc(p._id) + '"' + (canEditProj(p) ? ' draggable="true"' : '') + '><span class="cl">' + esc(p.cliente) + '</span><span class="pj">' + esc(p.proyecto) + '</span><span class="ft">' + (resp(p).length ? whos(resp(p)) : '<span class="tag">Sin responsable</span>') + (p.entrega ? '<span class="mono">' + fmtShort(p.entrega) + '</span>' : '') + '</span></button>';
+      }).join('') + '</div>';
+  }).join('');
+  return '<p class="muted" style="margin:0">Arrastrá una tarjeta a otra columna para cambiarle el estado. En el celular, tocala y cambiá el estado en el formulario.</p><div class="kb">' + cols + '</div>';
+}
+
+function vCalendario() {
+  const [y, m] = (S.cal || thisMonth()).split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
+  const t = today();
+  const list = filtrarProyectos(false).filter(p => p.entrega && p.estado !== 'Cancelado');
+  const steps = S.M.filter(x => !x.hecho && x.proximo && x.fechaProximo && (!S.f.cliente || x.cliente === S.f.cliente) && (!S.f.resp || x.responsable === S.f.resp));
+  const byDay = {};
+  list.forEach(p => { (byDay[p.entrega] = byDay[p.entrega] || { p: [], s: [] }).p.push(p); });
+  steps.forEach(s => { (byDay[s.fechaProximo] = byDay[s.fechaProximo] || { p: [], s: [] }).s.push(s); });
+  let cells = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => '<div class="dow">' + d + '</div>').join('');
+  const d = new Date(start);
+  for (let i = 0; i < 42; i++) {
+    const k = iso(d), inMonth = d.getMonth() === m - 1, it = byDay[k];
+    if (i >= 35 && !inMonth) break;
+    cells += '<div class="cell' + (inMonth ? '' : ' out') + (k === t ? ' today' : '') + '"><span class="dn">' + d.getDate() + '</span>' +
+      (it ? it.p.map(p => '<button class="ev' + (isOpen(p) && p.entrega < t ? ' late' : '') + '" style="--c:var(' + stVar(p.estado) + ')" title="' + esc(p.cliente + ' · ' + p.proyecto) + '" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">' + esc(p.cliente + ' · ' + p.proyecto) + '</button>').join('') +
+        it.s.map(s => '<button class="ev step" title="' + esc('Paso: ' + s.proximo) + '" data-act="edit" data-kind="comunicacion" data-id="' + esc(s._id) + '">↳ ' + esc(s.proximo) + '</button>').join('') : '') + '</div>';
+    d.setDate(d.getDate() + 1);
+  }
+  const mk = y + '-' + pad(m);
+  const agenda = [...list.filter(p => p.entrega.startsWith(mk)).map(p => ({ d: p.entrega, kind: 'proyecto', id: p._id, t: p.proyecto, s: p.cliente, b: stPill(p.estado) })),
+  ...steps.filter(s => s.fechaProximo.startsWith(mk)).map(s => ({ d: s.fechaProximo, kind: 'comunicacion', id: s._id, t: s.proximo, s: 'Próximo paso · ' + (s.cliente || ''), b: '' }))].sort((a, b) => a.d.localeCompare(b.d));
+  const sinFecha = S.P.filter(p => isOpen(p) && !p.entrega).length;
+  return '<section class="sheet"><div class="sheet-h"><div class="cal-h"><h2>' + esc(monthLabel(mk)) + '</h2><button class="btn sm" data-act="calMove" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="calMove" data-d="0">Hoy</button><button class="btn sm" data-act="calMove" data-d="1" aria-label="Mes siguiente">→</button></div>' +
+    (sinFecha ? '<button class="btn ghost sm" data-act="goProy" data-plazo="sinfecha">' + sinFecha + ' abiertos sin fecha pactada</button>' : '') + '</div>' +
+    '<div class="tbl"><div class="cal">' + cells + '</div></div></section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Agenda del mes</h2><span class="muted num">' + agenda.length + ' ítems</span></div>' +
+    (agenda.length ? '<div class="rows">' + agenda.map(a => '<button class="row" data-act="edit" data-kind="' + a.kind + '" data-id="' + esc(a.id) + '"><span class="d">' + fmt(a.d) + '</span><span class="t"><b>' + esc(a.t) + '</b><span>' + esc(a.s) + '</span></span>' + a.b + '</button>').join('') + '</div>'
+      : emptyBox('Nada agendado este mes', 'Las entregas pactadas y los próximos pasos con fecha aparecen acá.')) + '</section>';
+}
+
+function vAbonos() {
+  const af = S.af, q = norm(af.q);
+  const tipos = ['', ...S.L.tiposAbono];
+  const base = S.A.filter(a => (!af.estado || a.estado === af.estado));
+  const list = base.filter(a => (!af.tipo || a.tipo === af.tipo) && (!af.resp || (af.resp === '__none' ? !resp(a).length : hasResp(a, af.resp))) && (!q || norm(a.cliente + ' ' + (a.plan || '') + ' ' + (a.notas || '')).includes(q))).sort((a, b) => cmp(a.cliente, b.cliente) || cmp(a.tipo, b.tipo));
+  const dis = isStaff() ? '' : ' disabled';
+  let h = '<div class="head"><div><h1>Abonos</h1><p>' + (isExt() ? 'Las cuentas mensuales donde figurás como responsable.' : 'Servicios que se repiten todos los meses, como la gestión de redes y las campañas de Ads.') + '</p></div><div class="toolbar">' + addBtn('abono', 'Abono') + '</div></div>' +
+    '<div class="toolbar"><input class="in" type="search" id="aq" data-bind="af.q" placeholder="Buscar cliente o plan" value="' + esc(af.q) + '">' +
+    '<div class="seg" role="group" aria-label="Tipo">' + tipos.map(t => '<button data-act="afTipo" data-tipo="' + esc(t) + '" aria-pressed="' + (af.tipo === t) + '">' + (t || 'Todos') + ' <span class="c">' + base.filter(a => !t || a.tipo === t).length + '</span></button>').join('') + '</div>' +
+    '<select class="in" id="ae" data-bind="af.estado" aria-label="Estado">' + opt('', 'Todos los estados', af.estado) + ESTADOS_ABONO.map(e => opt(e, e === 'Activo' ? 'Activos' : e === 'Pausado' ? 'Pausados' : 'Dados de baja', af.estado)).join('') + '</select>' +
+    (isStaff() ? '<select class="in" id="ar" data-bind="af.resp" aria-label="Responsable">' + opt('', 'Todo el equipo', af.resp) + opt('__none', 'Sin asignar', af.resp) + personas().map(p => opt(p, p, af.resp)).join('') + '</select>' : '') + '</div>';
+  if (!list.length) return h + '<section class="sheet">' + emptyBox(S.A.length ? 'Ningún abono coincide' : 'Todavía no hay abonos', S.A.length ? 'Probá con otro filtro.' : (isStaff() ? 'Cargá el primero con “+ Abono”.' : '')) + '</section>';
+  const rows = list.map(a => '<tr><td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button></td>' +
+    '<td><span class="tag">' + esc(a.tipo || '—') + '</span></td><td>' + (a.plan ? esc(a.plan) : '<span class="muted">—</span>') + '</td>' +
+    '<td>' + picker('abono', a) + '</td>' +
+    '<td class="mono">' + (a.desde ? esc(fmt(a.desde)) : '<span class="muted">—</span>') + (a.hasta ? ' → ' + esc(fmt(a.hasta)) : '') + '</td>' +
+    '<td><select class="cellsel st" style="--c:var(' + (AB_COLOR[a.estado] || '--muted') + ')" aria-label="Estado" data-upd="abono" data-id="' + esc(a._id) + '" data-field="estado"' + dis + '>' + optsFrom(ESTADOS_ABONO, a.estado || '') + '</select></td>' +
+    '<td class="r"><button class="btn ghost sm" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '">' + (isStaff() ? 'Editar' : 'Ver') + '</button></td></tr>').join('');
+  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Plan</th><th>Responsables</th><th>Desde</th><th>Estado</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' abonos</div></section>';
+}
+
+function vMis() {
+  const ps = personas();
+  if (isExt()) S.yo = S.me.alias;
+  if (!S.yo && S.me) S.yo = S.me.alias;
+  let h = '<div class="head"><div><h1>' + (isExt() ? 'Mis trabajos' : 'Mis trabajos') + '</h1><p>Cuentas mensuales, entregas, clientes y próximos pasos a cargo de cada persona.</p></div>' +
+    (isStaff() ? '<div class="toolbar"><label class="muted" for="yo">Ver como</label><select class="in" id="yo" data-bind="yo">' + ps.map(p => opt(p, p, S.yo)).join('') + '</select></div>' : '') + '</div>';
+  const yo = S.yo, mine = S.P.filter(p => hasResp(p, yo) && isOpen(p)).sort(sortByEntrega);
+  const late = mine.filter(p => plazoOk(p, 'atrasados')), week = mine.filter(p => plazoOk(p, '7dias'));
+  const later = mine.filter(p => p.entrega && diff(p.entrega) > 7), nodate = mine.filter(p => !p.entrega);
+  const cuentas = S.A.filter(a => a.estado === 'Activo' && hasResp(a, yo)).sort((a, b) => cmp(a.cliente, b.cliente));
+  const myCl = S.C.filter(c => hasResp(c, yo)).sort((a, b) => cmp(a.nombre, b.nombre));
+  const steps = pendientes().filter(m => m.responsable === yo);
+  const kpi = (n, l, cls) => '<div class="kpi ' + (cls || '') + '"><span class="eyebrow">' + l + '</span><b>' + n + '</b></div>';
+  h += '<section class="kpis">' + kpi(cuentas.length, 'Cuentas mensuales') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(steps.length, 'Pasos pendientes') + '</section>';
+  if (!mine.length && !cuentas.length && !myCl.length && !steps.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay nada a cargo de ' + yo, isStaff() ? 'Asigná responsables desde Proyectos o Abonos y aparece acá.' : 'Cuando te asignen un trabajo aparece acá.') + '</section>';
+  const others = o => resp(o).length > 1 ? ' · con ' + esc(resp(o).filter(x => x !== yo).join(', ')) : '';
+  const group = (title, arr) => arr.length ? '<section class="sheet"><div class="sheet-h"><h2>' + title + '</h2><span class="muted num">' + arr.length + '</span></div><div class="rows">' + arr.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc(p.cliente) + ' · ' + esc(p.tipo || '') + others(p) + '</span></span>' + (daysBadge(p) || stPill(p.estado)) + '</button>').join('') + '</div></section>' : '';
+  const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Cuentas mensuales</h2><span class="muted num">' + cuentas.length + '</span></div>' + (cuentas.length ? '<div class="rows">' + cuentas.map(a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(a.cliente) + '</b><span>' + esc(a.plan ? 'Plan ' + a.plan : '') + others(a) + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin cuentas mensuales a cargo', '')) + '</section>';
+  h += '<div class="grid2"><div class="stack">' + cuentasHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
+    '<div class="stack">' +
+    '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos</h2>' + addBtn('comunicacion', 'Comunicación', null, 'sm') + '</div>' + (steps.length ? '<div class="rows">' + steps.map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin pasos pendientes', '')) + '</section>' +
+    (myCl.length ? '<section class="sheet"><div class="sheet-h"><h2>Clientes a cargo</h2><span class="muted num">' + myCl.length + '</span></div><div class="rows">' + myCl.map(c => '<button class="row" data-act="ficha" data-cliente="' + esc(c.nombre) + '"><span class="d">' + esc(c.plan || '') + '</span><span class="t"><b>' + esc(c.nombre) + '</b><span>' + esc(c.servicio || '') + '</span></span>' + clPill(c.estado) + '</button>').join('') + '</div></section>' : '') +
+    '</div></div>';
+  return h;
+}
+
+function vClientes() {
+  if (S.ficha) return vFicha();
+  const cf = S.cf, q = norm(cf.q);
+  if (isExt()) cf.estado = '';
+  const estados = ['', ...S.L.estadosCliente];
+  const counts = e => S.C.filter(c => !e || c.estado === e).length;
+  const list = S.C.filter(c => (!cf.estado || c.estado === cf.estado) && (!q || norm(c.nombre + ' ' + (c.contacto || '') + ' ' + (c.servicio || '')).includes(q))).sort((a, b) => cmp(a.nombre, b.nombre));
+  let h = '<div class="head"><div><h1>Clientes</h1><p>' + (isExt() ? 'Los clientes de los trabajos que tenés asignados.' : 'Datos operativos de cada cliente. Tocá uno para ver su ficha con abonos, proyectos y comunicaciones.') + '</p></div><div class="toolbar">' + addBtn('cliente', 'Cliente') + '</div></div>' +
+    '<div class="toolbar"><input class="in" type="search" id="cq" data-bind="cf.q" placeholder="Buscar cliente o contacto" value="' + esc(cf.q) + '">' +
+    (isStaff() ? '<div class="seg" role="group" aria-label="Estado">' + estados.map(e => '<button data-act="cfEstado" data-estado="' + esc(e) + '" aria-pressed="' + (cf.estado === e) + '">' + (e || 'Todos') + ' <span class="c">' + counts(e) + '</span></button>').join('') + '</div>' : '') + '</div>';
+  if (!list.length) return h + '<section class="sheet">' + emptyBox(S.C.length ? 'Ningún cliente coincide' : 'Todavía no hay clientes', S.C.length ? 'Probá con otro estado o búsqueda.' : '') + '</section>';
+  const rows = list.map(c => {
+    const act = proyectosDe(c.nombre).filter(isOpen).length;
+    return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '"><td class="name">' + esc(c.nombre) + '</td><td>' + clPill(c.estado) + '</td><td>' + (abonoTags(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + esc(c.servicio || '') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(c.contacto || '') + '</td></tr>';
+  }).join('');
+  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Estado</th><th>Abonos activos</th><th>Servicio</th><th>Responsables</th><th>Proyectos abiertos</th><th>Contacto</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' clientes</div></section>';
+}
+
+function vFicha() {
+  const c = S.C.find(x => x.nombre === S.ficha);
+  const back = '<button class="btn ghost sm" data-act="back" style="justify-self:start">← Clientes</button>';
+  if (!c) return back + '<section class="sheet">' + emptyBox('Ese cliente no existe o no tenés acceso', '') + '</section>';
+  const ps = proyectosDe(c.nombre).sort(sortByEntrega), open = ps.filter(isOpen), closed = ps.filter(p => !isOpen(p));
+  const as = abonosDe(c.nombre).sort((a, b) => ESTADOS_ABONO.indexOf(a.estado) - ESTADOS_ABONO.indexOf(b.estado) || cmp(a.tipo, b.tipo));
+  const ms = S.M.filter(m => m.cliente === c.nombre).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  const copy = v => v ? '<span>' + esc(v) + '</span><button class="btn ghost sm" data-act="copy" data-v="' + esc(v) + '">Copiar</button>' : '<span class="muted">—</span>';
+  const link = v => v ? (isUrl(v) ? '<a href="' + esc(v) + '" target="_blank" rel="noopener">' + esc(v.replace(/^https?:\/\/(www\.)?/, '')) + '</a>' : '<span>' + esc(v) + '</span>') : '<span class="muted">—</span>';
+  const projRow = p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc(p.tipo || '') + (resp(p).length ? ' · ' + esc(resp(p).join(', ')) : '') + '</span></span>' + stPill(p.estado) + '</button>';
+  const abRow = a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(abonoLabel(a)) + '</b><span>' + (resp(a).length ? esc(resp(a).join(', ')) : 'sin responsable') + (a.desde ? ' · desde ' + esc(fmt(a.desde)) : '') + '</span></span>' + abPill(a.estado) + '</button>';
+  const preset = esc(JSON.stringify({ cliente: c.nombre }));
+  return back +
+    '<div class="head"><div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + clPill(c.estado) + abonoTags(c.nombre) + '<span>' + esc(c.servicio || '') + '</span></p></div>' +
+    '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Comunicación</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Comunicación', { cliente: c.nombre })) + '</div></div>' +
+    '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
+    '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
+    '<dt>Contacto</dt><dd>' + (c.contacto ? esc(c.contacto) : '<span class="muted">—</span>') + '</dd>' +
+    '<dt>Email</dt><dd>' + copy(c.email) + '</dd>' +
+    '<dt>Teléfono</dt><dd>' + copy(c.tel) + '</dd>' +
+    '<dt>Instagram / web</dt><dd>' + link(c.web) + '</dd>' +
+    '<dt>Carpeta</dt><dd>' + link(c.carpeta) + '</dd>' +
+    '<dt>Notas</dt><dd>' + (c.notas ? '<span style="white-space:pre-wrap">' + esc(c.notas) + '</span>' : '<span class="muted">—</span>') + '</dd>' +
+    '</dl></div></section></div>' +
+    '<div class="stack">' +
+    '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + as.filter(a => a.estado === 'Activo').length + ' activos</span></div>' + (as.length ? '<div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('Sin abonos', '')) + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Comunicaciones</h2><span class="muted num">' + ms.length + '</span></div>' + (ms.length ? '<div class="timeline">' + ms.map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Sin comunicaciones registradas', 'Registrá reuniones, llamadas y acuerdos con este cliente.')) + '</section>' +
+    '</div></div>';
+}
+
+function comItem(m, inFicha) {
+  const can = isStaff() || (S.me && m.responsable === S.me.alias);
+  return '<div class="ti"><div class="meta"><span class="mono">' + (m.fecha ? fmt(m.fecha) : '—') + '</span>' + (inFicha ? '' : '<b style="color:var(--fg)">' + esc(m.cliente || '') + '</b>') + (m.canal ? '<span class="tag">' + esc(m.canal) + '</span>' : '') + (m.conQuien ? '<span>con ' + esc(m.conQuien) + '</span>' : '') + (m.responsable ? '<span>· ' + esc(m.responsable) + '</span>' : '') + '<button class="btn ghost sm" style="margin-left:auto" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '">' + (can ? 'Editar' : 'Ver') + '</button></div>' +
+    (m.resumen ? '<p>' + esc(m.resumen) + '</p>' : '') + (m.acuerdo ? '<p><b>Acuerdo:</b> ' + esc(m.acuerdo) + '</p>' : '') +
+    (m.proximo ? '<label class="next' + (m.hecho ? ' done' : '') + '"><input type="checkbox" id="h-' + esc(m._id) + '" data-upd="comunicacion" data-id="' + esc(m._id) + '" data-field="hecho"' + (m.hecho ? ' checked' : '') + (can ? '' : ' disabled') + '> <span>' + esc(m.proximo) + '</span>' + (m.fechaProximo ? '<span class="mono">' + fmt(m.fechaProximo) + '</span>' : '') + '</label>' : '') + '</div>';
+}
+
+function vEquipo() {
+  const list = [...S.E].sort((a, b) => (b.activo !== false) - (a.activo !== false) || cmp(a.persona, b.persona));
+  let h = '<div class="head"><div><h1>Equipo y accesos</h1><p>Quién es quién y qué ve cada uno. Para que alguien entre, cargale su email y un rol. Administrador ve todo; Equipo ve lo operativo; Externo solo los trabajos donde figura como responsable.</p></div><div class="toolbar">' + addBtn('persona', 'Persona') + '</div></div>';
+  if (!list.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay personas cargadas', '') + '</section>';
+  const rows = list.map(e => {
+    const ab = S.A.filter(a => a.estado === 'Activo' && hasResp(a, e.persona)).length, pr = S.P.filter(p => isOpen(p) && hasResp(p, e.persona)).length;
+    return '<tr class="click" data-act="edit" data-kind="persona" data-id="' + esc(e._id) + '"' + (e.activo === false ? ' style="opacity:.55"' : '') + '><td>' + whos([e.persona]) + '</td><td>' + esc(e.nombre || '') + (e.puesto ? '<span class="sub">' + esc(e.puesto) + '</span>' : '') + '</td><td>' + pill(ROLES[e.rol] || e.rol, ROL_COLOR[e.rol] || '--muted') + '</td><td>' + (e.email ? esc(e.email) : '<span class="muted">Sin acceso</span>') + '</td><td class="n">' + ab + '</td><td class="n">' + pr + '</td><td>' + (e.activo === false ? '<span class="tag">Inactiva/o</span>' : '<span class="pill" style="--c:var(--ok)">Activa/o</span>') + '</td></tr>';
+  }).join('');
+  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Persona</th><th>Nombre completo</th><th>Rol</th><th>Email de acceso</th><th>Cuentas mensuales</th><th>Proyectos abiertos</th><th>Estado</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+}
+
+function vComs() {
+  const mf = S.mf, q = norm(mf.q);
+  const list = S.M.filter(m => (!mf.cliente || m.cliente === mf.cliente) && (!mf.pend || (!m.hecho && m.proximo)) && (!q || norm([m.cliente, m.resumen, m.acuerdo, m.proximo, m.conQuien].join(' ')).includes(q)))
+    .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.creado || '').localeCompare(a.creado || ''));
+  let h = '<div class="head"><div><h1>Comunicaciones</h1><p>Reuniones, llamadas y mensajes importantes. Lo pendiente aparece en el Inicio hasta que lo tildes.</p></div><div class="toolbar">' + addBtn('comunicacion', 'Comunicación') + '</div></div>' +
+    '<div class="toolbar"><input class="in" type="search" id="mq" data-bind="mf.q" placeholder="Buscar en resúmenes y acuerdos" value="' + esc(mf.q) + '"><select class="in" id="mc" data-bind="mf.cliente" aria-label="Cliente">' + clienteOpts(mf.cliente, 'Todos los clientes') + '</select><label class="chk"><input type="checkbox" id="mp" data-bind="mf.pend"' + (mf.pend ? ' checked' : '') + '> Solo con paso pendiente</label></div>';
+  if (!list.length) return h + '<section class="sheet">' + emptyBox(S.M.length ? 'Ninguna comunicación coincide' : 'Todavía no hay comunicaciones', S.M.length ? '' : 'Registrá la primera reunión o llamada con un cliente.') + '</section>';
+  return h + '<section class="sheet"><div class="timeline">' + list.map(m => comItem(m, false)).join('') + '</div><div class="count num">' + list.length + ' registros</div></section>';
+}
+
+function vListas() {
+  let h = '<div class="head"><div><h1>Listas</h1><p>Las opciones de los desplegables. Quitar un valor no cambia los registros que ya lo usan.</p></div></div><div class="lists">';
+  for (const k of Object.keys(LIST_LABELS)) {
+    const arr = S.L[k] || [];
+    h += '<section class="sheet"><div class="sheet-h"><h3>' + LIST_LABELS[k] + '</h3><span class="muted num">' + arr.length + '</span></div><div class="sheet-b"><div class="chips">' +
+      arr.map((v, i) => '<span class="chip">' + esc(v) + (isStaff() && !(k === 'estadosProyecto' && CERRADOS.has(v)) ? '<button aria-label="Quitar ' + esc(v) + '" data-act="listDel" data-k="' + k + '" data-i="' + i + '">×</button>' : '<span style="width:8px"></span>') + '</span>').join('') +
+      '</div>' + (isStaff() ? '<form class="addrow" data-list="' + k + '"><input class="in" id="li-' + k + '" placeholder="Agregar valor" value="' + esc(S.listDraft[k] || '') + '" data-bind="listDraft.' + k + '"><button class="btn" type="submit">Agregar</button></form>' : '') + '</div></section>';
+  }
+  return h + '</div>';
+}
+
+const VIEW_FN = { inicio: vInicio, proyectos: vProyectos, abonos: vAbonos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas };
+
+/* ---------- Render ---------- */
+function render() {
+  if (!S.me) return;
+  const a = document.activeElement, fid = a && a.id && $('#view').contains(a) ? a.id : null;
+  const sel = fid && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
+  const kb = document.querySelector('.kb'), kbLeft = kb ? kb.scrollLeft : 0;
+  if (!views().some(v => v[0] === S.view)) S.view = isExt() ? 'mis' : 'inicio';
+  const counts = { proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length };
+  $('#nav').innerHTML = views().map(([k, l]) => '<button class="tab" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + l + (counts[k] ? '<span class="tab-n">' + counts[k] + '</span>' : '') + '</button>').join('');
+  const sync = $('#sync');
+  sync.className = 'sync ' + (S.status === 'ok' ? 'ok' : S.status === 'offline' ? 'err' : '');
+  sync.lastElementChild.textContent = S.status === 'ok' ? 'En vivo' : S.status === 'offline' ? 'Sin conexión' : 'Conectando';
+  $('#me').innerHTML = esc(S.me.alias) + ' · ' + pill(ROLES[S.me.rol], ROL_COLOR[S.me.rol]);
+  if (S.status === 'loading') { $('#view').innerHTML = '<section class="sheet">' + emptyBox('Cargando datos del equipo…', '') + '</section>'; return; }
+  $('#view').innerHTML = VIEW_FN[S.view]();
+  const kb2 = document.querySelector('.kb'); if (kb2) kb2.scrollLeft = kbLeft;
+  if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { } } }
+}
+function banner(msg, err) { const b = $('#banner'); if (!msg) { b.hidden = true; return; } b.innerHTML = msg; b.className = 'banner' + (err ? ' err' : ''); b.hidden = false; }
+let toastT; function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
+
+/* ---------- Formularios ---------- */
+const FORMS = {
+  proyecto: { arr: 'P', title: 'proyecto', nuevo: 'Nuevo proyecto', label: p => p.proyecto, fields: [
+    { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, staffOnly: 1 },
+    { k: 'proyecto', label: 'Proyecto', req: 1, staffOnly: 1 },
+    { k: 'tipo', label: 'Tipo', type: 'select', opts: () => S.L.tipos, blank: '—', staffOnly: 1 },
+    { k: 'estado', label: 'Estado', type: 'select', opts: () => S.L.estadosProyecto },
+    { k: 'responsables', label: 'Responsables', type: 'multi', full: 1, staffOnly: 1 },
+    { k: 'fechaInicio', label: 'Fecha de inicio', type: 'date' },
+    { k: 'entrega', label: 'Entrega pactada', type: 'date' },
+    { k: 'entregaReal', label: 'Entrega real', type: 'date' },
+    { k: 'entregables', label: 'Entregables', type: 'textarea', full: 1, rows: 2 },
+    { k: 'drive', label: 'Carpeta (Drive)', type: 'url', full: 1, ph: 'https://' },
+    { k: 'slides', label: 'Presentación (Slides)', type: 'url', ph: 'https://' },
+    { k: 'canva', label: 'Canva', type: 'url', ph: 'https://' },
+    { k: 'notas', label: 'Notas', type: 'textarea', full: 1 },
+  ], defaults: () => ({ estado: 'Por empezar', fechaInicio: today(), responsables: [] }), can: rec => rec ? canEditProj(rec) : isStaff() },
+  abono: { arr: 'A', title: 'abono', nuevo: 'Nuevo abono', label: a => a.cliente + ' · ' + abonoLabel(a), fields: [
+    { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, full: 1 },
+    { k: 'tipo', label: 'Tipo', type: 'select', opts: () => S.L.tiposAbono, req: 1 },
+    { k: 'plan', label: 'Plan', type: 'select', opts: () => S.L.planes, blank: 'Sin plan' },
+    { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
+    { k: 'desde', label: 'Desde (mes)', type: 'month' },
+    { k: 'hasta', label: 'Hasta (mes, si se dio de baja)', type: 'month' },
+    { k: 'estado', label: 'Estado', type: 'select', opts: () => ESTADOS_ABONO },
+    { k: 'notas', label: 'Notas', type: 'textarea', full: 1 },
+  ], defaults: () => ({ tipo: 'Redes', estado: 'Activo', desde: thisMonth(), responsables: [] }), can: () => isStaff() },
+  cliente: { arr: 'C', title: 'cliente', nuevo: 'Nuevo cliente', label: c => c.nombre, fields: [
+    { k: 'nombre', label: 'Cliente', req: 1, full: 1 },
+    { k: 'estado', label: 'Estado', type: 'select', opts: () => S.L.estadosCliente },
+    { k: 'servicio', label: 'Servicio', type: 'select', opts: () => S.L.servicios, blank: '—' },
+    { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
+    { k: 'plan', label: 'Plan (referencia)', type: 'select', opts: () => S.L.planes, blank: '—' },
+    { k: 'contacto', label: 'Contacto (nombre)' },
+    { k: 'email', label: 'Email', type: 'email' },
+    { k: 'tel', label: 'Teléfono / WhatsApp', type: 'tel' },
+    { k: 'web', label: 'Instagram / web', ph: 'https:// o @usuario' },
+    { k: 'carpeta', label: 'Carpeta del cliente', type: 'url', ph: 'https://' },
+    { k: 'notas', label: 'Notas', type: 'textarea', full: 1, hint: 'No guardes contraseñas acá: usá el gestor de contraseñas del equipo.' },
+  ], defaults: () => ({ estado: 'Activo', responsables: [] }), can: () => isStaff() },
+  persona: { arr: 'E', title: 'persona', nuevo: 'Nueva persona', label: e => e.persona, fields: [
+    { k: 'persona', label: 'Cómo le decimos', req: 1 },
+    { k: 'nombre', label: 'Nombre completo' },
+    { k: 'puesto', label: 'Puesto o servicio', full: 1, ph: 'Ej.: Diseñadora, Proveedora de Ads' },
+    { k: 'email', label: 'Email de acceso', type: 'email', full: 1, hint: 'Con este email entra a la app. Vacío = sin acceso.' },
+    { k: 'rol', label: 'Rol', type: 'select', html: v => Object.entries(ROLES).map(([k, l]) => opt(k, l, v || 'equipo')).join('') },
+    { k: 'tel', label: 'Teléfono', type: 'tel' },
+    { k: 'activo', label: 'Activa/o (si no, pierde el acceso)', type: 'check', full: 1 },
+    { k: 'notas', label: 'Notas', type: 'textarea', full: 1 },
+  ], defaults: () => ({ activo: true, rol: 'equipo' }), can: () => isAdmin() },
+  comunicacion: { arr: 'M', title: 'comunicación', nuevo: 'Nueva comunicación', label: m => m.cliente, fields: [
+    { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
+    { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1 },
+    { k: 'canal', label: 'Canal', type: 'select', opts: () => S.L.canales, blank: '—' },
+    { k: 'conQuien', label: 'Con quién' },
+    { k: 'resumen', label: 'Resumen', type: 'textarea', full: 1 },
+    { k: 'acuerdo', label: 'Acuerdo', type: 'textarea', full: 1, rows: 2 },
+    { k: 'proximo', label: 'Próximo paso', full: 1 },
+    { k: 'fechaProximo', label: 'Fecha del próximo paso', type: 'date' },
+    { k: 'responsable', label: 'Responsable del paso', type: 'select', opts: personas, blank: 'Sin asignar', staffOnly: 1 },
+    { k: 'hecho', label: 'Próximo paso hecho', type: 'check', full: 1 },
+  ], defaults: () => ({ fecha: today(), responsable: S.me ? S.me.alias : '' }), can: rec => rec ? (isStaff() || (S.me && rec.responsable === S.me.alias)) : (isStaff() || isExt()) },
+};
+
+function fieldHtml(f, v, ro) {
+  const id = 'f-' + f.k, dis = (ro || (f.staffOnly && !isStaff())) ? ' disabled' : '';
+  const hint = f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '';
+  if (f.type === 'check') return '<label class="chk ' + (f.full ? 'full' : '') + '"><input type="checkbox" id="' + id + '"' + (v ? ' checked' : '') + dis + '> ' + esc(f.label) + '</label>';
+  if (f.type === 'multi') {
+    const sel = Array.isArray(v) ? v : (v ? [v] : []); const ps = personas(); const all = [...ps, ...sel.filter(p => !ps.includes(p))];
+    return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span><div class="multi" id="' + id + '">' + (all.length ? all.map(p => '<label><input type="checkbox" value="' + esc(p) + '"' + (sel.includes(p) ? ' checked' : '') + dis + '> ' + esc(p) + '</label>').join('') : '<span class="muted">Cargá personas en Equipo.</span>') + '</div></div>';
+  }
+  let ctl;
+  if (f.type === 'textarea') ctl = '<textarea id="' + id + '" rows="' + (f.rows || 3) + '"' + dis + '>' + esc(v || '') + '</textarea>';
+  else if (f.type === 'select') ctl = '<select id="' + id + '"' + dis + '>' + (f.html ? f.html(v || '') : optsFrom(f.opts(), v || '', f.blank)) + '</select>';
+  else if (f.type === 'month') ctl = '<input id="' + id + '" type="month" value="' + esc(v || '') + '" placeholder="AAAA-MM"' + dis + '>';
+  else ctl = '<input id="' + id + '" type="' + (f.type || 'text') + '" value="' + esc(v || '') + '"' + (f.ph ? ' placeholder="' + esc(f.ph) + '"' : '') + dis + '>';
+  return '<div class="field ' + (f.full ? 'full' : '') + '"><label for="' + id + '">' + esc(f.label) + (f.req ? ' <b>*</b>' : '') + '</label>' + ctl + hint + '<span class="err" id="e-' + f.k + '" hidden></span></div>';
+}
+
+function openForm(kind, id, preset) {
+  const def = FORMS[kind];
+  const rec = id ? S[def.arr].find(x => x._id === id) : null;
+  if (id && !rec) { toast('Ese registro ya no existe'); return; }
+  const ro = !def.can(rec);
+  S.form = { kind, id: id || null, ro };
+  const vals = rec ? Object.assign({}, rec) : Object.assign(def.defaults(), preset || {});
+  let foot;
+  if (ro) foot = '<span class="muted">Solo lectura.</span><button type="button" class="btn" data-act="close">Cerrar</button>';
+  else foot = '<span id="delzone">' + (rec && (isStaff() && (kind !== 'persona' || isAdmin())) ? '<button type="button" class="btn ghost danger" data-act="del">Eliminar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="savebtn">' + (rec ? 'Guardar cambios' : 'Crear ' + def.title) + '</button></span>';
+  const extra = rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '';
+  const p = $('#panel');
+  p.innerHTML = '<form id="form" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + (rec ? (ro ? 'Ver ' : 'Editar ') + def.title : 'Alta') + '</span><h2 id="panel-title">' + (rec ? esc(def.label(rec) || def.title) : def.nuevo) + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+    '<div class="panel-b">' + def.fields.map(f => fieldHtml(f, vals[f.k], ro)).join('') + extra + '</div><div class="panel-f">' + foot + '</div></form>';
+  p.hidden = false; $('#scrim').hidden = false;
+  if (!rec) { const first = p.querySelector('.panel-b input:not([type=checkbox]):not([disabled]),.panel-b select:not([disabled]),.panel-b textarea:not([disabled])'); if (first) first.focus(); }
+}
+function closeForm() { $('#panel').hidden = true; $('#scrim').hidden = true; S.form = null; }
+
+async function saveForm() {
+  if (!S.form || S.form.ro) return;
+  const { kind, id } = S.form, def = FORMS[kind];
+  const out = {}; let bad = false;
+  const showErr = (k, msg) => { const e = $('#e-' + k); if (e) { e.textContent = msg; e.hidden = false; } bad = true; };
+  for (const f of def.fields) {
+    if (f.staffOnly && !isStaff()) continue;
+    const el = $('#f-' + f.k);
+    if (f.type === 'multi') out[f.k] = [...el.querySelectorAll('input:checked')].map(i => i.value);
+    else out[f.k] = f.type === 'check' ? el.checked : el.value.trim();
+    const e = $('#e-' + f.k); if (e) e.hidden = true;
+    if (f.req && !out[f.k]) showErr(f.k, 'Completá este campo');
+  }
+  if (kind === 'comunicacion' && !isStaff()) out.responsable = S.me.alias;
+  if (kind === 'cliente' && S.C.some(c => norm(c.nombre) === norm(out.nombre) && c._id !== id)) showErr('nombre', 'Ya existe un cliente con ese nombre');
+  if (kind === 'persona' && S.E.some(x => norm(x.persona) === norm(out.persona) && x._id !== id)) showErr('persona', 'Ya hay alguien con ese nombre');
+  if (kind === 'persona' && out.email && S.E.some(x => norm(x.email) === norm(out.email) && x._id !== id)) showErr('email', 'Ese email ya lo usa otra persona');
+  if (kind === 'persona' && id && S.me && id === S.me.id && out.rol !== 'admin') showErr('rol', 'No podés quitarte el rol de administrador a vos mismo');
+  if (kind === 'abono') {
+    if (out.desde && !/^\d{4}-\d{2}$/.test(out.desde)) showErr('desde', 'Usá el formato AAAA-MM');
+    if (out.hasta && !/^\d{4}-\d{2}$/.test(out.hasta)) showErr('hasta', 'Usá el formato AAAA-MM');
+    if (out.estado === 'Baja' && !out.hasta) out.hasta = thisMonth();
+  }
+  if (bad) return;
+  if (kind === 'proyecto' && out.estado === 'Entregado' && !out.entregaReal) out.entregaReal = today();
+  const prev = id ? S[def.arr].find(x => x._id === id) : null;
+  const btn = $('#savebtn'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try {
+    await data.save(kind, id, out, prev ? resp(prev) : []);
+    closeForm(); toast(prev ? 'Cambios guardados' : 'Creado'); await reload();
+  } catch (err) { toast(err.message); if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
+}
+async function delRecord() {
+  if (!S.form || !S.form.id) return;
+  try { await data.remove(S.form.kind, S.form.id); if (S.form.kind === 'cliente') S.ficha = null; closeForm(); toast('Eliminado'); await reload(); }
+  catch (err) { toast(err.message); }
+}
+async function upd(kind, id, patch, prevResp, quiet) {
+  try { await data.update(kind, id, patch, prevResp); if (!quiet) toast('Actualizado'); await reload(); }
+  catch (err) { toast(err.message); await reload(); }
+}
+
+/* ---------- Acciones ---------- */
+function setBind(path, v) {
+  const ks = path.split('.'); let o = S;
+  for (let i = 0; i < ks.length - 1; i++) o = o[ks[i]];
+  o[ks[ks.length - 1]] = v;
+  if (path === 'yo') lsSet('yo', v);
+}
+function go(view) { S.view = view; S.ficha = null; try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
+async function saveListas(k, arr) {
+  const prev = S.L[k]; S.L[k] = arr; render();
+  try { await data.saveLista(k, arr); toast('Lista actualizada'); }
+  catch (err) { S.L[k] = prev; render(); toast(err.message); }
+}
+function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('Copiado'), () => toast(v)); } catch (e) { toast(v); } }
+const ACT = {
+  go: t => { if (t.dataset.pend) S.mf.pend = true; go(t.dataset.view); },
+  goProy: t => { S.f = { q: '', estado: t.dataset.estado || '', tipo: t.dataset.tipo || '', resp: '', cliente: '', plazo: t.dataset.plazo || '', abiertos: !(t.dataset.estado && CERRADOS.has(t.dataset.estado)) }; S.mode = 'lista'; go('proyectos'); },
+  calendar: () => { S.mode = 'calendario'; lsSet('mode', 'calendario'); go('proyectos'); },
+  mode: t => { S.mode = t.dataset.mode; lsSet('mode', S.mode); render(); },
+  clearF: () => { S.f = { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true }; render(); },
+  cfEstado: t => { S.cf.estado = t.dataset.estado; render(); },
+  afTipo: t => { S.af.tipo = t.dataset.tipo; render(); },
+  ficha: t => { S.ficha = t.dataset.cliente; S.view = 'clientes'; try { history.replaceState(null, '', '#clientes'); } catch (e) { } render(); window.scrollTo(0, 0); },
+  back: () => { S.ficha = null; render(); },
+  new: t => openForm(t.dataset.kind, null, t.dataset.preset ? JSON.parse(t.dataset.preset) : null),
+  edit: t => openForm(t.dataset.kind, t.dataset.id),
+  close: () => closeForm(),
+  del: () => { $('#delzone').innerHTML = '<span class="muted" style="font-size:13px">¿Seguro?</span> <button type="button" class="btn danger sm" data-act="delYes">Sí, eliminar</button> <button type="button" class="btn ghost sm" data-act="delNo">No</button>'; },
+  delNo: () => { $('#delzone').innerHTML = '<button type="button" class="btn ghost danger" data-act="del">Eliminar</button>'; },
+  delYes: () => delRecord(),
+  calMove: t => { const n = +t.dataset.d; S.cal = n ? addMonth(S.cal || thisMonth(), n) : null; render(); },
+  copy: t => copyText(t.dataset.v),
+  listDel: t => { const k = t.dataset.k, i = +t.dataset.i; saveListas(k, S.L[k].filter((_, j) => j !== i)); },
+  logout: async () => { await data.logout(); location.reload(); },
+};
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('details.pick') && S.openPick) { S.openPick = null; document.querySelectorAll('details.pick[open]').forEach(d => d.open = false); }
+  const t = e.target.closest('[data-act]'); if (!t || t.tagName === 'A') return;
+  if (e.target.closest('details.pick') && t.tagName === 'TR') return;
+  const fn = ACT[t.dataset.act]; if (fn) { e.preventDefault(); fn(t, e); }
+});
+document.addEventListener('toggle', e => { const d = e.target; if (!d.matches || !d.matches('details.pick')) return; if (d.open) { S.openPick = d.dataset.pick; document.querySelectorAll('details.pick[open]').forEach(x => { if (x !== d) x.open = false; }); } else if (S.openPick === d.dataset.pick) S.openPick = null; }, true);
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.bind && t.type !== 'checkbox' && t.tagName !== 'SELECT') { setBind(t.dataset.bind, t.value); if (!t.dataset.bind.startsWith('listDraft')) render(); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.bind && (t.type === 'checkbox' || t.tagName === 'SELECT')) { setBind(t.dataset.bind, t.type === 'checkbox' ? t.checked : t.value); render(); return; }
+  if (t.dataset.rtoggle) {
+    const kind = t.dataset.rtoggle, arr = S[FORMS[kind].arr];
+    const rec = arr.find(x => x._id === t.dataset.id); if (!rec) return;
+    let next = resp(rec).filter(p => p !== t.value); if (t.checked) next.push(t.value);
+    upd(kind, rec._id, { responsables: next }, resp(rec), true);
+    return;
+  }
+  if (t.dataset.upd) {
+    const kind = t.dataset.upd, field = t.dataset.field, val = t.type === 'checkbox' ? t.checked : t.value;
+    const patch = { [field]: val };
+    if (kind === 'proyecto' && field === 'estado' && val === 'Entregado') { const p = S.P.find(x => x._id === t.dataset.id); if (p && !p.entregaReal) patch.entregaReal = today(); }
+    if (kind === 'abono' && field === 'estado' && val === 'Baja') { const a = S.A.find(x => x._id === t.dataset.id); if (a && !a.hasta) patch.hasta = thisMonth(); }
+    upd(kind, t.dataset.id, patch);
+  }
+});
+document.addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target;
+  if (f.id === 'form') { saveForm(); return; }
+  if (f.id === 'login') {
+    const email = f.querySelector('input').value.trim(), btn = f.querySelector('button'), msg = $('#login-msg');
+    if (!email) return;
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    try { await data.sendLink(email); msg.textContent = 'Listo. Revisá tu email (' + email + ') y abrí el link para entrar. Puede tardar un minuto.'; }
+    catch (err) { msg.textContent = err.message; btn.disabled = false; btn.textContent = 'Enviarme el link'; }
+    return;
+  }
+  if (f.dataset.list) {
+    const k = f.dataset.list, v = f.querySelector('input').value.trim();
+    if (!v) return;
+    if ((S.L[k] || []).some(x => norm(x) === norm(v))) { toast('Ese valor ya está en la lista'); return; }
+    S.listDraft[k] = '';
+    saveListas(k, [...(S.L[k] || []), v]);
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.form) closeForm(); });
+window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VIEW_FN[v] && v !== S.view) { S.view = v; S.ficha = null; render(); } });
+
+/* Arrastrar en el tablero */
+let dragId = null;
+document.addEventListener('dragstart', e => { const c = e.target.closest && e.target.closest('[data-drag]'); if (!c) return; dragId = c.dataset.drag; try { e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; } catch (_) { } c.classList.add('dragging'); });
+document.addEventListener('dragend', e => { const c = e.target.closest && e.target.closest('[data-drag]'); if (c) c.classList.remove('dragging'); document.querySelectorAll('.col.over').forEach(x => x.classList.remove('over')); });
+document.addEventListener('dragover', e => { const col = e.target.closest && e.target.closest('[data-drop]'); if (!col || !dragId) return; e.preventDefault(); document.querySelectorAll('.col.over').forEach(x => { if (x !== col) x.classList.remove('over'); }); col.classList.add('over'); });
+document.addEventListener('drop', e => {
+  const col = e.target.closest && e.target.closest('[data-drop]'); if (!col || !dragId) return;
+  e.preventDefault(); col.classList.remove('over');
+  const p = S.P.find(x => x._id === dragId), estado = col.dataset.drop; dragId = null;
+  if (!p || p.estado === estado) return;
+  const patch = { estado }; if (estado === 'Entregado' && !p.entregaReal) patch.entregaReal = today();
+  p.estado = estado; render();
+  upd('proyecto', p._id, patch);
+});
+
+/* ---------- Arranque ---------- */
+async function reload() {
+  try {
+    const d = await data.loadAll();
+    const L = {}; for (const k of Object.keys(DEF)) L[k] = Array.isArray(d.L[k]) && d.L[k].length ? [...d.L[k]] : [...DEF[k]];
+    Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, L, status: 'ok' });
+    banner('');
+  } catch (err) { S.status = 'offline'; banner(esc(err.message), true); }
+  render();
+}
+function showLogin(msg) {
+  $('#top').hidden = true;
+  $('#view').innerHTML = '<div class="login"><div class="login-card"><div class="brand">àndale <small>Operaciones</small></div><p>Entrá con tu email de trabajo. Te mandamos un link para ingresar, sin contraseña.</p>' +
+    '<form id="login"><input class="in" type="email" required autocomplete="email" placeholder="tu@email.com" aria-label="Email"><button class="btn primary" type="submit">Enviarme el link</button></form><p id="login-msg" class="muted" role="status">' + esc(msg || '') + '</p></div></div>';
+}
+function showNoAccess(email) {
+  $('#top').hidden = true;
+  $('#view').innerHTML = '<div class="login"><div class="login-card"><div class="brand">àndale <small>Operaciones</small></div><h2>Tu email todavía no tiene acceso</h2><p>Entraste como <b>' + esc(email || '') + '</b>, pero no figura en el equipo. Pedile a Fer o a Jime que te carguen en Equipo con este email.</p><button class="btn" data-act="logout">Salir y probar con otro email</button></div></div>';
+}
+let started = false;
+async function start(sess) {
+  if (started) return; started = true;
+  let me = null;
+  try { me = await data.yo(); } catch (err) { showLogin(err.message); started = false; return; }
+  if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
+  S.me = me;
+  $('#top').hidden = false;
+  $('#hoy').textContent = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+  if (isExt()) S.yo = me.alias; else if (!S.yo) S.yo = me.alias;
+  render();
+  await reload();
+  data.live(reload, s => { if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') { S.status = 'offline'; render(); } });
+  window.addEventListener('focus', reload);
+}
+
+(async () => {
+  if (!data.configured) { $('#view').innerHTML = '<div class="login"><div class="login-card"><h2>Falta configurar la base de datos</h2><p>Definí VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.</p></div></div>'; return; }
+  data.onAuth((ev, s) => { if (ev === 'SIGNED_IN' && s) start(s); if (ev === 'SIGNED_OUT') { S.me = null; started = false; showLogin(); } });
+  const s = await data.session();
+  if (s) start(s); else showLogin();
+})();
