@@ -146,7 +146,7 @@ export function initAsistente(ctx, k) {
 
   /* ---------- Conciliación bancaria ---------- */
   async function analizarExtracto() {
-    const file = ($('#as-file') || {}).files && $('#as-file').files[0], cajaId = ($('#as-caja') || {}).value;
+    const file = AD.as.file, cajaId = AD.as.concCaja || ($('#as-caja') || {}).value;
     if (!cajaId) { toast('Elegí la caja del extracto'); return; }
     if (!file) { toast('Elegí el archivo del extracto'); return; }
     if (file.size > 9e6) { toast('El archivo pesa más de 9 MB'); return; }
@@ -165,7 +165,7 @@ export function initAsistente(ctx, k) {
         const dup = !!x.duplicado || dupLocal;
         return { ...x, dup, sel: !dup && x.confianza !== 'baja' };
       });
-      AD.as.conc = { ...r, movimientos: movs };
+      AD.as.conc = { ...r, movimientos: movs }; AD.as.file = null;
       if (r._cortado) toast('El extracto es largo: la IA llegó hasta donde pudo. Subí el resto aparte.');
     } catch (err) { toast(err.message); }
     AD.as.concBusy = false; ctx.render();
@@ -319,7 +319,7 @@ export function initAsistente(ctx, k) {
     const cjs = AD.CJ.filter(x => x.activa);
     return '<section class="sheet" id="as-conc"><div class="sheet-h"><h2>Conciliar el banco</h2><span class="muted">Galicia, Payoneer, Wilobank…</span></div>' +
       '<div class="sheet-b"><p class="muted" style="margin:0 0 10px">Subí el extracto (PDF, Excel o CSV). La IA arma los movimientos con el plan de cuentas, reconoce clientes, equipo y proveedores, y marca los cobros de facturas y lo que ya está cargado.</p>' +
-      '<div class="toolbar"><select class="in" id="as-caja" aria-label="Caja">' + opt('', 'Caja del extracto', AD.as.concCaja) + cjs.map(x => opt(x.id, x.nombre + ' (' + x.moneda + ')', AD.as.concCaja)).join('') + '</select><input class="in" type="file" id="as-file" accept=".pdf,.csv,.txt,.xlsx,.xls,image/*" aria-label="Extracto"><button class="btn primary" data-act="asConc"' + (AD.as.concBusy || !st.ia ? ' disabled' : '') + '>' + (AD.as.concBusy ? 'Analizando… (puede tardar un minuto)' : '✨ Analizar extracto') + '</button></div></div>' + concHtml() + '</section>';
+      '<div class="toolbar"><select class="in" id="as-caja" aria-label="Caja">' + opt('', 'Caja del extracto', AD.as.concCaja) + cjs.map(x => opt(x.id, x.nombre + ' (' + x.moneda + ')', AD.as.concCaja)).join('') + '</select><label class="btn" style="cursor:pointer">📄 Elegir extracto<input type="file" id="as-file" accept=".pdf,.csv,.txt,.xlsx,.xls,image/*" hidden></label><span class="muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(AD.as.file ? AD.as.file.name : 'Ningún archivo elegido') + '</span><button class="btn primary" data-act="asConc"' + (AD.as.concBusy || !st.ia ? ' disabled' : '') + '>' + (AD.as.concBusy ? 'Analizando… (puede tardar un minuto)' : '✨ Analizar extracto') + '</button></div></div>' + concHtml() + '</section>';
   }
   function configHtml(st) {
     const em = cfgEmisores(), cfg = cfgDrive(), ok = v => v ? '<b style="color:var(--ok)">✓ conectado</b>' : '<b style="color:var(--crit)">sin configurar</b>';
@@ -396,6 +396,8 @@ export function initAsistente(ctx, k) {
   };
   document.addEventListener('change', e => {
     const t = e.target;
+    if (t.id === 'as-file') { AD.as.file = (t.files && t.files[0]) || null; ctx.render(); return; }
+    if (t.id === 'as-caja') { AD.as.concCaja = t.value; return; }
     if (t.id === 'ff-ia' && t.files && t.files[0]) { leerPdfEnFormulario(t.files[0]); t.value = ''; return; }
     if (t.id === 'ff-drive' && t.value) { desdeDriveEnFormulario(t.value); return; }
     if (t.dataset && t.dataset.cc !== undefined && AD.as.conc) {

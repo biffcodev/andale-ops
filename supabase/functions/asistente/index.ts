@@ -40,20 +40,28 @@ async function claude(ctx: Ctx, accion: string, o: { system: string; content: un
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    // Sin tool_choice forzado: los modelos nuevos no lo aceptan. Se pide por instrucción y hay plan B con JSON en texto.
     body: JSON.stringify({
-      model: MODEL(), max_tokens: o.maxTokens || 4096, system: o.system,
+      model: MODEL(), max_tokens: o.maxTokens || 4096,
+      system: o.system + '\n\nRespondé únicamente llamando una vez a la herramienta ' + o.tool.name + ', sin texto antes ni después.',
       messages: [{ role: 'user', content: o.content }],
-      tools: [o.tool], tool_choice: { type: 'tool', name: o.tool.name },
+      tools: [o.tool],
     }),
   });
   const out = await res.json().catch(() => ({}));
   const err = res.ok ? null : (out?.error?.message || 'La API respondió ' + res.status);
   await ctx.sb.from('ia_log').insert({ persona_id: ctx.personaId, accion, modelo: MODEL(), tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err });
   if (err) throw new Aviso('IA: ' + err, 502);
-  const tu = (out.content || []).find((c: any) => c.type === 'tool_use');
-  if (!tu) throw new Aviso('La IA no devolvió un resultado utilizable. Probá de nuevo.', 502);
-  if (out.stop_reason === 'max_tokens') tu.input._cortado = true;
-  return tu.input;
+  const tu = (out.content || []).find((c: any) => c.type === 'tool_use' && c.name === o.tool.name);
+  let input: any = tu ? tu.input : null;
+  if (!input) { // plan B: JSON escrito como texto
+    const txt = (out.content || []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n');
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (m) { try { input = JSON.parse(m[0]); } catch { input = null; } }
+  }
+  if (!input || typeof input !== 'object') throw new Aviso('La IA no devolvió un resultado utilizable. Probá de nuevo.', 502);
+  if (out.stop_reason === 'max_tokens') input._cortado = true;
+  return input;
 }
 const pdfBlock = (b64: string) => ({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
 const imgBlock = (b64: string, mime: string) => ({ type: 'image', source: { type: 'base64', media_type: mime, data: b64 } });

@@ -472,7 +472,11 @@ function render() {
   const kb = document.querySelector('.kb'), kbLeft = kb ? kb.scrollLeft : 0;
   if (!views().some(v => v[0] === S.view)) S.view = isExt() ? 'mis' : 'inicio';
   const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length };
-  $('#nav').innerHTML = views().map(([k, l]) => '<button class="tab" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + l + (counts[k] ? '<span class="tab-n">' + counts[k] + '</span>' : '') + '</button>').join('');
+  const tab = ([k, l]) => '<button class="tab" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + l + (counts[k] ? '<span class="tab-n">' + counts[k] + '</span>' : '') + '</button>';
+  const admKeys = isAdmin() && ADM ? ADM.views.map(v => v[0]) : [];
+  $('#nav').innerHTML = views().filter(v => !admKeys.includes(v[0])).map(tab).join('');
+  const nav2 = $('#nav2'), adm = views().filter(v => admKeys.includes(v[0]));
+  nav2.hidden = !adm.length; nav2.innerHTML = adm.length ? '<span class="tabs-lbl">Administración</span>' + adm.map(tab).join('') : '';
   const sync = $('#sync');
   sync.className = 'sync ' + (S.status === 'ok' ? 'ok' : S.status === 'offline' ? 'err' : '');
   sync.lastElementChild.textContent = S.status === 'ok' ? 'En vivo' : S.status === 'offline' ? 'Sin conexión' : 'Conectando';

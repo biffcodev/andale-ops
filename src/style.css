@@ -279,3 +279,7 @@ th.sel,td.sel{width:34px;padding-right:0}
 .field label.row b{color:inherit}
 label.row:has(> input[type=checkbox]){grid-template-columns:28px minmax(0,1fr) auto}
 .row .t>span{display:block}
+/* Segunda fila de pestañas: Administración */
+nav.tabs-adm{border-top:1px solid var(--line);align-items:center}
+nav.tabs-adm[hidden]{display:none}
+.tabs-lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--money);padding:0 10px 0 12px;white-space:nowrap}
