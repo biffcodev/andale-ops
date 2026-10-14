@@ -23,12 +23,21 @@ const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
 const CERRADOS = new Set(['Entregado', 'Cancelado']);
 const ST_COLOR = { 'Presupuestado': '--s-presup', 'Por empezar': '--s-empezar', 'En curso': '--s-curso', 'En revisión': '--s-revision', 'Entregado': '--s-entregado', 'Pausado': '--s-pausado', 'Cancelado': '--s-cancelado', 'A confirmar': '--s-confirmar' };
 const CL_COLOR = { 'Activo': '--s-entregado', 'A confirmar': '--s-confirmar', 'Proyectos': '--s-curso', 'Pausado': '--s-pausado', 'Inactivo': '--s-empezar' };
+const VER_CL = { 'Proyectos': 'Solo proyectos' }; // solo para mostrar: el valor guardado no cambia
 const TIPO_COLOR = { Branding: '--accent', Packaging: '--s-revision', Web: '--s-curso', Diseño: '--s-confirmar', Audiovisual: '--s-presup', Redes: '--accent', Ads: '--s-curso', Otro: '--s-empezar' };
 const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': '--s-empezar' };
 const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
-const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Seguimiento'], ['listas', 'Listas']];
+const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Seguimiento'], ['listas', 'Opciones']];
 // Menú lateral: grupos por tipo de tarea. Las vistas de administración las aporta admin.js.
-const GRUPOS = [['Trabajo', ['inicio', 'proyectos', 'abonos', 'mis']], ['Clientes', ['clientes', 'propuestas', 'comunicaciones']], ['Administración', ['asistente', 'cierre', 'facturas', 'precios', 'caja', 'pagos']], ['Análisis', ['estadisticas', 'rentabilidad']], ['Configuración', ['equipo', 'listas', 'ajustes']]];
+const GRUPOS = [['Trabajo', ['inicio', 'proyectos', 'abonos', 'mis']], ['Clientes', ['clientes', 'propuestas', 'comunicaciones']], ['Plata', ['cobros', 'gastos', 'pagos', 'numeros']], ['Configuración', ['equipo', 'listas', 'ajustes']]];
+// Pantallas que ahora viven como pestañas de otra (los links viejos y los emails siguen funcionando).
+const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], precios: ['abonos', 'precios'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
+const resolver = v => { const a = ALIAS[v]; if (!a) return v; S.tab[a[0]] = a[1]; return a[0]; };
+/** Pestañas de una pantalla: [[clave, rótulo, cantidad?], ...] */
+function subnav(hub, tabs) {
+  const cur = S.tab[hub] || tabs[0][0];
+  return '<nav class="subnav" aria-label="Secciones">' + tabs.map(([k, l, n]) => '<button data-act="tab" data-hub="' + hub + '" data-t="' + k + '"' + (cur === k ? ' aria-current="page"' : '') + '>' + esc(l) + (n ? '<span class="snav-n hot">' + n + '</span>' : '') + '</button>').join('') + '</nav>';
+}
 const EXT_VIEWS = ['mis', 'proyectos', 'abonos', 'clientes', 'comunicaciones'];
 
 /* ---------- Utilidades ---------- */
@@ -69,6 +78,7 @@ const S = {
   cf: { q: '', estado: 'Activo' }, csel: new Set(), cmasivo: '', ficha: null,
   cal: null, yo: lsGet('yo') || '',
   mf: { q: '', cliente: '', pend: false },
+  tab: {},
   form: null, listDraft: {}, openPick: null, busy: false,
 };
 const isAdmin = () => S.me && S.me.rol === 'admin';
@@ -85,7 +95,7 @@ const viewFn = k => VIEW_FN[k] || (isAdmin() && ADM_FN[k]);
 function leerHash() {
   const h = decodeURIComponent(location.hash.slice(1)); if (!h) return;
   const [v, ...rest] = h.split('/'); const arg = rest.join('/');
-  S.view = v; S.ficha = null; S.pficha = null;
+  S.view = resolver(v); S.ficha = null; S.pficha = null;
   if (v === 'proyectos' && arg) S.pficha = arg;
   if (v === 'clientes' && arg) S.ficha = arg;
 }
@@ -93,9 +103,9 @@ leerHash();
 
 /* ---------- Selects ---------- */
 const opt = (v, label, cur) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label ?? v) + '</option>';
-function optsFrom(arr, cur, blank) {
+function optsFrom(arr, cur, blank, ver) {
   let h = blank !== undefined ? opt('', blank, cur) : '';
-  h += arr.map(v => opt(v, v, cur)).join('');
+  h += arr.map(v => opt(v, (ver && ver[v]) || v, cur)).join('');
   if (cur && !arr.includes(cur)) h += opt(cur, cur + ' (fuera de lista)', cur);
   return h;
 }
@@ -105,7 +115,7 @@ function clienteOpts(cur, blankLabel) {
   for (const g of S.L.estadosCliente) {
     const cs = S.C.filter(c => c.estado === g).sort((a, b) => cmp(a.nombre, b.nombre));
     if (!cs.length) continue;
-    h += '<optgroup label="' + esc(g) + '">' + cs.map(c => { seen.add(c.nombre); return opt(c.nombre, c.nombre, cur); }).join('') + '</optgroup>';
+    h += '<optgroup label="' + esc(VER_CL[g] || g) + '">' + cs.map(c => { seen.add(c.nombre); return opt(c.nombre, c.nombre, cur); }).join('') + '</optgroup>';
   }
   const rest = S.C.filter(c => !seen.has(c.nombre)).sort((a, b) => cmp(a.nombre, b.nombre));
   if (rest.length) h += '<optgroup label="Otros">' + rest.map(c => opt(c.nombre, c.nombre, cur)).join('') + '</optgroup>';
@@ -116,7 +126,7 @@ function clienteOpts(cur, blankLabel) {
 /* ---------- Piezas ---------- */
 const pill = (txt, v) => txt ? '<span class="pill" style="--c:var(' + v + ')">' + esc(txt) + '</span>' : '<span class="muted">—</span>';
 const stPill = e => pill(e, stVar(e));
-const clPill = e => pill(e, CL_COLOR[e] || '--muted');
+const clPill = e => pill(VER_CL[e] || e, CL_COLOR[e] || '--muted');
 const abPill = e => pill(e, AB_COLOR[e] || '--muted');
 const fotoDe = alias => (S.E.find(e => e.persona === alias) || {}).avatar || '';
 function av(nombre, foto, cls) { return foto ? '<span class="av' + (cls ? ' ' + cls : '') + '" title="' + esc(nombre) + '"><img src="' + esc(foto) + '" alt="" loading="lazy"></span>' : '<span class="av' + (cls ? ' ' + cls : '') + '" style="' + avStyle(nombre) + '" title="' + esc(nombre) + '">' + esc(initials(nombre)) + '</span>'; }
@@ -184,8 +194,8 @@ const patchEstado = (c, v) => v === '__auto' ? { estadoManual: false } : { estad
 function estadoSelect(c) {
   const auto = estadoAuto(c.nombre);
   return '<span class="estsel"><select class="cellsel st" style="--c:var(' + (CL_COLOR[c.estado] || '--muted') + ')" aria-label="Estado de ' + esc(c.nombre) + '" data-upd="cliente" data-id="' + esc(c._id) + '" data-field="estado">' +
-    optsFrom(S.L.estadosCliente, c.estado || '') + (c.estadoManual ? opt('__auto', '↺ Volver a automático (' + auto + ')', '') : '') + '</select>' +
-    (c.estadoManual ? '<span class="fij" title="Fijado a mano. El automático diría: ' + esc(auto) + '">fijado</span>' : '') + '</span>';
+    optsFrom(S.L.estadosCliente, c.estado || '', undefined, VER_CL) + (c.estadoManual ? opt('__auto', '↺ Volver a automático (' + (VER_CL[auto] || auto) + ')', '') : '') + '</select>' +
+    (c.estadoManual ? '<span class="fij" title="Fijado a mano. El automático diría: ' + esc(VER_CL[auto] || auto) + '">fijado</span>' : '') + '</span>';
 }
 /* Etapas del proyecto: [{ n, ok }]. Plantillas por tipo en Listas (clave 'etapas:<Tipo>'). */
 const plantilla = tipo => (S.L['etapas:' + tipo] || []).slice();
@@ -230,7 +240,7 @@ function vInicio() {
 
   if (conf || sinResp) {
     const parts = [];
-    if (conf) parts.push('<b>' + conf + ' proyectos</b> están "A confirmar": vienen de la facturación y hay que confirmar su estado');
+    if (conf) parts.push('<b>' + conf + ' proyectos sin estado definido</b>: elegí en qué estado están');
     if (sinResp) parts.push('<b>' + sinResp + '</b> trabajos abiertos no tienen responsable');
     h += '<section class="callout"><p>' + parts.join('. ') + '. Estado y responsables se cambian directo en la fila de cada lista.</p><button class="btn" data-act="goProy" data-estado="' + (conf ? 'A confirmar' : '') + '">Revisar proyectos</button></section>';
   }
@@ -407,12 +417,14 @@ function vCalendario() {
 }
 
 function vAbonos() {
+  const pest = isAdmin() && ADM_FN.precios ? subnav('abonos', [['abonos', 'Abonos'], ['precios', 'Precios y aumentos']]) : '';
+  if (pest && S.tab.abonos === 'precios') return pest + ADM_FN.precios();
   const af = S.af, q = norm(af.q);
   const tipos = ['', ...S.L.tiposAbono];
   const base = S.A.filter(a => (!af.estado || a.estado === af.estado));
   const list = base.filter(a => (!af.tipo || a.tipo === af.tipo) && (!af.resp || (af.resp === '__none' ? !resp(a).length : hasResp(a, af.resp))) && (!q || norm(a.cliente + ' ' + (a.plan || '') + ' ' + (a.notas || '')).includes(q))).sort((a, b) => cmp(a.cliente, b.cliente) || cmp(a.tipo, b.tipo));
   const dis = isStaff() ? '' : ' disabled';
-  let h = '<div class="head"><div><h1>Abonos</h1><p>' + (isExt() ? 'Las cuentas mensuales donde figurás como responsable.' : 'Lo que se factura todos los meses: redes y Ads.') + '</p></div><div class="toolbar">' + addBtn('abono', 'Abono') + '</div></div>' +
+  let h = pest + '<div class="head"><div><h1>Abonos</h1><p>' + (isExt() ? 'Los abonos donde figurás como responsable.' : 'Lo que se factura todos los meses: redes y Ads.') + '</p></div><div class="toolbar">' + addBtn('abono', 'Abono') + '</div></div>' +
     '<div class="toolbar"><input class="in" type="search" id="aq" data-bind="af.q" placeholder="Buscar cliente o plan" value="' + esc(af.q) + '">' +
     '<div class="seg" role="group" aria-label="Tipo">' + tipos.map(t => '<button data-act="afTipo" data-tipo="' + esc(t) + '" aria-pressed="' + (af.tipo === t) + '">' + (t || 'Todos') + ' <span class="c">' + base.filter(a => !t || a.tipo === t).length + '</span></button>').join('') + '</div>' +
     '<select class="in" id="ae" data-bind="af.estado" aria-label="Estado">' + opt('', 'Todos los estados', af.estado) + ESTADOS_ABONO.map(e => opt(e, e === 'Activo' ? 'Activos' : e === 'Pausado' ? 'Pausados' : 'Dados de baja', af.estado)).join('') + '</select>' +
@@ -432,7 +444,7 @@ function vMis() {
   if (isExt()) S.yo = S.me.alias;
   if (!S.yo && S.me) S.yo = S.me.alias;
   let h = '<div class="head"><div><h1>' + (isExt() ? 'Mis trabajos' : 'Mis trabajos') + '</h1><p>Lo que tiene a cargo cada persona.</p></div>' +
-    (isStaff() ? '<div class="toolbar"><label class="muted" for="yo">Ver como</label><select class="in" id="yo" data-bind="yo">' + ps.map(p => opt(p, p, S.yo)).join('') + '</select></div>' : '') + '</div>';
+    (isStaff() ? '<div class="toolbar"><label class="muted" for="yo">Ver trabajos de</label><select class="in" id="yo" data-bind="yo">' + ps.map(p => opt(p, p, S.yo)).join('') + '</select></div>' : '') + '</div>';
   const yo = S.yo, mine = S.P.filter(p => hasResp(p, yo) && isOpen(p)).sort(sortByEntrega);
   const late = mine.filter(p => plazoOk(p, 'atrasados')), week = mine.filter(p => plazoOk(p, '7dias'));
   const later = mine.filter(p => p.entrega && diff(p.entrega) > 7), nodate = mine.filter(p => !p.entrega);
@@ -440,11 +452,11 @@ function vMis() {
   const myCl = S.C.filter(c => hasResp(c, yo)).sort((a, b) => cmp(a.nombre, b.nombre));
   const steps = pendientes().filter(m => m.responsable === yo);
   const kpi = (n, l, cls) => '<div class="kpi ' + (cls || '') + '"><span class="eyebrow">' + l + '</span><b>' + n + '</b></div>';
-  h += '<section class="kpis">' + kpi(cuentas.length, 'Cuentas mensuales') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(steps.length, 'Pasos pendientes') + '</section>';
+  h += '<section class="kpis">' + kpi(cuentas.length, 'Abonos') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(steps.length, 'Pasos pendientes') + '</section>';
   if (!mine.length && !cuentas.length && !myCl.length && !steps.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay nada a cargo de ' + yo, isStaff() ? 'Asigná responsables desde Proyectos o Abonos y aparece acá.' : 'Cuando te asignen un trabajo aparece acá.') + '</section>';
   const others = o => resp(o).length > 1 ? ' · con ' + esc(resp(o).filter(x => x !== yo).join(', ')) : '';
   const group = (title, arr) => arr.length ? '<section class="sheet"><div class="sheet-h"><h2>' + title + '</h2><span class="muted num">' + arr.length + '</span></div><div class="rows">' + arr.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.cliente, p.tipo, etapaTxt(p)].filter(Boolean).join(' · ')) + others(p) + '</span></span>' + (daysBadge(p) || stPill(p.estado)) + '</button>').join('') + '</div></section>' : '';
-  const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Cuentas mensuales</h2><span class="muted num">' + cuentas.length + '</span></div>' + (cuentas.length ? '<div class="rows">' + cuentas.map(a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(a.cliente) + '</b><span>' + esc(a.plan ? 'Plan ' + a.plan : '') + others(a) + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin cuentas mensuales a cargo', '')) + '</section>';
+  const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + cuentas.length + '</span></div>' + (cuentas.length ? '<div class="rows">' + cuentas.map(a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(a.cliente) + '</b><span>' + esc(a.plan ? 'Plan ' + a.plan : '') + others(a) + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin cuentas mensuales a cargo', '')) + '</section>';
   h += '<div class="grid2"><div class="stack">' + cuentasHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
     '<div class="stack">' +
     '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos</h2>' + addBtn('comunicacion', 'Seguimiento', null, 'sm') + '</div>' + (steps.length ? '<div class="rows">' + steps.map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin pasos pendientes', '')) + '</section>' +
@@ -462,7 +474,7 @@ function vClientes() {
   const list = S.C.filter(c => (!cf.estado || c.estado === cf.estado) && (!q || norm(c.nombre + ' ' + (c.contacto || '') + ' ' + (c.servicio || '')).includes(q))).sort((a, b) => cmp(a.nombre, b.nombre));
   let h = '<div class="head"><div><h1>Clientes</h1><p>' + (isExt() ? 'Los clientes de los trabajos que tenés asignados.' : 'El estado se calcula solo con sus abonos y proyectos.') + '</p></div><div class="toolbar">' + addBtn('cliente', 'Cliente') + '</div></div>' +
     '<div class="toolbar"><input class="in" type="search" id="cq" data-bind="cf.q" placeholder="Buscar cliente o contacto" value="' + esc(cf.q) + '">' +
-    (isStaff() ? '<div class="seg" role="group" aria-label="Estado">' + estados.map(e => '<button data-act="cfEstado" data-estado="' + esc(e) + '" aria-pressed="' + (cf.estado === e) + '">' + (e || 'Todos') + ' <span class="c">' + counts(e) + '</span></button>').join('') + '</div>' : '') + '</div>';
+    (isStaff() ? '<div class="seg" role="group" aria-label="Estado">' + estados.map(e => '<button data-act="cfEstado" data-estado="' + esc(e) + '" aria-pressed="' + (cf.estado === e) + '">' + (VER_CL[e] || e || 'Todos') + ' <span class="c">' + counts(e) + '</span></button>').join('') + '</div>' : '') + '</div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox(S.C.length ? 'Ningún cliente coincide' : 'Todavía no hay clientes', S.C.length ? 'Probá con otro estado o búsqueda.' : '') + '</section>';
   const staff = isStaff();
   S.csel.forEach(id => { if (!list.some(c => c._id === id)) S.csel.delete(id); });
@@ -471,7 +483,7 @@ function vClientes() {
     const est = staff ? estadoSelect(c) : clPill(c.estado);
     return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name"><span class="who1">' + av(c.nombre, c.avatar, 'sq') + esc(c.nombre) + '</span></td><td>' + est + '</td><td>' + (abonoTags(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + esc(c.servicio || '') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(c.contacto || '') + '</td></tr>';
   }).join('');
-  const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado') + opt('__auto', '↺ Automático', S.cmasivo) + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
+  const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado', VER_CL) + opt('__auto', '↺ Automático', S.cmasivo) + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
   const allSel = staff && list.length && list.every(c => S.csel.has(c._id));
   return h + bulk + '<section class="sheet"><div class="tbl"><table><thead><tr>' + (staff ? '<th class="sel"><input type="checkbox" aria-label="Seleccionar todos" data-cselall="1"' + (allSel ? ' checked' : '') + '></th>' : '') + '<th>Cliente</th><th>Estado</th><th>Abonos activos</th><th>Servicio</th><th>Responsables</th><th>Proyectos abiertos</th><th>Contacto</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' clientes</div></section>';
 }
@@ -516,13 +528,13 @@ function comItem(m, inFicha) {
 
 function vEquipo() {
   const list = [...S.E].sort((a, b) => (b.activo !== false) - (a.activo !== false) || cmp(a.persona, b.persona));
-  let h = '<div class="head"><div><h1>Equipo y accesos</h1><p>Quién entra a la app y qué ve cada uno.</p></div><div class="toolbar">' + addBtn('persona', 'Persona') + '</div></div>';
+  let h = '<div class="head"><div><h1>Equipo</h1><p>Quién entra a la app y qué ve cada uno.</p></div><div class="toolbar">' + addBtn('persona', 'Persona') + '</div></div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay personas cargadas', '') + '</section>';
   const rows = list.map(e => {
     const ab = S.A.filter(a => a.estado === 'Activo' && hasResp(a, e.persona)).length, pr = S.P.filter(p => isOpen(p) && hasResp(p, e.persona)).length;
     return '<tr class="click" data-act="edit" data-kind="persona" data-id="' + esc(e._id) + '"' + (e.activo === false ? ' style="opacity:.55"' : '') + '><td><span class="who1">' + (isStaff() || (S.me && S.me.alias === e.persona) ? avEditable('persona', e._id, e.persona, e.avatar, '', !isAdmin()) : av(e.persona, e.avatar)) + '<b>' + esc(e.persona) + '</b></span></td><td>' + esc(e.nombre || '') + (e.puesto ? '<span class="sub">' + esc(e.puesto) + '</span>' : '') + '</td><td>' + pill(ROLES[e.rol] || e.rol, ROL_COLOR[e.rol] || '--muted') + '</td><td>' + (e.email ? esc(e.email) : '<span class="muted">Sin acceso</span>') + '</td><td class="n">' + ab + '</td><td class="n">' + pr + '</td><td>' + (e.activo === false ? '<span class="tag">Inactiva/o</span>' : '<span class="pill" style="--c:var(--ok)">Activa/o</span>') + '</td></tr>';
   }).join('');
-  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Persona</th><th>Nombre completo</th><th>Rol</th><th>Email de acceso</th><th>Cuentas mensuales</th><th>Proyectos abiertos</th><th>Estado</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Persona</th><th>Nombre completo</th><th>Rol</th><th>Email de acceso</th><th>Abonos</th><th>Proyectos abiertos</th><th>Estado</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
 }
 
 function vComs() {
@@ -536,7 +548,7 @@ function vComs() {
 }
 
 function vListas() {
-  let h = '<div class="head"><div><h1>Listas</h1><p>Las opciones de los desplegables.</p></div></div><div class="lists">';
+  let h = '<div class="head"><div><h1>Opciones</h1><p>Las opciones que aparecen en los desplegables.</p></div></div><div class="lists">';
   const etapaKeys = (S.L.tipos || []).filter(t => !['Redes', 'Ads'].includes(t)).map(t => ['etapas:' + t, 'Etapas · ' + t]);
   for (const [k, label] of [...Object.entries(LIST_LABELS), ...etapaKeys]) {
     const arr = S.L[k] || [];
@@ -557,7 +569,7 @@ function render() {
   const kb = document.querySelector('.kb'), kbLeft = kb ? kb.scrollLeft : 0;
   if (!views().some(v => v[0] === S.view)) S.view = isExt() ? 'mis' : 'inicio';
   const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length };
-  const item = ([k, l]) => '<button class="snav-i" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + (ICON[k] || '') + '<span class="snav-l">' + l + '</span>' + (counts[k] ? '<span class="snav-n' + (k === 'asistente' || k === 'facturas' ? ' hot' : '') + '">' + counts[k] + '</span>' : '') + '</button>';
+  const item = ([k, l]) => '<button class="snav-i" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + (ICON[k] || '') + '<span class="snav-l">' + l + '</span>' + (counts[k] ? '<span class="snav-n' + (k === 'cobros' ? ' hot' : '') + '">' + counts[k] + '</span>' : '') + '</button>';
   const vs = new Map(views().map(v => [v[0], v[1]]));
   $('#nav').innerHTML = GRUPOS.map(([g, ks]) => { const its = ks.filter(k => vs.has(k)); return its.length ? '<span class="snav-g">' + g + '</span>' + its.map(k => item([k, vs.get(k)])).join('') : ''; }).join('');
   $('#nav2').hidden = true;
@@ -616,10 +628,10 @@ const FORMS = {
   ], defaults: () => ({ tipo: 'Redes', estado: 'Activo', desde: thisMonth(), responsables: [] }), can: () => isStaff() },
   cliente: { arr: 'C', title: 'cliente', nuevo: 'Nuevo cliente', label: c => c.nombre, fields: [
     { k: 'nombre', label: 'Cliente', req: 1, full: 1 },
-    { k: 'estado', label: 'Estado', type: 'select', html: v => opt('__auto', 'Automático (según abonos y proyectos)', v) + optsFrom(S.L.estadosCliente, v === '__auto' ? '' : v), hint: 'Elegí uno a mano solo si no coincide con el automático: queda fijado.' },
+    { k: 'estado', label: 'Estado', type: 'select', html: v => opt('__auto', 'Automático', v) + optsFrom(S.L.estadosCliente, v === '__auto' ? '' : v, undefined, VER_CL), hint: 'Se calcula solo con sus abonos y proyectos. Elegí otro solo si no coincide.' },
     { k: 'servicio', label: 'Servicio', type: 'select', opts: () => S.L.servicios, blank: '—' },
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
-    { k: 'plan', label: 'Plan (referencia)', type: 'select', opts: () => S.L.planes, blank: '—' },
+    { k: 'plan', label: 'Plan', type: 'select', opts: () => S.L.planes, blank: '—' },
     { k: 'contacto', label: 'Contacto (nombre)' },
     { k: 'email', label: 'Email', type: 'email' },
     { k: 'tel', label: 'Teléfono / WhatsApp', type: 'tel' },
@@ -658,7 +670,7 @@ function etapasInner() {
 }
 function renderEtapasField() { const el = $('#f-etapas'); if (el) el.innerHTML = etapasInner(); }
 function fieldHtml(f, v, ro) {
-  if (f.type === 'etapas') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span><div id="f-etapas" class="etapas"></div><span class="hint">El avance del proyecto se ve por etapas. Las plantillas por tipo se editan en Listas.</span></div>';
+  if (f.type === 'etapas') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span><div id="f-etapas" class="etapas"></div><span class="hint">El avance del proyecto se ve por etapas. Las plantillas por tipo se editan en Opciones.</span></div>';
   const id = 'f-' + f.k, dis = (ro || (f.staffOnly && !isStaff())) ? ' disabled' : '';
   const hint = f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '';
   if (f.type === 'check') return '<label class="chk ' + (f.full ? 'full' : '') + '"><input type="checkbox" id="' + id + '"' + (v ? ' checked' : '') + dis + '> ' + esc(f.label) + '</label>';
@@ -751,7 +763,7 @@ function setBind(path, v) {
   if (path === 'yo') lsSet('yo', v);
 }
 function menu(open) { const o = open === undefined ? !document.body.classList.contains('menu-open') : open; document.body.classList.toggle('menu-open', o); $('#sidescrim').hidden = !o; }
-function go(view) { menu(false); S.view = view; S.ficha = null; S.pficha = null; if (ADM) ADM.resetView(); try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
+function go(view) { menu(false); view = resolver(view); S.view = view; S.ficha = null; S.pficha = null; if (ADM) ADM.resetView(); try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
 async function saveListas(k, arr) {
   const prev = S.L[k]; S.L[k] = arr; render();
   try { await data.saveLista(k, arr); toast('Lista actualizada'); }
@@ -760,6 +772,7 @@ async function saveListas(k, arr) {
 function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('Copiado'), () => toast(v)); } catch (e) { toast(v); } }
 const ACT = {
   go: t => { if (t.dataset.pend) S.mf.pend = true; go(t.dataset.view); },
+  tab: t => { S.tab[t.dataset.hub] = t.dataset.t; if (ADM) ADM.resetView(); render(); window.scrollTo(0, 0); },
   goProy: t => { S.f = { q: '', estado: t.dataset.estado || '', tipo: t.dataset.tipo || '', resp: '', cliente: '', plazo: t.dataset.plazo || '', abiertos: !(t.dataset.estado && CERRADOS.has(t.dataset.estado)) }; S.mode = 'lista'; go('proyectos'); },
   calendar: () => { S.mode = 'calendario'; lsSet('mode', 'calendario'); go('proyectos'); },
   mode: t => { S.mode = t.dataset.mode; lsSet('mode', S.mode); render(); },
@@ -796,7 +809,7 @@ const ACT = {
     let ok = 0; const fails = [];
     for (const id of ids) { const c = S.C.find(x => x._id === id); if (!c) continue; try { await data.update('cliente', id, patchEstado(c, est)); ok++; } catch (err) { fails.push(err.message); } }
     S.csel.clear(); S.cmasivo = '';
-    toast(ok + ' cliente' + (ok === 1 ? '' : 's') + ' → ' + (est === '__auto' ? 'automático' : est) + (fails.length ? ' · ' + fails.length + ' con error: ' + fails[0] : ''));
+    toast(ok + ' cliente' + (ok === 1 ? '' : 's') + ' → ' + (est === '__auto' ? 'automático' : VER_CL[est] || est) + (fails.length ? ' · ' + fails.length + ' con error: ' + fails[0] : ''));
     await reload();
   },
 };
@@ -847,7 +860,7 @@ document.addEventListener('change', async e => {
     const c = S.C.find(x => x._id === t.dataset.id);
     if (!c) return;
     const pe = patchEstado(c, t.value);
-    (async () => { try { await data.update('cliente', t.dataset.id, pe); toast(c.nombre + (t.value === '__auto' ? ' vuelve al estado automático' : ' → ' + t.value + (pe.estadoManual ? ' (fijado a mano)' : ''))); await reload(); } catch (err) { toast(err.message); await reload(); } })();
+    (async () => { try { await data.update('cliente', t.dataset.id, pe); toast(c.nombre + (t.value === '__auto' ? ' vuelve al estado automático' : ' → ' + (VER_CL[t.value] || t.value) + (pe.estadoManual ? ' (fijado a mano)' : ''))); await reload(); } catch (err) { toast(err.message); await reload(); } })();
     return;
   }
   if (t.dataset.upd) {
@@ -930,7 +943,7 @@ async function start(sess) {
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
   S.me = me;
   if (me.rol === 'admin' && !ADM) {
-    ADM = initAdmin({ S, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
+    ADM = initAdmin({ S, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
     ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
     Object.assign(ACT, ADM.actions);
   }

@@ -71,22 +71,22 @@ export function initEquipo(ctx, k) {
     const lq = liqMes(m), falt = faltantes(m);
     const pend = {}, pag = {}; lq.forEach(l => add(l.movimiento_id ? pag : pend, l.moneda, l.monto));
     const laboral = {}, prov = {}; AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.egreso > 0).forEach(v => { if (v.cuenta === 'Costo Laboral') add(laboral, v.moneda, v.egreso); else if (v.cuenta === 'Proveedores') add(prov, v.moneda, v.egreso); });
-    let h = '<div class="head"><div>' + lock + '<h1>Sueldos y pagos</h1><p>Sueldos, honorarios, extras y aguinaldo. Al pagar, el egreso queda en Caja.</p></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Sueldos y proveedores</h1><p>Sueldos, honorarios, extras y aguinaldo. Al pagar, el gasto queda en Gastos e ingresos.</p></div>' +
       '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="pgMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="pgMes" data-d="0">Este mes</button><button class="btn sm" data-act="pgMes" data-d="1" aria-label="Mes siguiente">→</button></div></div></div>';
     h += '<section class="kpis">' +
-      '<div class="kpi ' + (Object.keys(pend).length ? 'warn' : '') + '"><span class="eyebrow">Falta pagar en ' + esc(monthLabel(m).split(' ')[0]) + '</span><b style="font-size:22px">' + esc(multi(pend)) + '</b><span>' + lq.filter(l => !l.movimiento_id).length + ' ítems</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Pagado en el mes</span><b style="font-size:22px;color:var(--money)">' + esc(multi(pag)) + '</b><span>' + lq.filter(l => l.movimiento_id).length + ' ítems</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Costo laboral ' + esc(y) + '</span><b style="font-size:20px">' + esc(multi(laboral)) + '</b><span>sueldos, socias y aguinaldos</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Proveedores ' + esc(y) + '</span><b style="font-size:20px">' + esc(multi(prov)) + '</b><span>según Caja</span></div></section>';
-    h += '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['liquidacion', 'Liquidación del mes'], ['equipo', 'Equipo y proveedores']].map(([kk, l]) => '<button data-act="pgVer" data-v="' + kk + '" aria-pressed="' + (pg.ver === kk) + '">' + l + '</button>').join('') + '</div></div>';
+      '<div class="kpi ' + (Object.keys(pend).length ? 'warn' : '') + '"><span class="eyebrow">Falta pagar en ' + esc(monthLabel(m).split(' ')[0]) + '</span><b style="font-size:22px">' + esc(multi(pend)) + '</b><span>' + lq.filter(l => !l.movimiento_id).length + ' pagos</span></div>' +
+      '<div class="kpi"><span class="eyebrow">Pagado en el mes</span><b style="font-size:22px;color:var(--money)">' + esc(multi(pag)) + '</b><span>' + lq.filter(l => l.movimiento_id).length + ' pagos</span></div>' +
+      '<div class="kpi"><span class="eyebrow">Sueldos ' + esc(y) + '</span><b style="font-size:20px">' + esc(multi(laboral)) + '</b><span>equipo, socias y aguinaldos</span></div>' +
+      '<div class="kpi"><span class="eyebrow">Proveedores ' + esc(y) + '</span><b style="font-size:20px">' + esc(multi(prov)) + '</b><span>según Gastos e ingresos</span></div></section>';
+    h += '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['liquidacion', 'Pagos del mes'], ['equipo', 'Personas y proveedores']].map(([kk, l]) => '<button data-act="pgVer" data-v="' + kk + '" aria-pressed="' + (pg.ver === kk) + '">' + l + '</button>').join('') + '</div></div>';
     return h + (pg.ver === 'equipo' ? vEquipo(m, y) : vLiquidacion(m, lq, falt));
   }
 
   function vLiquidacion(m, lq, falt) {
     let h = '';
-    if (falt.length) h += '<section class="callout"><p><b>' + falt.length + ' ítems</b> para liquidar en ' + esc(monthLabel(m)) + ' según los sueldos, honorarios y extras cargados' + (falt.some(f => f.tipo === 'Aguinaldo') ? ' (incluye aguinaldo)' : '') + ': ' + esc([...new Set(falt.map(f => (colab(f.colaborador_id) || {}).nombre))].join(', ')) + '.</p><button class="btn primary" data-act="pgGenerar">' + (lq.length ? 'Agregar los que faltan' : 'Generar liquidación') + '</button></section>';
+    if (falt.length) h += '<section class="callout"><p><b>' + falt.length + ' pagos por calcular</b> en ' + esc(monthLabel(m)) + ' según los sueldos, honorarios y extras cargados' + (falt.some(f => f.tipo === 'Aguinaldo') ? ' (incluye aguinaldo)' : '') + ': ' + esc([...new Set(falt.map(f => (colab(f.colaborador_id) || {}).nombre))].join(', ')) + '.</p><button class="btn primary" data-act="pgGenerar">' + (lq.length ? 'Calcular los que faltan' : 'Calcular los pagos del mes') + '</button></section>';
     const sinRem = AD.CO.filter(c => activoEn(c, m) && c.tipo !== 'Proveedor' && !remVig(c.id, m).length);
-    if (sinRem.length) h += '<section class="callout"><p>Sin sueldo cargado: <b>' + esc(sinRem.map(c => c.nombre).join(', ')) + '</b>. Cargalo en su ficha para que entre solo en la liquidación.</p><button class="btn" data-act="pgVer" data-v="equipo">Ver equipo</button></section>';
+    if (sinRem.length) h += '<section class="callout"><p>Sin sueldo cargado: <b>' + esc(sinRem.map(c => c.nombre).join(', ')) + '</b>. Cargalo en su ficha para que se calcule solo cada mes.</p><button class="btn" data-act="pgVer" data-v="equipo">Ver equipo</button></section>';
     const grupos = new Map(); lq.forEach(l => { if (!grupos.has(l.colaborador_id)) grupos.set(l.colaborador_id, []); grupos.get(l.colaborador_id).push(l); });
     const orden = [...grupos.keys()].map(colab).filter(Boolean).sort((a, b) => TIPOS.indexOf(a.tipo) - TIPOS.indexOf(b.tipo) || cmp(a.nombre, b.nombre));
     const cards = orden.map(c => {
@@ -94,12 +94,12 @@ export function initEquipo(ctx, k) {
       const tot = {}; its.forEach(i => add(tot, i.moneda, i.monto));
       const pend = its.filter(i => !i.movimiento_id), movs = [...new Set(its.filter(i => i.movimiento_id).map(i => i.movimiento_id))].map(movDe).filter(Boolean);
       const estado = !pend.length ? '<span class="days" style="color:var(--ok)">✓ Pagado ' + esc(movs.map(v => fmt(v.fecha).slice(0, 5)).join(', ')) + '</span>' : '<button class="btn sm primary" data-act="pgPagar" data-id="' + esc(c.id) + '">Pagar ' + esc(multi(pend.reduce((acc, i) => add(acc, i.moneda, i.monto), {}))) + '</button>';
-      return '<section class="sheet"><div class="sheet-h"><h2 style="font-size:17px"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button> <span class="muted" style="font-size:13px;font-weight:500">' + esc([c.tipo, c.rubro].filter(Boolean).join(' · ')) + '</span></h2><span class="toolbar">' + estado + '<button class="btn ghost sm" data-act="pgRecibo" data-id="' + esc(c.id) + '" title="Comprobante en PDF">PDF</button>' + (c.email ? '<button class="btn ghost sm" data-act="pgReciboMail" data-id="' + esc(c.id) + '" title="Mandar el comprobante por email">Enviar</button>' : '') + '</span></div><div class="rows">' +
+      return '<section class="sheet"><div class="sheet-h"><h2 style="font-size:17px"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button> <span class="muted" style="font-size:13px;font-weight:500">' + esc([c.tipo, c.rubro].filter(Boolean).join(' · ')) + '</span></h2><span class="toolbar">' + estado + '<button class="btn ghost sm" data-act="pgRecibo" data-id="' + esc(c.id) + '" title="Comprobante de pago en PDF">Recibo</button>' + (c.email ? '<button class="btn ghost sm" data-act="pgReciboMail" data-id="' + esc(c.id) + '" title="Mandar el comprobante de pago por email">Enviar</button>' : '') + '</span></div><div class="rows">' +
         its.map(i => '<div class="row" style="cursor:default"><span class="d">' + esc(i.tipo) + '</span><span class="t"><b>' + esc(i.concepto) + '</b>' + (i.notas ? '<span>' + esc(i.notas) + '</span>' : '') + '</span><span class="toolbar"><span class="money">' + money(i.monto, i.moneda) + '</span>' + (i.movimiento_id ? '<span class="days" style="color:var(--ok)">✓</span>' : '<button class="btn ghost sm" data-act="pgItem" data-id="' + esc(i.id) + '">Editar</button>') + '</span></div>').join('') +
-        '</div><div class="count" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Total <b class="money">' + esc(multi(tot)) + '</b></span><button class="btn ghost sm" data-act="pgItem" data-colab="' + esc(c.id) + '">+ Ítem</button></div></section>';
+        '</div><div class="count" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Total <b class="money">' + esc(multi(tot)) + '</b></span><button class="btn ghost sm" data-act="pgItem" data-colab="' + esc(c.id) + '">+ Agregar pago</button></div></section>';
     }).join('');
-    h += '<div class="toolbar"><button class="btn" data-act="pgItem">+ Pago a proveedor o extra</button><span class="muted">Un trabajo puntual (fotos, web, una pauta) se carga como ítem y se paga igual.</span></div>';
-    h += cards ? '<div class="grid2">' + cards + '</div>' : '<section class="sheet">' + emptyBox('Todavía no hay liquidación para ' + monthLabel(m), falt.length ? 'Tocá “Generar liquidación”: se arma con los sueldos, honorarios y extras vigentes.' : 'Cargá el sueldo u honorario de cada persona en “Equipo y proveedores”.') + '</section>';
+    h += '<div class="toolbar"><button class="btn" data-act="pgItem">+ Pago a proveedor o extra</button><span class="muted">Un trabajo puntual (fotos, web, una pauta) se carga acá y se paga igual.</span></div>';
+    h += cards ? '<div class="grid2">' + cards + '</div>' : '<section class="sheet">' + emptyBox('Todavía no hay pagos calculados para ' + monthLabel(m), falt.length ? 'Tocá “Calcular los pagos del mes”: se arma con los sueldos, honorarios y extras vigentes.' : 'Cargá el sueldo u honorario de cada persona en “Personas y proveedores”.') + '</section>';
     return h;
   }
 
@@ -113,9 +113,9 @@ export function initEquipo(ctx, k) {
         '<td class="r">' + (pagos.length ? '<span class="money">' + esc(multi(tot)) + '</span><span class="sub">' + pagos.length + ' pagos</span>' : '<span class="muted">—</span>') + '</td>' +
         '<td>' + (ult ? '<span class="mono">' + fmt(ult.fecha) + '</span><span class="sub">' + esc(money(ult.egreso, ult.moneda)) + ' · ' + esc((ult.detalle || '').slice(0, 40)) + '</span>' : '<span class="muted">—</span>') + '</td></tr>';
     }).join('');
-    return '<section class="sheet"><div class="sheet-h"><h2>Equipo y proveedores</h2><div class="toolbar"><label class="chk"><input type="checkbox" data-pgk="inact"' + (AD.pg.inact ? ' checked' : '') + '> Ver inactivos</label><button class="btn sm" data-act="pgAumento">Aumento a todos</button><button class="btn sm primary" data-act="pgColab">+ Persona o proveedor</button></div></div>' +
+    return '<section class="sheet"><div class="sheet-h"><h2>Personas y proveedores</h2><div class="toolbar"><label class="chk"><input type="checkbox" data-pgk="inact"' + (AD.pg.inact ? ' checked' : '') + '> Ver inactivos</label><button class="btn sm" data-act="pgAumento">Aumento a todos</button><button class="btn sm primary" data-act="pgColab">+ Persona o proveedor</button></div></div>' +
       (rows ? '<div class="tbl"><table><thead><tr><th>Nombre</th><th class="r">Sueldo / honorario</th><th>Extras fijos</th><th class="r">Pagado en ' + esc(y) + '</th><th>Último pago</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : emptyBox('Sin personas cargadas', 'Agregá al equipo y a los proveedores con “+ Persona o proveedor”.')) +
-      '<div class="count">Los pagos salen de Caja (Costo Laboral y Proveedores). Para que un pago viejo cuente, el nombre del movimiento tiene que coincidir con el de la persona o con “Otros nombres”.</div></section>';
+      '<div class="count">Los pagos salen de Gastos e ingresos (sueldos y proveedores). Para que un pago viejo cuente, el nombre tiene que coincidir con el de la persona o con alguno de sus apodos.</div></section>';
   }
 
   /* ---------- formularios ---------- */
@@ -127,12 +127,12 @@ export function initEquipo(ctx, k) {
     const lista = rows => rows.length ? '<div class="rows" style="border:1px solid var(--line);border-radius:8px">' + rows.join('') + '</div>' : '<span class="muted">Nada cargado.</span>';
     const extra = c ? box('Sueldo u honorario', lista(hist.map(r => '<div class="row" style="cursor:default"><span class="d">' + fmt(r.desde) + '</span><span class="t"><b class="money">' + money(r.monto, r.moneda) + '</b><span>' + esc(r.concepto + (r.motivo ? ' · ' + r.motivo : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgRemDel" data-id="' + esc(r.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">+ Sueldo o aumento</button>') +
       box('Extras fijos', lista(ex.map(x => '<div class="row" style="cursor:default"><span class="d">' + (x.desde ? fmt(x.desde) : 'siempre') + '</span><span class="t"><b>' + esc(x.concepto) + ' · <span class="money">' + money(x.monto, x.moneda) + '</span></b><span>' + esc((x.hasta ? 'hasta ' + fmt(x.hasta) : 'sin fecha de fin') + (x.notas ? ' · ' + x.notas : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgExtraDel" data-id="' + esc(x.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgExtra" data-id="' + esc(c.id) + '">+ Extra</button>') +
-      box('Últimos pagos (Caja)', lista(pagos.map(v => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b class="money">' + money(v.egreso, v.moneda) + '</b><span>' + esc(v.detalle || v.subcuenta) + '</span></span><span></span></div>'))) : '<p class="formnote" style="grid-column:1/-1">Después de guardar vas a poder cargar el sueldo u honorario y los extras.</p>';
+      box('Últimos pagos', lista(pagos.map(v => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b class="money">' + money(v.egreso, v.moneda) + '</b><span>' + esc(v.detalle || v.subcuenta) + '</span></span><span></span></div>'))) : '<p class="formnote" style="grid-column:1/-1">Después de guardar vas a poder cargar el sueldo u honorario y los extras.</p>';
     openPanel({
-      title: c ? c.nombre : 'Nueva persona o proveedor', eyebrow: c ? (c.tipo + (c.rubro ? ' · ' + c.rubro : '')) : 'Sueldos y pagos',
+      title: c ? c.nombre : 'Nueva persona o proveedor', eyebrow: c ? (c.tipo + (c.rubro ? ' · ' + c.rubro : '')) : 'Sueldos y proveedores',
       values: vals,
       fields: [
-        { k: 'nombre', label: 'Nombre (como figura en Caja)', req: 1, full: 1 },
+        { k: 'nombre', label: 'Nombre', req: 1, full: 1 },
         { k: 'tipo', label: 'Tipo', type: 'select', opts: TIPOS },
         { k: 'rubro', label: 'Rubro', type: 'select', opts: RUBROS, blank: '—' },
         { k: 'vinculo', label: 'Vínculo', type: 'select', opts: VINCULOS, blank: '—' },
@@ -148,7 +148,7 @@ export function initEquipo(ctx, k) {
         { k: 'email', label: 'Email', type: 'email' },
         { k: 'tel', label: 'Teléfono' },
         { k: 'contrato', label: 'Contrato o legajo (link)', type: 'url', full: 1, ph: 'https://drive.google.com/...' },
-        { k: 'otros_nombres', label: 'Otros nombres en Caja', full: 1, hint: 'Separados por coma. Ej.: Vale, Valentina R.' },
+        { k: 'otros_nombres', label: 'Apodos (para reconocer pagos en el banco)', full: 1, hint: 'Separados por coma. Ej.: Vale, Valentina R.' },
         { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2 },
       ],
       extra,
@@ -160,10 +160,10 @@ export function initEquipo(ctx, k) {
         const nombres = [row.nombre, ...row.otros_nombres].map(norm);
         const sueltos = AD.MV.filter(x => !x.colaborador_id && x.egreso > 0 && nombres.includes(norm((x.contraparte || '').trim())));
         for (const x of sueltos) await data.upd('movimientos', x.id, { colaborador_id: cid });
-        toast((c ? 'Datos guardados' : 'Agregado') + (sueltos.length ? ' · ' + sueltos.length + ' pagos de Caja vinculados' : ''));
+        toast((c ? 'Datos guardados' : 'Agregado') + (sueltos.length ? ' · ' + sueltos.length + ' pagos anteriores reconocidos' : ''));
         if (!c) AD.postSave = () => formColaborador(cid);
       },
-      onDelete: c ? async () => { await data.del('colaboradores', c.id); toast('Borrado. Sus pagos siguen en Caja.'); } : null,
+      onDelete: c ? async () => { await data.del('colaboradores', c.id); toast('Borrado. Sus pagos siguen en Gastos e ingresos.'); } : null,
     });
   }
   function formRem(cid) {
@@ -172,11 +172,11 @@ export function initEquipo(ctx, k) {
     const cur = remVig(cid, thisMonth()).find(r => r.concepto === concepto);
     openPanel({
       title: c.nombre, eyebrow: cur ? 'Aumento o nuevo monto' : 'Sueldo u honorario', saveLabel: 'Guardar',
-      intro: cur ? 'Vigente: <b class="money">' + esc(money(cur.monto, cur.moneda)) + '</b> desde ' + esc(fmt(cur.desde)) + '. Se guarda como monto nuevo sin perder el anterior. Podés poner el porcentaje y se calcula solo.' : 'El monto mensual que se liquida cada mes desde el mes indicado.',
+      intro: cur ? 'Vigente: <b class="money">' + esc(money(cur.monto, cur.moneda)) + '</b> desde ' + esc(fmt(cur.desde)) + '. Se guarda como monto nuevo sin perder el anterior. Podés poner el porcentaje y se calcula solo.' : 'El monto que se paga cada mes desde el mes indicado.',
       values: { concepto, desde: cur ? addMonth(thisMonth(), cur.desde >= thisMonth() ? 1 : 0) : thisMonth(), monto: '', pct: '', moneda: cur ? cur.moneda : 'ARS', motivo: cur ? '' : 'Inicial' },
       fields: [
         { k: 'concepto', label: 'Concepto', type: 'select', opts: ['Sueldo', 'Honorario'] },
-        { k: 'desde', label: 'Rige desde', type: 'month', month: 1, req: 1 },
+        { k: 'desde', label: 'Desde qué mes', type: 'month', month: 1, req: 1 },
         ...(cur ? [{ k: 'pct', label: 'Aumento %', num: 1, ph: '5' }] : []),
         { k: 'monto', label: 'Monto mensual', num: 1, hint: cur ? 'Si ponés el %, dejalo vacío.' : '' },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
@@ -195,7 +195,7 @@ export function initEquipo(ctx, k) {
     const c = colab(cid); if (!c) return;
     openPanel({
       title: c.nombre, eyebrow: 'Extra fijo', saveLabel: 'Agregar',
-      intro: 'Se suma todos los meses a la liquidación mientras esté vigente (bondi, Adobe, internet…).',
+      intro: 'Se suma a los pagos de cada mes mientras esté vigente (bondi, Adobe, internet…).',
       values: { concepto: '', monto: '', moneda: 'ARS', desde: thisMonth(), hasta: '', notas: '' },
       fields: [
         { k: 'concepto', label: 'Concepto', req: 1, ph: 'Bondi' },
@@ -213,7 +213,7 @@ export function initEquipo(ctx, k) {
   function formItem(id, colabId) {
     const it = id ? AD.LQ.find(l => l.id === id) : null, m = AD.pg.mes;
     openPanel({
-      title: it ? it.concepto : 'Nuevo ítem', eyebrow: 'Liquidación de ' + monthLabel(it ? it.periodo : m),
+      title: it ? it.concepto : 'Nuevo pago', eyebrow: 'Pagos de ' + monthLabel(it ? it.periodo : m),
       values: it ? { ...it } : { colaborador_id: colabId || '', tipo: colabId && (colab(colabId) || {}).tipo !== 'Proveedor' ? 'Extra' : 'Honorario', concepto: '', monto: '', moneda: 'ARS', notas: '' },
       fields: [
         { k: 'colaborador_id', label: 'Para', type: 'select', req: 1, full: 1, html: v => opt('', 'Elegí', v) + AD.CO.filter(c => c.activo || c.id === v).map(c => opt(c.id, c.nombre + ' · ' + c.tipo, v)).join('') },
@@ -226,34 +226,34 @@ export function initEquipo(ctx, k) {
       onSave: async v => {
         const row = { periodo: (it ? it.periodo : m) + '-01', colaborador_id: v.colaborador_id, tipo: v.tipo, concepto: v.concepto, monto: v.monto, moneda: v.moneda, notas: v.notas };
         if (it) await data.upd('liquidaciones', it.id, row); else await data.ins('liquidaciones', row);
-        toast(it ? 'Ítem actualizado' : 'Ítem agregado');
+        toast(it ? 'Pago actualizado' : 'Pago agregado');
       },
-      onDelete: it ? async () => { await data.del('liquidaciones', it.id); toast('Ítem quitado'); } : null,
+      onDelete: it ? async () => { await data.del('liquidaciones', it.id); toast('Pago quitado'); } : null,
     });
   }
   function formPagar(cid) {
     const c = colab(cid), m = AD.pg.mes; if (!c) return;
     const its = liqMes(m).filter(l => l.colaborador_id === cid && !l.movimiento_id);
-    if (!its.length) { toast('No hay ítems pendientes'); return; }
+    if (!its.length) { toast('No hay pagos pendientes'); return; }
     const moneda = its[0].moneda, cjs = k.cajasDe(moneda);
     const [cuenta, subcuenta] = cuentaPago(c, its.filter(i => i.tipo !== 'Aguinaldo').length ? its.filter(i => i.tipo !== 'Aguinaldo') : its);
     const datosPago = [c.banco, c.cbu && 'CBU ' + c.cbu, c.alias_cbu && 'alias ' + c.alias_cbu, c.cuit && 'CUIT ' + c.cuit].filter(Boolean).join(' · ');
     openPanel({
-      title: 'Pagar a ' + c.nombre, eyebrow: 'Liquidación de ' + monthLabel(m), saveLabel: 'Registrar pago',
-      intro: 'Se carga como egreso en Caja con este detalle. ' + (its.some(i => i.tipo === 'Aguinaldo') && its.some(i => i.tipo !== 'Aguinaldo') ? 'El aguinaldo va en un movimiento aparte (Costo Laboral / Aguinaldo). ' : '') + (datosPago ? '<br><b>Datos de pago:</b> ' + esc(datosPago) : ''),
+      title: 'Pagar a ' + c.nombre, eyebrow: 'Pagos de ' + monthLabel(m), saveLabel: 'Registrar pago',
+      intro: 'Se carga como gasto en Gastos e ingresos con este detalle. ' + (its.some(i => i.tipo === 'Aguinaldo') && its.some(i => i.tipo !== 'Aguinaldo') ? 'El aguinaldo se carga aparte. ' : '') + (datosPago ? '<br><b>Datos de pago:</b> ' + esc(datosPago) : ''),
       values: { fecha: today(), caja: cjs[0] ? cjs[0].id : '', cuenta, subcuenta, detalle: detallePago(its.filter(i => i.tipo !== 'Aguinaldo'), m) || detallePago(its, m), imputar: c.tipo === 'Proveedor' },
       fields: [
         { k: 'fecha', label: 'Fecha de pago', type: 'date', req: 1 },
-        { k: 'caja', label: 'Sale de', type: 'select', html: v => cjs.map(x => opt(x.id, x.nombre, v)).join('') || opt('', 'Sin cajas en ' + moneda, v) },
-        { k: 'cuenta', label: 'Cuenta', type: 'select', opts: [...new Set(AD.PC.map(p => p.cuenta))].sort(cmp) },
-        { k: 'subcuenta', label: 'Subcuenta' },
+        { k: 'caja', label: 'Sale de la cuenta', type: 'select', html: v => cjs.map(x => opt(x.id, x.nombre, v)).join('') || opt('', 'Sin cuentas en ' + moneda, v) },
+        { k: 'cuenta', label: 'Categoría', type: 'select', opts: [...new Set(AD.PC.map(p => p.cuenta))].sort(cmp) },
+        { k: 'subcuenta', label: 'Detalle de la categoría' },
         { k: 'detalle', label: 'Detalle', full: 1 },
-        ...(c.tipo === 'Proveedor' ? [{ k: 'imputar', label: 'Después, repartir el costo entre clientes (para el margen)', type: 'check' }] : []),
+        ...(c.tipo === 'Proveedor' ? [{ k: 'imputar', label: 'Después, repartir el gasto entre clientes (para ver cuánto deja cada uno)', type: 'check' }] : []),
       ],
       extra: '<div class="field full"><span class="lbl">Qué se paga</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + its.map(i => '<label class="row" style="cursor:pointer"><input type="checkbox" data-pgsel="' + esc(i.id) + '" checked><span class="t"><b>' + esc(i.concepto) + '</b><span>' + esc(i.tipo) + '</span></span><span class="money">' + money(i.monto, i.moneda) + '</span></label>').join('') + '</div></div>',
       onSave: async v => {
         const sel = its.filter(i => ($('[data-pgsel="' + i.id + '"]') || {}).checked);
-        if (!sel.length) throw new Error('Elegí al menos un ítem');
+        if (!sel.length) throw new Error('Elegí al menos un pago');
         const grupos = new Map();
         sel.forEach(i => { const kk = i.moneda + '|' + (i.tipo === 'Aguinaldo' && sel.some(x => x.tipo !== 'Aguinaldo') ? 'ag' : 'main'); if (!grupos.has(kk)) grupos.set(kk, []); grupos.get(kk).push(i); });
         let ultimo = null;
@@ -265,7 +265,7 @@ export function initEquipo(ctx, k) {
           for (const i of g) await data.upd('liquidaciones', i.id, { movimiento_id: mv.id });
           if (cual === 'main') ultimo = mv.id;
         }
-        toast('Pago registrado en Caja');
+        toast('Pago cargado en Gastos e ingresos');
         if (v.imputar && ultimo) AD.postSave = () => k.formMovimiento(ultimo);
       },
     });
@@ -274,10 +274,10 @@ export function initEquipo(ctx, k) {
     const objetivo = AD.CO.filter(c => c.activo && c.tipo !== 'Proveedor' && remVig(c.id, thisMonth()).some(r => r.concepto === 'Sueldo'));
     if (!objetivo.length) { toast('Primero cargá los sueldos vigentes'); return; }
     openPanel({
-      title: 'Aumento de sueldos', eyebrow: 'Sueldos y pagos', saveLabel: 'Aplicar',
+      title: 'Aumento de sueldos', eyebrow: 'Sueldos y proveedores', saveLabel: 'Aplicar',
       intro: 'Se guarda un sueldo nuevo para cada persona tildada, desde el mes indicado, sin perder el historial.',
       values: { pct: '', desde: addMonth(thisMonth(), 1), motivo: '' },
-      fields: [{ k: 'pct', label: 'Aumento %', num: 1, req: 1 }, { k: 'desde', label: 'Rige desde', type: 'month', month: 1, req: 1 }, { k: 'motivo', label: 'Motivo', ph: 'Paritaria', full: 1 }],
+      fields: [{ k: 'pct', label: 'Aumento %', num: 1, req: 1 }, { k: 'desde', label: 'Desde qué mes', type: 'month', month: 1, req: 1 }, { k: 'motivo', label: 'Motivo', ph: 'Paritaria', full: 1 }],
       extra: '<div class="field full"><span class="lbl">A quiénes</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + objetivo.map(c => { const r = remVig(c.id, thisMonth()).find(x => x.concepto === 'Sueldo'); return '<label class="row" style="cursor:pointer"><input type="checkbox" data-pgaum="' + esc(c.id) + '" checked><span class="t"><b>' + esc(c.nombre) + '</b><span>' + esc(c.tipo) + '</span></span><span class="money">' + money(r.monto, r.moneda) + '</span></label>'; }).join('') + '</div></div>',
       onSave: async v => {
         const sel = objetivo.filter(c => ($('[data-pgaum="' + c.id + '"]') || {}).checked);
@@ -290,7 +290,7 @@ export function initEquipo(ctx, k) {
   /* ---------- comprobante de pago ---------- */
   async function reciboPdf(cid) {
     const c = colab(cid), m = AD.pg.mes, its = liqMes(m).filter(l => l.colaborador_id === cid);
-    if (!c || !its.length) throw new Error('No hay ítems para ' + ((c && c.nombre) || 'esta persona') + ' en ' + monthLabel(m));
+    if (!c || !its.length) throw new Error('No hay pagos para ' + ((c && c.nombre) || 'esta persona') + ' en ' + monthLabel(m));
     const movs = [...new Set(its.filter(i => i.movimiento_id).map(i => i.movimiento_id))].map(movDe).filter(Boolean);
     const caja = id => ((AD.CJ || []).find(x => x.id === id) || {}).nombre || '';
     const dmy = d => { const [y, mm, dd] = String(d).slice(0, 10).split('-'); return dd + '/' + mm + '/' + y; };
@@ -329,7 +329,7 @@ export function initEquipo(ctx, k) {
     pgGenerar: async () => {
       const m = AD.pg.mes, rows = faltantes(m).map(p => ({ ...p, periodo: m + '-01' }));
       if (!rows.length) { toast('No falta nada'); return; }
-      try { await data.insMany('liquidaciones', rows); toast(rows.length + ' ítems agregados a la liquidación'); await ctx.reload(); } catch (err) { toast(err.message); }
+      try { await data.insMany('liquidaciones', rows); toast(rows.length + ' pagos calculados'); await ctx.reload(); } catch (err) { toast(err.message); }
     },
   };
   document.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.pgk) { AD.pg[t.dataset.pgk] = t.type === 'checkbox' ? t.checked : t.value; ctx.render(); } });

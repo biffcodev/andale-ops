@@ -487,3 +487,11 @@ details.share>summary::-webkit-details-marker{display:none}
 .pz-ia .sheet-b{display:grid;gap:8px}
 .pz-just{margin-top:6px;padding:12px 14px;border-radius:10px;background:var(--accent-soft);font-size:13.5px}
 .pz-just p{margin:4px 0 6px}
+/* Pestañas de una pantalla (Cobros, Gastos, Números, Abonos) */
+.subnav{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-4px 0 4px;overflow-x:auto;scrollbar-width:none}
+.subnav::-webkit-scrollbar{display:none}
+.subnav button{appearance:none;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:10px 14px;font:600 14px/1 var(--f-body,inherit);color:var(--muted);cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:8px;border-radius:8px 8px 0 0}
+.subnav button:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 4%,transparent)}
+.subnav button[aria-current="page"]{color:var(--fg);border-bottom-color:var(--accent)}
+.subnav button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.subnav .snav-n{position:static}

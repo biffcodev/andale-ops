@@ -23,13 +23,17 @@ export function initAsistente(ctx, k) {
   const cfgDrive = () => (AD.AJ && AD.AJ.drive) || {};
   const cfgEmisores = () => (AD.AJ && AD.AJ.emisores) || {};
   const cfgAsist = () => (AD.AJ && AD.AJ.asistente) || {};
+  // Solo para mostrar: los estados guardados no cambian.
+  const VER_DA = { Nuevo: 'Sin leer', 'Leído': 'Lista para cargar', Vinculado: 'Cargada', Ignorado: 'Descartada', Error: 'No se pudo leer' };
+  const verConf = c => c === 'alta' ? '✓' : c ? 'Revisar' : '';
+  const verTipo = t => t === 'Invoice' ? 'Factura al exterior' : t;
 
   async function cargarEstado(force) {
     if (AD.as.estadoBusy || (AD.as.estado && !force)) return;
     AD.as.estadoBusy = true;
     try { AD.as.estado = await data.asistente({ accion: 'estado' }); }
     catch (err) { AD.as.estado = { ia: false, drive: false, error: err.message }; }
-    AD.as.estadoBusy = false; if (S.view === 'asistente' || S.view === 'ajustes') ctx.render();
+    AD.as.estadoBusy = false; if (['asistente', 'ajustes', 'cobros', 'gastos'].includes(S.view)) ctx.render();
   }
 
   /* ---------- checklist del cierre ---------- */
@@ -105,14 +109,14 @@ export function initAsistente(ctx, k) {
     const mt = matchArchivo(da), d = da.datos || {};
     const libres = AD.F.filter(f => !AD.DA.some(x => x.factura_id === f.id)).sort((a, b) => (mt.cliente && b.cliente === mt.cliente) - (mt.cliente && a.cliente === mt.cliente) || (b.fecha || '').localeCompare(a.fecha || ''));
     openPanel({
-      title: da.nombre, eyebrow: 'Vincular a un comprobante cargado', saveLabel: 'Vincular',
-      intro: 'Leído: ' + esc([d.tipo, d.numero_completo, d.receptor_nombre, d.total != null ? money(d.total, d.moneda) : ''].filter(Boolean).join(' · ') || 'sin datos'),
+      title: da.nombre, eyebrow: 'Unir a una factura cargada', saveLabel: 'Unir',
+      intro: 'La IA leyó: ' + esc([d.tipo, d.numero_completo, d.receptor_nombre, d.total != null ? money(d.total, d.moneda) : ''].filter(Boolean).join(' · ') || 'sin datos'),
       values: { factura: mt.existente ? mt.existente.id : '', link: true },
       fields: [
-        { k: 'factura', label: 'Comprobante', type: 'select', req: 1, full: 1, html: v => opt('', 'Elegí', v) + libres.slice(0, 300).map(f => opt(f.id, f.cliente + ' · ' + f.tipo + ' ' + (f.numero || 's/n') + ' · ' + money(f.monto, f.moneda) + ' · ' + fmt(f.fecha), v)).join('') },
-        { k: 'link', label: 'Poner este PDF como link del comprobante', type: 'check' },
+        { k: 'factura', label: 'Factura', type: 'select', req: 1, full: 1, html: v => opt('', 'Elegí', v) + libres.slice(0, 300).map(f => opt(f.id, f.cliente + ' · ' + verTipo(f.tipo) + ' ' + (f.numero || 'sin número') + ' · ' + money(f.monto, f.moneda) + ' · ' + fmt(f.fecha), v)).join('') },
+        { k: 'link', label: 'Poner este PDF como link de la factura', type: 'check' },
       ],
-      onSave: async v => { await data.upd('drive_archivos', da.id, { factura_id: v.factura }); if (v.link) await data.upd('facturas', v.factura, { link_pdf: da.link }); toast('Vinculado'); },
+      onSave: async v => { await data.upd('drive_archivos', da.id, { factura_id: v.factura }); if (v.link) await data.upd('facturas', v.factura, { link_pdf: da.link }); toast('Unida a la factura'); },
     });
   }
   async function leerArchivos(ids) {
@@ -122,16 +126,16 @@ export function initAsistente(ctx, k) {
       try { const r = await data.asistente({ accion: 'leer_factura', archivo_ids: ids.slice(i, i + lote) }); (r.resultados || []).forEach(x => (x.ok ? ok++ : mal++)); }
       catch (err) { AD.as.driveBusy = ''; toast(err.message); await ctx.reload(); return; }
     }
-    AD.as.driveBusy = ''; toast(ok + ' leídos' + (mal ? ' · ' + mal + ' con error' : '')); await ctx.reload();
+    AD.as.driveBusy = ''; toast(ok + ' leídos' + (mal ? ' · ' + mal + ' no se pudieron leer' : '')); await ctx.reload();
   }
   async function crearTodos() {
     const listos = AD.DA.filter(d => d.estado === 'Leído').map(d => ({ d, mt: matchArchivo(d), p: presetDesde(d) })).filter(x => x.mt.cliente && !x.mt.existente && !x.mt.nota && x.p.monto && x.p.fecha && x.d.datos.es_comprobante !== false);
-    if (!listos.length) { toast('No hay archivos con cliente reconocido para crear solos'); return; }
+    if (!listos.length) { toast('No hay facturas con cliente reconocido para cargar solas'); return; }
     openPanel({
-      title: 'Crear ' + listos.length + ' comprobantes', eyebrow: 'Desde Drive', saveLabel: 'Crear', busyLabel: 'Creando…',
-      intro: 'Archivos leídos con cliente reconocido y sin comprobante cargado. Revisá y destildá lo que no corresponda.',
+      title: 'Cargar ' + listos.length + ' facturas', eyebrow: 'Desde Drive', saveLabel: 'Cargar', busyLabel: 'Cargando…',
+      intro: 'Facturas leídas, con cliente reconocido y que todavía no están cargadas. Revisá y destildá lo que no corresponda.',
       values: {}, fields: [],
-      extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + listos.map((x, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-asct="' + i + '" checked><span class="t"><b>' + esc(x.p.cliente) + ' · ' + esc(x.p.tipo + ' ' + (x.p.numero || 's/n')) + '</b><span>' + esc([fmt(x.p.fecha), x.p.emisor ? 'emite ' + x.p.emisor : 'emisor sin reconocer', x.p.periodo ? 'mes ' + fmt(x.p.periodo) : ''].join(' · ')) + '</span></span><span class="money">' + money(x.p.monto, x.p.moneda) + '</span></label>').join('') + '</div></div>',
+      extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + listos.map((x, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-asct="' + i + '" checked><span class="t"><b>' + esc(x.p.cliente) + ' · ' + esc(verTipo(x.p.tipo) + ' ' + (x.p.numero || 'sin número')) + '</b><span>' + esc([fmt(x.p.fecha), x.p.emisor ? 'factura ' + x.p.emisor : 'no se sabe quién factura', x.p.periodo ? 'mes ' + fmt(x.p.periodo) : ''].join(' · ')) + '</span></span><span class="money">' + money(x.p.monto, x.p.moneda) + '</span></label>').join('') + '</div></div>',
       onSave: async () => {
         let n = 0;
         for (const [i, x] of listos.entries()) {
@@ -139,7 +143,7 @@ export function initAsistente(ctx, k) {
           const p = x.p, f = await data.ins('facturas', { cliente_id: data.ids.cliente(p.cliente), tipo: p.tipo, emisor: p.emisor || '', numero: p.numero, periodo: p.periodo ? p.periodo + '-01' : null, fecha: p.fecha, vencimiento: p.vencimiento || null, moneda: p.moneda, monto: p.monto, concepto: p.concepto, link_pdf: p.link_pdf, notas: p.notas });
           await data.upd('drive_archivos', x.d.id, { factura_id: f.id }); await aprender(x.d, p); n++;
         }
-        toast(n + ' comprobantes creados');
+        toast(n + ' facturas cargadas');
       },
     });
   }
@@ -147,8 +151,8 @@ export function initAsistente(ctx, k) {
   /* ---------- Conciliación bancaria ---------- */
   async function analizarExtracto() {
     const file = AD.as.file, cajaId = AD.as.concCaja || ($('#as-caja') || {}).value;
-    if (!cajaId) { toast('Elegí la caja del extracto'); return; }
-    if (!file) { toast('Elegí el archivo del extracto'); return; }
+    if (!cajaId) { toast('Elegí de qué cuenta es el resumen'); return; }
+    if (!file) { toast('Elegí el archivo del resumen'); return; }
     if (file.size > 9e6) { toast('El archivo pesa más de 9 MB'); return; }
     AD.as.concCaja = cajaId; AD.as.concBusy = true; ctx.render();
     try {
@@ -166,7 +170,7 @@ export function initAsistente(ctx, k) {
         return { ...x, dup, sel: !dup && x.confianza !== 'baja' };
       });
       AD.as.conc = { ...r, movimientos: movs }; AD.as.file = null;
-      if (r._cortado) toast('El extracto es largo: la IA llegó hasta donde pudo. Subí el resto aparte.');
+      if (r._cortado) toast('El resumen es largo: la IA llegó hasta donde pudo. Subí el resto aparte.');
     } catch (err) { toast(err.message); }
     AD.as.concBusy = false; ctx.render();
   }
@@ -180,42 +184,42 @@ export function initAsistente(ctx, k) {
         '<td><input class="in" type="date" data-cc="' + i + '" data-cck="fecha" value="' + esc(x.fecha) + '" style="width:140px"></td>' +
         '<td><input class="in" list="dl-as-partes" data-cc="' + i + '" data-cck="contraparte" value="' + esc(x.contraparte) + '" style="min-width:150px"><span class="sub">' + esc((x.descripcion_banco || '').slice(0, 80)) + '</span></td>' +
         '<td><select class="in" data-cc="' + i + '" data-cck="cuenta">' + cuentas.map(cu => opt(cu, cu, x.cuenta)).join('') + (cuentas.includes(x.cuenta) ? '' : opt(x.cuenta, x.cuenta + ' (?)', x.cuenta)) + '</select><input class="in" list="dl-as-sub" data-cc="' + i + '" data-cck="subcuenta" value="' + esc(x.subcuenta) + '" style="margin-top:4px"></td>' +
-        '<td><input class="in" data-cc="' + i + '" data-cck="detalle" value="' + esc(x.detalle) + '" style="min-width:160px">' + (f ? '<span class="sub">cobro de ' + esc(f.tipo + ' ' + (f.numero || 's/n')) + '</span>' : '') + '</td>' +
+        '<td><input class="in" data-cc="' + i + '" data-cck="detalle" value="' + esc(x.detalle) + '" style="min-width:160px">' + (f ? '<span class="sub">cobro de ' + esc(verTipo(f.tipo) + ' ' + (f.numero || 'sin número')) + '</span>' : '') + '</td>' +
         '<td class="r"><span class="money" style="color:var(' + (x.sentido === 'ingreso' ? '--money' : '--fg') + ')">' + (x.sentido === 'ingreso' ? '+' : '−') + esc(money(x.monto, c.caja.moneda)) + '</span></td>' +
-        '<td><div class="tags">' + (x.dup ? '<span class="tag" style="color:var(--crit)">ya cargado?</span>' : '') + '<span class="tag">' + esc(x.confianza) + '</span></div>' + (x.nota ? '<span class="sub">' + esc(x.nota) + '</span>' : '') + '</td></tr>';
+        '<td><div class="tags">' + (x.dup ? '<span class="tag" style="color:var(--crit)">¿ya cargado?</span>' : '') + '<span class="tag">' + esc(verConf(x.confianza)) + '</span></div>' + (x.nota ? '<span class="sub">' + esc(x.nota) + '</span>' : '') + '</td></tr>';
     }).join('');
     const partes = [...new Set([...S.C.map(x => x.nombre), ...AD.CO.map(x => x.nombre), ...AD.MV.map(v => v.contraparte).filter(Boolean)])].sort(cmp);
     const subs = [...new Set(AD.PC.map(p => p.subcuenta).filter(Boolean))].sort(cmp);
-    return '<div class="sheet-b" style="border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><span><b>' + c.movimientos.length + ' movimientos</b> propuestos para ' + esc(c.caja.nombre) + (c.periodo ? ' · ' + esc(c.periodo) : '') + (c.saldo_final != null ? ' · saldo final del extracto ' + esc(money(c.saldo_final, c.caja.moneda)) : '') + '</span><span class="toolbar"><button class="btn ghost sm" data-act="asConcX">Descartar</button><button class="btn primary sm" data-act="asConcOk" id="as-conc-ok">Cargar ' + n + ' en Caja</button></span></div>' +
-      '<div class="tbl"><table><thead><tr><th></th><th>Fecha</th><th>Contraparte</th><th>Cuenta</th><th>Detalle</th><th class="r">Monto</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    return '<div class="sheet-b" style="border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><span><b>' + c.movimientos.length + ' gastos e ingresos</b> encontrados para ' + esc(c.caja.nombre) + (c.periodo ? ' · ' + esc(c.periodo) : '') + (c.saldo_final != null ? ' · al final del resumen había ' + esc(money(c.saldo_final, c.caja.moneda)) : '') + '</span><span class="toolbar"><button class="btn ghost sm" data-act="asConcX">Descartar</button><button class="btn primary sm" data-act="asConcOk" id="as-conc-ok">Cargar ' + n + ' en Gastos e ingresos</button></span></div>' +
+      '<div class="tbl"><table><thead><tr><th></th><th>Fecha</th><th>Quién</th><th>Categoría</th><th>Detalle</th><th class="r">Monto</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<datalist id="dl-as-partes">' + partes.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist><datalist id="dl-as-sub">' + subs.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist>';
   }
   async function cargarConciliacion() {
     const c = AD.as.conc; if (!c) return;
-    const sel = c.movimientos.filter(x => x.sel); if (!sel.length) { toast('No hay movimientos tildados'); return; }
+    const sel = c.movimientos.filter(x => x.sel); if (!sel.length) { toast('No hay nada tildado'); return; }
     const rows = sel.map(x => {
       const cli = S.C.find(y => norm(y.nombre) === norm(x.contraparte)) || (x.cliente ? S.C.find(y => norm(y.nombre) === norm(x.cliente)) : null);
       const co = eq().colabPorNombre(x.contraparte) || (x.colaborador ? eq().colabPorNombre(x.colaborador) : null);
       const fac = x.sentido === 'ingreso' && x.factura_id && AD.F.some(f => f.id === x.factura_id) ? x.factura_id : null;
       return { fecha: x.fecha, cuenta: x.cuenta, subcuenta: x.subcuenta || '', contraparte: x.contraparte || '', cliente_id: cli ? cli._id : null, colaborador_id: co ? co.id : null, persona_id: co ? co.persona_id || null : null, detalle: x.detalle || '', ingreso: x.sentido === 'ingreso' ? r2(x.monto) : 0, egreso: x.sentido === 'egreso' ? r2(x.monto) : 0, moneda: c.caja.moneda, caja_id: c.caja.id, factura_id: fac };
     });
-    try { await data.insMany('movimientos', rows); toast(rows.length + ' movimientos cargados en Caja'); AD.as.conc = null; await ctx.reload(); }
+    try { await data.insMany('movimientos', rows); toast(rows.length + ' cargados en Gastos e ingresos'); AD.as.conc = null; await ctx.reload(); }
     catch (err) { toast(err.message); }
   }
 
   /* ---------- Repartir pagos con IA ---------- */
   async function repartirTodos(lista) {
     const movs = (lista || provSinImputar(AD.as.mes.slice(0, 4))).slice(0, 20);
-    if (!movs.length) { toast('No hay pagos a proveedores sin imputar'); return; }
+    if (!movs.length) { toast('No hay pagos a proveedores sin asignar'); return; }
     toast('La IA está leyendo ' + movs.length + ' pagos…');
     let r; try { r = await data.asistente({ accion: 'imputar', movimiento_ids: movs.map(v => v.id) }); } catch (err) { toast(err.message); return; }
     const reps = (r.repartos || []).map(x => ({ ...x, mov: movs.find(v => v.id === x.movimiento_id) })).filter(x => x.mov);
     openPanel({
       title: 'Repartir pagos a proveedores', eyebrow: 'Propuesta de la IA', saveLabel: 'Guardar repartos', busyLabel: 'Guardando…',
-      intro: 'Cada pago queda imputado a los abonos o proyectos de los clientes, para ver el margen en Rentabilidad. Destildá lo que no te convenza; después se puede corregir desde Caja.',
+      intro: 'Cada pago queda asignado al cliente que corresponde, para ver cuánto deja cada uno. Destildá lo que no te convenza; después se puede corregir desde Gastos e ingresos.',
       values: {}, fields: [],
       extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + reps.map((x, i) => '<label class="row" style="cursor:pointer;align-items:start"><input type="checkbox" data-asrp="' + i + '"' + (x.partes.length && x.confianza !== 'baja' ? ' checked' : '') + (x.partes.length ? '' : ' disabled') + ' style="margin-top:4px"><span class="t"><b>' + esc(x.mov.contraparte + ' · ' + fmt(x.mov.fecha)) + ' · <span class="money">' + money(x.mov.egreso, x.mov.moneda) + '</span></b><span>' + esc(x.mov.detalle || '') + '</span>' +
-        (x.partes.length ? '<span class="tags" style="margin-top:4px">' + x.partes.map(p => '<span class="tag">' + esc(p.descripcion) + ' · ' + esc(money(p.monto, x.mov.moneda)) + '</span>').join('') + '</span>' : '') + (x.nota ? '<span class="sub">' + esc(x.nota) + '</span>' : '') + '</span><span class="tag">' + esc(x.confianza) + '</span></label>').join('') + '</div></div>',
+        (x.partes.length ? '<span class="tags" style="margin-top:4px">' + x.partes.map(p => '<span class="tag">' + esc(p.descripcion) + ' · ' + esc(money(p.monto, x.mov.moneda)) + '</span>').join('') + '</span>' : '') + (x.nota ? '<span class="sub">' + esc(x.nota) + '</span>' : '') + '</span><span class="tag">' + esc(verConf(x.confianza)) + '</span></label>').join('') + '</div></div>',
       onSave: async () => {
         let n = 0;
         for (const [i, x] of reps.entries()) {
@@ -258,7 +262,7 @@ export function initAsistente(ctx, k) {
   }
   function desdeDriveEnFormulario(id) {
     const da = AD.DA.find(x => x.id === id); if (!da) return;
-    if (da.estado === 'Nuevo' || !da.datos.total) { toast('Ese archivo todavía no se leyó: tocá “Leer” en el Asistente.'); }
+    if (da.estado === 'Nuevo' || !da.datos.total) { toast('Ese archivo todavía no se leyó: tocá “Leer” en Facturas en Drive.'); }
     llenarFormFactura(presetDesde(da), da.datos);
     if (AD.form) AD.form.archivo = da;
   }
@@ -268,32 +272,44 @@ export function initAsistente(ctx, k) {
   function item(ok, n, titulo, sub, btn) { return '<div class="row" style="cursor:default;grid-template-columns:34px minmax(0,1fr) auto">' + dot(ok, n) + '<span class="t"><b style="white-space:normal">' + titulo + '</b>' + (sub ? '<span>' + sub + '</span>' : '') + '</span><span class="toolbar">' + (ok ? '' : btn || '') + '</span></div>'; }
   const pl = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
   const lista = (arr, n = 5) => esc(arr.slice(0, n).join(', ') + (arr.length > n ? ' y ' + (arr.length - n) + ' más' : ''));
-  function vAsistente() {
+  // Lo que falta para cerrar el mes: solo se muestra lo pendiente; lo que está al día queda en una línea.
+  function pendientesHtml(m) {
     if (!AD.as.estado && !AD.as.estadoBusy) setTimeout(() => cargarEstado(), 0);
-    const st = AD.as.estado || {}, m = AD.as.mes, c = checklist(m);
-    let h = '<div class="head"><div>' + lock + '<h1>Asistente</h1><p>Lo que falta para cerrar el mes. La IA propone; nada se guarda sin que lo confirmen.</p></div>' +
-      '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="asMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="asMes" data-d="0">Este mes</button><button class="btn sm" data-act="asMes" data-d="1" aria-label="Mes siguiente">→</button></div></div></div>';
-    // Resumen IA
-    const b = AD.as.brief;
-    h += '<section class="sheet"><div class="sheet-h"><h2>Para cerrar ' + esc(monthLabel(m)) + '</h2><span class="toolbar"><button class="btn sm" data-act="asBrief"' + (AD.as.briefBusy ? ' disabled' : '') + '>' + (AD.as.briefBusy ? 'Pensando…' : '✨ Resumen con IA') + '</button></span></div>' +
-      (b ? '<div class="sheet-b" style="border-bottom:1px solid var(--line);display:grid;gap:8px;background:color-mix(in srgb,var(--accent) 6%,var(--surface))"><b style="font-family:var(--f-display);font-size:19px">' + esc(b.titular) + '</b><ul style="margin:0;padding-left:18px;display:grid;gap:4px">' + (b.puntos || []).map(p => '<li><span class="tag" style="color:var(' + (p.prioridad === 'alta' ? '--crit' : p.prioridad === 'media' ? '--warn' : '--muted') + ')">' + esc(p.prioridad) + '</span> ' + esc(p.texto) + '</li>').join('') + '</ul></div>' : '') +
-      '<div class="rows">' +
-      item(!c.sinPrecio.length, c.sinPrecio.length, c.sinPrecio.length ? pl(c.sinPrecio.length, 'abono sin precio', 'abonos sin precio') : 'Todos los abonos tienen precio', c.sinPrecio.length ? lista(c.sinPrecio.map(a => a.cliente + ' (' + a.tipo + ')')) : '', '<button class="btn sm" data-act="go" data-view="precios">Cargar precios</button>') +
-      item(!c.sinArmar.length, c.sinArmar.length, c.sinArmar.length ? pl(c.sinArmar.length, 'resumen sin armar', 'resúmenes sin armar') : 'Resúmenes armados (' + c.clientes + ' clientes)', c.sinArmar.length ? lista(c.sinArmar) : '', '<button class="btn sm primary" data-act="asArmar">Armar ' + pl(c.sinArmar.length, 'borrador', 'borradores') + '</button>') +
-      item(!c.borradores.length, c.borradores.length, c.borradores.length ? pl(c.borradores.length, 'resumen en borrador sin enviar', 'resúmenes en borrador sin enviar') : 'Resúmenes enviados', c.borradores.length ? lista(c.borradores.map(r => r.cliente)) : '', '<button class="btn sm primary" data-act="asMailRes">Enviar por email</button>') +
-      item(!c.sinComp.length, c.sinComp.length, c.sinComp.length ? pl(c.sinComp.length, 'cliente', 'clientes') + ' con resumen enviado y sin comprobante' : 'Comprobantes emitidos', c.sinComp.length ? lista(c.sinComp.map(r => r.cliente)) + (c.drive.length ? ' · hay ' + c.drive.length + ' PDFs de Drive sin vincular' : '') : '', '<button class="btn sm" data-act="asScroll" data-to="as-drive">Ver Drive</button>') +
-      item(!c.vencidas.length, c.vencidas.length, c.vencidas.length ? pl(c.vencidas.length, 'comprobante vencido', 'comprobantes vencidos') + ' con saldo' : 'Nada vencido', c.vencidas.length ? esc(multi(c.vencidas.reduce((a, f) => add(a, f.moneda, f.saldo), {}))) + ' · ' + lista([...new Set(c.vencidas.map(f => f.cliente))]) : '', '<button class="btn sm primary" data-act="asRecs">Mandar recordatorios</button>') +
-      item(!c.aumentos.length, c.aumentos.length, c.aumentos.length ? pl(c.aumentos.length, 'aumento cargado', 'aumentos cargados') + ' sin avisar' : 'Aumentos avisados', '', '<button class="btn sm" data-act="aAvisos">Avisar por email</button>') +
-      item(!c.liqFalt.length && !c.liqPend.length, c.liqFalt.length + c.liqPend.length, c.liqFalt.length || c.liqPend.length ? 'Sueldos y honorarios: ' + [c.liqFalt.length ? pl(c.liqFalt.length, 'ítem sin liquidar', 'ítems sin liquidar') : '', c.liqPend.length ? pl(c.liqPend.length, 'pago pendiente', 'pagos pendientes') : ''].filter(Boolean).join(' y ') : 'Sueldos y honorarios pagados', c.liqPend.length ? esc(multi(c.liqPend.reduce((a, l) => add(a, l.moneda, l.monto), {}))) : '', '<button class="btn sm" data-act="go" data-view="pagos">Ir a Pagos</button>') +
-      item(!c.sinImp.length, c.sinImp.length, c.sinImp.length ? pl(c.sinImp.length, 'pago a proveedores', 'pagos a proveedores') + ' sin repartir entre clientes' : 'Costos de proveedores imputados', c.sinImp.length ? 'Para ver el margen real de cada abono y proyecto' : '', '<button class="btn sm" data-act="asImpAll"' + (st.ia ? '' : ' disabled title="Falta configurar la IA"') + '>✨ Repartir con IA</button>') +
-      '</div>' + (c.cuotas.length ? '<div class="count">Este mes se facturan ' + c.cuotas.length + ' cuotas de proyectos.</div>' : '') + '</section>';
-    h += driveHtml(st) + concSection(st) + (st.ia && st.drive ? '' : '<section class="callout"><p>Falta conectar ' + [st.ia ? '' : 'la IA', st.drive ? '' : 'Google Drive'].filter(Boolean).join(' y ') + '. Los pasos están en Configuración → Ajustes.</p><button class="btn" data-act="go" data-view="ajustes">Ir a Ajustes</button></section>');
+    AD.as.mes = m;
+    const st = AD.as.estado || {}, c = checklist(m), b = AD.as.brief;
+    const its = [
+      [!c.sinPrecio.length, c.sinPrecio.length, pl(c.sinPrecio.length, 'abono sin precio', 'abonos sin precio'), lista(c.sinPrecio.map(a => a.cliente + ' (' + a.tipo + ')')), '<button class="btn sm" data-act="go" data-view="precios">Cargar precios</button>'],
+      [!c.sinArmar.length, c.sinArmar.length, pl(c.sinArmar.length, 'resumen sin preparar', 'resúmenes sin preparar'), lista(c.sinArmar), '<button class="btn sm primary" data-act="asArmar">Prepararlos</button>'],
+      [!c.borradores.length, c.borradores.length, pl(c.borradores.length, 'resumen preparado sin enviar', 'resúmenes preparados sin enviar'), lista(c.borradores.map(r => r.cliente)), '<button class="btn sm primary" data-act="asMailRes">Enviarlos por email</button>'],
+      [!c.sinComp.length, c.sinComp.length, pl(c.sinComp.length, 'cliente', 'clientes') + ' con resumen enviado y sin factura', lista(c.sinComp.map(r => r.cliente)) + (c.drive.length ? ' · hay ' + pl(c.drive.length, 'factura', 'facturas') + ' en Drive sin cargar' : ''), '<button class="btn sm" data-act="tab" data-hub="cobros" data-t="drive">Ver facturas en Drive</button>'],
+      [!c.vencidas.length, c.vencidas.length, pl(c.vencidas.length, 'factura vencida', 'facturas vencidas') + ' sin cobrar', c.vencidas.length ? esc(multi(c.vencidas.reduce((a, f) => add(a, f.moneda, f.saldo), {}))) + ' · ' + lista([...new Set(c.vencidas.map(f => f.cliente))]) : '', '<button class="btn sm primary" data-act="asRecs">Mandar recordatorios</button>'],
+      [!c.aumentos.length, c.aumentos.length, pl(c.aumentos.length, 'aumento cargado', 'aumentos cargados') + ' sin avisar al cliente', '', '<button class="btn sm" data-act="aAvisos">Avisar por email</button>'],
+      [!c.liqFalt.length && !c.liqPend.length, c.liqFalt.length + c.liqPend.length, 'Sueldos y proveedores: ' + [c.liqFalt.length ? pl(c.liqFalt.length, 'pago sin calcular', 'pagos sin calcular') : '', c.liqPend.length ? pl(c.liqPend.length, 'pago pendiente', 'pagos pendientes') : ''].filter(Boolean).join(' y '), c.liqPend.length ? esc(multi(c.liqPend.reduce((a, l) => add(a, l.moneda, l.monto), {}))) : '', '<button class="btn sm" data-act="go" data-view="pagos">Ir a Sueldos</button>'],
+      [!c.sinImp.length, c.sinImp.length, pl(c.sinImp.length, 'gasto de proveedores', 'gastos de proveedores') + ' sin asignar a un cliente', 'Así se ve cuánto deja cada cliente', '<button class="btn sm" data-act="asImpAll"' + (st.ia ? '' : ' disabled title="Falta conectar la IA"') + '>✨ Asignar con IA</button>'],
+    ];
+    const pend = its.filter(x => !x[0]), okN = its.length - pend.length;
+    let h = '<section class="sheet"><div class="sheet-h"><h2>' + (pend.length ? 'Para cerrar ' + esc(monthLabel(m)) : '✓ ' + esc(cap(monthLabel(m))) + ' está al día') + '</h2><span class="toolbar">' +
+      (pend.length ? '<button class="btn sm" data-act="asBrief"' + (AD.as.briefBusy ? ' disabled' : '') + '>' + (AD.as.briefBusy ? 'Pensando…' : '✨ ¿Por dónde empiezo?') + '</button>' : '') + '</span></div>' +
+      (b ? '<div class="sheet-b" style="border-bottom:1px solid var(--line);display:grid;gap:8px;background:color-mix(in srgb,var(--accent) 6%,var(--surface))"><b style="font-family:var(--f-display);font-size:19px">' + esc(b.titular) + '</b><ul style="margin:0;padding-left:18px;display:grid;gap:4px">' + (b.puntos || []).map(p => '<li>' + (p.prioridad === 'alta' ? '<b style="color:var(--crit)">Urgente:</b> ' : '') + esc(p.texto) + '</li>').join('') + '</ul></div>' : '') +
+      (pend.length ? '<div class="rows">' + pend.map(([ok, n, t, sub, btn]) => item(ok, n, t, sub, btn)).join('') + '</div>' : '') +
+      '<div class="count">' + (okN ? '✓ ' + pl(okN, 'cosa al día', 'cosas al día') : '') + (c.cuotas.length ? (okN ? ' · ' : '') + 'Este mes se cobran ' + pl(c.cuotas.length, 'cuota', 'cuotas') + ' de proyectos.' : '') + '</div></section>';
+    if (!(st.ia && st.drive) && AD.as.estado) h += '<section class="callout"><p>Falta conectar ' + [st.ia ? '' : 'la IA', st.drive ? '' : 'Google Drive'].filter(Boolean).join(' y ') + '. Los pasos están en Configuración → Ajustes.</p><button class="btn" data-act="go" data-view="ajustes">Ir a Ajustes</button></section>';
     return h;
   }
+  function vAsistente() { return pendientesHtml(AD.as.mes); }
+  function driveView() {
+    if (!AD.as.estado && !AD.as.estadoBusy) setTimeout(() => cargarEstado(), 0);
+    return '<div class="head"><div>' + lock + '<h1>Facturas en Drive</h1><p>Las facturas que hacen en ARCA y guardan en la carpeta de Drive. La IA las lee y las carga; vos confirmás.</p></div></div>' + driveHtml(AD.as.estado || {});
+  }
+  function bancoView() {
+    if (!AD.as.estado && !AD.as.estadoBusy) setTimeout(() => cargarEstado(), 0);
+    return '<div class="head"><div>' + lock + '<h1>Resumen del banco</h1><p>Subí el resumen (PDF, Excel o CSV) y la IA arma los gastos e ingresos con su categoría. Revisás y confirmás.</p></div></div>' + concSection(AD.as.estado || {});
+  }
+  const driveCount = () => (AD.DA || []).filter(d => d.estado === 'Nuevo' || d.estado === 'Leído').length;
   function driveHtml(st) {
     const cfg = cfgDrive(), df = AD.as.df;
     let inner;
-    if (!st.drive) inner = '<div class="sheet-b"><p class="muted" style="margin:0">' + (AD.as.estadoBusy || !AD.as.estado ? 'Revisando la conexión…' : 'Drive todavía no está conectado. Los pasos están abajo, en Configuración.') + '</p></div>';
+    if (!st.drive) inner = '<div class="sheet-b"><p class="muted" style="margin:0">' + (AD.as.estadoBusy || !AD.as.estado ? 'Revisando la conexión…' : 'Drive todavía no está conectado. Los pasos están en Ajustes.') + '</p></div>';
     else if (!cfg.carpeta) inner = '<div class="sheet-b"><p style="margin:0 0 10px">Compartí la carpeta de facturas con <b>' + esc(st.drive_email) + '</b> (lector) y pegá el link acá.</p><div class="toolbar"><input class="in" id="as-carpeta" placeholder="https://drive.google.com/drive/folders/…" style="flex:1;min-width:260px"><button class="btn primary" data-act="asCarpeta">Guardar</button></div></div>';
     else {
       const filtro = { pendientes: d => d.estado === 'Nuevo' || d.estado === 'Leído' || d.estado === 'Error', vinculados: d => d.estado === 'Vinculado', ignorados: d => d.estado === 'Ignorado', todos: () => true }[df];
@@ -302,24 +318,24 @@ export function initAsistente(ctx, k) {
       const rows = ls.slice(0, 120).map(d => {
         const x = d.datos || {}, mt = d.estado === 'Leído' || d.estado === 'Nuevo' ? matchArchivo(d) : null, f = d.factura_id ? AD.F.find(y => y.id === d.factura_id) : null;
         const desc = [x.tipo, x.numero_completo, x.receptor_nombre, x.total != null ? money(x.total, x.moneda) : '', x.fecha ? fmt(x.fecha) : ''].filter(Boolean).join(' · ');
-        const reco = mt ? [mt.cliente ? 'cliente: <b>' + esc(mt.cliente) + '</b>' : (d.estado === 'Leído' ? '<span style="color:var(--warn)">cliente sin reconocer</span>' : ''), mt.emisor ? 'emite ' + esc(mt.emisor) : '', mt.existente ? '<span style="color:var(--warn)">ya está cargado como ' + esc(mt.existente.tipo + ' ' + mt.existente.numero) + '</span>' : ''].filter(Boolean).join(' · ') : '';
+        const reco = mt ? [mt.cliente ? 'cliente: <b>' + esc(mt.cliente) + '</b>' : (d.estado === 'Leído' ? '<span style="color:var(--warn)">cliente sin reconocer</span>' : ''), mt.emisor ? 'factura ' + esc(mt.emisor) : '', mt.existente ? '<span style="color:var(--warn)">ya está cargada como ' + esc(verTipo(mt.existente.tipo) + ' ' + mt.existente.numero) + '</span>' : ''].filter(Boolean).join(' · ') : '';
         const btns = d.estado === 'Nuevo' || d.estado === 'Error' ? '<button class="btn sm" data-act="asLeer" data-id="' + esc(d.id) + '"' + (st.ia ? '' : ' disabled') + '>Leer</button>' :
-          d.estado === 'Leído' ? (mt.existente ? '<button class="btn sm primary" data-act="asVinc" data-id="' + esc(d.id) + '">Vincular</button>' : '<button class="btn sm primary" data-act="asCrear" data-id="' + esc(d.id) + '">Crear comprobante</button><button class="btn ghost sm" data-act="asVinc" data-id="' + esc(d.id) + '">Vincular</button>') :
-          d.estado === 'Vinculado' && f ? '<button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Ver comprobante</button><button class="btn ghost sm" data-act="asDesv" data-id="' + esc(d.id) + '">Desvincular</button>' : '';
-        return '<div class="row" style="cursor:default"><span class="d">' + (d.modificado ? fmt(String(d.modificado).slice(0, 10)) : '') + '</span><span class="t"><b><a href="' + esc(d.link) + '" target="_blank" rel="noopener">' + esc(d.nombre) + '</a></b><span>' + esc(d.carpeta || '') + (desc ? ' · ' + esc(desc) : '') + '</span>' + (reco ? '<span style="margin-top:2px">' + reco + '</span>' : '') + (d.error ? '<span style="color:var(--crit)">' + esc(d.error) + '</span>' : '') + '</span><span class="toolbar">' + pill(d.estado, { Nuevo: '--s-empezar', 'Leído': '--s-revision', Vinculado: '--s-entregado', Ignorado: '--muted', Error: '--crit' }[d.estado]) + btns + (d.estado !== 'Ignorado' && d.estado !== 'Vinculado' ? '<button class="btn ghost sm" data-act="asIgn" data-id="' + esc(d.id) + '" aria-label="Ignorar">✕</button>' : d.estado === 'Ignorado' ? '<button class="btn ghost sm" data-act="asRest" data-id="' + esc(d.id) + '">Restaurar</button>' : '') + '</span></div>';
+          d.estado === 'Leído' ? (mt.existente ? '<button class="btn sm primary" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>' : '<button class="btn sm primary" data-act="asCrear" data-id="' + esc(d.id) + '">Cargar factura</button><button class="btn ghost sm" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>') :
+          d.estado === 'Vinculado' && f ? '<button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Ver factura</button><button class="btn ghost sm" data-act="asDesv" data-id="' + esc(d.id) + '">Separar</button>' : '';
+        return '<div class="row" style="cursor:default"><span class="d">' + (d.modificado ? fmt(String(d.modificado).slice(0, 10)) : '') + '</span><span class="t"><b><a href="' + esc(d.link) + '" target="_blank" rel="noopener">' + esc(d.nombre) + '</a></b><span>' + esc(d.carpeta || '') + (desc ? ' · ' + esc(desc) : '') + '</span>' + (reco ? '<span style="margin-top:2px">' + reco + '</span>' : '') + (d.error ? '<span style="color:var(--crit)">' + esc(d.error) + '</span>' : '') + '</span><span class="toolbar">' + pill(VER_DA[d.estado] || d.estado, { Nuevo: '--s-empezar', 'Leído': '--s-revision', Vinculado: '--s-entregado', Ignorado: '--muted', Error: '--crit' }[d.estado]) + btns + (d.estado !== 'Ignorado' && d.estado !== 'Vinculado' ? '<button class="btn ghost sm" data-act="asIgn" data-id="' + esc(d.id) + '" aria-label="Descartar">✕</button>' : d.estado === 'Ignorado' ? '<button class="btn ghost sm" data-act="asRest" data-id="' + esc(d.id) + '">Restaurar</button>' : '') + '</span></div>';
       }).join('');
       inner = '<div class="sheet-b" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)"><span class="muted"><a href="' + esc(cfg.carpeta_url || 'https://drive.google.com/drive/folders/' + cfg.carpeta) + '" target="_blank" rel="noopener">Carpeta de facturas</a>' + (cfg.ultima_sync ? ' · revisada ' + esc(fmt(String(cfg.ultima_sync).slice(0, 10))) + ' ' + esc(String(cfg.ultima_sync).slice(11, 16)) : '') + ' · ' + AD.DA.length + ' archivos</span>' +
-        '<span class="toolbar">' + (AD.as.driveBusy ? '<span class="muted">' + esc(AD.as.driveBusy) + '</span>' : '<button class="btn sm" data-act="asSync">Buscar nuevos</button>' + (nuevos ? '<button class="btn sm primary" data-act="asLeerTodo"' + (st.ia ? '' : ' disabled title="Falta configurar la IA"') + '>✨ Leer ' + nuevos + ' con IA</button>' : '') + (leidos ? '<button class="btn sm primary" data-act="asCrearTodos">Crear los reconocidos</button>' : '')) + '</span></div>' +
-        '<div class="sheet-b" style="border-bottom:1px solid var(--line)"><div class="seg" role="group" aria-label="Filtro">' + [['pendientes', 'Por revisar'], ['vinculados', 'Vinculados'], ['ignorados', 'Ignorados'], ['todos', 'Todos']].map(([kk, l]) => '<button data-act="asDf" data-v="' + kk + '" aria-pressed="' + (df === kk) + '">' + l + '</button>').join('') + '</div></div>' +
+        '<span class="toolbar">' + (AD.as.driveBusy ? '<span class="muted">' + esc(AD.as.driveBusy) + '</span>' : '<button class="btn sm" data-act="asSync">Buscar nuevos</button>' + (nuevos ? '<button class="btn sm primary" data-act="asLeerTodo"' + (st.ia ? '' : ' disabled title="Falta configurar la IA"') + '>✨ Leer ' + nuevos + ' con IA</button>' : '') + (leidos ? '<button class="btn sm primary" data-act="asCrearTodos">Cargar todas las reconocidas</button>' : '')) + '</span></div>' +
+        '<div class="sheet-b" style="border-bottom:1px solid var(--line)"><div class="seg" role="group" aria-label="Filtro">' + [['pendientes', 'Por revisar'], ['vinculados', 'Cargadas'], ['ignorados', 'Descartadas'], ['todos', 'Todas']].map(([kk, l]) => '<button data-act="asDf" data-v="' + kk + '" aria-pressed="' + (df === kk) + '">' + l + '</button>').join('') + '</div></div>' +
         (rows ? '<div class="rows">' + rows + '</div>' + (ls.length > 120 ? '<div class="count">Mostrando 120 de ' + ls.length + '</div>' : '') : emptyBox(AD.DA.length ? 'Nada en este filtro' : 'Todavía no se revisó la carpeta', AD.DA.length ? '' : 'Tocá “Buscar nuevos”.'));
     }
-    return '<section class="sheet" id="as-drive"><div class="sheet-h"><h2>Facturas en Drive</h2><span class="muted">solo lectura · PDFs de ARCA e invoices</span></div>' + inner + '</section>';
+    return '<section class="sheet" id="as-drive"><div class="sheet-h"><h2>Facturas en Drive</h2><span class="muted">solo lectura · PDFs de ARCA y facturas al exterior</span></div>' + inner + '</section>';
   }
   function concSection(st) {
     const cjs = AD.CJ.filter(x => x.activa);
-    return '<section class="sheet" id="as-conc"><div class="sheet-h"><h2>Conciliar el banco</h2><span class="muted">Galicia, Payoneer, Wilobank…</span></div>' +
-      '<div class="sheet-b"><p class="muted" style="margin:0 0 10px">Subí el extracto (PDF, Excel o CSV). La IA arma los movimientos con el plan de cuentas, reconoce clientes, equipo y proveedores, y marca los cobros de facturas y lo que ya está cargado.</p>' +
-      '<div class="toolbar"><select class="in" id="as-caja" aria-label="Caja">' + opt('', 'Caja del extracto', AD.as.concCaja) + cjs.map(x => opt(x.id, x.nombre + ' (' + x.moneda + ')', AD.as.concCaja)).join('') + '</select><label class="btn" style="cursor:pointer">📄 Elegir extracto<input type="file" id="as-file" accept=".pdf,.csv,.txt,.xlsx,.xls,image/*" hidden></label><span class="muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(AD.as.file ? AD.as.file.name : 'Ningún archivo elegido') + '</span><button class="btn primary" data-act="asConc"' + (AD.as.concBusy || !st.ia ? ' disabled' : '') + '>' + (AD.as.concBusy ? 'Analizando… (puede tardar un minuto)' : '✨ Analizar extracto') + '</button></div></div>' + concHtml() + '</section>';
+    return '<section class="sheet" id="as-conc"><div class="sheet-h"><h2>Resumen del banco</h2><span class="muted">Galicia, Payoneer, Wilobank…</span></div>' +
+      '<div class="sheet-b"><p class="muted" style="margin:0 0 10px">Subí el resumen (PDF, Excel o CSV). La IA arma los gastos e ingresos con su categoría, reconoce clientes, equipo y proveedores, y marca los cobros de facturas y lo que ya está cargado.</p>' +
+      '<div class="toolbar"><select class="in" id="as-caja" aria-label="Cuenta">' + opt('', '¿De qué cuenta es el resumen?', AD.as.concCaja) + cjs.map(x => opt(x.id, x.nombre + ' (' + x.moneda + ')', AD.as.concCaja)).join('') + '</select><label class="btn" style="cursor:pointer">📄 Elegir resumen<input type="file" id="as-file" accept=".pdf,.csv,.txt,.xlsx,.xls,image/*" hidden></label><span class="muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(AD.as.file ? AD.as.file.name : 'Ningún archivo elegido') + '</span><button class="btn primary" data-act="asConc"' + (AD.as.concBusy || !st.ia ? ' disabled' : '') + '>' + (AD.as.concBusy ? 'Analizando… (puede tardar un minuto)' : '✨ Leer el resumen con IA') + '</button></div></div>' + concHtml() + '</section>';
   }
   function configHtml(st) {
     const em = cfgEmisores(), cfg = cfgDrive(), ok = v => v ? '<b style="color:var(--ok)">✓ conectado</b>' : '<b style="color:var(--crit)">sin configurar</b>';
@@ -328,13 +344,18 @@ export function initAsistente(ctx, k) {
     const pasosDrive = '<ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li>console.cloud.google.com → proyecto nuevo “andale-ops”.</li><li>APIs y servicios → Biblioteca → habilitá <b>Google Drive API</b>.</li><li>IAM → Cuentas de servicio → Crear (sin roles) → Claves → Agregar clave → JSON.</li><li>Supabase → Edge Functions → Secrets → <code>GOOGLE_SERVICE_ACCOUNT</code> con el contenido completo del .json.</li><li>En Drive, compartí la carpeta de facturas con el email de la cuenta de servicio, como Lector.</li></ol>';
     return '<section class="sheet" id="as-config"><div class="sheet-h"><h2>IA, Drive y resumen por email</h2><span class="muted">IA ' + (st.ia ? '✓' : '✗') + ' · Drive ' + (st.drive ? '✓' : '✗') + '</span></div><div class="sheet-b" style="display:grid;gap:16px">' +
       (st.error ? '<p style="margin:0;color:var(--crit)">' + esc(st.error) + '</p>' : '') +
-      '<div><b>IA (Claude)</b> · ' + ok(st.ia) + (st.modelo ? ' <span class="muted">· modelo ' + esc(st.modelo) + '</span>' : '') + (st.ia ? '<div class="muted" style="margin-top:4px">Este mes: ' + usos.length + ' consultas · ' + new Intl.NumberFormat('es-AR').format(tin) + ' tokens de entrada y ' + new Intl.NumberFormat('es-AR').format(tout) + ' de salida. El gasto se ve en console.anthropic.com.</div>' : pasosIA) + '</div>' +
-      '<div><b>Google Drive</b> · ' + ok(st.drive) + (st.drive_email ? '<div style="margin-top:4px">Cuenta de servicio: <code>' + esc(st.drive_email) + '</code> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button></div>' : '') + (st.drive_error ? '<div style="color:var(--crit)">' + esc(st.drive_error) + '</div>' : '') + (st.drive ? '' : pasosDrive) +
+      '<div><b>IA (Claude)</b> · ' + ok(st.ia) + (st.ia ? '<div class="muted" style="margin-top:4px">Este mes: ' + usos.length + ' consultas.</div>' : '<div class="muted" style="margin-top:4px">Para conectarla, mirá Configuración técnica, abajo.</div>') + '</div>' +
+      '<div><b>Google Drive</b> · ' + ok(st.drive) + (st.drive_email ? '<div style="margin-top:4px">Email para compartir carpetas de Drive: <code>' + esc(st.drive_email) + '</code> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button></div>' : '') + (st.drive_error ? '<div style="color:var(--crit)">' + esc(st.drive_error) + '</div>' : '') + (st.drive ? '' : '<div class="muted" style="margin-top:4px">Para conectarlo, mirá Configuración técnica, abajo.</div>') +
       '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta2" value="' + esc(cfg.carpeta_url || '') + '" placeholder="Link de la carpeta de facturas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta2">Guardar carpeta de facturas</button></div>' +
-      '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta3" value="' + esc(cfg.carpeta_propuestas_url || '') + '" placeholder="Link de la carpeta de propuestas anteriores (opcional)" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta3" data-k="propuestas">Guardar carpeta de propuestas</button></div><span class="muted" style="display:block;font-size:13px;margin-top:6px">La IA toma de ahí hasta 3 propuestas viejas (Google Docs o PDF) como referencia de estilo y precios. Compartila también con la cuenta de servicio.</span></div>' +
-      '<div><b>CUIT de quien factura</b><div class="muted" style="margin:2px 0 6px">Para reconocer de qué monotributo sale cada factura. Se completa solo la primera vez que confirmás un emisor.</div><div class="toolbar">' + k.EMISORES.map(e => '<label class="field" style="gap:2px"><span class="lbl">' + esc(e) + '</span><input class="in" id="as-cuit-' + esc(e) + '" value="' + esc((em[e] || {}).cuit || '') + '" inputmode="numeric" placeholder="20-12345678-9" style="width:170px"></label>').join('') + '<button class="btn sm" data-act="asCuits" style="align-self:end">Guardar</button></div></div>' +
+      '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta3" value="' + esc(cfg.carpeta_propuestas_url || '') + '" placeholder="Link de la carpeta de propuestas anteriores (opcional)" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta3" data-k="propuestas">Guardar carpeta de propuestas</button></div><span class="muted" style="display:block;font-size:13px;margin-top:6px">La IA toma de ahí hasta 3 propuestas viejas (Google Docs o PDF) como referencia de estilo y precios. Compartila también con el email de arriba.</span></div>' +
+      '<div><b>CUIT de quien factura</b><div class="muted" style="margin:2px 0 6px">Para reconocer quién hizo cada factura. Se completa solo la primera vez que confirmás quién factura.</div><div class="toolbar">' + k.EMISORES.map(e => '<label class="field" style="gap:2px"><span class="lbl">' + esc(e) + '</span><input class="in" id="as-cuit-' + esc(e) + '" value="' + esc((em[e] || {}).cuit || '') + '" inputmode="numeric" placeholder="20-12345678-9" style="width:170px"></label>').join('') + '<button class="btn sm" data-act="asCuits" style="align-self:end">Guardar</button></div></div>' +
       '<div><b>Resumen por email</b><div class="muted" style="margin:2px 0 6px">Los días 1 y 8 de cada mes, a las 9, el asistente les manda a los admins qué falta para cerrar.</div><div class="toolbar"><label class="chk"><input type="checkbox" data-asemail="1"' + (cfgAsist().email_activo !== false ? ' checked' : '') + '> Activado</label><button class="btn sm" data-act="asEmailYa">Mandarme uno ahora</button></div></div>' +
-      '<p class="muted" style="margin:0;font-size:13px">Los PDFs y extractos que lee la IA se envían a la API de Anthropic solo para procesarlos; no se usan para entrenar modelos. Nada se guarda en la app sin que lo confirmen.</p>' +
+      '<p class="muted" style="margin:0;font-size:13px">Los PDFs y resúmenes del banco que lee la IA se envían a la API de Anthropic solo para procesarlos; no se usan para entrenar modelos. Nada se guarda en la app sin que lo confirmen.</p>' +
+      '<details><summary style="cursor:pointer">Configuración técnica</summary><div class="muted" style="margin-top:8px;display:grid;gap:10px">' +
+      (st.modelo ? '<div>Modelo de IA: ' + esc(st.modelo) + '</div>' : '') +
+      (st.ia ? '<div>Este mes: ' + new Intl.NumberFormat('es-AR').format(tin) + ' tokens de entrada y ' + new Intl.NumberFormat('es-AR').format(tout) + ' de salida. El gasto se ve en console.anthropic.com.</div>' : '<div><b>Conectar la IA</b>' + pasosIA + '</div>') +
+      (st.drive ? '' : '<div><b>Conectar Google Drive</b>' + pasosDrive + '</div>') +
+      '</div></details>' +
       '</div></section>';
   }
 
@@ -351,7 +372,7 @@ export function initAsistente(ctx, k) {
     asArmar: async () => {
       const m = AD.as.mes, cl = checklist(m).sinArmar;
       const rows = cl.map(c => { const sug = k.sugerencias(c, m), items = sug.map(s => ({ inc: true, origen: s.origen, ref: s.ref, concepto: s.concepto, monto: parseMonto(s.monto) })); return { cliente_id: data.ids.cliente(c), periodo: m + '-01', moneda: (sug[0] && sug[0].moneda) || k.cadm(c).moneda || 'ARS', items, total: r2(items.reduce((a, i) => a + (i.monto || 0), 0)), nota: '', estado: 'Borrador' }; }).filter(r => r.cliente_id);
-      try { await data.insMany('resumenes', rows); toast(rows.length + ' resúmenes armados como borrador. Revisalos en Cierre de mes.'); await ctx.reload(); } catch (err) { toast(err.message); }
+      try { await data.insMany('resumenes', rows); toast(rows.length + ' resúmenes preparados. Revisalos en Cobros del mes.'); await ctx.reload(); } catch (err) { toast(err.message); }
     },
     asMailRes: () => k.mail.resumenes(AD.as.mes),
     asRecs: () => k.mail.recordatorios(),
@@ -417,5 +438,5 @@ export function initAsistente(ctx, k) {
     return '<div class="head"><div><h1>Ajustes</h1><p>Conexiones con la IA y Drive, datos de facturación y el resumen mensual por email.</p></div></div>' + configHtml(AD.as.estado || {});
   }
 
-  return { actions, view: vAsistente, ajustes: vAjustes, count: pendientesCount, presetDesde, aprender, b64Bytes };
+  return { actions, view: vAsistente, pendientesHtml, driveView, bancoView, driveCount, ajustes: vAjustes, count: pendientesCount, presetDesde, aprender, b64Bytes };
 }

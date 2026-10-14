@@ -5,7 +5,7 @@ const MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct
 // Cuentas que no son operación: saldo inicial, compra/venta de divisas, retiros y aportes de socios.
 const NO_OPERATIVAS = new Set(['Saldo Inicial', 'Ingresos en Pesos', 'Ingresos en USD', 'Egreso en Pesos', 'Egreso en USD', 'Inversiones']);
 const ABONO_SUB = new Set(['S.Redes sociales', 'S.Redes Ads']);
-const limpiaSub = s => String(s || 'Sin subcuenta').replace(/^S\./, '');
+const limpiaSub = s => String(s || 'Sin categoría').replace(/^S\./, '');
 
 export function initStats(ctx, k) {
   const { S, esc, opt, cap, thisMonth, emptyBox, $ } = { ...ctx, cap: k.cap };
@@ -89,17 +89,17 @@ export function initStats(ctx, k) {
     const anios = [...new Set([...AD.MV.map(v => (v.fecha || '').slice(0, 4)), st.anio])].filter(Boolean).sort().reverse();
     const ti = sum(b.ingMes), te = sum(b.egMes), res = ti - te, lab = sum(b.labMes), meses = Math.max(b.ultimo, 1);
     const sinMov = !b.ing.length && !b.eg.length;
-    let h = '<div class="head"><div><h1>Estadísticas</h1><p>Cómo viene ' + esc(st.anio) + ' según Caja: lo que entra, lo que sale y de dónde viene.</p></div>' +
+    let h = '<div class="head"><div><h1>Estadísticas</h1><p>Cómo viene ' + esc(st.anio) + ' según Gastos e ingresos: lo que entra, lo que sale y de dónde viene.</p></div>' +
       '<div class="toolbar"><div class="seg" role="group" aria-label="Moneda">' + ['ARS', 'USD'].map(m => '<button data-act="stMon" data-v="' + m + '" aria-pressed="' + (st.mon === m) + '">' + (m === 'ARS' ? 'Pesos' : 'Dólares') + '</button>').join('') + '</div><select class="in" data-stk="anio" aria-label="Año">' + anios.map(a => opt(a, a, st.anio)).join('') + '</select></div></div>';
-    if (sinMov) return h + '<section class="sheet">' + emptyBox('Sin movimientos en ' + (st.mon === 'ARS' ? 'pesos' : 'dólares') + ' para ' + st.anio, 'Probá con la otra moneda u otro año.') + '</section>';
+    if (sinMov) return h + '<section class="sheet">' + emptyBox('Sin gastos ni ingresos en ' + (st.mon === 'ARS' ? 'pesos' : 'dólares') + ' para ' + st.anio, 'Probá con la otra moneda u otro año.') + '</section>';
     h += '<section class="hero">' +
       tile('Ingresos', compact(ti, st.mon), 'promedio ' + esc(compact(ti / meses, st.mon)) + ' por mes', b.ingMes, C1) +
-      tile('Egresos', compact(te, st.mon), 'promedio ' + esc(compact(te / meses, st.mon)) + ' por mes', b.egMes, C2) +
-      tile('Resultado', compact(res, st.mon), ti ? Math.round(res / ti * 100) + '% de lo que entra' : '—', b.ingMes.map((v, i) => v - b.egMes[i]), res >= 0 ? 'var(--ok)' : 'var(--crit)', res < 0 ? 'alert' : '') +
-      tile('Costo laboral', compact(lab, st.mon), ti ? Math.round(lab / ti * 100) + '% de los ingresos' : 'sueldos y aguinaldos', b.labMes, C3) + '</section>';
+      tile('Gastos', compact(te, st.mon), 'promedio ' + esc(compact(te / meses, st.mon)) + ' por mes', b.egMes, C2) +
+      tile('Lo que quedó', compact(res, st.mon), ti ? Math.round(res / ti * 100) + '% de lo que entra' : '—', b.ingMes.map((v, i) => v - b.egMes[i]), res >= 0 ? 'var(--ok)' : 'var(--crit)', res < 0 ? 'alert' : '') +
+      tile('Sueldos', compact(lab, st.mon), ti ? Math.round(lab / ti * 100) + '% de los ingresos' : 'sueldos y aguinaldos', b.labMes, C3) + '</section>';
 
     // Ingresos vs egresos
-    h += '<div class="stats"><section class="sheet w8"><div class="sheet-h"><h2>Ingresos y egresos por mes</h2><span class="muted">sin divisas ni retiros</span></div>' + columnas([{ n: 'Ingresos', c: C1, v: b.ingMes }, { n: 'Egresos', c: C2, v: b.egMes }], b.ultimo, { mon: st.mon }) + '</section>';
+    h += '<div class="stats"><section class="sheet w8"><div class="sheet-h"><h2>Ingresos y gastos por mes</h2><span class="muted">sin contar cambio de dólares ni retiros de socios</span></div>' + columnas([{ n: 'Ingresos', c: C1, v: b.ingMes }, { n: 'Gastos', c: C2, v: b.egMes }], b.ultimo, { mon: st.mon }) + '</section>';
     // Fijos vs variables
     const ab = sum(b.aboMes), pr = sum(b.proMes);
     h += '<section class="sheet w4"><div class="sheet-h"><h2>Abonos y proyectos</h2></div>' +
@@ -120,8 +120,8 @@ export function initStats(ctx, k) {
       '<div class="hero">' +
       '<div class="kpi" style="--k:var(--s-entregado)"><span class="eyebrow">Clientes activos</span><b style="font-size:28px">' + S.C.filter(c => c.estado === 'Activo').length + '</b><span>' + ab2.filter(a => a.tipo === 'Redes').length + ' con redes · ' + ab2.filter(a => a.tipo === 'Ads').length + ' con Ads</span></div>' +
       '<div class="kpi" style="--k:var(--s-curso)"><span class="eyebrow">Proyectos abiertos</span><b style="font-size:28px">' + totP + '</b><span>' + S.P.filter(p => p.estado === 'Entregado' && (p.entregaReal || p.entrega || '').startsWith(st.anio)).length + ' entregados en ' + esc(st.anio) + '</span></div>' +
-      '<div class="kpi" style="--k:var(--warn)"><span class="eyebrow">Por cobrar</span><b style="font-size:24px">' + esc(multi(porCobrar)) + '</b><span>en comprobantes emitidos</span></div>' +
-      '<div class="kpi ' + (Object.keys(vencido).length ? 'alert' : '') + '"><span class="eyebrow">Vencido</span><b style="font-size:24px">' + esc(multi(vencido)) + '</b><span>' + (n => n + (n === 1 ? ' comprobante' : ' comprobantes'))(AD.F.filter(f => k.estadoFactura(f) === 'Vencida').length) + '</span></div></div>' +
+      '<div class="kpi" style="--k:var(--warn)"><span class="eyebrow">Por cobrar</span><b style="font-size:24px">' + esc(multi(porCobrar)) + '</b><span>en facturas hechas</span></div>' +
+      '<div class="kpi ' + (Object.keys(vencido).length ? 'alert' : '') + '"><span class="eyebrow">Vencido</span><b style="font-size:24px">' + esc(multi(vencido)) + '</b><span>' + (n => n + (n === 1 ? ' factura' : ' facturas'))(AD.F.filter(f => k.estadoFactura(f) === 'Vencida').length) + '</span></div></div>' +
       (totP ? '<div><span class="eyebrow">Proyectos abiertos por estado</span><div style="display:flex;gap:2px;height:14px;margin:8px 0 10px;border-radius:7px;overflow:hidden">' + Object.entries(est).map(([e, n]) => '<span' + tip(e, n + ' proyectos') + ' style="flex:' + n + ';background:var(' + ctx.stVar(e) + ')"></span>').join('') + '</div><div class="tags" style="gap:8px">' + Object.entries(est).sort((a, b) => b[1] - a[1]).map(([e, n]) => ctx.pill(e + ' · ' + n, ctx.stVar(e))).join('') + '</div></div>' : '') +
       '</div></section></div>';
     return h;

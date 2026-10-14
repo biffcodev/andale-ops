@@ -142,12 +142,12 @@ export function resumenEmail(d) {
 export function recordatorioEmail(d) {
   const asunto = d.asunto || ('Recordatorio de pago · ' + d.cuenta + ' · ' + d.periodo);
   const filas = B.etiqueta(['Recordatorio de pago', d.cuenta, d.periodo]) + sp(18) +
-    B.titular(plata(d.total, d.moneda), 'Saldo pendiente') + sp(30) +
+    B.titular(plata(d.total, d.moneda), 'Pendiente de pago') + sp(30) +
     B.mensaje(d.mensaje) + sp(12) +
     B.detalle('Pendiente', d.pendientes.map(i => [i.concepto, plata(i.monto, d.moneda)]), d.pendientes.length > 1 ? ['Total', plata(d.total, d.moneda)] : null) + sp(30) +
     B.pago(d.cfg) + sp(32) + B.firma(d.firma);
-  const texto = textoPlano([d.mensaje, d.pendientes.map(i => '• ' + i.concepto + ': ' + plata(i.monto, d.moneda)).join('\n') + '\nSaldo pendiente: ' + plata(d.total, d.moneda), pagoTexto(d.cfg), d.firma], d.cfg);
-  return { asunto, html: layout({ cfg: d.cfg, asunto, preheader: 'Saldo pendiente ' + plata(d.total, d.moneda), filas }), texto };
+  const texto = textoPlano([d.mensaje, d.pendientes.map(i => '• ' + i.concepto + ': ' + plata(i.monto, d.moneda)).join('\n') + '\nPendiente de pago: ' + plata(d.total, d.moneda), pagoTexto(d.cfg), d.firma], d.cfg);
+  return { asunto, html: layout({ cfg: d.cfg, asunto, preheader: 'Pendiente de pago ' + plata(d.total, d.moneda), filas }), texto };
 }
 
 export function avisoEmail(d) {
@@ -155,19 +155,19 @@ export function avisoEmail(d) {
   const filas = B.etiqueta(['Actualización de abono', d.cuenta]) + sp(18) +
     B.titular(plata(d.nuevo, d.moneda), 'Desde ' + d.desde, 'por mes · ' + d.servicio) + sp(30) +
     B.mensaje(d.mensaje) + sp(12) +
-    B.detalle('', [['Servicio', d.servicio], ...(d.anterior ? [['Valor actual', plata(d.anterior, d.moneda)]] : []), ['Rige desde', d.desde]], ['Valor nuevo', plata(d.nuevo, d.moneda)]) + sp(32) +
+    B.detalle('', [['Servicio', d.servicio], ...(d.anterior ? [['Valor actual', plata(d.anterior, d.moneda)]] : []), ['Desde', d.desde]], ['Valor nuevo', plata(d.nuevo, d.moneda)]) + sp(32) +
     B.firma(d.firma);
-  const texto = textoPlano([d.mensaje, 'Servicio: ' + d.servicio + (d.anterior ? '\nValor actual: ' + plata(d.anterior, d.moneda) : '') + '\nValor nuevo: ' + plata(d.nuevo, d.moneda) + '\nRige desde: ' + d.desde, d.firma], d.cfg);
+  const texto = textoPlano([d.mensaje, 'Servicio: ' + d.servicio + (d.anterior ? '\nValor actual: ' + plata(d.anterior, d.moneda) : '') + '\nValor nuevo: ' + plata(d.nuevo, d.moneda) + '\nDesde: ' + d.desde, d.firma], d.cfg);
   return { asunto, html: layout({ cfg: d.cfg, asunto, preheader: 'Desde ' + d.desde + ': ' + plata(d.nuevo, d.moneda) + ' por mes', filas }), texto };
 }
 
 export function facturaEmail(d) {
   const nombreComp = d.tipo + (d.numero ? ' ' + d.numero : '');
   const asunto = d.asunto || (nombreComp + ' · ' + d.cuenta + (d.periodo ? ' · ' + d.periodo : ''));
-  const filas = B.etiqueta([d.tipo === 'Invoice' ? 'Invoice' : 'Comprobante', d.cuenta, d.periodo]) + sp(18) +
+  const filas = B.etiqueta([d.tipo === 'Invoice' ? 'Invoice' : 'Factura', d.cuenta, d.periodo]) + sp(18) +
     B.titular(plata(d.monto, d.moneda), nombreComp, d.vencimiento ? 'Vence el ' + fecha(d.vencimiento) : '') + sp(30) +
-    B.mensaje(d.mensaje) + sp(6) + B.boton(d.tipo === 'Invoice' ? 'Ver invoice' : 'Ver comprobante', d.link) + sp(30) +
-    B.detalle('', [['Comprobante', nombreComp], ['Fecha', fecha(d.fecha)], ...(d.vencimiento ? [['Vencimiento', fecha(d.vencimiento)]] : [])], ['Importe', plata(d.monto, d.moneda)]) +
+    B.mensaje(d.mensaje) + sp(6) + B.boton(d.tipo === 'Invoice' ? 'Ver invoice' : 'Ver factura', d.link) + sp(30) +
+    B.detalle('', [[d.tipo === 'Invoice' ? 'Invoice' : 'Factura', nombreComp], ['Fecha', fecha(d.fecha)], ...(d.vencimiento ? [['Vencimiento', fecha(d.vencimiento)]] : [])], ['Importe', plata(d.monto, d.moneda)]) +
     (d.conPago ? sp(30) + B.pago(d.cfg) : '') + sp(32) + B.firma(d.firma);
   const texto = textoPlano([d.mensaje, nombreComp + ' · ' + plata(d.monto, d.moneda) + (d.vencimiento ? ' · vence ' + fecha(d.vencimiento) : ''), d.link ? 'Ver: ' + d.link : '', d.conPago ? pagoTexto(d.cfg) : '', d.firma], d.cfg);
   return { asunto, html: layout({ cfg: d.cfg, asunto, preheader: nombreComp + ' · ' + plata(d.monto, d.moneda), filas }), texto };
