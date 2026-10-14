@@ -17,9 +17,9 @@ const T = {
 
 // ui key -> [columna, transformación]
 const FIELDS = {
-  proyecto: { cliente: ['cliente_id', 'cliente'], proyecto: ['nombre'], tipo: ['tipo'], estado: ['estado'], fechaInicio: ['fecha_inicio', 'date'], entrega: ['entrega', 'date'], entregaReal: ['entrega_real', 'date'], entregables: ['entregables'], drive: ['drive'], slides: ['slides'], canva: ['canva'], notas: ['notas'] },
+  proyecto: { cliente: ['cliente_id', 'cliente'], proyecto: ['nombre'], tipo: ['tipo'], estado: ['estado'], fechaInicio: ['fecha_inicio', 'date'], entrega: ['entrega', 'date'], entregaReal: ['entrega_real', 'date'], entregables: ['entregables'], drive: ['drive'], slides: ['slides'], canva: ['canva'], notas: ['notas'], etapas: ['etapas', 'json'] },
   abono: { cliente: ['cliente_id', 'cliente'], tipo: ['tipo'], plan: ['plan'], desde: ['desde', 'month'], hasta: ['hasta', 'month'], estado: ['estado'], notas: ['notas'] },
-  cliente: { nombre: ['nombre'], estado: ['estado'], servicio: ['servicio'], plan: ['plan'], contacto: ['contacto'], email: ['email'], tel: ['tel'], web: ['web'], carpeta: ['carpeta'], notas: ['notas'] },
+  cliente: { nombre: ['nombre'], estado: ['estado'], estadoManual: ['estado_manual', 'bool'], servicio: ['servicio'], plan: ['plan'], contacto: ['contacto'], email: ['email'], tel: ['tel'], web: ['web'], carpeta: ['carpeta'], notas: ['notas'] },
   persona: { persona: ['alias'], nombre: ['nombre'], puesto: ['puesto'], email: ['email', 'nullable'], tel: ['tel'], rol: ['rol'], activo: ['activo', 'bool'], notas: ['notas'] },
   comunicacion: { fecha: ['fecha', 'date'], cliente: ['cliente_id', 'cliente'], canal: ['canal'], conQuien: ['con_quien'], resumen: ['resumen'], acuerdo: ['acuerdo'], proximo: ['proximo'], fechaProximo: ['fecha_proximo', 'date'], hecho: ['hecho', 'bool'], responsable: ['responsable_id', 'persona'] },
 };
@@ -36,6 +36,7 @@ function toRow(kind, ui) {
     if (t === 'date') val = v ? v : null;
     else if (t === 'month') val = v ? (/^\d{4}-\d{2}$/.test(v) ? v + '-01' : v) : null;
     else if (t === 'bool') val = !!v;
+    else if (t === 'json') val = Array.isArray(v) ? v : [];
     else if (t === 'nullable') val = v ? String(v).trim().toLowerCase() : null;
     else if (t === 'cliente') { val = idx.clienteId.get(v) || null; if (v && !val) throw friendly({ message: 'El cliente "' + v + '" no existe.' }); }
     else if (t === 'persona') val = v ? (idx.personaId.get(v) || null) : null;
@@ -73,9 +74,9 @@ export async function loadAll() {
 
   return {
     E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, ...meta(p) })),
-    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, estado: c.estado, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, responsables: rc.get(c.id) || [], ...meta(c) })),
+    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, responsables: rc.get(c.id) || [], ...meta(c) })),
     A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, responsables: ra.get(a.id) || [], ...meta(a) })),
-    P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, responsables: rp.get(p.id) || [], ...meta(p) })),
+    P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: Array.isArray(p.etapas) ? p.etapas : [], responsables: rp.get(p.id) || [], ...meta(p) })),
     M: d.comunicaciones.map(m => ({ _id: m.id, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
     L: Object.fromEntries(d.listas.map(l => [l.clave, l.valores])),
   };
@@ -121,9 +122,9 @@ async function all(table, build) {
 }
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
-  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em] = await Promise.all([
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
-    all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })),
+    all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })), all('proyecto_finanzas'), all('abono_finanzas'), all('imputaciones'),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
@@ -137,6 +138,9 @@ export async function loadAdmin() {
     MV: mv.map(r => ({ ...r, cliente: cn(r.cliente_id), persona: idx.personaAlias.get(r.persona_id) || '', ingreso: num(r.ingreso) || 0, egreso: num(r.egreso) || 0 })),
     AJ: Object.fromEntries(aj.map(r => [r.clave, r.valor])),
     EM: em,
+    PFZ: new Map(pfz.map(r => [r.proyecto_id, { ...r, presupuesto: num(r.presupuesto), inicio_cobro: month(r.inicio_cobro) }])),
+    ABF: new Map(abf.map(r => [r.abono_id, { ...r, inversion: num(r.inversion) }])),
+    IMP: imp.map(r => ({ ...r, monto: num(r.monto) || 0 })),
     G: gs.map(r => ({ ...r, cliente: cn(r.cliente_id), periodo: month(r.periodo), persona: idx.personaAlias.get(r.persona_id) || '' })),
   };
 }

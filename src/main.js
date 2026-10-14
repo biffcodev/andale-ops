@@ -8,9 +8,9 @@ let ADM = null, ADM_FN = {};
 
 /* ---------- Constantes ---------- */
 const DEF = {
-  tipos: ['Redes', 'Branding', 'Web', 'Ads', 'Diseño', 'Audiovisual', 'Otro'],
+  tipos: ['Redes', 'Branding', 'Packaging', 'Web', 'Ads', 'Diseño', 'Audiovisual', 'Otro'],
   tiposAbono: ['Redes', 'Ads'],
-  estadosProyecto: ['Por empezar', 'En curso', 'En revisión', 'Entregado', 'Pausado', 'Cancelado', 'A confirmar'],
+  estadosProyecto: ['Presupuestado', 'Por empezar', 'En curso', 'En revisión', 'Entregado', 'Pausado', 'Cancelado', 'A confirmar'],
   estadosCliente: ['Activo', 'A confirmar', 'Proyectos', 'Pausado', 'Inactivo'],
   canales: ['Reunión', 'Videollamada', 'WhatsApp', 'Email', 'Llamada', 'Instagram', 'Otro'],
   servicios: ['Redes sociales', 'Ads', 'Redes sociales + Ads', 'Branding', 'Web', 'Diseño', 'Audiovisual', 'Comunicación integral', 'Asesoramiento', 'Otro'],
@@ -20,7 +20,7 @@ const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', 
 const ESTADOS_ABONO = ['Activo', 'Pausado', 'Baja'];
 const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
 const CERRADOS = new Set(['Entregado', 'Cancelado']);
-const ST_COLOR = { 'Por empezar': '--s-empezar', 'En curso': '--s-curso', 'En revisión': '--s-revision', 'Entregado': '--s-entregado', 'Pausado': '--s-pausado', 'Cancelado': '--s-cancelado', 'A confirmar': '--s-confirmar' };
+const ST_COLOR = { 'Presupuestado': '--s-presup', 'Por empezar': '--s-empezar', 'En curso': '--s-curso', 'En revisión': '--s-revision', 'Entregado': '--s-entregado', 'Pausado': '--s-pausado', 'Cancelado': '--s-cancelado', 'A confirmar': '--s-confirmar' };
 const CL_COLOR = { 'Activo': '--s-entregado', 'A confirmar': '--s-confirmar', 'Proyectos': '--s-curso', 'Pausado': '--s-pausado', 'Inactivo': '--s-empezar' };
 const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': '--s-empezar' };
 const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
@@ -159,6 +159,35 @@ const pendientes = () => S.M.filter(m => !m.hecho && m.proximo).sort((a, b) => (
 const abonoLabel = a => (a.tipo || 'Abono') + (a.plan ? ' · ' + a.plan : '');
 const abonoTags = n => { const as = abonosDe(n).filter(a => a.estado === 'Activo'); return as.length ? '<span class="tags">' + as.map(a => '<span class="tag">' + esc(abonoLabel(a)) + '</span>').join('') + '</span>' : ''; };
 
+/* Estado del cliente: se calcula solo (abono activo → Activo; proyecto abierto → Proyectos; nada → Inactivo)
+   salvo que se haya fijado a mano. La base aplica la misma regla con un trigger. */
+const estadoAuto = nombre => S.A.some(a => a.cliente === nombre && a.estado === 'Activo') ? 'Activo' : S.P.some(p => p.cliente === nombre && isOpen(p)) ? 'Proyectos' : 'Inactivo';
+const patchEstado = (c, v) => v === '__auto' ? { estadoManual: false } : { estado: v, estadoManual: v !== estadoAuto(c.nombre) };
+function estadoSelect(c) {
+  const auto = estadoAuto(c.nombre);
+  return '<span class="estsel"><select class="cellsel st" style="--c:var(' + (CL_COLOR[c.estado] || '--muted') + ')" aria-label="Estado de ' + esc(c.nombre) + '" data-upd="cliente" data-id="' + esc(c._id) + '" data-field="estado">' +
+    optsFrom(S.L.estadosCliente, c.estado || '') + (c.estadoManual ? opt('__auto', '↺ Volver a automático (' + auto + ')', '') : '') + '</select>' +
+    (c.estadoManual ? '<span class="fij" title="Fijado a mano. El automático diría: ' + esc(auto) + '">fijado</span>' : '') + '</span>';
+}
+/* Etapas del proyecto: [{ n, ok }]. Plantillas por tipo en Listas (clave 'etapas:<Tipo>'). */
+const plantilla = tipo => (S.L['etapas:' + tipo] || []).slice();
+const etapasDe = p => Array.isArray(p.etapas) ? p.etapas : [];
+function etapaInfo(p) {
+  const e = etapasDe(p), done = e.filter(x => x.ok).length, cur = e.find(x => !x.ok);
+  return { e, done, total: e.length, cur: cur ? cur.n : (e.length ? 'Completo' : '') };
+}
+const segs = (e) => '<span class="prog" aria-hidden="true">' + e.map(x => '<i class="' + (x.ok ? 'on' : '') + '"></i>').join('') + '</span>';
+function etapaCell(p) {
+  const { e, done, total, cur } = etapaInfo(p), can = canEditProj(p);
+  if (!total) return plantilla(p.tipo).length && can ? '<button class="btn ghost sm" data-act="etCargar" data-id="' + esc(p._id) + '">+ Etapas de ' + esc(p.tipo) + '</button>' : '<span class="muted">—</span>';
+  const sum = '<span class="etp">' + segs(e) + '<span class="etn"><b>' + esc(cur) + '</b><span class="muted"> ' + done + '/' + total + '</span></span></span>';
+  if (!can) return sum;
+  const key = 'etapa:' + p._id;
+  return '<details class="pick" data-pick="' + esc(key) + '"' + (S.openPick === key ? ' open' : '') + '><summary title="Marcar etapas">' + sum + '</summary><div class="menu">' +
+    e.map((x, i) => '<label class="chk"><input type="checkbox" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"' + (x.ok ? ' checked' : '') + '> ' + esc(x.n) + '</label>').join('') + '</div></details>';
+}
+const etapaTxt = p => { const { done, total, cur } = etapaInfo(p); return total ? cur + ' (' + done + '/' + total + ')' : ''; };
+
 /* ---------- Vistas ---------- */
 const kpiBtn = (n, label, sub, attrs, cls) => '<button class="kpi ' + (cls || '') + '" ' + attrs + '><span class="eyebrow">' + label + '</span><b>' + n + '</b><span>' + sub + '</span></button>';
 
@@ -181,7 +210,7 @@ function vInicio() {
 
   if (conf || sinResp) {
     const parts = [];
-    if (conf) parts.push('<b>' + conf + ' proyectos</b> están "A confirmar": vienen de la facturación y les falta estado y fechas');
+    if (conf) parts.push('<b>' + conf + ' proyectos</b> están "A confirmar": vienen de la facturación y hay que confirmar su estado');
     if (sinResp) parts.push('<b>' + sinResp + '</b> trabajos abiertos no tienen responsable');
     h += '<section class="callout"><p>' + parts.join('. ') + '. Estado y responsables se cambian directo en la fila de cada lista.</p><button class="btn" data-act="goProy" data-estado="' + (conf ? 'A confirmar' : '') + '">Revisar proyectos</button></section>';
   }
@@ -237,13 +266,14 @@ function vLista() {
       '<td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente || '—') + '</button></td>' +
       '<td><button class="btn link" style="font-weight:500" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">' + esc(p.proyecto) + '</button><span class="sub">' + esc(p.tipo || '') + '</span></td>' +
       '<td>' + picker('proyecto', p) + '</td>' +
-      '<td class="n">' + (p.entrega ? '<span class="mono">' + fmt(p.entrega) + '</span><span class="sub">' + daysBadge(p) + '</span>' : '<span class="muted">Sin fecha</span>') + '</td>' +
+      '<td>' + etapaCell(p) + '</td>' +
+      '<td class="n">' + (p.entrega ? '<span class="mono">' + fmt(p.entrega) + '</span><span class="sub">' + daysBadge(p) + '</span>' : '<span class="muted">—</span>') + '</td>' +
       '<td><select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado"' + dis + '>' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select></td>' +
       '<td>' + links(p) + '</td>' +
       '<td class="r"><button class="btn ghost sm" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">' + (canEditProj(p) ? 'Editar' : 'Ver') + '</button></td>' +
       '</tr>';
   }).join('');
-  return '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Responsables</th><th>Entrega pactada</th><th>Estado</th><th>Links</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' de ' + S.P.length + ' proyectos</div></section>';
+  return '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Responsables</th><th>Etapa</th><th>Entrega</th><th>Estado</th><th>Links</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' de ' + S.P.length + ' proyectos</div></section>';
 }
 
 function vTablero() {
@@ -253,7 +283,7 @@ function vTablero() {
     return '<div class="col" data-drop="' + esc(e) + '"><div class="col-h">' + stPill(e) + '<span class="n">' + items.length + '</span></div>' +
       items.map(p => {
         const late = p.entrega && isOpen(p) && diff(p.entrega) < 0;
-        return '<button class="card' + (late ? ' late' : '') + '" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '" data-drag="' + esc(p._id) + '"' + (canEditProj(p) ? ' draggable="true"' : '') + '><span class="cl">' + esc(p.cliente) + '</span><span class="pj">' + esc(p.proyecto) + '</span><span class="ft">' + (resp(p).length ? whos(resp(p)) : '<span class="tag">Sin responsable</span>') + (p.entrega ? '<span class="mono">' + fmtShort(p.entrega) + '</span>' : '') + '</span></button>';
+        return '<button class="card' + (late ? ' late' : '') + '" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '" data-drag="' + esc(p._id) + '"' + (canEditProj(p) ? ' draggable="true"' : '') + '><span class="cl">' + esc(p.cliente) + '</span><span class="pj">' + esc(p.proyecto) + '</span>' + (etapasDe(p).length ? '<span class="et">' + segs(etapasDe(p)) + esc(etapaInfo(p).cur) + '</span>' : '') + '<span class="ft">' + (resp(p).length ? whos(resp(p)) : '<span class="tag">Sin responsable</span>') + (p.entrega ? '<span class="mono">' + fmtShort(p.entrega) + '</span>' : '') + '</span></button>';
       }).join('') + '</div>';
   }).join('');
   return '<p class="muted" style="margin:0">Arrastrá una tarjeta a otra columna para cambiarle el estado. En el celular, tocala y cambiá el estado en el formulario.</p><div class="kb">' + cols + '</div>';
@@ -328,7 +358,7 @@ function vMis() {
   h += '<section class="kpis">' + kpi(cuentas.length, 'Cuentas mensuales') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(steps.length, 'Pasos pendientes') + '</section>';
   if (!mine.length && !cuentas.length && !myCl.length && !steps.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay nada a cargo de ' + yo, isStaff() ? 'Asigná responsables desde Proyectos o Abonos y aparece acá.' : 'Cuando te asignen un trabajo aparece acá.') + '</section>';
   const others = o => resp(o).length > 1 ? ' · con ' + esc(resp(o).filter(x => x !== yo).join(', ')) : '';
-  const group = (title, arr) => arr.length ? '<section class="sheet"><div class="sheet-h"><h2>' + title + '</h2><span class="muted num">' + arr.length + '</span></div><div class="rows">' + arr.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc(p.cliente) + ' · ' + esc(p.tipo || '') + others(p) + '</span></span>' + (daysBadge(p) || stPill(p.estado)) + '</button>').join('') + '</div></section>' : '';
+  const group = (title, arr) => arr.length ? '<section class="sheet"><div class="sheet-h"><h2>' + title + '</h2><span class="muted num">' + arr.length + '</span></div><div class="rows">' + arr.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.cliente, p.tipo, etapaTxt(p)].filter(Boolean).join(' · ')) + others(p) + '</span></span>' + (daysBadge(p) || stPill(p.estado)) + '</button>').join('') + '</div></section>' : '';
   const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Cuentas mensuales</h2><span class="muted num">' + cuentas.length + '</span></div>' + (cuentas.length ? '<div class="rows">' + cuentas.map(a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(a.cliente) + '</b><span>' + esc(a.plan ? 'Plan ' + a.plan : '') + others(a) + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin cuentas mensuales a cargo', '')) + '</section>';
   h += '<div class="grid2"><div class="stack">' + cuentasHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
     '<div class="stack">' +
@@ -345,7 +375,7 @@ function vClientes() {
   const estados = ['', ...S.L.estadosCliente];
   const counts = e => S.C.filter(c => !e || c.estado === e).length;
   const list = S.C.filter(c => (!cf.estado || c.estado === cf.estado) && (!q || norm(c.nombre + ' ' + (c.contacto || '') + ' ' + (c.servicio || '')).includes(q))).sort((a, b) => cmp(a.nombre, b.nombre));
-  let h = '<div class="head"><div><h1>Clientes</h1><p>' + (isExt() ? 'Los clientes de los trabajos que tenés asignados.' : 'Datos operativos de cada cliente. Tocá uno para ver su ficha con abonos, proyectos y comunicaciones.') + '</p></div><div class="toolbar">' + addBtn('cliente', 'Cliente') + '</div></div>' +
+  let h = '<div class="head"><div><h1>Clientes</h1><p>' + (isExt() ? 'Los clientes de los trabajos que tenés asignados.' : 'Tocá un cliente para ver su ficha. El estado se calcula solo según sus abonos y proyectos; si lo cambiás a mano queda fijado.') + '</p></div><div class="toolbar">' + addBtn('cliente', 'Cliente') + '</div></div>' +
     '<div class="toolbar"><input class="in" type="search" id="cq" data-bind="cf.q" placeholder="Buscar cliente o contacto" value="' + esc(cf.q) + '">' +
     (isStaff() ? '<div class="seg" role="group" aria-label="Estado">' + estados.map(e => '<button data-act="cfEstado" data-estado="' + esc(e) + '" aria-pressed="' + (cf.estado === e) + '">' + (e || 'Todos') + ' <span class="c">' + counts(e) + '</span></button>').join('') + '</div>' : '') + '</div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox(S.C.length ? 'Ningún cliente coincide' : 'Todavía no hay clientes', S.C.length ? 'Probá con otro estado o búsqueda.' : '') + '</section>';
@@ -353,10 +383,10 @@ function vClientes() {
   S.csel.forEach(id => { if (!list.some(c => c._id === id)) S.csel.delete(id); });
   const rows = list.map(c => {
     const act = proyectosDe(c.nombre).filter(isOpen).length;
-    const est = staff ? '<select class="cellsel st" style="--c:var(' + (CL_COLOR[c.estado] || '--muted') + ')" aria-label="Estado de ' + esc(c.nombre) + '" data-upd="cliente" data-id="' + esc(c._id) + '" data-field="estado">' + optsFrom(S.L.estadosCliente, c.estado || '') + '</select>' : clPill(c.estado);
+    const est = staff ? estadoSelect(c) : clPill(c.estado);
     return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name">' + esc(c.nombre) + '</td><td>' + est + '</td><td>' + (abonoTags(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + esc(c.servicio || '') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(c.contacto || '') + '</td></tr>';
   }).join('');
-  const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado') + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
+  const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado') + opt('__auto', '↺ Automático', S.cmasivo) + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
   const allSel = staff && list.length && list.every(c => S.csel.has(c._id));
   return h + bulk + '<section class="sheet"><div class="tbl"><table><thead><tr>' + (staff ? '<th class="sel"><input type="checkbox" aria-label="Seleccionar todos" data-cselall="1"' + (allSel ? ' checked' : '') + '></th>' : '') + '<th>Cliente</th><th>Estado</th><th>Abonos activos</th><th>Servicio</th><th>Responsables</th><th>Proyectos abiertos</th><th>Contacto</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' clientes</div></section>';
 }
@@ -370,11 +400,11 @@ function vFicha() {
   const ms = S.M.filter(m => m.cliente === c.nombre).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   const copy = v => v ? '<span>' + esc(v) + '</span><button class="btn ghost sm" data-act="copy" data-v="' + esc(v) + '">Copiar</button>' : '<span class="muted">—</span>';
   const link = v => v ? (isUrl(v) ? '<a href="' + esc(v) + '" target="_blank" rel="noopener">' + esc(v.replace(/^https?:\/\/(www\.)?/, '')) + '</a>' : '<span>' + esc(v) + '</span>') : '<span class="muted">—</span>';
-  const projRow = p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc(p.tipo || '') + (resp(p).length ? ' · ' + esc(resp(p).join(', ')) : '') + '</span></span>' + stPill(p.estado) + '</button>';
+  const projRow = p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.tipo, etapaTxt(p), resp(p).join(', ')].filter(Boolean).join(' · ')) + '</span></span>' + stPill(p.estado) + '</button>';
   const abRow = a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(abonoLabel(a)) + '</b><span>' + (resp(a).length ? esc(resp(a).join(', ')) : 'sin responsable') + (a.desde ? ' · desde ' + esc(fmt(a.desde)) : '') + '</span></span>' + abPill(a.estado) + '</button>';
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   return back +
-    '<div class="head"><div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? '<select class="cellsel st" style="--c:var(' + (CL_COLOR[c.estado] || '--muted') + ')" aria-label="Estado del cliente" data-upd="cliente" data-id="' + esc(c._id) + '" data-field="estado">' + optsFrom(S.L.estadosCliente, c.estado || '') + '</select>' : clPill(c.estado)) + abonoTags(c.nombre) + '<span>' + esc(c.servicio || '') + '</span></p></div>' +
+    '<div class="head"><div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + abonoTags(c.nombre) + '<span>' + esc(c.servicio || '') + '</span></p></div>' +
     '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Comunicación</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Comunicación', { cliente: c.nombre })) + '</div></div>' +
     '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
@@ -422,9 +452,10 @@ function vComs() {
 
 function vListas() {
   let h = '<div class="head"><div><h1>Listas</h1><p>Las opciones de los desplegables. Quitar un valor no cambia los registros que ya lo usan.</p></div></div><div class="lists">';
-  for (const k of Object.keys(LIST_LABELS)) {
+  const etapaKeys = (S.L.tipos || []).filter(t => !['Redes', 'Ads'].includes(t)).map(t => ['etapas:' + t, 'Etapas · ' + t]);
+  for (const [k, label] of [...Object.entries(LIST_LABELS), ...etapaKeys]) {
     const arr = S.L[k] || [];
-    h += '<section class="sheet"><div class="sheet-h"><h3>' + LIST_LABELS[k] + '</h3><span class="muted num">' + arr.length + '</span></div><div class="sheet-b"><div class="chips">' +
+    h += (etapaKeys.length && k === etapaKeys[0][0] ? '</div><h2 style="margin:8px 0 0">Etapas por tipo de proyecto</h2><p class="muted" style="margin:0">Se cargan al crear un proyecto de ese tipo. Cambiarlas no modifica los proyectos que ya existen.</p><div class="lists">' : '') + '<section class="sheet"><div class="sheet-h"><h3>' + esc(label) + '</h3><span class="muted num">' + arr.length + '</span></div><div class="sheet-b"><div class="chips">' +
       arr.map((v, i) => '<span class="chip">' + esc(v) + (isStaff() && !(k === 'estadosProyecto' && CERRADOS.has(v)) ? '<button aria-label="Quitar ' + esc(v) + '" data-act="listDel" data-k="' + k + '" data-i="' + i + '">×</button>' : '<span style="width:8px"></span>') + '</span>').join('') +
       '</div>' + (isStaff() ? '<form class="addrow" data-list="' + k + '"><input class="in" id="li-' + k + '" placeholder="Agregar valor" value="' + esc(S.listDraft[k] || '') + '" data-bind="listDraft.' + k + '"><button class="btn" type="submit">Agregar</button></form>' : '') + '</div></section>';
   }
@@ -462,8 +493,9 @@ const FORMS = {
     { k: 'tipo', label: 'Tipo', type: 'select', opts: () => S.L.tipos, blank: '—', staffOnly: 1 },
     { k: 'estado', label: 'Estado', type: 'select', opts: () => S.L.estadosProyecto },
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1, staffOnly: 1 },
+    { k: 'etapas', label: 'Etapas', type: 'etapas', full: 1 },
     { k: 'fechaInicio', label: 'Fecha de inicio', type: 'date' },
-    { k: 'entrega', label: 'Entrega pactada', type: 'date' },
+    { k: 'entrega', label: 'Entrega pactada', type: 'date', hint: 'Opcional' },
     { k: 'entregaReal', label: 'Entrega real', type: 'date' },
     { k: 'entregables', label: 'Entregables', type: 'textarea', full: 1, rows: 2 },
     { k: 'drive', label: 'Carpeta (Drive)', type: 'url', full: 1, ph: 'https://' },
@@ -483,7 +515,7 @@ const FORMS = {
   ], defaults: () => ({ tipo: 'Redes', estado: 'Activo', desde: thisMonth(), responsables: [] }), can: () => isStaff() },
   cliente: { arr: 'C', title: 'cliente', nuevo: 'Nuevo cliente', label: c => c.nombre, fields: [
     { k: 'nombre', label: 'Cliente', req: 1, full: 1 },
-    { k: 'estado', label: 'Estado', type: 'select', opts: () => S.L.estadosCliente },
+    { k: 'estado', label: 'Estado', type: 'select', html: v => opt('__auto', 'Automático (según abonos y proyectos)', v) + optsFrom(S.L.estadosCliente, v === '__auto' ? '' : v), hint: 'Elegí uno a mano solo si no coincide con el automático: queda fijado.' },
     { k: 'servicio', label: 'Servicio', type: 'select', opts: () => S.L.servicios, blank: '—' },
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
     { k: 'plan', label: 'Plan (referencia)', type: 'select', opts: () => S.L.planes, blank: '—' },
@@ -493,7 +525,7 @@ const FORMS = {
     { k: 'web', label: 'Instagram / web', ph: 'https:// o @usuario' },
     { k: 'carpeta', label: 'Carpeta del cliente', type: 'url', ph: 'https://' },
     { k: 'notas', label: 'Notas', type: 'textarea', full: 1, hint: 'No guardes contraseñas acá: usá el gestor de contraseñas del equipo.' },
-  ], defaults: () => ({ estado: 'Activo', responsables: [] }), can: () => isStaff() },
+  ], defaults: () => ({ estado: '__auto', responsables: [] }), can: () => isStaff() },
   persona: { arr: 'E', title: 'persona', nuevo: 'Nueva persona', label: e => e.persona, fields: [
     { k: 'persona', label: 'Cómo le decimos', req: 1 },
     { k: 'nombre', label: 'Nombre completo' },
@@ -518,7 +550,14 @@ const FORMS = {
   ], defaults: () => ({ fecha: today(), responsable: S.me ? S.me.alias : '' }), can: rec => rec ? (isStaff() || (S.me && rec.responsable === S.me.alias)) : (isStaff() || isExt()) },
 };
 
+function etapasInner() {
+  const e = (S.form && S.form.etapas) || [], ro = S.form && S.form.ro, tipo = ($('#f-tipo') || {}).value || '';
+  return (e.length ? e.map((x, i) => '<div class="etrow"><label class="chk"><input type="checkbox" data-fet="' + i + '"' + (x.ok ? ' checked' : '') + (ro ? ' disabled' : '') + '> ' + esc(x.n) + '</label>' + (ro ? '' : '<button type="button" class="btn ghost sm" data-act="fetDel" data-i="' + i + '" aria-label="Quitar etapa">✕</button>') + '</div>').join('') : '<span class="muted">Sin etapas.</span>') +
+    (ro ? '' : '<div class="etadd"><input class="in" id="f-etapa-nueva" placeholder="Agregar etapa"><button type="button" class="btn sm" data-act="fetAdd">Agregar</button>' + (plantilla(tipo).length ? '<button type="button" class="btn ghost sm" data-act="fetTpl">' + (e.length ? 'Reemplazar por' : 'Usar') + ' plantilla de ' + esc(tipo) + '</button>' : '') + '</div>');
+}
+function renderEtapasField() { const el = $('#f-etapas'); if (el) el.innerHTML = etapasInner(); }
 function fieldHtml(f, v, ro) {
+  if (f.type === 'etapas') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span><div id="f-etapas" class="etapas"></div><span class="hint">El avance del proyecto se ve por etapas. Las plantillas por tipo se editan en Listas.</span></div>';
   const id = 'f-' + f.k, dis = (ro || (f.staffOnly && !isStaff())) ? ' disabled' : '';
   const hint = f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '';
   if (f.type === 'check') return '<label class="chk ' + (f.full ? 'full' : '') + '"><input type="checkbox" id="' + id + '"' + (v ? ' checked' : '') + dis + '> ' + esc(f.label) + '</label>';
@@ -541,17 +580,19 @@ function openForm(kind, id, preset) {
   const ro = !def.can(rec);
   S.form = { kind, id: id || null, ro };
   const vals = rec ? Object.assign({}, rec) : Object.assign(def.defaults(), preset || {});
+  if (kind === 'cliente' && rec && !rec.estadoManual) vals.estado = '__auto';
   let foot;
   if (ro) foot = '<span class="muted">Solo lectura.</span><button type="button" class="btn" data-act="close">Cerrar</button>';
   else foot = '<span id="delzone">' + (rec && (isStaff() && (kind !== 'persona' || isAdmin())) ? '<button type="button" class="btn ghost danger" data-act="del">Eliminar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="savebtn">' + (rec ? 'Guardar cambios' : 'Crear ' + def.title) + '</button></span>';
   let adminBtn = '';
-  if (isAdmin() && rec && kind === 'proyecto') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aCuotas" data-id="' + esc(rec._id) + '">Meses de facturación (administración)</button></div>';
-  if (isAdmin() && rec && kind === 'abono') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aPrecio" data-abono="' + esc(rec._id) + '">Precio del abono (administración)</button></div>';
+  if (isAdmin() && rec && kind === 'proyecto') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aProyAdm" data-id="' + esc(rec._id) + '">Presupuesto y cobro (administración)</button></div>';
+  if (isAdmin() && rec && kind === 'abono') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aPrecio" data-abono="' + esc(rec._id) + '">Precio del abono (administración)</button>' + (rec.tipo === 'Ads' ? '<button type="button" class="btn sm" data-act="aAds" data-abono="' + esc(rec._id) + '">Pauta de Ads (administración)</button>' : '') + '</div>';
   const extra = adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
   const p = $('#panel');
   p.innerHTML = '<form id="form" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + (rec ? (ro ? 'Ver ' : 'Editar ') + def.title : 'Alta') + '</span><h2 id="panel-title">' + (rec ? esc(def.label(rec) || def.title) : def.nuevo) + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
     '<div class="panel-b">' + def.fields.map(f => fieldHtml(f, vals[f.k], ro)).join('') + extra + '</div><div class="panel-f">' + foot + '</div></form>';
   p.hidden = false; $('#scrim').hidden = false;
+  if (kind === 'proyecto') { S.form.etapas = JSON.parse(JSON.stringify(vals.etapas || [])); if (!S.form.etapas.length && plantilla(vals.tipo).length && !rec) S.form.etapas = plantilla(vals.tipo).map(n => ({ n, ok: false })); renderEtapasField(); }
   if (!rec) { const first = p.querySelector('.panel-b input:not([type=checkbox]):not([disabled]),.panel-b select:not([disabled]),.panel-b textarea:not([disabled])'); if (first) first.focus(); }
 }
 function closeForm() { $('#panel').hidden = true; $('#scrim').hidden = true; S.form = null; }
@@ -564,6 +605,7 @@ async function saveForm() {
   for (const f of def.fields) {
     if (f.staffOnly && !isStaff()) continue;
     const el = $('#f-' + f.k);
+    if (f.type === 'etapas') { out[f.k] = S.form.etapas || []; continue; }
     if (f.type === 'multi') out[f.k] = [...el.querySelectorAll('input:checked')].map(i => i.value);
     else out[f.k] = f.type === 'check' ? el.checked : el.value.trim();
     const e = $('#e-' + f.k); if (e) e.hidden = true;
@@ -581,6 +623,8 @@ async function saveForm() {
   }
   if (bad) return;
   if (kind === 'proyecto' && out.estado === 'Entregado' && !out.entregaReal) out.entregaReal = today();
+  if (kind === 'proyecto' && out.etapas && !out.etapas.length && !id && plantilla(out.tipo).length) out.etapas = plantilla(out.tipo).map(n => ({ n, ok: false }));
+  if (kind === 'cliente') { if (out.estado === '__auto') { out.estadoManual = false; delete out.estado; } else out.estadoManual = out.estado !== estadoAuto(out.nombre); }
   const prev = id ? S[def.arr].find(x => x._id === id) : null;
   const btn = $('#savebtn'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
@@ -633,12 +677,16 @@ const ACT = {
   listDel: t => { const k = t.dataset.k, i = +t.dataset.i; saveListas(k, S.L[k].filter((_, j) => j !== i)); },
   logout: async () => { await data.logout(); location.reload(); },
   cSelNone: () => { S.csel.clear(); render(); },
+  etCargar: t => { const p = S.P.find(x => x._id === t.dataset.id); if (p) upd('proyecto', p._id, { etapas: plantilla(p.tipo).map(n => ({ n, ok: false })) }); },
+  fetDel: t => { S.form.etapas.splice(+t.dataset.i, 1); renderEtapasField(); },
+  fetAdd: () => { const i = $('#f-etapa-nueva'); const v = i && i.value.trim(); if (!v) return; S.form.etapas.push({ n: v, ok: false }); renderEtapasField(); const n = $('#f-etapa-nueva'); if (n) n.focus(); },
+  fetTpl: () => { const tipo = ($('#f-tipo') || {}).value; S.form.etapas = plantilla(tipo).map(n => ({ n, ok: false })); renderEtapasField(); },
   cMasivo: async () => {
     const est = S.cmasivo, ids = [...S.csel]; if (!est || !ids.length) return;
     let ok = 0; const fails = [];
-    for (const id of ids) { try { await data.update('cliente', id, { estado: est }); ok++; } catch (err) { fails.push(err.message); } }
+    for (const id of ids) { const c = S.C.find(x => x._id === id); if (!c) continue; try { await data.update('cliente', id, patchEstado(c, est)); ok++; } catch (err) { fails.push(err.message); } }
     S.csel.clear(); S.cmasivo = '';
-    toast(ok + ' cliente' + (ok === 1 ? '' : 's') + ' → ' + est + (fails.length ? ' · ' + fails.length + ' con error: ' + fails[0] : ''));
+    toast(ok + ' cliente' + (ok === 1 ? '' : 's') + ' → ' + (est === '__auto' ? 'automático' : est) + (fails.length ? ' · ' + fails.length + ' con error: ' + fails[0] : ''));
     await reload();
   },
 };
@@ -664,11 +712,24 @@ document.addEventListener('change', e => {
     upd(kind, rec._id, { responsables: next }, resp(rec), true);
     return;
   }
+  if (t.dataset.etoggle) {
+    const p = S.P.find(x => x._id === t.dataset.etoggle); if (!p) return;
+    const next = etapasDe(p).map((x, i) => i === +t.dataset.i ? { ...x, ok: t.checked } : x);
+    p.etapas = next; S.openPick = 'etapa:' + p._id;
+    upd('proyecto', p._id, { etapas: next }, null, true);
+    if (next.length && next.every(x => x.ok) && isOpen(p)) toast('Todas las etapas listas. ¿Lo pasás a Entregado?');
+    return;
+  }
+  if (t.dataset.fet !== undefined && S.form && S.form.etapas) { S.form.etapas[+t.dataset.fet].ok = t.checked; return; }
+  if (t.id === 'f-tipo' && S.form && S.form.kind === 'proyecto' && S.form.etapas && !S.form.etapas.length && plantilla(t.value).length) { S.form.etapas = plantilla(t.value).map(n => ({ n, ok: false })); renderEtapasField(); return; }
+  if (t.id === 'f-tipo' && S.form && S.form.kind === 'proyecto') { renderEtapasField(); return; }
   if (t.dataset.csel) { if (t.checked) S.csel.add(t.dataset.csel); else S.csel.delete(t.dataset.csel); render(); return; }
   if (t.dataset.cselall) { const ids = [...document.querySelectorAll('[data-csel]')].map(x => x.dataset.csel); ids.forEach(id => t.checked ? S.csel.add(id) : S.csel.delete(id)); render(); return; }
   if (t.dataset.upd === 'cliente' && t.dataset.field === 'estado') {
     const c = S.C.find(x => x._id === t.dataset.id);
-    (async () => { try { await data.update('cliente', t.dataset.id, { estado: t.value }); toast((c ? c.nombre + ' → ' : '') + t.value); await reload(); } catch (err) { toast(err.message); await reload(); } })();
+    if (!c) return;
+    const pe = patchEstado(c, t.value);
+    (async () => { try { await data.update('cliente', t.dataset.id, pe); toast(c.nombre + (t.value === '__auto' ? ' vuelve al estado automático' : ' → ' + t.value + (pe.estadoManual ? ' (fijado a mano)' : ''))); await reload(); } catch (err) { toast(err.message); await reload(); } })();
     return;
   }
   if (t.dataset.upd) {
@@ -704,7 +765,7 @@ document.addEventListener('submit', async e => {
     saveListas(k, [...(S.L[k] || []), v]);
   }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.form) closeForm(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && (S.form || !$('#panel').hidden)) closeForm(); });
 window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (viewFn(v) && v !== S.view) { S.view = v; S.ficha = null; render(); } });
 
 /* Arrastrar en el tablero */
@@ -727,6 +788,7 @@ async function reload() {
   try {
     const d = await data.loadAll();
     const L = {}; for (const k of Object.keys(DEF)) L[k] = Array.isArray(d.L[k]) && d.L[k].length ? [...d.L[k]] : [...DEF[k]];
+    for (const [k, v] of Object.entries(d.L || {})) if (k.startsWith('etapas:') && Array.isArray(v)) L[k] = [...v];
     Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, L, status: 'ok' });
     if (isAdmin() && ADM) await ADM.load();
     banner('');
@@ -750,7 +812,7 @@ async function start(sess) {
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
   S.me = me;
   if (me.rol === 'admin' && !ADM) {
-    ADM = initAdmin({ S, esc, opt, optsFrom, pill, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
+    ADM = initAdmin({ S, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
     ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
     Object.assign(ACT, ADM.actions);
   }

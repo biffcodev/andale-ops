@@ -8,7 +8,7 @@ export function initAdmin(ctx) {
   const MONEDAS = ['ARS', 'USD', 'EUR'];
   const EMISORES = ['Fer', 'Jime'];
   const TIPOS_COMP = ['Factura ARCA', 'Invoice', 'Otro'];
-  const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [],
+  const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], rt: { anio: String(new Date().getFullYear()), ver: 'proyectos' },
     mes: thisMonth(), sel: null, rd: null, ff: { estado: 'abiertas', cliente: '', emisor: '', anio: String(new Date().getFullYear()) },
     pp: { sel: new Set(), pct: '', desde: addMonth(thisMonth(), 1), motivo: '' }, form: null };
 
@@ -54,6 +54,8 @@ export function initAdmin(ctx) {
     S.A.filter(a => a.cliente === cliente && abonoEnMes(a, m)).sort((a, b) => cmp(a.tipo, b.tipo)).forEach(a => {
       const p = precioEn(a._id, m);
       out.push({ inc: true, origen: 'Abono', ref: 'abono:' + a._id, concepto: conceptoAbono(a, m), monto: p ? String(p.monto) : '', moneda: p ? p.moneda : (cadm(cliente).moneda || 'ARS') });
+      const af = AD.ABF.get(a._id);
+      if (a.tipo === 'Ads' && af && af.inversion && af.inversion_paga === 'àndale') out.push({ inc: true, origen: 'Pauta', ref: 'pauta:' + a._id + ':' + m, concepto: 'Inversión en pauta' + (af.plataformas ? ' (' + af.plataformas + ')' : '') + ' · ' + cap(monthLabel(m).split(' ')[0]), monto: String(af.inversion), moneda: af.inversion_moneda || 'ARS' });
     });
     S.P.filter(p => p.cliente === cliente).forEach(p => {
       AD.PF.filter(c => c.proyecto_id === p._id && c.periodo === m).forEach(c => out.push({ inc: true, origen: 'Proyecto', ref: 'pf:' + c.id, concepto: p.proyecto + (c.concepto ? ' · ' + c.concepto : ''), monto: c.monto == null ? '' : String(c.monto), moneda: c.moneda }));
@@ -424,6 +426,160 @@ export function initAdmin(ctx) {
     return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Comprobante</th><th>Emite</th><th class="r">Monto</th><th class="r">Saldo</th><th>Estado</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' comprobantes · total ' + esc(multi(tot)) + ' · por cobrar ' + esc(multi(sal)) + '</div></section>';
   }
 
+  /* ---------- Presupuesto, plan de pagos, costos y margen ---------- */
+  const PLANES_PAGO = ['Contado', '50/50', '3 cuotas', '4 cuotas', '6 cuotas', 'Personalizado'];
+  function cuotasPlan(plan, total, m0) {
+    if (!total || !m0 || !/^\d{4}-\d{2}$/.test(m0)) return [];
+    const n = plan === 'Contado' ? 1 : plan === '50/50' ? 2 : parseInt(plan, 10) || 0; if (!n) return [];
+    const base = Math.floor(total / n * 100) / 100;
+    return Array.from({ length: n }, (_, i) => ({
+      periodo: addMonth(m0, i), monto: i === n - 1 ? r2(total - base * (n - 1)) : base,
+      concepto: plan === 'Contado' ? 'Pago total' : plan === '50/50' ? (i ? 'Saldo 50%' : 'Anticipo 50%') : 'Cuota ' + (i + 1) + '/' + n,
+    }));
+  }
+  const refsEnviadas = () => { const s = new Set(); AD.R.filter(r => r.estado === 'Enviado').forEach(r => r.items.forEach(i => { if (i.inc && i.ref) s.add(i.ref); })); return s; };
+  const movDe = id => AD.MV.find(v => v.id === id);
+  function costos(kind, id, anio) { // { moneda: monto } de egresos imputados
+    const acc = {};
+    AD.IMP.filter(x => (kind === 'abono' ? x.abono_id : x.proyecto_id) === id).forEach(x => { const mv = movDe(x.movimiento_id); if (!mv || (anio && !(mv.fecha || '').startsWith(anio))) return; add(acc, mv.moneda, x.monto); });
+    return acc;
+  }
+  function finProyecto(p) {
+    const fz = AD.PFZ.get(p._id) || {}, cs = AD.PF.filter(x => x.proyecto_id === p._id).sort((a, b) => a.periodo.localeCompare(b.periodo)), env = refsEnviadas();
+    const moneda = fz.moneda || (cs[0] && cs[0].moneda) || cadm(p.cliente).moneda || 'ARS';
+    const programado = r2(cs.reduce((a, c) => a + (c.monto || 0), 0)), facturado = r2(cs.filter(c => env.has('pf:' + c.id)).reduce((a, c) => a + (c.monto || 0), 0));
+    const presupuesto = fz.presupuesto != null ? fz.presupuesto : (programado || null);
+    const cost = costos('proyecto', p._id), costMismo = cost[moneda] || 0, costOtras = Object.keys(cost).filter(k => k !== moneda);
+    const margen = presupuesto != null ? r2(presupuesto - costMismo) : null;
+    return { fz, cs, moneda, programado, facturado, presupuesto, cost, costMismo, costOtras, margen, pct: presupuesto ? Math.round(margen / presupuesto * 100) : null, env };
+  }
+  function formProyectoAdm(proyectoId) {
+    const p = S.P.find(x => x._id === proyectoId); if (!p) return;
+    const f = finProyecto(p), facturadas = f.cs.filter(c => f.env.has('pf:' + c.id)).length;
+    const vals = { presupuesto: f.fz.presupuesto ?? (f.programado || ''), moneda: f.moneda, plan_pago: f.fz.plan_pago || (f.cs.length ? 'Personalizado' : '50/50'), inicio_cobro: f.fz.inicio_cobro || (f.cs[0] ? f.cs[0].periodo : thisMonth()), regenerar: !f.cs.length, notas: f.fz.notas || '' };
+    const resumenHtml = () => '<div class="field full"><span class="lbl">Cómo viene</span><dl class="kv">' +
+      '<dt>Presupuesto</dt><dd class="money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</dd>' +
+      '<dt>Cuotas programadas</dt><dd class="money">' + money(f.programado, f.moneda) + ' <span class="muted">(' + f.cs.length + ')</span></dd>' +
+      '<dt>Ya en resúmenes enviados</dt><dd class="money">' + money(f.facturado, f.moneda) + '</dd>' +
+      '<dt>Costos de proveedores</dt><dd class="money">' + esc(multi(f.cost)) + '</dd>' +
+      '<dt>Margen</dt><dd><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? ' <span class="muted">' + f.pct + '%</span>' : '') + '</dd></dl></div>';
+    const cuotasHtml = '<div class="field full"><span class="lbl">Cuotas cargadas</span>' + (f.cs.length ? '<div class="rows" style="border:1px solid var(--line);border-radius:8px">' + f.cs.map(c => '<div class="row" style="cursor:default"><span class="d">' + fmt(c.periodo) + '</span><span class="t"><b class="money">' + money(c.monto, c.moneda) + '</b><span>' + esc(c.concepto || '') + (f.env.has('pf:' + c.id) ? ' · <b style="color:var(--ok)">facturada</b>' : '') + '</span></span>' + (f.env.has('pf:' + c.id) ? '' : '<button type="button" class="btn ghost sm" data-act="aCuotaDel" data-id="' + esc(c.id) + '" aria-label="Quitar">✕</button>') + '</div>').join('') + '</div>' : '<span class="muted">Ninguna todavía.</span>') +
+      '<span class="toolbar" style="margin-top:6px"><button type="button" class="btn ghost sm" data-act="aCuotas" data-id="' + esc(p._id) + '">+ Mes suelto</button></span></div>';
+    openPanel({
+      title: p.proyecto, eyebrow: 'Presupuesto y cobro · ' + p.cliente, saveLabel: 'Guardar',
+      intro: 'Cargá el presupuesto aprobado y cómo se paga: las cuotas se generan solas y aparecen en el resumen de cada mes.' + (facturadas ? ' <b>Hay ' + facturadas + ' cuota(s) ya facturada(s): no se regeneran; ajustá las restantes a mano.</b>' : ''),
+      values: vals,
+      fields: [
+        { k: 'presupuesto', label: 'Presupuesto aprobado', num: 1 },
+        { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
+        { k: 'plan_pago', label: 'Forma de pago', type: 'select', opts: PLANES_PAGO },
+        { k: 'inicio_cobro', label: 'Primera cuota (mes)', type: 'month', month: 1 },
+        ...(facturadas ? [] : [{ k: 'regenerar', label: f.cs.length ? 'Reemplazar las cuotas cargadas por las de este plan' : 'Generar las cuotas de este plan', type: 'check' }]),
+        { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2 },
+      ],
+      extra: '<div class="field full" id="pf-prev"></div>' + cuotasHtml + resumenHtml(),
+      onInput: () => {
+        const v = { pres: parseMonto(($('#af-presupuesto') || {}).value), plan: ($('#af-plan_pago') || {}).value, m0: ($('#af-inicio_cobro') || {}).value, mon: ($('#af-moneda') || {}).value };
+        const cs = cuotasPlan(v.plan, v.pres, v.m0), el = $('#pf-prev'); if (!el) return;
+        el.innerHTML = cs.length ? '<span class="lbl">Cuotas del plan</span><div class="tags" style="gap:6px">' + cs.map(c => '<span class="tag">' + esc(fmt(c.periodo)) + ' · ' + esc(c.concepto) + ' · ' + esc(money(c.monto, v.mon)) + '</span>').join('') + '</div>' : (v.plan === 'Personalizado' ? '<span class="hint">Personalizado: cargá cada mes con “+ Mes suelto”.</span>' : '');
+      },
+      onSave: async v => {
+        await data.upsert('proyecto_finanzas', { proyecto_id: p._id, presupuesto: v.presupuesto, moneda: v.moneda, plan_pago: v.plan_pago, inicio_cobro: v.inicio_cobro ? v.inicio_cobro + '-01' : null, notas: v.notas, updated_at: new Date().toISOString() }, 'proyecto_id');
+        const cs = cuotasPlan(v.plan_pago, v.presupuesto, v.inicio_cobro);
+        if (v.regenerar && cs.length) {
+          await data.del('proyecto_facturacion', p._id, 'proyecto_id');
+          await data.insMany('proyecto_facturacion', cs.map(c => ({ proyecto_id: p._id, periodo: c.periodo + '-01', concepto: c.concepto, monto: c.monto, moneda: v.moneda })));
+        }
+        toast('Presupuesto guardado' + (v.regenerar && cs.length ? ' · ' + cs.length + ' cuota(s) generada(s)' : ''));
+      },
+    });
+    AD.form.onInput();
+  }
+  function formAds(abonoId) {
+    const a = S.A.find(x => x._id === abonoId); if (!a) return;
+    const af = AD.ABF.get(abonoId) || {};
+    openPanel({
+      title: a.cliente + ' · Ads', eyebrow: 'Pauta publicitaria',
+      intro: 'El honorario de gestión es el precio del abono. Acá va la inversión en pauta (Meta, Google), que es plata del cliente: si la adelanta àndale, se suma al resumen como ítem aparte para reintegro.',
+      values: { inversion: af.inversion ?? '', inversion_moneda: af.inversion_moneda || (precioEn(abonoId, thisMonth()) || {}).moneda || 'ARS', inversion_paga: af.inversion_paga || 'Cliente', plataformas: af.plataformas || '', notas: af.notas || '' },
+      fields: [
+        { k: 'inversion', label: 'Inversión mensual en pauta', num: 1, hint: 'Valor habitual. Si un mes cambia, editalo en el resumen de ese mes.' },
+        { k: 'inversion_moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
+        { k: 'inversion_paga', label: 'Quién la paga', type: 'select', html: v => opt('Cliente', 'El cliente, con su tarjeta', v) + opt('àndale', 'La adelanta àndale y se cobra en el resumen', v), full: 1 },
+        { k: 'plataformas', label: 'Plataformas', ph: 'Meta + Google', full: 1 },
+        { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2 },
+      ],
+      onSave: async v => { await data.upsert('abono_finanzas', { abono_id: abonoId, inversion: v.inversion, inversion_moneda: v.inversion_moneda, inversion_paga: v.inversion_paga, plataformas: v.plataformas, notas: v.notas, updated_at: new Date().toISOString() }, 'abono_id'); toast('Pauta guardada'); },
+    });
+  }
+
+  // Imputación de un egreso a abonos / proyectos (para el margen)
+  function destinosOpts(cur) {
+    const ab = S.A.filter(a => a.estado !== 'Baja' || 'a:' + a._id === cur).sort((x, y) => cmp(x.cliente, y.cliente) || cmp(x.tipo, y.tipo));
+    const pr = S.P.filter(p => p.estado !== 'Cancelado' || 'p:' + p._id === cur).sort((x, y) => cmp(x.cliente, y.cliente) || cmp(x.proyecto, y.proyecto));
+    return opt('', 'Elegí abono o proyecto', cur) + '<optgroup label="Abonos">' + ab.map(a => opt('a:' + a._id, a.cliente + ' · ' + a.tipo + (a.plan ? ' ' + a.plan : ''), cur)).join('') + '</optgroup>' +
+      '<optgroup label="Proyectos">' + pr.map(p => opt('p:' + p._id, p.cliente + ' · ' + p.proyecto, cur)).join('') + '</optgroup>';
+  }
+  function impSumHtml() {
+    const total = parseMonto(($('#af-monto') || {}).value) || 0, sum = r2(AD.impDraft.reduce((a, x) => a + (parseMonto(x.monto) || 0), 0));
+    const f = n => String(n).replace('.', ',');
+    return AD.impDraft.length ? 'Imputado ' + esc(f(sum)) + ' de ' + esc(f(total)) + (sum > total + 0.01 ? ' · <b style="color:var(--danger)">supera el monto</b>' : sum < total - 0.01 ? ' · queda ' + esc(f(r2(total - sum))) + ' sin imputar' : ' ✓') : 'Opcional. Si este egreso es un costo de un cliente (Ads, web, fotos), imputalo para ver el margen.';
+  }
+  const updateImpSum = () => { const el = $('#imp-sum'); if (el) el.innerHTML = impSumHtml(); };
+  function renderImp() {
+    const box = $('#imp-box'); if (!box) return;
+    box.innerHTML = AD.impDraft.map((x, i) => '<div class="improw"><select class="in" aria-label="Destino" data-impi="' + i + '" data-impk="dest">' + destinosOpts(x.dest) + '</select><input class="in" inputmode="decimal" aria-label="Monto" placeholder="Monto" data-impi="' + i + '" data-impk="monto" value="' + esc(x.monto) + '"><button type="button" class="btn ghost sm" data-act="aImpDel" data-i="' + i + '" aria-label="Quitar">✕</button></div>').join('') +
+      '<div class="toolbar"><button type="button" class="btn sm" data-act="aImpAdd">+ Agregar destino</button>' + (AD.impDraft.length > 1 ? '<button type="button" class="btn ghost sm" data-act="aImpSplit">Repartir en partes iguales</button>' : '') + (AD.impCopy ? '<button type="button" class="btn ghost sm" data-act="aImpCopy">Copiar reparto del pago anterior a ' + esc(AD.impCopy.contraparte) + '</button>' : '') + '</div>' +
+      '<span class="hint" id="imp-sum">' + impSumHtml() + '</span>';
+  }
+  async function guardarImp(movId) {
+    const rows = AD.impDraft.filter(x => x.dest && parseMonto(x.monto) > 0).map(x => ({ movimiento_id: movId, abono_id: x.dest.startsWith('a:') ? x.dest.slice(2) : null, proyecto_id: x.dest.startsWith('p:') ? x.dest.slice(2) : null, monto: r2(parseMonto(x.monto)) }));
+    const prev = AD.IMP.filter(x => x.movimiento_id === movId);
+    if (!prev.length && !rows.length) return;
+    await data.del('imputaciones', movId, 'movimiento_id');
+    if (rows.length) await data.insMany('imputaciones', rows);
+  }
+
+  /* ---------- Vista: Rentabilidad ---------- */
+  function vRent() {
+    const rt = AD.rt, y = rt.anio, m = thisMonth();
+    const anios = [...new Set([...AD.MV.map(v => (v.fecha || '').slice(0, 4)), y])].filter(Boolean).sort().reverse();
+    const provAnio = AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.cuenta === 'Proveedores' && v.egreso > 0);
+    const imputadoDe = id => r2(AD.IMP.filter(x => x.movimiento_id === id).reduce((a, x) => a + x.monto, 0));
+    const sinImp = provAnio.map(v => ({ v, falta: r2(v.egreso - imputadoDe(v.id)) })).filter(x => x.falta > 0.009).sort((a, b) => (b.v.fecha || '').localeCompare(a.v.fecha || ''));
+    const accSin = {}; sinImp.forEach(x => add(accSin, x.v.moneda, x.falta));
+    const accImp = {}; AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (mv && (mv.fecha || '').startsWith(y)) add(accImp, mv.moneda, x.monto); });
+    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Rentabilidad</h1><p>Cuánto deja cada proyecto y cada abono: lo que se cobra menos lo que se paga a proveedores imputado (Ads, web, fotos). Es margen de contribución: no descuenta sueldos ni gastos fijos.</p></div>' +
+      '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['proyectos', 'Proyectos'], ['abonos', 'Abonos']].map(([k, l]) => '<button data-act="aRtVer" data-v="' + k + '" aria-pressed="' + (rt.ver === k) + '">' + l + '</button>').join('') + '</div>' +
+      '<select class="in" aria-label="Año" data-art="anio">' + anios.map(a => opt(a, a, y)).join('') + '</select></div></div>';
+    h += '<section class="kpis"><div class="kpi"><span class="eyebrow">Costos imputados ' + esc(y) + '</span><b style="font-size:20px" class="money">' + esc(multi(accImp)) + '</b><span>a abonos y proyectos</span></div>' +
+      '<div class="kpi ' + (sinImp.length ? 'warn' : '') + '"><span class="eyebrow">Pagos a proveedores sin imputar</span><b style="font-size:20px" class="money">' + esc(multi(accSin)) + '</b><span>' + sinImp.length + ' movimientos en ' + esc(y) + '</span></div></section>';
+    if (rt.ver === 'proyectos') {
+      const ps = S.P.filter(p => p.estado !== 'Cancelado' && (AD.PFZ.has(p._id) || AD.PF.some(c => c.proyecto_id === p._id) || AD.IMP.some(x => x.proyecto_id === p._id))).map(p => ({ p, f: finProyecto(p) })).sort((a, b) => cmp(a.p.cliente, b.p.cliente));
+      const sinPres = S.P.filter(p => isOpenP(p) && !AD.PFZ.has(p._id) && !AD.PF.some(c => c.proyecto_id === p._id)).length;
+      h += '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2>' + (sinPres ? '<span class="muted">' + sinPres + ' abiertos sin presupuesto cargado</span>' : '') + '</div>' + (ps.length ? '<div class="tbl"><table><thead><tr><th>Proyecto</th><th>Estado</th><th class="r">Presupuesto</th><th class="r">Facturado</th><th class="r">Falta facturar</th><th class="r">Costos</th><th class="r">Margen</th><th></th></tr></thead><tbody>' +
+        ps.map(({ p, f }) => '<tr><td class="name">' + esc(p.proyecto) + '<span class="sub">' + esc(p.cliente) + (f.fz.plan_pago ? ' · ' + esc(f.fz.plan_pago) : '') + '</span></td><td>' + pill(p.estado, ctx.stVar ? ctx.stVar(p.estado) : '--muted') + '</td>' +
+          '<td class="r money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</td><td class="r money">' + money(f.facturado, f.moneda) + '</td><td class="r money">' + (f.presupuesto != null ? money(r2(f.presupuesto - f.facturado), f.moneda) : '—') + '</td>' +
+          '<td class="r money">' + esc(multi(f.cost) || '—') + '</td><td class="r"><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? '<span class="sub">' + f.pct + '%</span>' : '') + '</td>' +
+          '<td class="r"><button class="btn ghost sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">Editar</button></td></tr>').join('') + '</tbody></table></div>' : emptyBox('Todavía no hay proyectos con presupuesto', 'Abrí un proyecto → “Presupuesto y cobro” y cargá el monto aprobado y la forma de pago.')) + '</section>';
+    } else {
+      const meses = []; for (let i = 1; i <= 12; i++) { const mm = y + '-' + String(i).padStart(2, '0'); if (mm <= m) meses.push(mm); }
+      const rows = S.A.map(a => {
+        const ing = {}; meses.forEach(mm => { if (abonoEnMes(a, mm)) { const pr = precioEn(a._id, mm); if (pr) add(ing, pr.moneda, pr.monto); } });
+        const cost = costos('abono', a._id, y);
+        if (!Object.keys(ing).length && !Object.keys(cost).length) return null;
+        const mon = Object.keys(ing)[0] || Object.keys(cost)[0], same = Object.keys(cost).every(k => k === mon);
+        const margen = same ? r2((ing[mon] || 0) - (cost[mon] || 0)) : null;
+        return { a, ing, cost, mon, margen, pct: margen != null && ing[mon] ? Math.round(margen / ing[mon] * 100) : null };
+      }).filter(Boolean).sort((x, z) => cmp(x.a.cliente, z.a.cliente) || cmp(x.a.tipo, z.a.tipo));
+      h += '<section class="sheet"><div class="sheet-h"><h2>Abonos · ' + esc(y) + '</h2><span class="muted">ingresos según precio vigente de cada mes; la pauta de Ads no cuenta como ingreso</span></div>' + (rows.length ? '<div class="tbl"><table><thead><tr><th>Abono</th><th class="r">Ingresos</th><th class="r">Costos</th><th class="r">Margen</th><th></th></tr></thead><tbody>' +
+        rows.map(r => '<tr><td class="name">' + esc(r.a.cliente) + '<span class="sub">' + esc(r.a.tipo + (r.a.plan ? ' · ' + r.a.plan : '') + (r.a.estado !== 'Activo' ? ' · ' + r.a.estado : '')) + '</span></td><td class="r money">' + esc(multi(r.ing) || '—') + '</td><td class="r money">' + esc(multi(r.cost) || '—') + '</td><td class="r"><b class="money">' + (r.margen != null ? money(r.margen, r.mon) : '—') + '</b>' + (r.pct != null ? '<span class="sub">' + r.pct + '%</span>' : '') + '</td><td class="r">' + (r.a.tipo === 'Ads' ? '<button class="btn ghost sm" data-act="aAds" data-abono="' + esc(r.a._id) + '">Pauta</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('Sin datos para ' + y, 'Cargá precios en los abonos.')) + '</section>';
+    }
+    h += '<section class="sheet"><div class="sheet-h"><h2>Pagos a proveedores sin imputar</h2><span class="muted">' + sinImp.length + '</span></div>' + (sinImp.length ? '<div class="rows">' + sinImp.slice(0, 30).map(({ v, falta }) => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b>' + esc(v.contraparte || v.subcuenta) + ' · <span class="money">' + money(falta, v.moneda) + '</span></b><span>' + esc(v.detalle || '') + '</span></span><button class="btn sm" data-act="aMov" data-id="' + esc(v.id) + '">Imputar</button></div>').join('') + '</div>' : emptyBox('Todo imputado', 'Los pagos a proveedores del año ya están asignados a abonos o proyectos.')) + '</section>';
+    return h;
+  }
+  const isOpenP = p => !['Entregado', 'Cancelado'].includes(p.estado);
+
   /* ---------- Vista: Precios y aumentos ---------- */
   function vPrecios() {
     const pp = AD.pp, m = thisMonth();
@@ -445,9 +601,10 @@ export function initAdmin(ctx) {
       return '<tr><td><input type="checkbox" aria-label="Seleccionar" data-ppsel="' + esc(a._id) + '"' + (pp.sel.has(a._id) ? ' checked' : '') + (cur ? '' : ' disabled') + '></td><td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button><span class="sub">' + esc(a.tipo + (a.plan ? ' · ' + a.plan : '')) + '</span></td>' +
         '<td class="r">' + (cur ? '<span class="money">' + money(cur.monto, cur.moneda) + '</span><span class="sub">desde ' + fmt(cur.desde) + '</span>' : '<span class="days late">Sin precio</span>') + '</td>' +
         '<td class="r">' + (futuro ? '<span class="money">' + money(futuro.monto, futuro.moneda) + '</span><span class="sub">desde ' + fmt(futuro.desde) + (futuro.motivo ? ' · ' + esc(futuro.motivo) : '') + '</span>' : nuevo ? '<span class="money" style="opacity:.7">' + money(nuevo, cur.moneda) + '</span><span class="sub">vista previa</span>' : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (a.tipo === 'Ads' ? (() => { const af = AD.ABF.get(a._id); return '<button class="btn ghost sm" data-act="aAds" data-abono="' + esc(a._id) + '">' + (af && af.inversion ? esc((af.inversion_paga === 'àndale' ? 'Adelanta àndale · ' : 'Paga el cliente · ') + money(af.inversion, af.inversion_moneda)) : 'Cargar pauta') + '</button>'; })() : '<span class="muted">—</span>') + '</td>' +
         '<td>' + aviso + '</td><td class="muted">' + hist.length + ' precios</td><td class="r"><button class="btn ghost sm" data-act="aPrecio" data-abono="' + esc(a._id) + '">' + (cur ? 'Cambiar precio' : 'Cargar precio') + '</button></td></tr>';
     }).join('');
-    return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th></th><th>Abono</th><th class="r">Precio vigente</th><th class="r">Próximo</th><th>Aviso</th><th>Historial</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+    return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th></th><th>Abono</th><th class="r">Precio vigente</th><th class="r">Próximo</th><th>Pauta</th><th>Aviso</th><th>Historial</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
   }
 
   /* ---------- Sección en la ficha del cliente ---------- */
@@ -470,8 +627,8 @@ export function initAdmin(ctx) {
       '<dt>Carpeta</dt><dd>' + (ca.carpeta_admin ? '<a href="' + esc(ca.carpeta_admin) + '" target="_blank" rel="noopener">Carpeta de administración</a>' : '<span class="muted">—</span>') + '</dd>' +
       '<dt>Saldo</dt><dd><span class="money">' + esc(multi(sal)) + '</span></dd></dl></div>' +
       (facs.length ? '<div class="rows" style="border-top:1px solid var(--line)">' + facs.slice(0, 8).map(f => '<button class="row" data-act="aFactura" data-id="' + esc(f.id) + '"><span class="d">' + fmt(f.fecha) + '</span><span class="t"><b>' + esc(f.tipo + ' ' + (f.numero || 's/n')) + '</b><span class="money">' + money(f.monto, f.moneda) + '</span></span>' + efPill(f) + '</button>').join('') + '</div>' : '') +
-      '<div class="sheet-b" style="border-top:1px solid var(--line);display:grid;gap:8px"><b>Proyectos: meses de facturación</b>' +
-      (proys.length ? proys.map(p => { const cs = cuotas.filter(x => x.proyecto_id === p._id); return '<div class="toolbar" style="justify-content:space-between"><span>' + esc(p.proyecto) + (cs.length ? ' · ' + cs.map(x => fmt(x.periodo) + ' ' + money(x.monto, x.moneda)).join(', ') : ' <span class="muted">· sin meses</span>') + '</span><button class="btn ghost sm" data-act="aCuotas" data-id="' + esc(p._id) + '">Editar</button></div>'; }).join('') : '<span class="muted">Sin proyectos.</span>') +
+      '<div class="sheet-b" style="border-top:1px solid var(--line);display:grid;gap:8px"><b>Proyectos: presupuesto y cobro</b>' +
+      (proys.length ? proys.map(p => { const f = finProyecto(p); return '<div class="toolbar" style="justify-content:space-between"><span>' + esc(p.proyecto) + (f.presupuesto != null ? ' · <span class="money">' + money(f.presupuesto, f.moneda) + '</span>' + (f.fz.plan_pago ? ' (' + esc(f.fz.plan_pago) + ')' : '') + ' · facturado ' + money(f.facturado, f.moneda) : ' <span class="muted">· sin presupuesto</span>') + '</span><button class="btn ghost sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">Presupuesto</button></div>'; }).join('') : '<span class="muted">Sin proyectos.</span>') +
       '<span class="toolbar"><button class="btn sm" data-act="aCuentaDe" data-cliente="' + esc(c.nombre) + '">Cuenta de ' + esc(monthLabel(thisMonth())) + '</button><button class="btn sm" data-act="aMailLibre" data-cliente="' + esc(c.nombre) + '">Enviar email</button></span></div>' +
       emailsDe(c.nombre) + '</section>';
   }
@@ -702,17 +859,24 @@ export function initAdmin(ctx) {
         { k: 'reintegro_a', label: 'Lo pagó un socio (se le debe)', type: 'select', opts: EMISORES, blank: 'No' },
         { k: 'reintegrado', label: 'Ya se le devolvió', type: 'check' },
       ],
-      extra: '<datalist id="dl-sub">' + subs.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist><datalist id="dl-partes">' + partes.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist>' + (x && x.factura_id ? '<p class="formnote">Es el cobro de una factura: si lo borrás, la factura vuelve a quedar con saldo.</p>' : ''),
+      extra: '<div class="field full"><span class="lbl">Costo de… (para ver el margen)</span><div id="imp-box" class="impbox"></div></div><datalist id="dl-sub">' + subs.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist><datalist id="dl-partes">' + partes.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist>' + (x && x.factura_id ? '<p class="formnote">Es el cobro de una factura: si lo borrás, la factura vuelve a quedar con saldo.</p>' : ''),
       onSave: async v => {
         const cli = S.C.find(c => c.nombre === v.contraparte), per = S.E.find(e => e.persona === v.contraparte);
         const row = { fecha: v.fecha, cuenta: v.cuenta, subcuenta: v.subcuenta, contraparte: v.contraparte, cliente_id: cli ? cli._id : (x ? x.cliente_id : null), persona_id: per ? per._id : (x ? x.persona_id : null), detalle: v.detalle, ingreso: v.tipo === 'Ingreso' ? v.monto : 0, egreso: v.tipo === 'Egreso' ? v.monto : 0, moneda: v.moneda, caja_id: v.caja || null, reintegro_a: v.reintegro_a || '', reintegrado: !!v.reintegrado };
-        if (x) await data.upd('movimientos', x.id, row); else await data.ins('movimientos', row);
+        let mid = x && x.id;
+        if (x) await data.upd('movimientos', x.id, row); else mid = (await data.ins('movimientos', row)).id;
+        if (v.tipo === 'Egreso') await guardarImp(mid); else if (x && AD.IMP.some(i => i.movimiento_id === x.id)) await data.del('imputaciones', x.id, 'movimiento_id');
         toast(x ? 'Movimiento actualizado' : 'Movimiento cargado');
       },
       onDelete: x ? async () => { await data.del('movimientos', x.id); toast('Movimiento borrado'); } : null,
     });
     const s = $('#af-subcuenta'); if (s) s.setAttribute('list', 'dl-sub');
     const c = $('#af-contraparte'); if (c) c.setAttribute('list', 'dl-partes');
+    AD.impDraft = (x ? AD.IMP.filter(i => i.movimiento_id === x.id) : []).map(i => ({ dest: i.abono_id ? 'a:' + i.abono_id : 'p:' + i.proyecto_id, monto: String(i.monto) }));
+    const prevMov = (contraparte) => AD.MV.filter(v => v.contraparte === contraparte && (!x || v.id !== x.id) && AD.IMP.some(i => i.movimiento_id === v.id)).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0];
+    const setCopy = () => { const cp = ($('#af-contraparte') || {}).value; const pm = cp && prevMov(cp); AD.impCopy = pm ? { contraparte: cp, mov: pm } : null; };
+    setCopy(); AD.form.onInput = () => { const had = !!AD.impCopy; setCopy(); if (had !== !!AD.impCopy) renderImp(); else updateImpSum(); };
+    renderImp();
   }
 
   /* ---------- Acciones ---------- */
@@ -752,7 +916,19 @@ export function initAdmin(ctx) {
     aPrecio: t => formPrecio(t.dataset.abono),
     aPrecioDel: async t => { try { await data.del('precios_abono', t.dataset.id); ctx.closeForm(); toast('Precio borrado'); await ctx.reload(); } catch (err) { toast(err.message); } },
     aCuotas: t => formCuotas(t.dataset.id),
-    aCuotaDel: async t => { const pid = (AD.PF.find(x => x.id === t.dataset.id) || {}).proyecto_id; try { await data.del('proyecto_facturacion', t.dataset.id); await ctx.reload(); if (pid) formCuotas(pid); } catch (err) { toast(err.message); } },
+    aProyAdm: t => formProyectoAdm(t.dataset.id),
+    aAds: t => formAds(t.dataset.abono),
+    aRtVer: t => { AD.rt.ver = t.dataset.v; ctx.render(); },
+    aImpAdd: () => { AD.impDraft.push({ dest: '', monto: '' }); renderImp(); },
+    aImpDel: t => { AD.impDraft.splice(+t.dataset.i, 1); renderImp(); },
+    aImpSplit: () => { const total = parseMonto(($('#af-monto') || {}).value) || 0, n = AD.impDraft.length; if (!n || !total) return; const base = Math.floor(total / n * 100) / 100; AD.impDraft.forEach((x, i) => { x.monto = String(i === n - 1 ? r2(total - base * (n - 1)) : base); }); renderImp(); },
+    aImpCopy: () => {
+      const c = AD.impCopy; if (!c) return; const total = parseMonto(($('#af-monto') || {}).value) || 0;
+      const prev = AD.IMP.filter(i => i.movimiento_id === c.mov.id), sum = prev.reduce((a, i) => a + i.monto, 0) || 1;
+      AD.impDraft = prev.map(i => ({ dest: i.abono_id ? 'a:' + i.abono_id : 'p:' + i.proyecto_id, monto: total ? String(r2(total * i.monto / sum)) : String(i.monto) }));
+      renderImp();
+    },
+    aCuotaDel: async t => { const pid = (AD.PF.find(x => x.id === t.dataset.id) || {}).proyecto_id; const enPres = AD.form && AD.form.eyebrow && AD.form.eyebrow.startsWith('Presupuesto'); try { await data.del('proyecto_facturacion', t.dataset.id); await ctx.reload(); if (pid) (enPres ? formProyectoAdm : formCuotas)(pid); } catch (err) { toast(err.message); } },
     aFf: t => { AD.ff[t.dataset.k] = t.dataset.v; ctx.render(); },
     aPpAll: () => { S.A.filter(a => a.estado === 'Activo' && precioEn(a._id, thisMonth())).forEach(a => AD.pp.sel.add(a._id)); ctx.render(); },
     aPpApply: async () => {
@@ -777,6 +953,8 @@ export function initAdmin(ctx) {
   document.addEventListener('input', e => {
     const t = e.target;
     if (AD.form && AD.form.composer && t.closest && t.closest('#aform')) { clearTimeout(prevT); prevT = setTimeout(refreshPreview, 250); return; }
+    if (t.dataset.impi !== undefined) { AD.impDraft[+t.dataset.impi][t.dataset.impk] = t.value; updateImpSum(); return; }
+    if (AD.form && AD.form.onInput && t.closest && t.closest('#aform')) AD.form.onInput();
     if (t.dataset.ri !== undefined && t.type !== 'checkbox' && AD.rd) { AD.rd.items[+t.dataset.ri][t.dataset.rik] = t.value; ctx.render(); return; }
     if (t.dataset.rdk && t.tagName !== 'SELECT' && AD.rd) { AD.rd[t.dataset.rdk] = t.value; return; }
     if (t.dataset.app) { AD.pp[t.dataset.app] = t.value; ctx.render(); return; }
@@ -785,6 +963,9 @@ export function initAdmin(ctx) {
   document.addEventListener('change', e => {
     const t = e.target;
     if (AD.form && AD.form.composer && t.type === 'checkbox' && t.closest && t.closest('#aform')) { refreshPreview(); return; }
+    if (t.dataset.impi !== undefined) { AD.impDraft[+t.dataset.impi][t.dataset.impk] = t.value; return; }
+    if (t.dataset.art) { AD.rt[t.dataset.art] = t.value; ctx.render(); return; }
+    if (AD.form && AD.form.onInput && t.tagName === 'SELECT' && t.closest && t.closest('#aform')) AD.form.onInput();
     if (t.dataset.ri !== undefined && t.type === 'checkbox' && AD.rd) { AD.rd.items[+t.dataset.ri].inc = t.checked; ctx.render(); return; }
     if (t.dataset.rdk && t.tagName === 'SELECT' && AD.rd) { AD.rd[t.dataset.rdk] = t.value; ctx.render(); return; }
     if (t.dataset.aff) { AD.ff[t.dataset.aff] = t.value; ctx.render(); return; }
@@ -795,7 +976,7 @@ export function initAdmin(ctx) {
 
   return {
     load, actions, fichaSection, AD,
-    views: [['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja]],
+    views: [['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['rentabilidad', 'Rentabilidad', vRent]],
     counts: () => ({ facturas: AD.F.filter(f => estadoFactura(f) === 'Vencida').length }),
     resetView: () => { AD.sel = null; AD.rd = null; },
   };

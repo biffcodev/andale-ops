@@ -64,3 +64,11 @@ comprobante (factura ARCA / invoice) y mensajes libres. Uno por uno o en masa (r
 - Secretos de la función: `RESEND_API_KEY` (obligatorio), `EMAIL_FROM`, `EMAIL_REPLY_TO` (opcionales).
 - Imágenes del email: `public/marca/email-iso.png` y `email-logo.png`, servidas desde `https://andale-ops.vercel.app`.
 - Mails de acceso (login): `supabase/templates/*.html` → pegar en Supabase → Authentication → Emails, con Resend como SMTP.
+
+## Fijos y variables
+
+- **Estado del cliente automático** (trigger en la base): abono activo → Activo; proyecto abierto → Proyectos; nada → Inactivo. Si se elige otro a mano queda `estado_manual` (fijado) hasta volver a automático.
+- **Etapas de proyecto** (`proyectos.etapas`), con plantillas por tipo en Listas (`listas.clave = 'etapas:<Tipo>'`). Estado nuevo: Presupuestado.
+- **Presupuesto y plan de pagos** (`proyecto_finanzas`, solo admins): genera las cuotas en `proyecto_facturacion`.
+- **Pauta de Ads** (`abono_finanzas`, solo admins): si la adelanta àndale, el resumen suma “Inversión en pauta” aparte del honorario.
+- **Costos** (`imputaciones`, solo admins): un egreso de Caja se reparte entre abonos/proyectos → vista Rentabilidad (margen de contribución).
