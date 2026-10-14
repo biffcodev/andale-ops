@@ -1048,7 +1048,7 @@ export function initAdmin(ctx) {
   Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions);
   return {
     load, actions, fichaSection, proyectoSection, AD,
-    views: [['propuestas', 'Propuestas', PZ.view], ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['pagos', 'Pagos', EQ.view], ['rentabilidad', 'Rentabilidad', vRent], ['ajustes', 'Ajustes', AS.ajustes]],
+    views: [['propuestas', 'Presupuestos', PZ.view], ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['pagos', 'Pagos', EQ.view], ['rentabilidad', 'Rentabilidad', vRent], ['ajustes', 'Ajustes', AS.ajustes]],
     counts: () => (AD.ok ? { facturas: AD.F.filter(f => estadoFactura(f) === 'Vencida').length, asistente: AS.count() } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; PZ.reset(); },
   };

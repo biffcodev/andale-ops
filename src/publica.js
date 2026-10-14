@@ -32,12 +32,13 @@ main{padding:28px 16px}
 document.head.appendChild(css);
 $('#logo').innerHTML = LOGO;
 
-let P = null;
+let P = null, PAL = 'propuesta', LA = 'la propuesta';
 async function cargar() {
   if (!token) { $('#doc').innerHTML = '<p class="pub-msg">El link está incompleto. Pedile a àndale que te lo reenvíe.</p>'; return; }
   const { data, error } = await sb.rpc('propuesta_publica', { t: token });
-  if (error || !data) { $('#doc').innerHTML = '<p class="pub-msg">Esta propuesta no está disponible. Puede que el link haya cambiado: escribinos a hello@weareandale.com.</p>'; return; }
-  P = data; document.title = (P.titulo || 'Propuesta') + ' · àndale';
+  if (error || !data) { $('#doc').innerHTML = '<p class="pub-msg">Este documento no está disponible. Puede que el link haya cambiado: escribinos a hello@weareandale.com.</p>'; return; }
+  P = data; const pre = P.clase === 'Presupuesto'; PAL = pre ? 'presupuesto' : 'propuesta'; LA = pre ? 'el presupuesto' : 'la propuesta';
+  document.title = (P.titulo || (pre ? 'Presupuesto' : 'Propuesta')) + ' · àndale';
   $('#doc').innerHTML = propuestaHTML(P, P.marca || {});
   $('#bar').hidden = false;
   respuesta();
@@ -45,14 +46,14 @@ async function cargar() {
 function respuesta() {
   const r = P.respuesta, box = $('#resp'); box.hidden = false;
   if (r && r.accion) {
-    const t = r.accion === 'Aceptada' ? '¡Gracias! La propuesta quedó aceptada.' : r.accion === 'Rechazada' ? 'Gracias por avisarnos.' : 'Recibimos tu consulta.';
+    const t = r.accion === 'Aceptada' ? '¡Gracias! ' + LA.charAt(0).toUpperCase() + LA.slice(1) + (PAL === 'presupuesto' ? ' quedó aceptado.' : ' quedó aceptada.') : r.accion === 'Rechazada' ? 'Gracias por avisarnos.' : 'Recibimos tu consulta.';
     box.innerHTML = '<div class="pub-card pub-ok"><h2>' + esc(t) + '</h2><p>' + esc(r.accion === 'Aceptada' ? 'Te vamos a escribir para arrancar con los próximos pasos.' : 'Te respondemos a la brevedad.') + '</p></div>';
     return;
   }
   if (P.estado !== 'Enviada' && P.estado !== 'Vencida') { box.hidden = true; return; }
-  box.innerHTML = '<div class="pub-card"><h2>¿Avanzamos?</h2><p>Si la propuesta te cierra, aceptala acá y coordinamos el arranque. Si tenés dudas, dejanos tu consulta.</p>' +
+  box.innerHTML = '<div class="pub-card"><h2>¿Avanzamos?</h2><p>Si ' + LA + ' te cierra, ' + (PAL === 'presupuesto' ? 'aceptalo' : 'aceptala') + ' acá y coordinamos el arranque. Si tenés dudas, dejanos tu consulta.</p>' +
     '<div class="pub-f"><input id="nom" placeholder="Tu nombre" autocomplete="name"><textarea id="com" rows="3" placeholder="Comentario o consulta (opcional)"></textarea></div>' +
-    '<div class="pub-row"><button class="pub-btn pri" data-r="Aceptada">Aceptar propuesta</button><button class="pub-btn" data-r="Consulta">Tengo una consulta</button><button class="pub-btn" data-r="Rechazada">No por ahora</button></div></div>';
+    '<div class="pub-row"><button class="pub-btn pri" data-r="Aceptada">Aceptar ' + PAL + '</button><button class="pub-btn" data-r="Consulta">Tengo una consulta</button><button class="pub-btn" data-r="Rechazada">No por ahora</button></div></div>';
 }
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-r]');
@@ -71,7 +72,7 @@ document.addEventListener('click', async e => {
     try {
       const { propuestaDoc, abrirPdf } = await import('./docs.js');
       const bytes = await propuestaDoc(P, P.marca || {});
-      abrirPdf(bytes, 'Propuesta ' + (P.numero || '') + ' ' + (P.cliente || ''));
+      abrirPdf(bytes, PAL.charAt(0).toUpperCase() + PAL.slice(1) + ' ' + (P.numero || '') + ' ' + (P.cliente || ''));
     } catch (err) { alert('No se pudo generar el PDF'); }
     e.target.disabled = false; e.target.textContent = 'Descargar PDF';
   }

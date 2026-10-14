@@ -313,23 +313,24 @@ export async function propuestaDoc(p, cfg = {}, estilo) {
   const tema = TEMAS.includes(estilo) ? estilo : (TEMAS.includes(cfg.estilo) ? cfg.estilo : 'editorial');
   const { totalDe, planTexto, venceEl, etapasDe } = await import('./propuesta-vista.js');
   const fecha = d => { if (!d) return ''; const [y, m, dd] = String(d).slice(0, 10).split('-'); return dd + '/' + m + '/' + y; };
-  const D = await nuevoDoc('Propuesta ' + (p.numero || '') + ' ' + (p.cliente || p.prospecto || ''), { margen: 54, footH: tema === 'editorial' ? 64 : 56, alPie: (D, n, t) => (tema === 'banda' ? pieBanda : tema === 'grilla' ? (d, c, a, b) => pieGrilla(d, c, a, b, 0) : pieEmail)(D, cfg, n, t) });
+  const pre = p.clase === 'Presupuesto', PAL = pre ? 'Presupuesto' : 'Propuesta';
+  const D = await nuevoDoc(PAL + ' ' + (p.numero || '') + ' ' + (p.cliente || p.prospecto || ''), { margen: 54, footH: tema === 'editorial' ? 64 : 56, alPie: (D, n, t) => (tema === 'banda' ? pieBanda : tema === 'grilla' ? (d, c, a, b) => pieGrilla(d, c, a, b, 0) : pieEmail)(D, cfg, n, t) });
   const { F } = D, c = p.contenido || {}, cur = p.moneda || 'ARS', X = D.M, CW = D.cw;
   D.addPage();
   const cliente = p.cliente || p.prospecto || '';
   if (tema === 'banda') {
     const bh = 210; D.rect(0, H - bh, W, bh, COL.coral);
     D.logo(X, H - 44, 70, COL.white);
-    D.right('Propuesta ' + (p.numero || ''), W - X, H - 52, F.s, 9, COL.white);
-    D.y = H - 104; D.text(['Propuesta', p.tipo].filter(Boolean).join(' · '), X, D.y, F.s, 10, COL.white);
+    D.right(PAL + ' ' + (p.numero || ''), W - X, H - 52, F.s, 9, COL.white);
+    D.y = H - 104; D.text([PAL, p.tipo].filter(Boolean).join(' · '), X, D.y, F.s, 10, COL.white);
     D.y -= 6; for (const l of D.wrap(p.titulo || '', F.d, 28, CW)) { D.y -= 31; D.text(l, X, D.y, F.d, 28, COL.white); }
     D.y = H - bh - 30;
   } else {
-    const meta2 = fecha(p.fecha) + (p.fecha ? ' · válida hasta ' + fecha(venceEl(p)) : '');
-    if (tema === 'grilla') { D.iso(X, D.y + 4, 52, COL.ink); D.right('Propuesta ' + (p.numero || ''), W - X, D.y - 8, F.s, 9, COL.ink); D.right(meta2, W - X, D.y - 20, F.r, 8.5, COL.muted); D.y -= 96; }
-    else { cabeceraEditorial(D, 'Propuesta', p.numero ? 'N.º ' + p.numero : '', meta2); D.y -= 56; }
-    D.text(['Propuesta', p.tipo].filter(Boolean).join(' · '), X, D.y, F.s, 10, COL.coral);
-    D.y -= 4; for (const l of D.wrap(p.titulo || 'Propuesta', F.d, 30, CW)) { D.y -= 33; D.text(l, X, D.y, F.d, 30, COL.ink); }
+    const meta2 = fecha(p.fecha) + (p.fecha ? (pre ? ' · válido hasta ' : ' · válida hasta ') + fecha(venceEl(p)) : '');
+    if (tema === 'grilla') { D.iso(X, D.y + 4, 52, COL.ink); D.right(PAL + ' ' + (p.numero || ''), W - X, D.y - 8, F.s, 9, COL.ink); D.right(meta2, W - X, D.y - 20, F.r, 8.5, COL.muted); D.y -= 96; }
+    else { cabeceraEditorial(D, PAL, p.numero ? 'N.º ' + p.numero : '', meta2); D.y -= 56; }
+    D.text([PAL, p.tipo].filter(Boolean).join(' · '), X, D.y, F.s, 10, COL.coral);
+    D.y -= 4; for (const l of D.wrap(p.titulo || PAL, F.d, 30, CW)) { D.y -= 33; D.text(l, X, D.y, F.d, 30, COL.ink); }
     D.y -= 6;
   }
   if (tema === 'editorial') { D.y -= 18; D.hline(D.y, X, W - X, COL.line); partes(D, [datosCliente({ nombre: cliente, contacto: p.contacto, email: p.email, ...(p.datos_cliente || {}) }), datosAndale(cfg, p.emisor)]); D.y -= 14; D.hline(D.y, X, W - X, COL.line); D.y -= 8; }
@@ -359,7 +360,7 @@ export async function propuestaDoc(p, cfg = {}, estilo) {
   if (lineasDe(c.no_incluye).length) { seccion('No incluye'); vinetas(c.no_incluye, COL.muted); }
   // Inversión
   const items = (p.items || []).filter(i => i.concepto || i.monto);
-  seccion('Inversión'); D.y -= 4;
+  seccion(pre ? 'Detalle' : 'Inversión'); D.y -= 4;
   for (const it of items) {
     const det = it.detalle ? D.wrap(it.detalle, F.r, 9.5, CW - 140) : [];
     D.need(22 + det.length * 13);

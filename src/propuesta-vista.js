@@ -10,9 +10,9 @@ export const totalDe = p => Math.max(0, subtotal(p) - (Number(p.descuento) || 0)
 const fecha = d => { if (!d) return ''; const [y, m, dd] = String(d).slice(0, 10).split('-'); return dd + '/' + m + '/' + y; };
 export function venceEl(p) { if (!p.fecha) return ''; const d = new Date(String(p.fecha).slice(0, 10) + 'T12:00:00'); d.setDate(d.getDate() + (Number(p.validez_dias) || 15)); return d.toISOString().slice(0, 10); }
 export function planTexto(p) {
-  const t = totalDe(p), cur = p.moneda;
-  if (p.plan_pago === 'Contado') return '100% al aceptar la propuesta.';
-  if (p.plan_pago === '50/50') return '50% al aceptar la propuesta (' + plata(t / 2, cur) + ') y 50% a la entrega (' + plata(t / 2, cur) + ').';
+  const t = totalDe(p), cur = p.moneda, doc = p.clase === 'Presupuesto' ? 'el presupuesto' : 'la propuesta';
+  if (p.plan_pago === 'Contado') return '100% al aceptar ' + doc + '.';
+  if (p.plan_pago === '50/50') return '50% al aceptar ' + doc + ' (' + plata(t / 2, cur) + ') y 50% a la entrega (' + plata(t / 2, cur) + ').';
   const n = parseInt(p.plan_pago, 10); if (n) return n + ' cuotas mensuales de ' + plata(t / n, cur) + ', la primera al aceptar.';
   return '';
 }
@@ -28,10 +28,11 @@ export function propuestaHTML(p, marca = {}, o = {}) {
   const semanas = et.reduce((a, e) => a + (Number(e.semanas) || 0), 0);
   const items = (p.items || []).filter(i => i.concepto || i.monto);
   const cliente = p.cliente || p.prospecto || '';
+  const pre = p.clase === 'Presupuesto', P = pre ? 'Presupuesto' : 'Propuesta';
   return '<article class="pz">' +
-    '<header class="pz-h"><span class="pz-brand"><span class="pz-isoh">' + ISO + '</span><span class="pz-logo">' + LOGO + '</span></span><span class="pz-meta">Propuesta ' + esc(p.numero || '') + '<br><span>' + esc(fecha(p.fecha)) + (p.fecha ? ' · válida hasta ' + esc(fecha(venceEl(p))) : '') + '</span></span></header>' +
-    '<p class="pz-eye">' + esc(['Propuesta', p.tipo].filter(Boolean).join(' · ')) + '</p>' +
-    '<h1>' + esc(p.titulo || 'Propuesta sin título') + '</h1>' +
+    '<header class="pz-h"><span class="pz-brand"><span class="pz-isoh">' + ISO + '</span><span class="pz-logo">' + LOGO + '</span></span><span class="pz-meta">' + P + ' ' + esc(p.numero || '') + '<br><span>' + esc(fecha(p.fecha)) + (p.fecha ? (pre ? ' · válido hasta ' : ' · válida hasta ') + esc(fecha(venceEl(p))) : '') + '</span></span></header>' +
+    '<p class="pz-eye">' + esc([P, p.tipo].filter(Boolean).join(' · ')) + '</p>' +
+    '<h1>' + esc(p.titulo || P + ' sin título') + '</h1>' +
     (cliente ? '<p class="pz-para">Para ' + esc(cliente) + (p.contacto ? ' · ' + esc(p.contacto) : '') + '</p>' : '') +
     (c.intro ? '<div class="pz-intro">' + parr(c.intro) + '</div>' : '') +
     sec('Objetivo', parr(c.objetivo)) +
@@ -39,7 +40,7 @@ export function propuestaHTML(p, marca = {}, o = {}) {
     (et.length ? '<section class="pz-s"><h2>Etapas' + (semanas ? ' <span>· ' + semanas + ' semanas aprox.</span>' : '') + '</h2><ol class="pz-et">' + et.map(e => '<li><b>' + esc(e.nombre) + '</b>' + (e.semanas ? '<span class="pz-sem">' + esc(e.semanas) + ' sem.</span>' : '') + (e.detalle ? '<p>' + esc(e.detalle) + '</p>' : '') + '</li>').join('') + '</ol></section>' : '') +
     sec('Entregables', lista(c.entregables)) +
     sec('No incluye', lista(c.no_incluye, 'pz-no')) +
-    '<section class="pz-s pz-inv"><h2>Inversión</h2>' +
+    '<section class="pz-s pz-inv"><h2>' + (pre ? 'Detalle' : 'Inversión') + '</h2>' +
     (items.length ? '<table><tbody>' + items.map(i => '<tr><td><b>' + esc(i.concepto) + '</b>' + (i.detalle ? '<span>' + esc(i.detalle) + '</span>' : '') + '</td><td class="r">' + esc(plata(i.monto, cur)) + '</td></tr>').join('') +
       (Number(p.descuento) ? '<tr class="pz-desc"><td>Descuento</td><td class="r">− ' + esc(plata(p.descuento, cur)) + '</td></tr>' : '') + '</tbody></table>' : '') +
     '<div class="pz-total"><span>Total</span><b>' + esc(plata(totalDe(p), cur)) + '</b></div>' +
