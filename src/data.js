@@ -196,8 +196,8 @@ export async function subirAvatar(kind, id, file, propia) {
   const up = await sb.storage.from('avatares').upload(path, blob, { upsert: true, contentType: 'image/webp', cacheControl: '3600' });
   if (up.error) throw friendly(up.error);
   const url = sb.storage.from('avatares').getPublicUrl(path).data.publicUrl + '?v=' + Date.now();
-  if (kind === 'persona' && propia) check(await sb.rpc('mi_avatar', { url }));
-  else check(await sb.from(kind === 'cliente' ? 'clientes' : 'personas').update({ avatar_url: url }).eq('id', id));
+  if (kind === 'persona') check(await sb.rpc('avatar_persona', { pid: id, url }));
+  else check(await sb.from('clientes').update({ avatar_url: url }).eq('id', id));
   return url;
 }
 function achicar(file, max) {
