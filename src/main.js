@@ -663,7 +663,12 @@ document.addEventListener('submit', async e => {
     const email = f.querySelector('input').value.trim(), btn = f.querySelector('button'), msg = $('#login-msg');
     if (!email) return;
     btn.disabled = true; btn.textContent = 'Enviando…';
-    try { await data.sendLink(email); msg.textContent = 'Listo. Revisá tu email (' + email + ') y abrí el link para entrar. Puede tardar un minuto.'; }
+    try {
+      await data.sendLink(email);
+      msg.textContent = 'Listo. Revisá tu email (' + email + ') y abrí el link para entrar. Puede tardar un minuto; si no aparece, mirá en spam.';
+      btn.textContent = 'Link enviado ✓';
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Reenviar el link'; }, 60000);
+    }
     catch (err) { msg.textContent = err.message; btn.disabled = false; btn.textContent = 'Enviarme el link'; }
     return;
   }
