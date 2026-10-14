@@ -253,3 +253,6 @@ dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere;display:flex;gap:6px;align-
 
 .brand .logo{display:inline-block;height:.95em;width:auto;align-self:center;color:var(--fg)}
 .brand .logo svg{height:100%;width:auto;display:block}
+
+.bulkbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-radius:10px;background:var(--accent-soft);border:1px solid var(--line);position:sticky;top:8px;z-index:5}
+th.sel,td.sel{width:34px;padding-right:0}

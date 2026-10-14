@@ -59,7 +59,7 @@ const S = {
   view: 'inicio', mode: lsGet('mode') || 'lista',
   f: { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true },
   af: { q: '', tipo: '', estado: 'Activo', resp: '' },
-  cf: { q: '', estado: 'Activo' }, ficha: null,
+  cf: { q: '', estado: 'Activo' }, csel: new Set(), cmasivo: '', ficha: null,
   cal: null, yo: lsGet('yo') || '',
   mf: { q: '', cliente: '', pend: false },
   form: null, listDraft: {}, openPick: null, busy: false,
@@ -349,11 +349,16 @@ function vClientes() {
     '<div class="toolbar"><input class="in" type="search" id="cq" data-bind="cf.q" placeholder="Buscar cliente o contacto" value="' + esc(cf.q) + '">' +
     (isStaff() ? '<div class="seg" role="group" aria-label="Estado">' + estados.map(e => '<button data-act="cfEstado" data-estado="' + esc(e) + '" aria-pressed="' + (cf.estado === e) + '">' + (e || 'Todos') + ' <span class="c">' + counts(e) + '</span></button>').join('') + '</div>' : '') + '</div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox(S.C.length ? 'Ningún cliente coincide' : 'Todavía no hay clientes', S.C.length ? 'Probá con otro estado o búsqueda.' : '') + '</section>';
+  const staff = isStaff();
+  S.csel.forEach(id => { if (!list.some(c => c._id === id)) S.csel.delete(id); });
   const rows = list.map(c => {
     const act = proyectosDe(c.nombre).filter(isOpen).length;
-    return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '"><td class="name">' + esc(c.nombre) + '</td><td>' + clPill(c.estado) + '</td><td>' + (abonoTags(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + esc(c.servicio || '') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(c.contacto || '') + '</td></tr>';
+    const est = staff ? '<select class="cellsel st" style="--c:var(' + (CL_COLOR[c.estado] || '--muted') + ')" aria-label="Estado de ' + esc(c.nombre) + '" data-upd="cliente" data-id="' + esc(c._id) + '" data-field="estado">' + optsFrom(S.L.estadosCliente, c.estado || '') + '</select>' : clPill(c.estado);
+    return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name">' + esc(c.nombre) + '</td><td>' + est + '</td><td>' + (abonoTags(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + esc(c.servicio || '') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(c.contacto || '') + '</td></tr>';
   }).join('');
-  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Estado</th><th>Abonos activos</th><th>Servicio</th><th>Responsables</th><th>Proyectos abiertos</th><th>Contacto</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' clientes</div></section>';
+  const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado') + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
+  const allSel = staff && list.length && list.every(c => S.csel.has(c._id));
+  return h + bulk + '<section class="sheet"><div class="tbl"><table><thead><tr>' + (staff ? '<th class="sel"><input type="checkbox" aria-label="Seleccionar todos" data-cselall="1"' + (allSel ? ' checked' : '') + '></th>' : '') + '<th>Cliente</th><th>Estado</th><th>Abonos activos</th><th>Servicio</th><th>Responsables</th><th>Proyectos abiertos</th><th>Contacto</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' clientes</div></section>';
 }
 
 function vFicha() {
@@ -369,7 +374,7 @@ function vFicha() {
   const abRow = a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(abonoLabel(a)) + '</b><span>' + (resp(a).length ? esc(resp(a).join(', ')) : 'sin responsable') + (a.desde ? ' · desde ' + esc(fmt(a.desde)) : '') + '</span></span>' + abPill(a.estado) + '</button>';
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   return back +
-    '<div class="head"><div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + clPill(c.estado) + abonoTags(c.nombre) + '<span>' + esc(c.servicio || '') + '</span></p></div>' +
+    '<div class="head"><div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? '<select class="cellsel st" style="--c:var(' + (CL_COLOR[c.estado] || '--muted') + ')" aria-label="Estado del cliente" data-upd="cliente" data-id="' + esc(c._id) + '" data-field="estado">' + optsFrom(S.L.estadosCliente, c.estado || '') + '</select>' : clPill(c.estado)) + abonoTags(c.nombre) + '<span>' + esc(c.servicio || '') + '</span></p></div>' +
     '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Comunicación</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Comunicación', { cliente: c.nombre })) + '</div></div>' +
     '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
@@ -627,12 +632,21 @@ const ACT = {
   copy: t => copyText(t.dataset.v),
   listDel: t => { const k = t.dataset.k, i = +t.dataset.i; saveListas(k, S.L[k].filter((_, j) => j !== i)); },
   logout: async () => { await data.logout(); location.reload(); },
+  cSelNone: () => { S.csel.clear(); render(); },
+  cMasivo: async () => {
+    const est = S.cmasivo, ids = [...S.csel]; if (!est || !ids.length) return;
+    let ok = 0; const fails = [];
+    for (const id of ids) { try { await data.update('cliente', id, { estado: est }); ok++; } catch (err) { fails.push(err.message); } }
+    S.csel.clear(); S.cmasivo = '';
+    toast(ok + ' cliente' + (ok === 1 ? '' : 's') + ' → ' + est + (fails.length ? ' · ' + fails.length + ' con error: ' + fails[0] : ''));
+    await reload();
+  },
 };
 
 document.addEventListener('click', e => {
   if (!e.target.closest('details.pick') && S.openPick) { S.openPick = null; document.querySelectorAll('details.pick[open]').forEach(d => d.open = false); }
   const t = e.target.closest('[data-act]'); if (!t || t.tagName === 'A') return;
-  if (e.target.closest('details.pick') && t.tagName === 'TR') return;
+  if (t.tagName === 'TR' && e.target.closest('details.pick, select, input, label, td.sel')) return;
   const fn = ACT[t.dataset.act]; if (fn) { e.preventDefault(); fn(t, e); }
 });
 document.addEventListener('toggle', e => { const d = e.target; if (!d.matches || !d.matches('details.pick')) return; if (d.open) { S.openPick = d.dataset.pick; document.querySelectorAll('details.pick[open]').forEach(x => { if (x !== d) x.open = false; }); } else if (S.openPick === d.dataset.pick) S.openPick = null; }, true);
@@ -648,6 +662,13 @@ document.addEventListener('change', e => {
     const rec = arr.find(x => x._id === t.dataset.id); if (!rec) return;
     let next = resp(rec).filter(p => p !== t.value); if (t.checked) next.push(t.value);
     upd(kind, rec._id, { responsables: next }, resp(rec), true);
+    return;
+  }
+  if (t.dataset.csel) { if (t.checked) S.csel.add(t.dataset.csel); else S.csel.delete(t.dataset.csel); render(); return; }
+  if (t.dataset.cselall) { const ids = [...document.querySelectorAll('[data-csel]')].map(x => x.dataset.csel); ids.forEach(id => t.checked ? S.csel.add(id) : S.csel.delete(id)); render(); return; }
+  if (t.dataset.upd === 'cliente' && t.dataset.field === 'estado') {
+    const c = S.C.find(x => x._id === t.dataset.id);
+    (async () => { try { await data.update('cliente', t.dataset.id, { estado: t.value }); toast((c ? c.nombre + ' → ' : '') + t.value); await reload(); } catch (err) { toast(err.message); await reload(); } })();
     return;
   }
   if (t.dataset.upd) {
