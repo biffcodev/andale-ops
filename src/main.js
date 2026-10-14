@@ -6,9 +6,10 @@ import * as data from './data.js';
 import { initAdmin } from './admin.js';
 import { initIA } from './ia.js';
 import { initCombo } from './combo.js';
+import { initMails } from './mails.js';
 initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
-let ADM = null, ADM_FN = {};
+let ADM = null, ADM_FN = {}, MAIL = null;
 let IA = null;
 
 /* ---------- Constantes ---------- */
@@ -21,20 +22,21 @@ const DEF = {
   servicios: ['Redes sociales', 'Ads', 'Redes sociales + Ads', 'Branding', 'Web', 'Diseño', 'Audiovisual', 'Comunicación integral', 'Asesoramiento', 'Otro'],
   planes: ['SMALL', 'MEDIUM', 'PREMIUM', 'LARGE', 'SMALL+ADS', 'PACK RRSS', 'ESPECIAL'],
   rubros: ['Ads', 'Programación', 'Fotografía', 'Audiovisual', 'Contenido', 'Diseño', 'Contable', 'Otro'],
+  monedas: ['ARS', 'USD', 'EUR', 'GBP'],
 };
-const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores' };
+const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores', monedas: 'Monedas (código de 3 letras: ARS, USD, EUR, GBP…)' };
 const ESTADOS_ABONO = ['Activo', 'Pausado', 'Baja'];
 const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
 const CERRADOS = new Set(['Entregado', 'Cancelado']);
 const ST_COLOR = { 'Presupuestado': '--s-presup', 'Por empezar': '--s-empezar', 'En curso': '--s-curso', 'En revisión': '--s-revision', 'Entregado': '--s-entregado', 'Pausado': '--s-pausado', 'Cancelado': '--s-cancelado', 'A confirmar': '--s-confirmar' };
 const CL_COLOR = { 'Activo': '--s-entregado', 'A confirmar': '--s-confirmar', 'Proyectos': '--s-curso', 'Pausado': '--s-pausado', 'Inactivo': '--s-empezar' };
 const VER_CL = { 'Proyectos': 'Solo proyectos' }; // solo para mostrar: el valor guardado no cambia
-const TIPO_COLOR = { Branding: '--accent', Packaging: '--s-revision', Web: '--s-curso', Diseño: '--s-confirmar', Audiovisual: '--s-presup', Redes: '--accent', Ads: '--s-curso', Otro: '--s-empezar' };
+const TIPO_COLOR = { Branding: '--accent', Packaging: '--t-naranja', Web: '--s-curso', Diseño: '--s-confirmar', Audiovisual: '--s-presup', Redes: '--t-rosa', Ads: '--t-ambar', Otro: '--s-empezar' };
 const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': '--s-empezar' };
 const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
-const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Opciones']];
+const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Opciones'], ['integraciones', 'Integraciones']];
 // Menú lateral: grupos por tipo de tarea. Las vistas de administración las aporta admin.js.
-const GRUPOS = [['Trabajo', ['inicio', 'proyectos', 'abonos', 'mis']], ['Clientes', ['clientes', 'propuestas']], ['Plata', ['cobros', 'gastos', 'pagos', 'numeros']], ['Configuración', ['equipo', 'listas', 'ajustes']]];
+const GRUPOS = [['Trabajo', ['inicio', 'proyectos', 'abonos', 'mis']], ['Clientes', ['clientes', 'propuestas']], ['Plata', ['cobros', 'gastos', 'pagos', 'numeros']], ['Configuración', ['equipo', 'listas', 'integraciones', 'ajustes']]];
 // Pantallas que ahora viven como pestañas de otra (los links viejos y los emails siguen funcionando).
 const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], precios: ['abonos', 'precios'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
 const resolver = v => { const a = ALIAS[v]; if (!a) return v; S.tab[a[0]] = a[1]; return a[0]; };
@@ -84,7 +86,7 @@ const S = {
   cal: null, yo: lsGet('yo') || '',
   mf: { q: '', cliente: '', pend: false },
   tab: {},
-  form: null, listDraft: {}, openPick: null, busy: false,
+  form: null, listDraft: {}, openPick: null, busy: false, gcl: new Set(JSON.parse(lsGet('gcl') || '[]')),
 };
 const isAdmin = () => S.me && S.me.rol === 'admin';
 const isStaff = () => S.me && (S.me.rol === 'admin' || S.me.rol === 'equipo');
@@ -161,6 +163,12 @@ function links(o) {
   return L.length ? '<span class="links">' + L.map(([k, l]) => '<a href="' + esc(o[k]) + '" target="_blank" rel="noopener">' + l + '</a>').join('') + '</span>' : '';
 }
 const emptyBox = (title, text) => '<div class="empty"><b>' + esc(title) + '</b>' + (text || '') + '</div>';
+// WhatsApp directo (sin API): abre el chat con el teléfono del cliente.
+function waNum(tel) { let d = String(tel || '').replace(/\D/g, ''); if (!d) return ''; if (d.startsWith('00')) d = d.slice(2); if (!d.startsWith('54') && d.length <= 11) d = '549' + d.replace(/^0/, '').replace(/^(\d{2,4})15/, '$1'); return d; }
+function waBtn(c, txt) { const n = waNum(c.tel); return n && integ('whatsapp') ? '<a class="btn" href="https://wa.me/' + n + (txt ? '?text=' + encodeURIComponent(txt) : '') + '" target="_blank" rel="noopener">WhatsApp</a>' : ''; }
+// Integraciones simples que se prenden y apagan desde Configuración → Integraciones (lista 'integraciones').
+const INTEG_DEF = ['whatsapp', 'calendario', 'ia', 'email'];
+const integ = k => (S.L.integraciones || INTEG_DEF).includes(k);
 function addBtn(kind, label, preset, cls) {
   const ok = kind === 'comunicacion' ? (isStaff() || isExt()) : kind === 'persona' ? isAdmin() : isStaff();
   return ok ? '<button class="btn ' + (cls || 'primary') + '" data-act="new" data-kind="' + kind + '"' + (preset ? ' data-preset="' + esc(JSON.stringify(preset)) + '"' : '') + '>+ ' + esc(label) + '</button>' : '';
@@ -212,14 +220,52 @@ function etapaInfo(p) {
 const segs = (e) => '<span class="prog" aria-hidden="true">' + e.map(x => '<i class="' + (x.ok ? 'on' : '') + '"></i>').join('') + '</span>';
 function etapaCell(p) {
   const { e, done, total, cur } = etapaInfo(p), can = canEditProj(p);
-  if (!total) return plantilla(p.tipo).length && can ? '<button class="btn ghost sm" data-act="etCargar" data-id="' + esc(p._id) + '">+ Etapas de ' + esc(p.tipo) + '</button>' : '<span class="muted">—</span>';
+  if (!total) return plantilla(p.tipo).length && can ? '<button class="btn ghost sm" data-act="etCargar" data-id="' + esc(p._id) + '">+ Tareas de ' + esc(p.tipo) + '</button>' : '<span class="muted">—</span>';
   const sum = '<span class="etp">' + segs(e) + '<span class="etn"><b>' + esc(cur) + '</b><span class="muted"> ' + done + '/' + total + '</span></span></span>';
   if (!can) return sum;
   const key = 'etapa:' + p._id;
-  return '<details class="pick" data-pick="' + esc(key) + '"' + (S.openPick === key ? ' open' : '') + '><summary title="Marcar etapas">' + sum + '</summary><div class="menu">' +
+  return '<details class="pick" data-pick="' + esc(key) + '"' + (S.openPick === key ? ' open' : '') + '><summary title="Marcar tareas">' + sum + '</summary><div class="menu">' +
     e.map((x, i) => '<label class="chk"><input type="checkbox" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"' + (x.ok ? ' checked' : '') + '> ' + esc(x.n) + '</label>').join('') + '</div></details>';
 }
 const etapaTxt = p => { const { done, total, cur } = etapaInfo(p); return total ? cur + ' (' + done + '/' + total + ')' : ''; };
+
+/* ---------- Tareas del proyecto (se guardan en etapas: [{ n, ok, resp, fecha }]) y prioridad ---------- */
+const PRIOS = ['Urgente', 'Alta', 'Media', 'Baja'];
+const PRIO_COLOR = { Urgente: '--p-urgente', Alta: '--p-alta', Media: '--p-media', Baja: '--p-baja' };
+const FLAG = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 14.5V2.2M3.5 2.6h8.6l-1.9 3.2 1.9 3.2H3.5z" fill="currentColor" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+const prioFlag = (pr, txt) => pr ? '<span class="prio" style="--c:var(' + (PRIO_COLOR[pr] || '--muted') + ')" title="Prioridad ' + esc(pr) + '">' + FLAG + (txt ? '<span>' + esc(pr) + '</span>' : '') + '</span>' : '';
+function prioSelect(p) {
+  if (!canEditProj(p)) return prioFlag(p.prioridad, true) || '<span class="muted">—</span>';
+  return '<select class="cellsel prio-sel' + (p.prioridad ? '' : ' vacia') + '" style="--c:var(' + (PRIO_COLOR[p.prioridad] || '--muted') + ')" aria-label="Prioridad de ' + esc(p.proyecto) + '" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="prioridad">' +
+    opt('', 'Sin prioridad', p.prioridad || '') + PRIOS.map(x => opt(x, '⚑ ' + x, p.prioridad || '')).join('') + '</select>';
+}
+// Todas las tareas pendientes de una persona en proyectos abiertos.
+function tareasDe(alias) {
+  const out = [];
+  S.P.filter(isOpen).forEach(p => etapasDe(p).forEach((x, i) => { if (!x.ok && x.resp === alias) out.push({ p, x, i }); }));
+  return out.sort((a, b) => (a.x.fecha || '9999').localeCompare(b.x.fecha || '9999') || cmp(a.p.proyecto, b.p.proyecto));
+}
+function fechaTarea(f, ok) {
+  if (!f) return '';
+  const d = diff(f), cls = ok ? '' : d < 0 ? ' late' : d <= 2 ? ' soon' : '';
+  return '<span class="tk-f' + cls + '">' + (ok ? fmtShort(f) : d === 0 ? 'Hoy' : d === 1 ? 'Mañana' : d === -1 ? 'Ayer' : fmtShort(f)) + '</span>';
+}
+function tareasHtml(p) {
+  const can = canEditProj(p), e = etapasDe(p), ps = personas(), pid = esc(p._id);
+  const fila = (x, i) => '<div class="tk' + (x.ok ? ' done' : '') + '">' +
+    '<input type="checkbox" class="tk-ok" aria-label="Tarea hecha" data-etoggle="' + pid + '" data-i="' + i + '"' + (x.ok ? ' checked' : '') + (can ? '' : ' disabled') + '>' +
+    (can ? '<input class="tk-n" value="' + esc(x.n) + '" aria-label="Tarea" data-tk="n" data-pid="' + pid + '" data-i="' + i + '">' : '<span class="tk-n">' + esc(x.n) + '</span>') +
+    '<span class="tk-who">' + (x.resp ? av(x.resp, fotoDe(x.resp)) : '<span class="av vacio" title="Sin asignar">?</span>') +
+    (can ? '<select aria-label="Quién la hace" data-tk="resp" data-pid="' + pid + '" data-i="' + i + '">' + opt('', 'Sin asignar', x.resp || '') + [...new Set([...ps, x.resp].filter(Boolean))].map(a => opt(a, a, x.resp || '')).join('') + '</select>' : '<span>' + esc(x.resp || 'Sin asignar') + '</span>') + '</span>' +
+    (can ? '<label class="tk-date">' + (fechaTarea(x.fecha, x.ok) || '<span class="tk-f vacia">Fecha</span>') + '<input type="date" aria-label="Para cuándo" value="' + esc(x.fecha || '') + '" data-tk="fecha" data-pid="' + pid + '" data-i="' + i + '"></label>' : fechaTarea(x.fecha, x.ok)) +
+    (can ? '<button type="button" class="btn ghost sm tk-del" data-act="tkDel" data-id="' + pid + '" data-i="' + i + '" aria-label="Borrar tarea">✕</button>' : '') + '</div>';
+  const tpl = plantilla(p.tipo);
+  return (e.length ? '<div class="tks">' + e.map(fila).join('') + '</div>' : emptyBox('Todavía no hay tareas', can ? 'Sumá la primera abajo' + (tpl.length ? ', usá las de ' + esc(p.tipo) : '') + (isStaff() ? ' o pedile a Mr. Piggy que las arme.' : '.') : '')) +
+    (can ? '<form class="tk-add" data-tkadd="' + pid + '"><input class="in" name="n" placeholder="Nueva tarea… (Enter para agregar)" aria-label="Nueva tarea" autocomplete="off"><select class="in" name="resp" aria-label="Quién la hace">' + opt('', 'Sin asignar', '') + ps.map(a => opt(a, a, '')).join('') + '</select><input class="in" type="date" name="fecha" aria-label="Para cuándo"><button class="btn sm">Agregar</button></form>' +
+      '<div class="toolbar tk-tools">' + (tpl.length ? '<button class="btn ghost sm" data-act="etCargar" data-id="' + pid + '">' + (e.length ? '+ Sumar' : '+ Usar') + ' tareas modelo de ' + esc(p.tipo) + '</button>' : '') +
+      (isStaff() ? '<button class="btn ghost sm" data-act="tkIA" data-id="' + pid + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Que Mr. Piggy arme las tareas</button>' : '') + '</div>' : '');
+}
+async function guardarTareas(p, next, msg) { p.etapas = next; render(); await upd('proyecto', p._id, { etapas: next }, null, true); if (msg) toast(msg); }
 
 /* ---------- Vistas ---------- */
 const kpiBtn = (n, label, sub, attrs, cls) => '<button class="kpi ' + (cls || '') + '" ' + attrs + '><span class="eyebrow">' + label + '</span><b>' + n + '</b><span>' + sub + '</span></button>';
@@ -251,6 +297,9 @@ function vInicio() {
     h += '<section class="callout"><p>' + parts.join('. ') + '. Estado y responsables se cambian directo en la fila de cada lista.</p><button class="btn" data-act="goProy" data-estado="' + (conf ? 'A confirmar' : '') + '">Revisar proyectos</button></section>';
   }
 
+  const mias = tareasDe(S.me.alias);
+  if (mias.length) h += '<section class="sheet"><div class="sheet-h"><h2>Tus tareas</h2><button class="btn ghost sm" data-act="go" data-view="mis">Ver todas (' + mias.length + ')</button></div><div class="sheet-b"><div class="tks mis">' + mias.slice(0, 6).map(({ p, x, i }) =>
+    '<div class="tk"><input type="checkbox" class="tk-ok" aria-label="Marcar hecha" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"><button class="tk-n tk-lnk" data-act="pver" data-id="' + esc(p._id) + '"><b>' + esc(x.n) + '</b><span>' + esc(p.proyecto + ' · ' + p.cliente) + '</span></button>' + prioFlag(p.prioridad) + fechaTarea(x.fecha) + '</div>').join('') + '</div></div></section>';
   const estados = S.L.estadosProyecto.map(e => [e, S.P.filter(p => p.estado === e).length]).filter(x => x[1]);
   const maxE = Math.max(1, ...estados.map(x => x[1]));
   const tipos = S.L.tipos.map(t => [t, open.filter(p => p.tipo === t).length]).filter(x => x[1]);
@@ -295,21 +344,28 @@ function vProyectos() {
 }
 
 function vLista() {
-  const list = filtrarProyectos(false).sort(sortByEntrega);
+  const list = filtrarProyectos(false).sort((a, b) => (PRIOS.indexOf(a.prioridad) + 1 || 9) - (PRIOS.indexOf(b.prioridad) + 1 || 9) || sortByEntrega(a, b));
   if (!list.length) return '<section class="sheet">' + emptyBox(S.P.length ? 'Ningún proyecto coincide con los filtros' : 'Todavía no hay proyectos', S.P.length ? 'Probá limpiar los filtros.' : (isStaff() ? 'Cargá el primero con “+ Proyecto”.' : '')) + '</section>';
-  const rows = list.map(p => {
+  const orden = S.L.estadosProyecto;
+  const grupos = [...orden.map(e => [e, list.filter(p => p.estado === e)]), ['Otros', list.filter(p => !orden.includes(p.estado))]].filter(g => g[1].length);
+  const fila = p => {
     const dis = canEditProj(p) ? '' : ' disabled';
     return '<tr class="click" data-act="pver" data-id="' + esc(p._id) + '">' +
-      '<td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente || '—') + '</button></td>' +
-      '<td><button class="btn link" style="font-weight:500" data-act="pver" data-id="' + esc(p._id) + '">' + esc(p.proyecto) + '</button>' + (p.tipo ? '<span class="sub"><span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span></span>' : '') + '</td>' +
+      '<td class="pjc"><b>' + esc(p.proyecto) + '</b><span class="sub"><button class="btn link" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente || '—') + '</button></span></td>' +
+      '<td>' + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '<span class="muted">—</span>') + '</td>' +
       '<td>' + picker('proyecto', p) + '</td>' +
       '<td>' + etapaCell(p) + '</td>' +
       '<td class="n">' + (p.entrega ? '<span class="mono">' + fmt(p.entrega) + '</span><span class="sub">' + daysBadge(p) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+      '<td>' + prioSelect(p) + '</td>' +
       '<td><select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado"' + dis + '>' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select></td>' +
-      '<td>' + links(p) + '</td>' +
       '</tr>';
-  }).join('');
-  return '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Responsables</th><th>Etapa</th><th>Entrega</th><th>Estado</th><th>Links</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' de ' + S.P.length + ' proyectos</div></section>';
+  };
+  const head = '<thead><tr><th>Proyecto</th><th>Tipo</th><th>Responsables</th><th>Tareas</th><th>Entrega</th><th>Prioridad</th><th>Estado</th></tr></thead>';
+  return grupos.map(([e, arr]) => {
+    const cerrado = S.gcl.has(e);
+    return '<section class="sheet grp' + (cerrado ? ' cerrado' : '') + '" style="--c:var(' + stVar(e) + ')"><button class="grp-h" data-act="grpTog" data-g="' + esc(e) + '" aria-expanded="' + !cerrado + '"><span class="chev" aria-hidden="true">▾</span><span class="grp-pill">' + esc(e) + '</span><span class="grp-n">' + arr.length + '</span></button>' +
+      (cerrado ? '' : '<div class="tbl"><table>' + head + '<tbody>' + arr.map(fila).join('') + '</tbody></table></div>') + '</section>';
+  }).join('') + '<div class="count num" style="padding:0 4px">' + list.length + ' de ' + S.P.length + ' proyectos · tocá el nombre de un grupo para plegarlo</div>';
 }
 
 function vProyectoFicha() {
@@ -321,18 +377,16 @@ function vProyectoFicha() {
   const fila = (k, v) => '<dt>' + k + '</dt><dd>' + (v || '<span class="muted">—</span>') + '</dd>';
   const lk = links(p);
   const estado = can ? '<select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado">' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select>' : stPill(p.estado);
-  const etapas = total ? '<div class="checklist">' + e.map((x, i) => '<label class="chk' + (x.ok ? ' done' : '') + '"><input type="checkbox" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"' + (x.ok ? ' checked' : '') + (can ? '' : ' disabled') + '> <span>' + esc(x.n) + '</span></label>').join('') + '</div>' :
-    emptyBox('Sin etapas', plantilla(p.tipo).length && can ? '' : 'Cargalas desde Editar.') + (plantilla(p.tipo).length && can ? '<div class="sheet-b"><button class="btn sm" data-act="etCargar" data-id="' + esc(p._id) + '">+ Cargar etapas de ' + esc(p.tipo) + '</button></div>' : '');
   return back +
     '<div class="head"><div><button class="btn link eyebrow" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente) + '</button><h1 style="margin-top:4px">' + esc(p.proyecto) + '</h1>' +
-    '<p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">' + estado + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + daysBadge(p) + '</p></div>' +
-    '<div class="toolbar">' + (can ? '<button class="btn primary" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar proyecto</button>' : '') + '</div></div>' +
+    '<p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">' + estado + prioSelect(p) + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + daysBadge(p) + '</p></div>' +
+    '<div class="toolbar">' + calBtn('Entrega: ' + p.proyecto + ' · ' + p.cliente, isOpen(p) ? p.entrega : '', 'Entrega pactada del proyecto ' + p.proyecto + ' (' + p.cliente + ')') + (can ? '<button class="btn primary" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar proyecto</button>' : '') + '</div></div>' +
     '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
     fila('Responsables', picker('proyecto', p)) + fila('Inicio', p.fechaInicio ? fmt(p.fechaInicio) : '') + fila('Entrega pactada', p.entrega ? fmt(p.entrega) : '') + fila('Entregado', p.entregaReal ? fmt(p.entregaReal) : '') +
     fila('Entregables', p.entregables ? '<span style="white-space:pre-wrap">' + esc(p.entregables) + '</span>' : '') + fila('Links', lk && lk.indexOf('href') > -1 ? lk : '') + fila('Notas', p.notas ? '<span style="white-space:pre-wrap">' + esc(p.notas) + '</span>' : '') +
     '</dl></div></section>' + (isAdmin() && ADM && ADM.proyectoSection ? ADM.proyectoSection(p) : '') + '</div>' +
-    '<div class="stack"><section class="sheet"><div class="sheet-h"><h2>Etapas</h2>' + (total ? '<span class="etp">' + segs(e) + '<span class="muted num">' + done + ' de ' + total + '</span></span>' : '') + '</div>' + (total ? '<div class="sheet-b">' + etapas + '</div>' : etapas) + '</section>' +
-    '<section class="sheet"><div class="sheet-h"><h2>Seguimiento con ' + esc(p.cliente) + '</h2>' + addBtn('comunicacion', 'Registrar', { cliente: p.cliente }) + '</div>' + (ms.length ? '<div class="timeline">' + ms.map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Sin reuniones ni acuerdos registrados', 'Registrá lo que se habló con el cliente y el próximo paso.')) + '</section>' +
+    '<div class="stack"><section class="sheet"><div class="sheet-h"><h2>Tareas</h2>' + (total ? '<span class="etp">' + segs(e) + '<span class="muted num">' + done + ' de ' + total + '</span></span>' : '') + '</div><div class="sheet-b">' + tareasHtml(p) + '</div></section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Charlas con ' + esc(p.cliente) + '</h2>' + addBtn('comunicacion', 'Anotar charla', { cliente: p.cliente }) + '</div>' + (ms.length ? '<div class="timeline">' + ms.map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Sin reuniones ni acuerdos registrados', 'Registrá lo que se habló con el cliente y el próximo paso.')) + '</section>' +
     '</div></div>';
 }
 
@@ -381,10 +435,10 @@ function vTablero() {
   const list = filtrarProyectos(true);
   const cols = S.L.estadosProyecto.map(e => {
     const items = list.filter(p => p.estado === e).sort(sortByEntrega);
-    return '<div class="col" data-drop="' + esc(e) + '"><div class="col-h">' + stPill(e) + '<span class="n">' + items.length + '</span></div>' +
+    return '<div class="col" style="--c:var(' + stVar(e) + ')" data-drop="' + esc(e) + '"><div class="col-h">' + stPill(e) + '<span class="n">' + items.length + '</span></div>' +
       items.map(p => {
         const late = p.entrega && isOpen(p) && diff(p.entrega) < 0;
-        return '<button class="card' + (late ? ' late' : '') + '" data-act="pver" data-id="' + esc(p._id) + '" data-drag="' + esc(p._id) + '"' + (canEditProj(p) ? ' draggable="true"' : '') + '><span class="cl">' + esc(p.cliente) + '</span><span class="pj">' + esc(p.proyecto) + '</span>' + (etapasDe(p).length ? '<span class="et">' + segs(etapasDe(p)) + esc(etapaInfo(p).cur) + '</span>' : '') + '<span class="ft">' + (resp(p).length ? whos(resp(p)) : '<span class="tag">Sin responsable</span>') + (p.entrega ? '<span class="mono">' + fmtShort(p.entrega) + '</span>' : '') + '</span></button>';
+        return '<button class="card' + (late ? ' late' : '') + '" style="--t:var(' + (TIPO_COLOR[p.tipo] || '--line-2') + ')" data-act="pver" data-id="' + esc(p._id) + '" data-drag="' + esc(p._id) + '"' + (canEditProj(p) ? ' draggable="true"' : '') + '><span class="cl"><span>' + esc(p.cliente) + '</span>' + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + '</span><span class="pj">' + esc(p.proyecto) + '</span>' + (etapasDe(p).length ? '<span class="et">' + segs(etapasDe(p)) + esc(etapaInfo(p).cur) + '</span>' : '') + '<span class="ft">' + (resp(p).length ? whos(resp(p)) : '<span class="tag">Sin responsable</span>') + '<span class="ft-r">' + prioFlag(p.prioridad) + (p.entrega ? '<span class="mono">' + fmtShort(p.entrega) + '</span>' : '') + '</span></span></button>';
       }).join('') + '</div>';
   }).join('');
   return '<p class="muted" style="margin:0">Arrastrá una tarjeta a otra columna para cambiarle el estado. Para ver más columnas usá las flechas ‹ › o arrastrá el fondo.</p><div class="kbw"><button type="button" class="kbnav l" data-act="kbMover" data-d="-1" aria-label="Ver columnas de la izquierda">‹</button><div class="kb">' + cols + '</div><button type="button" class="kbnav r" data-act="kbMover" data-d="1" aria-label="Ver columnas de la derecha">›</button></div>';
@@ -457,14 +511,17 @@ function vMis() {
   const cuentas = S.A.filter(a => a.estado === 'Activo' && hasResp(a, yo)).sort((a, b) => cmp(a.cliente, b.cliente));
   const myCl = S.C.filter(c => hasResp(c, yo)).sort((a, b) => cmp(a.nombre, b.nombre));
   const steps = pendientes().filter(m => m.responsable === yo);
+  const tks = tareasDe(yo), tkLate = tks.filter(t => t.x.fecha && diff(t.x.fecha) < 0).length;
   const kpi = (n, l, cls) => '<div class="kpi ' + (cls || '') + '"><span class="eyebrow">' + l + '</span><b>' + n + '</b></div>';
-  h += '<section class="kpis">' + kpi(cuentas.length, 'Abonos') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(steps.length, 'Pasos pendientes') + '</section>';
-  if (!mine.length && !cuentas.length && !myCl.length && !steps.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay nada a cargo de ' + yo, isStaff() ? 'Asigná responsables desde Proyectos o Abonos y aparece acá.' : 'Cuando te asignen un trabajo aparece acá.') + '</section>';
+  h += '<section class="kpis">' + kpi(tks.length, 'Tareas pendientes', tkLate ? 'alert' : '') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(cuentas.length, 'Abonos') + '</section>';
+  const tkHtml = '<section class="sheet"><div class="sheet-h"><h2>Tareas</h2><span class="muted num">' + tks.length + (tkLate ? ' · <b style="color:var(--crit)">' + tkLate + ' vencidas</b>' : '') + '</span></div>' + (tks.length ? '<div class="tks mis">' + tks.map(({ p, x, i }) =>
+    '<div class="tk"><input type="checkbox" class="tk-ok" aria-label="Marcar hecha" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"' + (canEditProj(p) ? '' : ' disabled') + '><button class="tk-n tk-lnk" data-act="pver" data-id="' + esc(p._id) + '"><b>' + esc(x.n) + '</b><span>' + esc(p.proyecto + ' · ' + p.cliente) + '</span></button>' + prioFlag(p.prioridad) + fechaTarea(x.fecha) + '</div>').join('') + '</div>' : emptyBox('Sin tareas a cargo de ' + yo, 'Las tareas se asignan desde la ficha de cada proyecto.')) + '</section>';
+  if (!tks.length && !mine.length && !cuentas.length && !myCl.length && !steps.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay nada a cargo de ' + yo, isStaff() ? 'Asigná responsables desde Proyectos o Abonos y aparece acá.' : 'Cuando te asignen un trabajo aparece acá.') + '</section>';
   const others = o => resp(o).length > 1 ? ' · con ' + esc(resp(o).filter(x => x !== yo).join(', ')) : '';
   const group = (title, arr) => arr.length ? '<section class="sheet"><div class="sheet-h"><h2>' + title + '</h2><span class="muted num">' + arr.length + '</span></div><div class="rows">' + arr.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.cliente, p.tipo, etapaTxt(p)].filter(Boolean).join(' · ')) + others(p) + '</span></span>' + (daysBadge(p) || stPill(p.estado)) + '</button>').join('') + '</div></section>' : '';
   const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + cuentas.length + '</span></div>' + (cuentas.length ? '<div class="rows">' + cuentas.map(a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(a.cliente) + '</b><span>' + esc(a.plan ? 'Plan ' + a.plan : '') + others(a) + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin cuentas mensuales a cargo', '')) + '</section>';
-  h += '<div class="grid2"><div class="stack">' + cuentasHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
-    '<div class="stack">' +
+  h += '<div class="grid2"><div class="stack">' + tkHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
+    '<div class="stack">' + cuentasHtml +
     '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos</h2>' + addBtn('comunicacion', 'Charla', null, 'sm') + '</div>' + (steps.length ? '<div class="rows">' + steps.map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin pasos pendientes', '')) + '</section>' +
     (myCl.length ? '<section class="sheet"><div class="sheet-h"><h2>Clientes a cargo</h2><span class="muted num">' + myCl.length + '</span></div><div class="rows">' + myCl.map(c => '<button class="row" data-act="ficha" data-cliente="' + esc(c.nombre) + '"><span class="d">' + esc(c.plan || '') + '</span><span class="t"><b>' + esc(c.nombre) + '</b><span>' + esc(c.servicio || '') + '</span></span>' + clPill(c.estado) + '</button>').join('') + '</div></section>' : '') +
     '</div></div>';
@@ -489,7 +546,7 @@ function vClientes() {
     const est = staff ? estadoSelect(c) : clPill(c.estado);
     return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name"><span class="who1">' + av(c.nombre, c.avatar, 'sq') + esc(c.nombre) + '</span></td><td>' + est + '</td><td>' + (servPills(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(c.contacto || '') + '</td></tr>';
   }).join('');
-  const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado', VER_CL) + opt('__auto', '↺ Automático', S.cmasivo) + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
+  const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado', VER_CL) + opt('__auto', '↺ Automático', S.cmasivo) + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><span class="bulk-sep"></span><button class="btn sm" data-act="mail">✉ Escribir mail a ' + (S.csel.size > 1 ? 'los ' + S.csel.size : 'este cliente') + '</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
   const allSel = staff && list.length && list.every(c => S.csel.has(c._id));
   return h + bulk + '<section class="sheet"><div class="tbl"><table><thead><tr>' + (staff ? '<th class="sel"><input type="checkbox" aria-label="Seleccionar todos" data-cselall="1"' + (allSel ? ' checked' : '') + '></th>' : '') + '<th>Cliente</th><th>Estado</th><th>Servicios</th><th>Responsables</th><th>Proyectos abiertos</th><th>Contacto</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' clientes</div></section>';
 }
@@ -525,7 +582,7 @@ function vFicha() {
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   return back +
     '<div class="head"><div class="head-av">' + (isStaff() ? avEditable('cliente', c._id, c.nombre, c.avatar, 'xl sq') : av(c.nombre, c.avatar, 'xl sq')) + '<div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + servPills(c.nombre) + '</p></div></div>' +
-    '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Anotar charla</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Charla', { cliente: c.nombre })) + '</div></div>' +
+    '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button>' + waBtn(c) + '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Anotar charla</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Charla', { cliente: c.nombre })) + '</div></div>' +
     (IA ? IA.fichaHtml(c.nombre) : '') +
     '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
@@ -577,7 +634,7 @@ function vComs() {
 
 function vListas() {
   let h = '<div class="head"><div><h1>Opciones</h1><p>Las opciones que aparecen en los desplegables.</p></div></div><div class="lists">';
-  const etapaKeys = (S.L.tipos || []).filter(t => !['Redes', 'Ads'].includes(t)).map(t => ['etapas:' + t, 'Etapas · ' + t]);
+  const etapaKeys = (S.L.tipos || []).filter(t => !['Redes', 'Ads'].includes(t)).map(t => ['etapas:' + t, 'Tareas modelo · ' + t]);
   for (const [k, label] of [...Object.entries(LIST_LABELS), ...etapaKeys]) {
     const arr = S.L[k] || [];
     h += (etapaKeys.length && k === etapaKeys[0][0] ? '</div><h2 style="margin:8px 0 0">Etapas por tipo de proyecto</h2><p class="muted" style="margin:0">Se cargan al crear un proyecto de ese tipo. Cambiarlas no modifica los proyectos que ya existen.</p><div class="lists">' : '') + '<section class="sheet"><div class="sheet-h"><h3>' + esc(label) + '</h3><span class="muted num">' + arr.length + '</span></div><div class="sheet-b"><div class="chips">' +
@@ -587,7 +644,49 @@ function vListas() {
   return h + '</div>';
 }
 
-const VIEW_FN = { inicio: vInicio, proyectos: vProyectos, abonos: vAbonos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas };
+/* ---------- Integraciones ---------- */
+// Lo que está conectado de verdad, lo que se prende y apaga, y lo que viene (sin conectar todavía).
+const INTEGS = [
+  { k: 'email', n: 'Email', c: '#FC4855', d: 'Mails a clientes, resúmenes de cuenta e invoices salen desde administracion@weareandale.com.', st: 'on', fija: 1 },
+  { k: 'ia', n: 'Mr. Piggy (IA)', c: '#17171C', d: 'Responde preguntas, redacta mails, arma tareas y carga gastos o charlas. Funciona con Claude.', st: 'on', fija: 1 },
+  { k: 'drive', n: 'Google Drive', c: '#1FA463', d: 'Lee las facturas de la carpeta de administración para cargarlas solas (en Cobros → Asistente).', st: 'on', fija: 1 },
+  { k: 'whatsapp', n: 'WhatsApp', c: '#25D366', d: 'Botón en cada cliente que abre el chat con su número, sin copiar y pegar.', st: 'tog' },
+  { k: 'calendario', n: 'Google Calendar', c: '#4285F4', d: 'Botón “Al calendario” en la entrega de cada proyecto: abre Google Calendar con el evento armado.', st: 'tog' },
+  { k: 'excel', n: 'Excel y Google Sheets', c: '#107C41', d: 'Bajá cualquier lista con el botón Excel de arriba. Se abre igual en Google Sheets.', st: 'on', fija: 1 },
+  { k: 'arca', n: 'ARCA', c: '#2B5DA8', d: 'Factura electrónica sin salir de la app. Hoy se factura en ARCA y acá se anota.', st: 'prox' },
+  { k: 'mercadopago', n: 'Mercado Pago', c: '#00B1EA', d: 'Link de pago en cada resumen de cuenta y cobro marcado solo.', st: 'prox' },
+  { k: 'wise', n: 'Wise', c: '#9FE870', d: 'Cobros del exterior en USD, EUR y GBP con los USD recibidos cargados solos.', st: 'prox' },
+  { k: 'meta', n: 'Meta Business', c: '#0866FF', d: 'Métricas de Instagram y Facebook de cada cliente para los informes.', st: 'prox' },
+  { k: 'linkedin', n: 'LinkedIn', c: '#0A66C2', d: 'Métricas de las páginas de empresa que manejamos.', st: 'prox' },
+  { k: 'slack', n: 'Slack', c: '#611F69', d: 'Avisos al equipo: entregas del día, tareas vencidas, pagos que entraron.', st: 'prox' },
+  { k: 'notion', n: 'Notion', c: '#191919', d: 'Briefs y actas de reunión enlazados a cada cliente y proyecto.', st: 'prox' },
+  { k: 'canva', n: 'Canva', c: '#00C4CC', d: 'Diseños del proyecto a mano desde la ficha.', st: 'prox' },
+  { k: 'figma', n: 'Figma', c: '#F24E1E', d: 'Archivos y prototipos de cada proyecto, con vista previa.', st: 'prox' },
+  { k: 'calendly', n: 'Calendly', c: '#006BFF', d: 'Reuniones agendadas por clientes que quedan como charla.', st: 'prox' },
+];
+function vIntegraciones() {
+  const L = S.L.integraciones || INTEG_DEF, admin = isAdmin();
+  const quiere = k => L.includes('quiero:' + k);
+  const card = x => {
+    const on = x.fija || L.includes(x.k);
+    const badge = x.st === 'prox' ? '<span class="ig-b prox">Próximamente</span>' : on ? '<span class="ig-b on">' + (x.fija ? 'Conectada' : 'Activa') + '</span>' : '<span class="ig-b off">Apagada</span>';
+    const pie = x.st === 'tog' ? (admin ? '<label class="sw"><input type="checkbox" data-integ="' + x.k + '"' + (on ? ' checked' : '') + '><span></span><b>' + (on ? 'Prendida' : 'Apagada') + '</b></label>' : '<span class="muted">' + (on ? 'Prendida' : 'Apagada') + '</span>')
+      : x.st === 'prox' ? (admin ? '<button class="btn sm' + (quiere(x.k) ? ' primary' : '') + '" data-act="integQuiero" data-k="' + x.k + '">' + (quiere(x.k) ? '★ La queremos' : '☆ La queremos') + '</button>' : (quiere(x.k) ? '<span class="muted">★ En la lista de pedidas</span>' : '<span></span>'))
+      : '<span class="muted">Siempre activa</span>';
+    return '<article class="ig' + (x.st === 'prox' ? ' prox' : '') + '"><div class="ig-h"><span class="ig-i" style="--c:' + x.c + '">' + esc(x.n.charAt(0)) + '</span>' + badge + '</div><h3>' + esc(x.n) + '</h3><p>' + esc(x.d) + '</p><div class="ig-f">' + pie + '</div></article>';
+  };
+  const grupo = (t, sub, xs) => '<section class="ig-sec"><div class="ig-sh"><h2>' + t + '</h2><span class="muted">' + sub + '</span></div><div class="igs">' + xs.map(card).join('') + '</div></section>';
+  return '<div class="head"><div><h1>Integraciones</h1><p>Las apps que se conectan con àndale Operaciones. Las que dicen “Próximamente” todavía no están conectadas: marcá las que quieran y se priorizan.</p></div></div>' +
+    grupo('Conectadas', 'Funcionan hoy', INTEGS.filter(x => x.st !== 'prox')) +
+    grupo('Próximamente', INTEGS.filter(x => x.st === 'prox' && quiere(x.k)).length + ' pedidas', INTEGS.filter(x => x.st === 'prox'));
+}
+// Link a Google Calendar (sin API): abre el evento ya armado para guardarlo.
+function gcalUrl(titulo, fecha, detalle) {
+  if (!fecha) return ''; const d = fecha.replace(/-/g, ''); const n = new Date(fecha + 'T12:00'); n.setDate(n.getDate() + 1);
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titulo) + '&dates=' + d + '/' + n.toISOString().slice(0, 10).replace(/-/g, '') + '&details=' + encodeURIComponent(detalle || 'àndale Operaciones');
+}
+const calBtn = (titulo, fecha, detalle, cls) => integ('calendario') && fecha ? '<a class="btn ' + (cls || '') + '" href="' + esc(gcalUrl(titulo, fecha, detalle)) + '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅 Al calendario</a>' : '';
+const VIEW_FN = { inicio: vInicio, proyectos: vProyectos, abonos: vAbonos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, integraciones: vIntegraciones };
 
 /* ---------- Render ---------- */
 document.addEventListener('change', e => { if (e.target.matches && e.target.matches('[data-srvab="Redes"]')) { const b = document.getElementById('srvplan'); if (b) b.hidden = !e.target.checked; } });
@@ -687,7 +786,8 @@ const FORMS = {
     { k: 'tipo', label: 'Tipo', type: 'select', opts: () => S.L.tipos, blank: '—', staffOnly: 1 },
     { k: 'estado', label: 'Estado', type: 'select', opts: () => S.L.estadosProyecto },
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1, staffOnly: 1 },
-    { k: 'etapas', label: 'Etapas', type: 'etapas', full: 1 },
+    { k: 'prioridad', label: 'Prioridad', type: 'select', opts: () => PRIOS, blank: 'Sin prioridad' },
+    { k: 'etapas', label: 'Tareas', type: 'etapas', full: 1 },
     { k: 'fechaInicio', label: 'Fecha de inicio', type: 'date' },
     { k: 'entrega', label: 'Entrega pactada', type: 'date', hint: 'Opcional' },
     { k: 'entregaReal', label: 'Entrega real', type: 'date', adv: 1 },
@@ -744,12 +844,12 @@ const FORMS = {
 
 function etapasInner() {
   const e = (S.form && S.form.etapas) || [], ro = S.form && S.form.ro, tipo = ($('#f-tipo') || {}).value || '';
-  return (e.length ? e.map((x, i) => '<div class="etrow"><label class="chk"><input type="checkbox" data-fet="' + i + '"' + (x.ok ? ' checked' : '') + (ro ? ' disabled' : '') + '> ' + esc(x.n) + '</label>' + (ro ? '' : '<button type="button" class="btn ghost sm" data-act="fetDel" data-i="' + i + '" aria-label="Quitar etapa">✕</button>') + '</div>').join('') : '<span class="muted">Sin etapas.</span>') +
-    (ro ? '' : '<div class="etadd"><input class="in" id="f-etapa-nueva" placeholder="Agregar etapa"><button type="button" class="btn sm" data-act="fetAdd">Agregar</button>' + (plantilla(tipo).length ? '<button type="button" class="btn ghost sm" data-act="fetTpl">' + (e.length ? 'Reemplazar por' : 'Usar') + ' plantilla de ' + esc(tipo) + '</button>' : '') + '</div>');
+  return (e.length ? e.map((x, i) => '<div class="etrow"><label class="chk"><input type="checkbox" data-fet="' + i + '"' + (x.ok ? ' checked' : '') + (ro ? ' disabled' : '') + '> ' + esc(x.n) + '</label>' + (ro ? '' : '<button type="button" class="btn ghost sm" data-act="fetDel" data-i="' + i + '" aria-label="Quitar tarea">✕</button>') + '</div>').join('') : '<span class="muted">Sin tareas. Después, en la ficha del proyecto, les asignás quién y para cuándo.</span>') +
+    (ro ? '' : '<div class="etadd"><input class="in" id="f-etapa-nueva" placeholder="Agregar tarea"><button type="button" class="btn sm" data-act="fetAdd">Agregar</button>' + (plantilla(tipo).length ? '<button type="button" class="btn ghost sm" data-act="fetTpl">' + (e.length ? 'Reemplazar por' : 'Usar') + ' tareas modelo de ' + esc(tipo) + '</button>' : '') + '</div>');
 }
 function renderEtapasField() { const el = $('#f-etapas'); if (el) el.innerHTML = etapasInner(); }
 function fieldHtml(f, v, ro) {
-  if (f.type === 'etapas') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span><div id="f-etapas" class="etapas"></div><span class="hint">El avance del proyecto se ve por etapas. Las plantillas por tipo se editan en Opciones.</span></div>';
+  if (f.type === 'etapas') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span><div id="f-etapas" class="etapas"></div><span class="hint">El avance se ve por tareas hechas. Las tareas modelo de cada tipo se editan en Opciones.</span></div>';
   const id = 'f-' + f.k, dis = (ro || (f.staffOnly && !isStaff())) ? ' disabled' : '';
   const hint = f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '';
   if (f.type === 'check') return '<label class="chk ' + (f.full ? 'full' : '') + '"><input type="checkbox" id="' + id + '"' + (v ? ' checked' : '') + dis + '> ' + esc(f.label) + '</label>';
@@ -871,6 +971,8 @@ async function saveListas(k, arr) {
 function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('Copiado'), () => toast(v)); } catch (e) { toast(v); } }
 const ACT = {
   go: t => { if (t.dataset.pend) S.mf.pend = true; go(t.dataset.view); },
+  integQuiero: t => { const k = 'quiero:' + t.dataset.k, L = S.L.integraciones || [...INTEG_DEF]; saveListas('integraciones', L.includes(k) ? L.filter(x => x !== k) : [...L, k]); },
+  grpTog: t => { const g = t.dataset.g; if (S.gcl.has(g)) S.gcl.delete(g); else S.gcl.add(g); lsSet('gcl', JSON.stringify([...S.gcl])); render(); },
   kbMover: t => { const kb = document.querySelector('.kb'); if (kb) kb.scrollBy({ left: +t.dataset.d * Math.max(260, kb.clientWidth * .8), behavior: 'smooth' }); },
   tab: t => { S.tab[t.dataset.hub] = t.dataset.t; if (ADM) ADM.resetView(); render(); window.scrollTo(0, 0); },
   goProy: t => { S.f = { q: '', estado: t.dataset.estado || '', tipo: t.dataset.tipo || '', resp: '', cliente: '', plazo: t.dataset.plazo || '', abiertos: !(t.dataset.estado && CERRADOS.has(t.dataset.estado)) }; S.mode = 'lista'; go('proyectos'); },
@@ -900,7 +1002,18 @@ const ACT = {
   menu: () => menu(),
   logout: async () => { await data.logout(); location.reload(); },
   cSelNone: () => { S.csel.clear(); render(); },
-  etCargar: t => { const p = S.P.find(x => x._id === t.dataset.id); if (p) upd('proyecto', p._id, { etapas: plantilla(p.tipo).map(n => ({ n, ok: false })) }); },
+  etCargar: t => { const p = S.P.find(x => x._id === t.dataset.id); if (!p) return; const ya = new Set(etapasDe(p).map(x => norm(x.n))); const nuevas = plantilla(p.tipo).filter(n => !ya.has(norm(n))).map(n => ({ n, ok: false })); if (!nuevas.length) { toast('Ya están todas las tareas modelo de ' + p.tipo); return; } guardarTareas(p, [...etapasDe(p), ...nuevas], nuevas.length + ' tareas sumadas'); },
+  tkDel: t => { const p = S.P.find(x => x._id === t.dataset.id); if (!p) return; guardarTareas(p, etapasDe(p).filter((x, i) => i !== +t.dataset.i)); },
+  tkIA: async t => {
+    const p = S.P.find(x => x._id === t.dataset.id); if (!p) return;
+    t.disabled = true; t.innerHTML = '<span class="ia-dots"><i></i><i></i><i></i></span> Mr. Piggy está armando las tareas…';
+    try {
+      const r = await data.ia({ modo: 'tareas', texto: JSON.stringify({ proyecto: p.proyecto, cliente: p.cliente, tipo: p.tipo, inicio: p.fechaInicio || today(), entrega: p.entrega || '', entregables: p.entregables || '', notas: p.notas || '', responsables: resp(p), tareas_existentes: etapasDe(p).map(x => x.n) }), contexto: { equipo: S.E.filter(e => e.activo !== false).map(e => ({ alias: e.persona, puesto: e.puesto })), tareas_modelo: plantilla(p.tipo) } });
+      const nuevas = (r.tareas || []).filter(x => x && x.titulo).map(x => ({ n: String(x.titulo).slice(0, 140), ok: false, resp: personas().includes(x.responsable) ? x.responsable : '', fecha: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') ? x.fecha : '' }));
+      if (!nuevas.length) { toast('Mr. Piggy no encontró tareas para sumar'); render(); return; }
+      await guardarTareas(p, [...etapasDe(p), ...nuevas], 'Mr. Piggy sumó ' + nuevas.length + ' tareas. Revisalas y borrá las que no sirvan.');
+    } catch (err) { toast(err.message); render(); }
+  },
   fetDel: t => { S.form.etapas.splice(+t.dataset.i, 1); renderEtapasField(); },
   fetAdd: () => { const i = $('#f-etapa-nueva'); const v = i && i.value.trim(); if (!v) return; S.form.etapas.push({ n: v, ok: false }); renderEtapasField(); const n = $('#f-etapa-nueva'); if (n) n.focus(); },
   fetTpl: () => { const tipo = ($('#f-tipo') || {}).value; S.form.etapas = plantilla(tipo).map(n => ({ n, ok: false })); renderEtapasField(); },
@@ -943,12 +1056,19 @@ document.addEventListener('change', async e => {
     upd(kind, rec._id, { responsables: next }, resp(rec), true);
     return;
   }
+  if (t.dataset.integ) { const L = (S.L.integraciones || [...INTEG_DEF]).filter(x => x !== t.dataset.integ); saveListas('integraciones', t.checked ? [...L, t.dataset.integ] : L); return; }
+  if (t.dataset.tk) {
+    const p = S.P.find(x => x._id === t.dataset.pid); if (!p) return;
+    const k = t.dataset.tk, v = t.value.trim(); if (k === 'n' && !v) { render(); return; }
+    guardarTareas(p, etapasDe(p).map((x, i) => i === +t.dataset.i ? { ...x, [k]: v } : x));
+    return;
+  }
   if (t.dataset.etoggle) {
     const p = S.P.find(x => x._id === t.dataset.etoggle); if (!p) return;
     const next = etapasDe(p).map((x, i) => i === +t.dataset.i ? { ...x, ok: t.checked } : x);
-    p.etapas = next; S.openPick = 'etapa:' + p._id;
+    p.etapas = next; S.openPick = 'etapa:' + p._id; if (S.view === 'mis' || S.view === 'inicio' || S.pficha) render();
     upd('proyecto', p._id, { etapas: next }, null, true);
-    if (next.length && next.every(x => x.ok) && isOpen(p)) toast('Todas las etapas listas. ¿Lo pasás a Entregado?');
+    if (next.length && next.every(x => x.ok) && isOpen(p)) toast('Todas las tareas listas. ¿Lo pasás a Entregado?');
     return;
   }
   if (t.dataset.fet !== undefined && S.form && S.form.etapas) { S.form.etapas[+t.dataset.fet].ok = t.checked; return; }
@@ -971,10 +1091,17 @@ document.addEventListener('change', async e => {
     upd(kind, t.dataset.id, patch);
   }
 });
+document.addEventListener('click', e => { const i = e.target.closest && e.target.closest('.tk-date input'); if (i && i.showPicker) try { i.showPicker(); } catch (er) { } });
 document.addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target;
   if (f.id === 'form') { saveForm(); return; }
+  if (f.dataset.tkadd) {
+    const p = S.P.find(x => x._id === f.dataset.tkadd), n = f.elements.n.value.trim(); if (!p || !n) return;
+    await guardarTareas(p, [...etapasDe(p), { n, ok: false, resp: f.elements.resp.value, fecha: f.elements.fecha.value }]);
+    const i = document.querySelector('[data-tkadd="' + p._id + '"] [name="n"]'); if (i) i.focus();
+    return;
+  }
   if (f.id === 'login') {
     const email = f.querySelector('input').value.trim(), btn = f.querySelector('button'), msg = $('#login-msg');
     if (!email) return;
@@ -1020,6 +1147,7 @@ async function reload() {
     const d = await data.loadAll();
     const L = {}; for (const k of Object.keys(DEF)) L[k] = Array.isArray(d.L[k]) && d.L[k].length ? [...d.L[k]] : [...DEF[k]];
     for (const [k, v] of Object.entries(d.L || {})) if (k.startsWith('etapas:') && Array.isArray(v)) L[k] = [...v];
+    L.integraciones = Array.isArray(d.L.integraciones) ? [...d.L.integraciones] : [...INTEG_DEF];
     Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, L, status: 'ok' });
     if (isAdmin() && ADM) await ADM.load();
     banner('');
@@ -1048,7 +1176,9 @@ async function start(sess) {
     Object.assign(ACT, ADM.actions);
   }
   if (isStaff() && !IA) {
-    IA = initIA({ S, esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM });
+    MAIL = initMails({ S, data, esc, opt, toast, $, closeForm, reload, ISO, marca: () => (ADM && ADM.cfgMarca ? ADM.cfgMarca() : null), servicios: n => serviciosDe(n).map(x => x.tipo).join(', ') });
+    Object.assign(ACT, MAIL.acts);
+    IA = initIA({ S, esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
     Object.assign(ACT, IA.actions);
   }
   $('#askbtn').hidden = !IA; $('#askbtn .askbtn-i').innerHTML = ISO; document.querySelectorAll('.askmini').forEach(b => { b.hidden = !IA; b.innerHTML = ISO; });

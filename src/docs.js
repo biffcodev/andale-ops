@@ -156,7 +156,7 @@ function cuentasPago(D, cfg, x, w) {
   const gap = 14, cwid = (w - gap * (cols.length - 1)) / cols.length;
   const alto = Math.max(...cols.map(c => 30 + (c.campos || []).reduce((a, [, v]) => a + 10 + D.wrap(v, D.F.s, 8.5, cwid).length * 10, 0)));
   D.need(alto + 30);
-  D.y -= 22; D.text('Cómo pagar', x, D.y, D.F.d, 13, COL.ink); D.y -= 8;
+  D.y -= 22; D.text(cfg.tituloPago || 'Cómo pagar', x, D.y, D.F.d, 13, COL.ink); D.y -= 8;
   const top = D.y; let low = top;
   cols.forEach((c, i) => {
     const cx = x + i * (cwid + gap); let yy = top - 14;
@@ -322,6 +322,69 @@ export async function reciboDoc(r) {
   }
   D.y -= 26; D.need(16);
   D.para('Comprobante interno de àndale. No reemplaza la factura del proveedor ni el recibo de sueldo legal.', X, F.r, 8.5, CW, COL.muted);
+  pieFinal(D, cfg);
+  return D.save();
+}
+
+/* ---------------- invoice (clientes del exterior, en inglés) ---------------- */
+// En Argentina las facturas se hacen en ARCA; esto es el invoice comercial que piden afuera (no es un comprobante fiscal argentino).
+export function money(n, moneda) {
+  try { return clean(new Intl.NumberFormat('en-US', { style: 'currency', currency: moneda || 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0)); }
+  catch (e) { return (moneda || '') + ' ' + n; }
+}
+const fechaEn = d => { if (!d) return ''; const [y, m, dd] = String(d).slice(0, 10).split('-'); return new Date(+y, +m - 1, +dd).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); };
+/**
+ * @param {{cfg:object, numero:string, fecha:string, vence?:string, emisor?:string, moneda:string, cliente:object,
+ *   items:{concepto:string,monto:number}[], total:number, nota?:string, pago?:string}} r
+ */
+export async function invoiceDoc(r) {
+  const cfg = r.cfg || {}, c = r.cliente || {};
+  const D = await nuevo('Invoice-' + (r.numero || '') + '-' + (c.nombre || ''));
+  const { F } = D, X = D.M;
+  D.addPage();
+  cabecera(D, 'Invoice', r.numero ? 'No. ' + r.numero : '', r.fecha ? 'Issued ' + fechaEn(r.fecha) : '');
+  D.y -= 30;
+  D.text('INVOICE' + (r.vence ? '  ·  DUE ' + fechaEn(r.vence).toUpperCase() : ''), X, D.y, F.s, 10, COL.coral);
+  D.y -= 30; D.text(c.razon_social || c.nombre || '', X, D.y, F.d, 26, COL.ink);
+  D.y -= 20; D.hline(D.y, X, W - X, COL.line);
+  const e = r.emisor ? ((cfg.emisores || {})[r.emisor] || {}) : {};
+  const contacto = (cfg.contacto || []).filter(([t]) => !t.startsWith('@') && !/^weareandale\.com$/.test(t)).map(([t]) => t);
+  partes(D, [
+    { titulo: 'Bill to', nombre: c.razon_social || c.nombre || '', lineas: [c.razon_social && c.nombre && c.razon_social !== c.nombre ? c.nombre : '', c.domicilio, c.cuit ? 'Tax ID ' + c.cuit : '', c.contacto ? 'Attn: ' + c.contacto : '', c.email] },
+    { titulo: 'From', nombre: 'àndale', lineas: [r.emisor ? [e.nombre || NOMBRES_EMISOR[r.emisor] || r.emisor, e.cuit ? 'Tax ID (CUIT) ' + fmtCuit(e.cuit) : ''].filter(Boolean).join(' · ') : '', 'Córdoba, Argentina', contacto.join(' · '), 'weareandale.com'] },
+  ]);
+  D.y -= 10; D.hline(D.y, X, W - X, COL.line);
+  // Total destacado (Inter: tiene € y £)
+  D.y -= 26; D.text('Amount due', X, D.y + 2, F.s, 10, COL.ink);
+  if (r.vence) D.text('Due ' + fechaEn(r.vence), X, D.y - 11, F.s, 8.5, COL.coralInk);
+  D.right(money(r.total, r.moneda), W - X, D.y - 2, F.b, 20, COL.ink);
+  D.y -= r.vence ? 22 : 16; D.y -= 4;
+  D.hline(D.y, X, W - X, COL.ink, 0.8); D.y -= 15;
+  D.text('Description', X, D.y, F.s, 8.5, COL.muted); D.right('Amount', W - X, D.y, F.s, 8.5, COL.muted); D.y -= 7;
+  for (const it of r.items) {
+    const ls = D.wrap(it.concepto, F.r, 10.5, D.cw - 130); D.need(ls.length * 14 + 12);
+    D.hline(D.y, X, W - X, COL.line); D.y -= 17;
+    ls.forEach((l, i) => D.text(l, X, D.y - i * 14, F.r, 10.5, COL.ink));
+    D.right(money(it.monto, r.moneda), W - X, D.y, F.s, 10.5, COL.ink);
+    D.y -= (ls.length - 1) * 14 + 8;
+  }
+  D.hline(D.y, X, W - X, COL.ink, 0.8); D.y -= 17;
+  D.text('Total ' + (r.moneda || ''), X, D.y, F.b, 11, COL.ink); D.right(money(r.total, r.moneda), W - X, D.y, F.b, 11, COL.ink);
+  const nota = (r.nota || '').trim();
+  if (nota) { D.y -= 24; const top = D.y + 6; const n = D.wrap(nota, F.r, 9.5, D.cw - 16).length; D.page.drawRectangle({ x: X, y: top - n * 14 - 8, width: 2, height: n * 14 + 8, color: COL.coral }); D.y += 4; D.para(nota, X + 14, F.r, 9.5, D.cw - 16, COL.soft, 1.47); }
+  // Cómo pagar: texto propio del invoice o las cuentas del exterior de Ajustes.
+  const pago = (r.pago || '').trim();
+  if (pago) { D.need(60); D.y -= 30; D.text('Payment instructions', X, D.y, F.d, 13, COL.ink); D.y -= 8; D.para(pago, X, F.r, 9.5, D.cw, COL.soft, 1.5); }
+  else {
+    const todas = cfg.cuentas || [], ext = todas.length > 1 ? todas.slice(1) : todas;
+    const porMoneda = ext.filter(k => new RegExp('\\b' + (r.moneda || 'USD') + '\\b', 'i').test((k.titulo || '') + ' ' + (k.sub || '')));
+    const cs = porMoneda.length ? porMoneda : ext;
+    const EN = { 'Nombre del banco': 'Bank name', 'Dirección del banco': 'Bank address', 'Enrutamiento de ABA': 'ABA routing number', 'Número de cuenta': 'Account number', 'Tipo de cuenta': 'Account type', 'Nombre del beneficiario': 'Beneficiary', 'Titular': 'Account holder', 'Banco': 'Bank', 'Alias': 'Alias', 'EEUU': 'USA', 'Europa': 'Europe', 'Reino Unido': 'United Kingdom', 'solo cuentas Empresa': 'business accounts only', 'Dirección': 'Address' };
+    const tr = t => EN[String(t || '').trim()] || t;
+    if (cs.length) cuentasPago(D, { cuentas: cs.map(k => ({ ...k, titulo: tr(k.titulo), sub: tr(k.sub), campos: (k.campos || []).map(([a, b]) => [tr(a), b]) })), tituloPago: 'Payment instructions' }, X, D.cw);
+  }
+  D.y -= 26; D.need(16);
+  D.para('Commercial invoice for services rendered from Argentina (export of services). Please include the invoice number in your payment reference.', X, F.r, 8.5, D.cw, COL.muted);
   pieFinal(D, cfg);
   return D.save();
 }

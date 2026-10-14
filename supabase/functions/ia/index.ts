@@ -3,7 +3,7 @@
 // Equipo y admins. verify_jwt apagado: se valida el usuario con rpc('yo').
 //
 // Secretos: ANTHROPIC_API_KEY (el mismo del asistente) · IA_MODEL_RAPIDO opcional (default claude-haiku-5-5, el más rápido)
-// POST { modo: 'comando' | 'cliente' | 'charla', texto?, contexto }
+// POST { modo: 'comando' | 'cliente' | 'charla' | 'tareas' | 'mail' | 'texto', texto?, contexto, tarea? }
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const CORS = {
@@ -51,7 +51,7 @@ const QUIENES = 'Sos Mr. Piggy, el chanchito con alas del isologo de àndale y s
 const ctxTxt = (c: unknown) => JSON.stringify(c ?? {}).slice(0, 90_000);
 
 /* ---------- Barra "Decile a àndale" ---------- */
-const ACCIONES = ['gasto_ingreso', 'charla', 'proyecto', 'presupuesto', 'recordatorio', 'abrir'];
+const ACCIONES = ['gasto_ingreso', 'charla', 'proyecto', 'presupuesto', 'recordatorio', 'mail', 'abrir'];
 const TOOL_COMANDO = {
   name: 'resolver',
   description: 'Responde la pregunta o deja preparada una acción para que la persona la revise y la guarde.',
@@ -67,7 +67,9 @@ const TOOL_COMANDO = {
           sentido: { type: 'string', enum: ['gasto', 'ingreso'], description: 'gasto_ingreso' },
           fecha: { type: 'string', description: 'AAAA-MM-DD' },
           monto: { type: 'number' },
-          moneda: { type: 'string', enum: ['ARS', 'USD'] },
+          moneda: { type: 'string', enum: ['ARS', 'USD', 'EUR', 'GBP'] },
+          asunto: { type: 'string', description: 'mail: asunto' },
+          mensaje: { type: 'string', description: 'mail: el cuerpo del mail ya redactado, en el tono de àndale' },
           quien: { type: 'string', description: 'gasto_ingreso: a quién se le pagó o quién pagó (como figura en la lista de quiénes)' },
           detalle: { type: 'string' },
           categoria: { type: 'string', description: 'gasto_ingreso: categoría exacta de la lista' },
@@ -86,7 +88,7 @@ const TOOL_COMANDO = {
           entrega: { type: 'string', description: 'proyecto: fecha de entrega AAAA-MM-DD' },
           clase: { type: 'string', enum: ['Propuesta', 'Presupuesto'] },
           brief: { type: 'string', description: 'presupuesto: lo que pidió el cliente, para que la IA lo redacte después' },
-          vista: { type: 'string', enum: ['inicio', 'proyectos', 'abonos', 'clientes', 'propuestas', 'comunicaciones', 'cobros', 'facturas', 'gastos', 'pagos', 'numeros', 'rentabilidad', 'precios'], description: 'abrir: pantalla' },
+          vista: { type: 'string', enum: ['inicio', 'proyectos', 'abonos', 'mis', 'clientes', 'propuestas', 'comunicaciones', 'cobros', 'facturas', 'gastos', 'pagos', 'numeros', 'rentabilidad', 'precios', 'integraciones'], description: 'abrir: pantalla' },
         },
       },
     },
@@ -94,8 +96,8 @@ const TOOL_COMANDO = {
 };
 const SYS_COMANDO = QUIENES + ' Vivís en la app interna de operaciones. Te escriben pedidos cortos. Tenés el contexto (JSON) con clientes, abonos, proyectos, facturas pendientes, gastos recientes, personas y listas. ' +
   'Si es una pregunta, contestala SOLO con datos del contexto (sumá y compará vos; si algo no está, decilo). Si pide cargar, anotar, crear, armar o mandar algo, devolvé una acción con los datos que puedas completar; la persona la revisa antes de guardar, nunca se guarda sola. ' +
-  'Acciones: gasto_ingreso (cargar un gasto o un ingreso de plata), charla (anotar una reunión, llamada o mensaje con un cliente y el próximo paso), proyecto (nuevo trabajo puntual), presupuesto (nuevo presupuesto o propuesta), recordatorio (recordarle a un cliente que pague), abrir (ir a una pantalla o a la ficha de un cliente). ' +
-  'Para gasto_ingreso elegí categoría y detalle mirando cómo se cargó antes a esa misma persona o empresa (patrones); "50 mil" = 50000, "1,2 palo" = 1200000, "lucas" = miles; moneda ARS salvo que diga dólares/USD. Fechas relativas ("ayer", "el viernes") convertilas a AAAA-MM-DD. ' +
+  'Acciones: gasto_ingreso (cargar un gasto o un ingreso de plata), charla (anotar una reunión, llamada o mensaje con un cliente y el próximo paso), proyecto (nuevo trabajo puntual), presupuesto (nuevo presupuesto o propuesta), recordatorio (recordarle a un cliente que pague), mail (escribirle un mail a un cliente que no sea de cobranza: novedades, pedir material, coordinar; dejá asunto y mensaje redactados), abrir (ir a una pantalla o a la ficha de un cliente). ' +
+  'Para gasto_ingreso elegí categoría y detalle mirando cómo se cargó antes a esa misma persona o empresa (patrones); "50 mil" = 50000, "1,2 palo" = 1200000, "lucas" = miles; moneda ARS salvo que diga dólares/USD, euros/EUR o libras/GBP. Fechas relativas ("ayer", "el viernes") convertilas a AAAA-MM-DD. ' +
   'Usá nombres de clientes y personas exactamente como figuran en el contexto (aceptá apodos o abreviaturas y elegí el más parecido). Si es ambiguo, hacé una respuesta con la duda en una línea.';
 
 /* ---------- Resumen de un cliente ---------- */
@@ -133,6 +135,47 @@ const TOOL_CHARLA = {
 };
 const SYS_CHARLA = QUIENES + ' Te pegan un chat de WhatsApp, notas de una reunión o un mail con un cliente. Sacá lo importante para registrarlo: resumen, acuerdo, próximo paso con fecha y responsable. No inventes; si algo no está, dejalo vacío.';
 
+/* ---------- Tareas de un proyecto ---------- */
+const TOOL_TAREAS = {
+  name: 'armar_tareas', description: 'Lista de tareas para el proyecto.',
+  input_schema: {
+    type: 'object', required: ['tareas'],
+    properties: {
+      tareas: { type: 'array', items: { type: 'object', required: ['titulo'], properties: {
+        titulo: { type: 'string', description: 'tarea concreta, empieza con verbo, máximo 8 palabras' },
+        responsable: { type: 'string', description: 'alias exacto de alguien del equipo o vacío' },
+        fecha: { type: 'string', description: 'AAAA-MM-DD, repartidas entre el inicio y la entrega (si no hay entrega, en las próximas semanas); vacío si no tiene sentido' },
+      } } },
+    },
+  },
+};
+const SYS_TAREAS = QUIENES + ' Armás la lista de tareas de un proyecto de la agencia (branding, web, packaging, diseño, audiovisual). Entre 5 y 12 tareas, en el orden en que se hacen, concretas y realistas para un estudio chico: brief, investigación, propuestas, presentación al cliente, ajustes, entrega de archivos, etc. según el tipo. ' +
+  'No repitas las tareas existentes. Si hay tareas modelo para el tipo, usalas de base. Asigná responsable solo si es obvio por el puesto o porque es responsable del proyecto. Repartí fechas entre el inicio y la entrega, sin fines de semana.';
+
+/* ---------- Mail libre a un cliente ---------- */
+const TOOL_MAIL = {
+  name: 'redactar_mail', description: 'Mail listo para revisar.',
+  input_schema: { type: 'object', required: ['asunto', 'mensaje'], properties: {
+    asunto: { type: 'string', description: 'corto, sin mayúsculas innecesarias' },
+    mensaje: { type: 'string', description: 'cuerpo del mail: saludo con el nombre del contacto, 1 a 3 párrafos cortos separados por línea en blanco, cierre. Sin firma (la agrega la app).' },
+  } },
+};
+const SYS_MAIL = QUIENES + ' Redactás mails de la agencia a sus clientes que NO son de cobranza: novedades, pedir material o accesos, coordinar una reunión, avisar vacaciones, presentar una idea, agradecer. ' +
+  'Tono àndale: cercano, claro, profesional, con vos (o usted/tú/inglés si el cliente es del exterior o si te lo piden). Breve. No inventes datos, fechas ni montos que no estén en lo que te pasan.';
+
+/* ---------- Mejorar, acortar o traducir un texto ---------- */
+const TOOL_TEXTO = {
+  name: 'texto_listo', description: 'El texto final.',
+  input_schema: { type: 'object', required: ['texto'], properties: { texto: { type: 'string' } } },
+};
+const TAREAS_TEXTO: Record<string, string> = {
+  mejorar: 'Mejorá la redacción: más claro y prolijo, mismo contenido, mismo idioma, tono àndale.',
+  corto: 'Hacelo más corto y directo, sin perder nada importante.',
+  ingles: 'Traducilo al inglés de negocios, natural (para un cliente del exterior). Si es un concepto de factura, que sea una descripción breve de servicio.',
+  formal: 'Hacelo un poco más formal, sin perder calidez.',
+};
+const SYS_TEXTO = QUIENES + ' Te pasan un texto y una tarea. Devolvé solo el texto final, sin comillas ni comentarios.';
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405);
@@ -155,6 +198,16 @@ Deno.serve(async req => {
       case 'charla': {
         if (!texto.trim()) throw new Aviso('Pegá el chat o las notas.');
         return json(await claude(sb, yo.id, 'charla', { system: SYS_CHARLA, tool: TOOL_CHARLA, maxTokens: 700, texto: hoy + '\n\nCONTEXTO:\n' + ctxTxt(b.contexto) + '\n\nTEXTO:\n' + texto }));
+      }
+      case 'tareas': return json(await claude(sb, yo.id, 'tareas', { system: SYS_TAREAS, tool: TOOL_TAREAS, maxTokens: 900, texto: hoy + '\n\nEQUIPO Y MODELOS:\n' + ctxTxt(b.contexto) + '\n\nPROYECTO:\n' + texto }));
+      case 'mail': {
+        if (!texto.trim()) throw new Aviso('Contale a Mr. Piggy qué querés decir.');
+        return json(await claude(sb, yo.id, 'mail', { system: SYS_MAIL, tool: TOOL_MAIL, maxTokens: 900, texto: hoy + '\n\nCLIENTE Y CONTEXTO:\n' + ctxTxt(b.contexto) + '\n\nQUÉ QUIERE DECIR:\n' + texto }));
+      }
+      case 'texto': {
+        if (!texto.trim()) throw new Aviso('No hay texto para trabajar.');
+        const t = TAREAS_TEXTO[b.tarea] || TAREAS_TEXTO.mejorar;
+        return json(await claude(sb, yo.id, 'texto', { system: SYS_TEXTO, tool: TOOL_TEXTO, maxTokens: 1200, texto: 'TAREA: ' + t + '\n\nTEXTO:\n' + texto }));
       }
       default: return json({ error: 'Modo desconocido' }, 400);
     }

@@ -24,11 +24,15 @@ export function initStats(ctx, k) {
   /* ---------- datos ---------- */
   function base() {
     const y = AD.st.anio, mon = AD.st.mon;
-    const mv = AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.moneda === mon && !NO_OPERATIVAS.has(v.cuenta));
+    // En dólares también entran EUR, GBP y otras monedas del exterior, por los USD que realmente se recibieron.
+    const ext = v => mon === 'USD' && v.moneda !== 'ARS' && v.moneda !== 'USD' && v.usd != null && v.usd !== '';
+    const mv = AD.MV.filter(v => (v.fecha || '').startsWith(y) && (v.moneda === mon || ext(v)) && !NO_OPERATIVAS.has(v.cuenta))
+      .map(v => ext(v) ? { ...v, ingreso: v.ingreso > 0 ? +v.usd : 0, egreso: v.egreso > 0 ? +v.usd : 0 } : v);
     const ing = mv.filter(v => v.ingreso > 0 && /^Venta/.test(v.cuenta)), eg = mv.filter(v => v.egreso > 0);
+    const sinUsd = mon === 'USD' ? AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.moneda !== 'ARS' && v.moneda !== 'USD' && (v.usd == null || v.usd === '') && !NO_OPERATIVAS.has(v.cuenta)) : [];
     const porMes = (xs, f) => MES.map((_, i) => xs.filter(v => +v.fecha.slice(5, 7) === i + 1).reduce((a, v) => a + f(v), 0));
     const ultimo = AD.st.anio === thisMonth().slice(0, 4) ? +thisMonth().slice(5, 7) : 12;
-    return { y, mon, ing, eg, ultimo,
+    return { y, mon, ing, eg, ultimo, sinUsd,
       ingMes: porMes(ing, v => v.ingreso).slice(0, ultimo), egMes: porMes(eg, v => v.egreso).slice(0, ultimo),
       aboMes: porMes(ing.filter(v => ABONO_SUB.has(v.subcuenta)), v => v.ingreso).slice(0, ultimo),
       proMes: porMes(ing.filter(v => !ABONO_SUB.has(v.subcuenta)), v => v.ingreso).slice(0, ultimo),
@@ -90,7 +94,8 @@ export function initStats(ctx, k) {
     const ti = sum(b.ingMes), te = sum(b.egMes), res = ti - te, lab = sum(b.labMes), meses = Math.max(b.ultimo, 1);
     const sinMov = !b.ing.length && !b.eg.length;
     let h = '<div class="head"><div><h1>Estadísticas</h1><p>Cómo viene ' + esc(st.anio) + ' según Gastos e ingresos: lo que entra, lo que sale y de dónde viene.</p></div>' +
-      '<div class="toolbar"><div class="seg" role="group" aria-label="Moneda">' + ['ARS', 'USD'].map(m => '<button data-act="stMon" data-v="' + m + '" aria-pressed="' + (st.mon === m) + '">' + (m === 'ARS' ? 'Pesos' : 'Dólares') + '</button>').join('') + '</div><select class="in" data-stk="anio" aria-label="Año">' + anios.map(a => opt(a, a, st.anio)).join('') + '</select></div></div>';
+      '<div class="toolbar"><div class="seg" role="group" aria-label="Moneda">' + ['ARS', 'USD'].map(m => '<button data-act="stMon" data-v="' + m + '" aria-pressed="' + (st.mon === m) + '">' + (m === 'ARS' ? 'Pesos' : 'Dólares (con EUR y GBP)') + '</button>').join('') + '</div><select class="in" data-stk="anio" aria-label="Año">' + anios.map(a => opt(a, a, st.anio)).join('') + '</select></div></div>' +
+      (b.sinUsd.length ? '<section class="callout"><p><b>' + b.sinUsd.length + ' movimientos en ' + esc([...new Set(b.sinUsd.map(v => v.moneda))].join(' y ')) + ' sin los USD cargados</b>: no se suman acá. Abrilos en Gastos e ingresos y completá “¿Cuántos USD fueron?”.</p></section>' : '');
     if (sinMov) return h + '<section class="sheet">' + emptyBox('Sin gastos ni ingresos en ' + (st.mon === 'ARS' ? 'pesos' : 'dólares') + ' para ' + st.anio, 'Probá con la otra moneda u otro año.') + '</section>';
     h += '<section class="hero">' +
       tile('Ingresos', compact(ti, st.mon), 'promedio ' + esc(compact(ti / meses, st.mon)) + ' por mes', b.ingMes, C1) +

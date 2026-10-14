@@ -1,5 +1,6 @@
-// Envía un email de àndale por Resend. Solo para administradores de la app.
-// Registra el envío en `emails` y, si el envío salió bien y es para un cliente, la gestión en `gestiones`.
+// Envía un email de àndale por Resend.
+// Administradores: todos los tipos. Equipo: solo 'Mensaje' (mails libres a clientes: novedades, pedidos, coordinación).
+// Registra el envío en `emails`; si es para un cliente, la gestión en `gestiones` (cobranza) o una charla en `comunicaciones` (mensajes).
 //
 // Secretos (Supabase → Edge Functions → Secrets):
 //   RESEND_API_KEY   (obligatorio)
@@ -13,7 +14,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
-const TIPOS = ['Resumen de cuenta', 'Factura enviada', 'Recordatorio de pago', 'Aviso de aumento', 'Otro'];
+const TIPOS = ['Resumen de cuenta', 'Factura enviada', 'Recordatorio de pago', 'Aviso de aumento', 'Invoice', 'Mensaje', 'Otro'];
 const EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
 const lista = (v: unknown) => (Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/)).map(x => String(x).trim().toLowerCase()).filter(Boolean);
 const hoyAR = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Cordoba' });
@@ -28,7 +29,7 @@ Deno.serve(async req => {
   });
   const { data: yoData } = await sb.rpc('yo');
   const yo = Array.isArray(yoData) ? yoData[0] : yoData;
-  if (!yo || yo.rol !== 'admin') return json({ error: 'Solo los administradores pueden enviar emails.' }, 403);
+  if (!yo || !['admin', 'equipo'].includes(yo.rol)) return json({ error: 'No tenés permiso para enviar emails.' }, 403);
 
   const key = Deno.env.get('RESEND_API_KEY');
   if (!key) return json({ error: 'Falta configurar RESEND_API_KEY en los secretos de la función.' }, 500);
@@ -46,9 +47,20 @@ Deno.serve(async req => {
     .filter((a: any) => a && a.nombre && a.base64).map((a: any) => ({ filename: String(a.nombre), content: String(a.base64) }));
   if (adjuntos.reduce((s: number, a: any) => s + a.content.length, 0) > 14_000_000) return json({ error: 'Los adjuntos superan el máximo (10 MB).' }, 400);
   const tipo = TIPOS.includes(b.tipo) ? b.tipo : 'Otro';
+  if (yo.rol !== 'admin' && tipo !== 'Mensaje') return json({ error: 'Solo los administradores pueden enviar mails de cobranza y documentos.' }, 403);
+  // El registro lo hace la función (el equipo no tiene acceso directo a la tabla de emails).
+  const adm = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 
-  const from = Deno.env.get('EMAIL_FROM') || 'àndale <administracion@weareandale.com>';
-  const replyTo = Deno.env.get('EMAIL_REPLY_TO') || 'administracion@weareandale.com';
+  let from = Deno.env.get('EMAIL_FROM') || 'àndale <administracion@weareandale.com>';
+  let replyTo = Deno.env.get('EMAIL_REPLY_TO') || 'administracion@weareandale.com';
+  if (tipo === 'Mensaje') {
+    // Sale con el nombre de quien escribe y las respuestas le llegan a esa persona.
+    const { data: p } = await adm.from('personas').select('alias, nombre, email').eq('id', yo.id).maybeSingle();
+    const dir = (from.match(/<([^>]+)>/) || [, from])[1];
+    const nombre = String((p && (p.nombre || p.alias)) || yo.alias || '').replace(/[<>"]/g, '').trim();
+    if (nombre) from = nombre + ' · àndale <' + dir + '>';
+    if (p && p.email && EMAIL_RE.test(p.email)) replyTo = p.email;
+  }
   const copia = b.copia === false ? [] : [replyTo];
 
   const res = await fetch('https://api.resend.com/emails', {
@@ -60,12 +72,17 @@ Deno.serve(async req => {
   const ok = res.ok && out && out.id;
   const error = ok ? null : (out && (out.message || out.error)) || ('Resend respondió ' + res.status);
 
-  const { data: log } = await sb.from('emails').insert({
+  const { data: log } = await adm.from('emails').insert({
     persona_id: yo.id, cliente_id: b.cliente_id || null, factura_id: b.factura_id || null, tipo, periodo: b.periodo || null,
     para, cc, asunto, adjuntos: adjuntos.map((a: any) => a.filename), estado: ok ? 'Enviado' : 'Error', proveedor_id: ok ? out.id : null, error,
   }).select('id').single();
 
-  if (ok && b.cliente_id && b.registrar !== false) {
+  if (ok && b.cliente_id && b.registrar !== false && tipo === 'Mensaje') {
+    await adm.from('comunicaciones').insert({
+      cliente_id: b.cliente_id, fecha: hoyAR(), canal: 'Email', con_quien: para.join(', '), resumen: 'Mail: ' + asunto + (b.nota ? ' · ' + String(b.nota).slice(0, 400) : ''),
+      acuerdo: '', proximo: '', hecho: true, responsable_id: yo.id,
+    });
+  } else if (ok && b.cliente_id && b.registrar !== false) {
     await sb.from('gestiones').insert({
       cliente_id: b.cliente_id, factura_id: b.factura_id || null, periodo: b.periodo || null, tipo, fecha: hoyAR(), canal: 'Email',
       nota: 'Enviado a ' + para.join(', ') + (b.nota ? ' · ' + b.nota : ''), persona_id: yo.id, email_id: log ? log.id : null,

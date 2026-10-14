@@ -9,7 +9,10 @@ import { initPropuestas } from './propuestas.js';
 
 export function initAdmin(ctx) {
   const { S, esc, opt, optsFrom, pill, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $ } = ctx;
-  const MONEDAS = ['ARS', 'USD', 'EUR'];
+  // Monedas: se editan en Configuración → Opciones. Es un arreglo vivo (se actualiza en cada carga) para que todos los formularios lo vean.
+  const MONEDAS = ['ARS', 'USD', 'EUR', 'GBP'];
+  const syncMonedas = () => { const l = (S.L.monedas || []).map(m => String(m).trim().toUpperCase()).filter(m => /^[A-Z]{3}$/.test(m)); if (l.length) { MONEDAS.length = 0; MONEDAS.push(...new Set(['ARS', 'USD', ...l])); } };
+  const esExterior = m => m && m !== 'ARS' && m !== 'USD';
   const EMISORES = ['Fer', 'Jime'];
   const TIPOS_COMP = ['Factura ARCA', 'Invoice', 'Otro'];
   const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'proyectos' },
@@ -86,7 +89,7 @@ export function initAdmin(ctx) {
   const efPill = f => pill(VER_EF[estadoFactura(f)] || estadoFactura(f), EF_COLOR[estadoFactura(f)]);
   // Solo para mostrar: los valores guardados no cambian.
   const VER_RES = { 'Sin armar': 'Sin preparar', 'Borrador': 'Preparado' };
-  const verTipo = t => t === 'Invoice' ? 'Factura al exterior' : t;
+  const verTipo = t => t === 'Invoice' ? 'Invoice' : t === 'Factura ARCA' ? 'Factura ARCA' : t;
   function cuenta(cliente, m) {
     const res = AD.R.find(r => r.cliente === cliente && r.periodo === m);
     const sug = sugerencias(cliente, m);
@@ -102,6 +105,7 @@ export function initAdmin(ctx) {
 
   /* ---------- carga ---------- */
   async function load() {
+    syncMonedas();
     try { Object.assign(AD, await data.loadAdmin(), { ok: true }); }
     catch (err) { AD.ok = false; toast('Administración: ' + err.message); }
   }
@@ -395,6 +399,18 @@ export function initAdmin(ctx) {
       else go([]);
     },
     async factura(f) {
+      if (f.tipo === 'Invoice' && !AD.DA.some(x => x.factura_id === f.id)) {
+        let adjuntos = [];
+        try { const pdf = await invoicePdf(f); adjuntos = [{ nombre: pdf.nombre + '.pdf', base64: pdf.base64, bytes: pdf.bytes }]; } catch (err) { toast('No se pudo armar el PDF: ' + err.message); }
+        const nom = contactoDe(f.cliente);
+        openComposer({ adjuntos,
+          titulo: 'Invoice ' + (f.numero || ''), eyebrow: f.cliente, tipo: 'Factura enviada', cliente: f.cliente, periodo: f.periodo || null, factura_id: f.id,
+          para: mailsDe(f.cliente), asunto: 'Invoice ' + (f.numero || '') + ' · àndale',
+          mensaje: 'Hi' + (nom ? ' ' + nom : '') + ',\n\nPlease find attached invoice ' + (f.numero || '') + ' for ' + PDFm(f.monto, f.moneda) + (f.vencimiento ? ', due ' + new Date(f.vencimiento + 'T12:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '') + '. Payment details are included in the PDF.\n\nThank you!',
+          build: v => E.libreEmail({ cfg: cfgMarca(), cuenta: f.cliente, titulo: 'Invoice ' + (f.numero || ''), mensaje: v.mensaje, firma: 'Best regards,\n' + ((((S.me && (S.me.nombre || S.me.alias)) || '').split(' ')[0]) || 'àndale') + '\nàndale', asunto: v.asunto }),
+        });
+        return;
+      }
       const comp = (f.tipo === 'Invoice' ? 'el invoice' : 'la factura') + (f.numero ? ' N° ' + f.numero : '');
       const da = AD.DA.find(x => x.factura_id === f.id); let adjuntos = [];
       if (da) {
@@ -468,7 +484,7 @@ export function initAdmin(ctx) {
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
     const tot = {}, sal = {}; list.forEach(f => { add(tot, f.moneda, f.monto); add(sal, f.moneda, f.saldo); });
     const deudores = {}; AD.F.filter(f => f.saldo > 0.009).forEach(f => { (deudores[f.cliente] = deudores[f.cliente] || {}); add(deudores[f.cliente], f.moneda, f.saldo); });
-    let h = '<div class="head"><div>' + lock + '<h1>Facturas</h1><p>Facturas hechas y lo que falta cobrar.</p></div><div class="toolbar"><button class="btn primary" data-act="aFactura">+ Factura</button></div></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Facturas</h1><p>Facturas hechas y lo que falta cobrar.</p></div><div class="toolbar"><button class="btn" data-act="aInvoice">+ Invoice (exterior)</button><button class="btn primary" data-act="aFactura">+ Factura ARCA</button></div></div>' +
       '<div class="toolbar"><div class="seg" role="group" aria-label="Estado">' + [['abiertas', 'Por cobrar'], ['vencidas', 'Vencidas'], ['pagadas', 'Pagadas'], ['todas', 'Todas']].map(([k, l]) => '<button data-act="aFf" data-k="estado" data-v="' + k + '" aria-pressed="' + (ff.estado === k) + '">' + l + '</button>').join('') + '</div>' +
       '<select class="in" id="ff-c" data-aff="cliente" aria-label="Cliente">' + clienteOpts(ff.cliente, 'Todos los clientes') + '</select>' +
       '<select class="in" id="ff-e" data-aff="emisor" aria-label="¿Quién factura?">' + opt('', 'Factura cualquiera', ff.emisor) + EMISORES.map(e => opt(e, 'Factura ' + e, ff.emisor)).join('') + '</select>' +
@@ -476,7 +492,7 @@ export function initAdmin(ctx) {
     const deud = Object.entries(deudores).sort((a, b) => cmp(a[0], b[0]));
     if (deud.length) h += '<section class="sheet"><div class="sheet-h"><h2>Quién debe</h2><span class="muted">' + deud.length + ' clientes</span></div><div class="sheet-b"><div class="tags" style="gap:8px">' + deud.map(([c, acc]) => '<button class="btn sm" data-act="aFf" data-k="cliente" data-v="' + esc(c) + '">' + esc(c) + ' · <span class="money">' + esc(multi(acc)) + '</span></button>').join('') + '</div></div></section>';
     if (!list.length) return h + '<section class="sheet">' + emptyBox(AD.F.length ? 'Ninguna factura coincide' : 'Todavía no hay facturas cargadas', AD.F.length ? 'Probá con otro filtro.' : 'Se cargan desde Cobros del mes o con “+ Factura”.') + '</section>';
-    const rows = list.map(f => '<tr><td class="mono">' + fmt(f.fecha) + '</td><td class="name">' + esc(f.cliente) + '<span class="sub">' + esc(f.concepto || (f.periodo ? monthLabel(f.periodo) : '')) + '</span></td><td>' + esc(verTipo(f.tipo)) + ' ' + esc(f.numero || 'sin número') + (f.link_pdf ? ' <a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</td><td>' + esc(f.emisor || '—') + '</td><td class="r"><span class="money">' + money(f.monto, f.moneda) + '</span></td><td class="r">' + (f.saldo > 0.009 ? '<span class="money">' + money(f.saldo, f.moneda) + '</span>' : '<span class="muted">—</span>') + '</td><td>' + efPill(f) + (f.vencimiento ? '<span class="sub">vence ' + fmt(f.vencimiento) + '</span>' : '') + '</td><td class="r"><span class="toolbar" style="justify-content:flex-end">' + (f.saldo > 0.009 ? '<button class="btn sm" data-act="aCobro" data-id="' + esc(f.id) + '">Cobro</button>' : '') + '<button class="btn sm" data-act="aMailFactura" data-id="' + esc(f.id) + '">Enviar</button><button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Editar</button></span></td></tr>').join('');
+    const rows = list.map(f => '<tr><td class="mono">' + fmt(f.fecha) + '</td><td class="name">' + esc(f.cliente) + '<span class="sub">' + esc(f.concepto || (f.periodo ? monthLabel(f.periodo) : '')) + '</span></td><td>' + esc(verTipo(f.tipo)) + ' ' + esc(f.numero || 'sin número') + (f.link_pdf ? ' <a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</td><td>' + esc(f.emisor || '—') + '</td><td class="r"><span class="money">' + money(f.monto, f.moneda) + '</span></td><td class="r">' + (f.saldo > 0.009 ? '<span class="money">' + money(f.saldo, f.moneda) + '</span>' : '<span class="muted">—</span>') + '</td><td>' + efPill(f) + (f.vencimiento ? '<span class="sub">vence ' + fmt(f.vencimiento) + '</span>' : '') + '</td><td class="r"><span class="toolbar" style="justify-content:flex-end">' + (f.saldo > 0.009 ? '<button class="btn sm" data-act="aCobro" data-id="' + esc(f.id) + '">Cobro</button>' : '') + (f.tipo === 'Invoice' ? '<button class="btn sm" data-act="aInvoicePdf" data-id="' + esc(f.id) + '">PDF</button>' : '') + '<button class="btn sm" data-act="aMailFactura" data-id="' + esc(f.id) + '">Enviar</button><button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Editar</button></span></td></tr>').join('');
     return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Factura</th><th>Quién factura</th><th class="r">Monto</th><th class="r">Falta cobrar</th><th>Estado</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' facturas · total ' + esc(multi(tot)) + ' · por cobrar ' + esc(multi(sal)) + '</div></section>';
   }
 
@@ -741,6 +757,7 @@ export function initAdmin(ctx) {
   }
 
   function formFactura(id, preset, opts = {}) {
+    if (id && (AD.F.find(x => x.id === id) || {}).tipo === 'Invoice' && !opts.comoFactura) return formInvoice(id);
     const f = id ? AD.F.find(x => x.id === id) : null;
     const driveLibres = AD.DA.filter(d => !d.factura_id && d.estado !== 'Ignorado');
     const iaBox = '<div class="field full iabox"><span class="lbl">✨ ¿Tenés el PDF? La IA completa todo</span><div class="toolbar">' +
@@ -758,7 +775,7 @@ export function initAdmin(ctx) {
         { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, full: 1 },
         { k: 'monto', label: 'Monto', num: 1, req: 1 },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
-        { k: 'numero', label: 'Número', ph: '00002-00000210' },
+        { k: 'numero', label: 'Número', ph: '00002-00000210', hint: 'Las facturas argentinas se hacen en ARCA: acá anotás número y monto para seguir el cobro. Para clientes del exterior usá “+ Invoice”.' },
         { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
         { k: 'emisor', label: '¿Quién factura?', type: 'select', opts: EMISORES, blank: '—' },
         { k: 'periodo', label: '¿De qué mes es?', type: 'month', month: 1 },
@@ -785,12 +802,73 @@ export function initAdmin(ctx) {
       onDelete: f ? async () => { await data.upd('facturas', f.id, { anulada: true }); toast('Factura anulada'); } : null,
     });
   }
+  /* ---------- Invoice para clientes del exterior (en inglés). En Argentina se factura en ARCA. ---------- */
+  const PDFm = (n, m) => { try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: m || 'USD' }).format(n || 0); } catch (e) { return m + ' ' + n; } };
+  const itemsInv = f => Array.isArray(f.items) && f.items.length ? f.items : [{ concepto: f.concepto || 'Professional services', monto: f.monto }];
+  async function invoicePdf(f) {
+    const docs = await pdfLib(); const c = datosClienteDoc(f.cliente);
+    const notaPago = (f.notas || '').split('\n---pago---\n');
+    const bytes = await docs.invoiceDoc({ cfg: cfgDocs(), numero: f.numero, fecha: f.fecha, vence: f.vencimiento, emisor: f.emisor, moneda: f.moneda, cliente: { ...c, nombre: f.cliente }, items: itemsInv(f).map(i => ({ concepto: i.concepto, monto: +i.monto || 0 })), total: f.monto, nota: notaPago[0] || '', pago: notaPago[1] || '' });
+    const nombre = 'Invoice ' + (f.numero || '') + ' ' + f.cliente;
+    return { bytes, nombre, base64: docs.bytesBase64(bytes), docs };
+  }
+  function invItemsHtml() {
+    const it = AD.invDraft;
+    return it.map((x, i) => '<div class="improw"><input class="in" data-inv="concepto" data-i="' + i + '" value="' + esc(x.concepto) + '" placeholder="Description (in English)" aria-label="Descripción"><input class="in" data-inv="monto" data-i="' + i + '" value="' + esc(x.monto) + '" inputmode="decimal" placeholder="0" aria-label="Importe"><button type="button" class="btn ghost sm" data-act="aInvDel" data-i="' + i + '" aria-label="Quitar">✕</button></div>').join('') +
+      '<div class="toolbar" style="margin-top:6px"><button type="button" class="btn ghost sm" data-act="aInvAdd">+ Ítem</button><button type="button" class="btn ghost sm" data-act="aInvEn">Pasar al inglés con Mr. Piggy</button><span style="flex:1"></span><b class="money" id="inv-tot"></b></div>';
+  }
+  function invTotal() { const m = ($('#af-moneda') || {}).value || 'USD'; const t = r2(AD.invDraft.reduce((a, x) => a + (parseMonto(x.monto) || 0), 0)); const el = $('#inv-tot'); if (el) el.textContent = 'Total ' + PDFm(t, m); return t; }
+  function renderInv() { const b = $('#inv-items'); if (b) b.innerHTML = invItemsHtml(); invTotal(); }
+  function formInvoice(id, preset) {
+    const f = id ? AD.F.find(x => x.id === id) : null;
+    const cliente = f ? f.cliente : (preset && preset.cliente) || '';
+    const ca = cadm(cliente) || {};
+    const [nota, pago] = f ? String(f.notas || '').split('\n---pago---\n') : ['', lsGetPago()];
+    const ext = MONEDAS.filter(m => m !== 'ARS');
+    const vence = () => { const d = new Date(); d.setDate(d.getDate() + 15); return d.toISOString().slice(0, 10); };
+    AD.invDraft = f ? itemsInv(f).map(i => ({ concepto: i.concepto, monto: String(i.monto) })) : [{ concepto: '', monto: '' }];
+    openPanel({
+      title: f ? 'Invoice ' + (f.numero || '') : 'Nuevo invoice', eyebrow: 'Cliente del exterior', saveLabel: f ? 'Guardar' : 'Crear invoice',
+      intro: 'Para clientes de afuera que piden invoice (no es una factura argentina: esas se hacen en ARCA). Sale en inglés con número propio' + (f ? '' : ' (INV-' + new Date().getFullYear() + '-…)') + ', los datos del cliente y cómo pagar.',
+      values: f ? { cliente, fecha: f.fecha, vencimiento: f.vencimiento || '', moneda: f.moneda, emisor: f.emisor || '', periodo: f.periodo ? f.periodo.slice(0, 7) : '', nota, pago } : { cliente, fecha: today(), vencimiento: vence(), moneda: ext.includes(ca.moneda) ? ca.moneda : 'USD', emisor: ca.emisor_default || '', periodo: thisMonth(), nota: '', pago },
+      fields: [
+        { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, full: 1, hint: 'Razón social, dirección y Tax ID salen de Administración del cliente.' },
+        { k: 'moneda', label: 'Moneda', type: 'select', opts: ext },
+        { k: 'emisor', label: '¿Quién factura?', type: 'select', opts: EMISORES, blank: '—' },
+        { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
+        { k: 'vencimiento', label: 'Vence', type: 'date' },
+        { k: 'periodo', label: '¿De qué mes es?', type: 'month', month: 1, adv: 1 },
+        { k: 'nota', label: 'Nota en el invoice (inglés)', type: 'textarea', rows: 2, full: 1, adv: 1, ph: 'Thank you for your business!' },
+        { k: 'pago', label: 'Payment instructions (opcional)', type: 'textarea', rows: 4, full: 1, adv: 1, hint: 'Si lo dejás vacío salen las cuentas del exterior cargadas en Ajustes. Lo último que escribas queda como predeterminado.' },
+      ],
+      masLabel: 'Mes, nota y datos de pago',
+      top: '<div class="field full"><span class="lbl">Ítems</span><div id="inv-items" class="impbox"></div></div>',
+      onInput: () => invTotal(),
+      onSave: async v => {
+        const items = AD.invDraft.map(x => ({ concepto: String(x.concepto || '').trim(), monto: parseMonto(x.monto) || 0 })).filter(x => x.concepto || x.monto);
+        if (!items.length) throw new Error('Cargá al menos un ítem');
+        const monto = r2(items.reduce((a, x) => a + x.monto, 0));
+        if (v.pago) lsSetPago(v.pago);
+        const row = { cliente_id: data.ids.cliente(v.cliente), tipo: 'Invoice', emisor: v.emisor || '', periodo: v.periodo ? v.periodo + '-01' : null, fecha: v.fecha, vencimiento: v.vencimiento || null, moneda: v.moneda, monto, concepto: items[0].concepto, items, notas: [v.nota || '', v.pago || ''].join('\n---pago---\n').replace(/\n---pago---\n$/, '') };
+        let fid = f && f.id;
+        if (f) await data.upd('facturas', f.id, row); else fid = (await data.ins('facturas', row)).id;
+        toast(f ? 'Invoice actualizado' : 'Invoice creado. Abrilo en PDF o mandalo desde la lista.');
+        AD.postSave = () => { const nf = AD.F.find(x => x.id === fid); if (nf && !f) actions.aInvoicePdf({ dataset: { id: fid } }); };
+      },
+      deleteLabel: 'Anular invoice',
+      onDelete: f ? async () => { await data.upd('facturas', f.id, { anulada: true }); toast('Invoice anulado'); } : null,
+    });
+    renderInv();
+  }
+  function lsGetPago() { try { return localStorage.getItem('andale-ops:invpago') || ''; } catch (e) { return ''; } }
+  function lsSetPago(v) { try { localStorage.setItem('andale-ops:invpago', v); } catch (e) { } }
+  document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.inv && AD.invDraft) { AD.invDraft[+t.dataset.i][t.dataset.inv] = t.value; invTotal(); } });
   const cajasDe = moneda => AD.CJ.filter(c => c.activa && (!moneda || c.moneda === moneda));
   const subcuentaSugerida = cliente => { const a = S.A.find(x => x.cliente === cliente && x.estado === 'Activo'); return a && a.tipo === 'Ads' ? 'S.Redes Ads' : 'S.Redes sociales'; };
   const subcuentas = cuenta => [...new Set(AD.PC.filter(p => p.cuenta === cuenta).map(p => p.subcuenta).filter(Boolean))].sort(cmp);
   function formCobro(id) {
     const f = AD.F.find(x => x.id === id); if (!f) return;
-    const cuenta = f.moneda === 'USD' ? 'Ventas en USD' : f.moneda === 'EUR' ? 'Venta en Euros' : 'Ventas en Pesos';
+    const cuenta = f.moneda === 'USD' ? 'Ventas en USD' : f.moneda === 'EUR' ? 'Venta en Euros' : f.moneda === 'GBP' ? 'Venta en Libras' : f.moneda === 'ARS' ? 'Ventas en Pesos' : 'Venta en ' + f.moneda;
     const cjs = cajasDe(f.moneda);
     openPanel({
       title: 'Cobro de ' + f.cliente, eyebrow: verTipo(f.tipo) + ' ' + (f.numero || 'sin número'), saveLabel: 'Registrar cobro',
@@ -799,12 +877,13 @@ export function initAdmin(ctx) {
       fields: [
         { k: 'fecha', label: 'Fecha de cobro', type: 'date', req: 1 },
         { k: 'monto', label: 'Monto cobrado (' + f.moneda + ')', num: 1, req: 1 },
+        ...(esExterior(f.moneda) ? [{ k: 'usd', label: '¿Cuántos USD entraron?', num: 1, hint: 'Si ya lo pasaste a dólares (Wise, banco), poné lo que llegó. Si todavía no, dejalo vacío y lo completás después.' }] : []),
         { k: 'caja', label: 'Entró a la cuenta', type: 'select', html: v => cjs.map(c => opt(c.id, c.nombre, v)).join('') || opt('', 'Cargá cuentas en ' + f.moneda, v), req: 1 },
         { k: 'subcuenta', label: 'Detalle de la categoría', type: 'select', opts: subcuentas(cuenta).length ? subcuentas(cuenta) : ['S.Redes sociales', 'S.Redes Ads', 'S.Web', 'S.Branding', 'S.Diseño Grafico', 'S.Videos'] },
         { k: 'detalle', label: 'Detalle', full: 1 },
       ],
       onSave: async v => {
-        await data.ins('movimientos', { fecha: v.fecha, cuenta, subcuenta: v.subcuenta, contraparte: f.cliente, cliente_id: f.cliente_id, detalle: v.detalle, ingreso: v.monto, egreso: 0, moneda: f.moneda, caja_id: v.caja || null, factura_id: f.id });
+        await data.ins('movimientos', { fecha: v.fecha, cuenta, subcuenta: v.subcuenta, contraparte: f.cliente, cliente_id: f.cliente_id, detalle: v.detalle, ingreso: v.monto, egreso: 0, moneda: f.moneda, caja_id: v.caja || null, factura_id: f.id, ...(esExterior(f.moneda) ? { usd: v.usd ?? null } : {}) });
         toast('Cobro registrado');
       },
     });
@@ -925,12 +1004,14 @@ export function initAdmin(ctx) {
     const n = norm((quien || '').trim()); if (!n) return null;
     return AD.MV.filter(v => v.id !== salvo && norm(v.contraparte || '') === n).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0] || null;
   }
+  // El campo "¿Cuántos USD fueron?" aparece solo para EUR, GBP y otras monedas del exterior.
+  function usdToggle() { const m = $('#af-moneda'), u = $('#af-usd'); if (!m || !u) return; const w = u.closest('.field'); const on = esExterior(m.value); w.hidden = !on; const l = w.querySelector('label'); if (l) l.textContent = '¿Cuántos USD fueron? (' + m.value + ' → USD)'; if (!m.dataset.usdOk) { m.dataset.usdOk = '1'; m.addEventListener('change', usdToggle); } }
   function formMovimiento(id, preset) {
     const x = id ? AD.MV.find(v => v.id === id) : null;
     const cuentas = [...new Set(AD.PC.map(p => p.cuenta))].sort(cmp);
     const subs = [...new Set(AD.PC.map(p => p.subcuenta).filter(Boolean))].sort(cmp);
     const partes = [...new Set([...S.C.map(c => c.nombre), ...S.E.map(e => e.persona), ...AD.MV.map(v => v.contraparte).filter(Boolean)])].sort(cmp);
-    const vals = x ? { fecha: x.fecha, tipo: x.ingreso > 0 ? 'Ingreso' : 'Egreso', monto: x.ingreso || x.egreso, moneda: x.moneda, cuenta: x.cuenta, subcuenta: x.subcuenta, contraparte: x.contraparte, detalle: x.detalle, caja: x.caja_id || '', reintegro_a: x.reintegro_a, reintegrado: x.reintegrado }
+    const vals = x ? { fecha: x.fecha, tipo: x.ingreso > 0 ? 'Ingreso' : 'Egreso', monto: x.ingreso || x.egreso, moneda: x.moneda, usd: x.usd ?? '', cuenta: x.cuenta, subcuenta: x.subcuenta, contraparte: x.contraparte, detalle: x.detalle, caja: x.caja_id || '', reintegro_a: x.reintegro_a, reintegrado: x.reintegrado }
       : Object.assign({ fecha: today(), tipo: 'Egreso', moneda: 'ARS', cuenta: 'Gastos Fijos', reintegro_a: '' }, preset || {});
     if (!x && preset && preset.contraparte && !preset.cuenta) { const u = ultimoDe(preset.contraparte); if (u) Object.assign(vals, { cuenta: u.cuenta, subcuenta: u.subcuenta, caja: vals.caja || u.caja_id || '' }); }
     openPanel({
@@ -942,6 +1023,7 @@ export function initAdmin(ctx) {
         { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
         { k: 'monto', label: 'Monto', num: 1, req: 1 },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
+        { k: 'usd', label: '¿Cuántos USD fueron?', num: 1, hint: 'Lo que entró (o salió) de verdad al pasarlo a dólares. Así Números lo suma en USD.' },
         { k: 'contraparte', label: '¿A quién / de quién?', full: 1, ph: 'Meta, Adobe, Cata, Apromax…', hint: 'Si ya le pagaste antes, la categoría y la cuenta se completan solas.' },
         { k: 'detalle', label: 'Detalle', full: 1, ph: 'Ej.: Ads octubre P4 y Cultu' },
         { k: 'cuenta', label: 'Categoría', type: 'select', opts: cuentas, req: 1, adv: 1 },
@@ -955,6 +1037,7 @@ export function initAdmin(ctx) {
         const cli = S.C.find(c => c.nombre === v.contraparte), per = S.E.find(e => e.persona === v.contraparte);
         const co = EQ.colabPorNombre(v.contraparte);
         const row = { fecha: v.fecha, cuenta: v.cuenta, subcuenta: v.subcuenta, contraparte: v.contraparte, cliente_id: cli ? cli._id : (x ? x.cliente_id : null), persona_id: per ? per._id : co && co.persona_id ? co.persona_id : (x ? x.persona_id : null), colaborador_id: co ? co.id : (x && x.contraparte === v.contraparte ? x.colaborador_id || null : null), detalle: v.detalle, ingreso: v.tipo === 'Ingreso' ? v.monto : 0, egreso: v.tipo === 'Egreso' ? v.monto : 0, moneda: v.moneda, caja_id: v.caja || null, reintegro_a: v.reintegro_a || '', reintegrado: !!v.reintegrado };
+        if (esExterior(v.moneda)) row.usd = v.usd ?? null; else if (x && x.usd != null) row.usd = null;
         let mid = x && x.id;
         if (x) await data.upd('movimientos', x.id, row); else mid = (await data.ins('movimientos', row)).id;
         if (v.tipo === 'Egreso') await guardarImp(mid); else if (x && AD.IMP.some(i => i.movimiento_id === x.id)) await data.del('imputaciones', x.id, 'movimiento_id');
@@ -964,6 +1047,7 @@ export function initAdmin(ctx) {
     });
     const s = $('#af-subcuenta'); if (s) s.setAttribute('list', 'dl-sub');
     const c = $('#af-contraparte'); if (c) c.setAttribute('list', 'dl-partes');
+    usdToggle();
     AD.impDraft = (x ? AD.IMP.filter(i => i.movimiento_id === x.id) : []).map(i => ({ dest: i.abono_id ? 'a:' + i.abono_id : 'p:' + i.proyecto_id, monto: String(i.monto) }));
     const prevMov = (contraparte) => AD.MV.filter(v => v.contraparte === contraparte && (!x || v.id !== x.id) && AD.IMP.some(i => i.movimiento_id === v.id)).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0];
     const setCopy = () => { const cp = ($('#af-contraparte') || {}).value; const pm = cp && prevMov(cp); AD.impCopy = pm ? { contraparte: cp, mov: pm } : null; };
@@ -1016,6 +1100,21 @@ export function initAdmin(ctx) {
     aPrint: () => printResumen(),
     aCSV: () => exportCSV(),
     aFactura: t => formFactura(t.dataset.id || null),
+    aInvoice: t => formInvoice(t.dataset.id || null, t.dataset.cliente ? { cliente: t.dataset.cliente } : null),
+    aInvAdd: () => { AD.invDraft.push({ concepto: '', monto: '' }); renderInv(); const ins = document.querySelectorAll('[data-inv="concepto"]'); if (ins.length) ins[ins.length - 1].focus(); },
+    aInvDel: t => { AD.invDraft.splice(+t.dataset.i, 1); if (!AD.invDraft.length) AD.invDraft.push({ concepto: '', monto: '' }); renderInv(); },
+    aInvEn: async t => {
+      const txt = AD.invDraft.map(x => x.concepto).filter(Boolean); if (!txt.length) return;
+      t.disabled = true; t.textContent = 'Traduciendo…';
+      try { const r = await data.ia({ modo: 'texto', tarea: 'ingles', texto: 'Traducí cada línea por separado y devolvé las líneas en el mismo orden, una por renglón:\n' + txt.join('\n') }); const ls = String(r.texto || '').split('\n').map(s => s.replace(/^[-•\d.)\s]+/, '').trim()).filter(Boolean); let j = 0; AD.invDraft.forEach(x => { if (x.concepto && ls[j]) x.concepto = ls[j++]; }); renderInv(); }
+      catch (err) { toast(err.message); }
+      t.disabled = false; t.textContent = 'Pasar al inglés con Mr. Piggy';
+    },
+    aInvoicePdf: async t => {
+      const f = AD.F.find(x => x.id === t.dataset.id); if (!f) return;
+      const w = window.open('', '_blank');
+      try { const p = await invoicePdf(f); p.docs.abrirPdf(p.bytes, p.nombre, w); } catch (err) { if (w) w.close(); toast('No se pudo armar el PDF: ' + err.message); }
+    },
     aCobro: t => formCobro(t.dataset.id),
     aRecordatorio: () => mail.recordatorio(cuenta(AD.rd.cliente, AD.rd.m)),
     aRecordatorioManual: () => formGestion('Recordatorio de pago', recordatorioTexto(cuenta(AD.rd.cliente, AD.rd.m))),
@@ -1125,7 +1224,7 @@ export function initAdmin(ctx) {
 
   Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions);
   return {
-    load, actions, fichaSection, proyectoSection, AD,
+    load, actions, fichaSection, proyectoSection, AD, cfgMarca: () => cfgMarca(),
     // Para la IA: abrir formularios ya completos (nada se guarda sin confirmar).
     abrir: {
       movimiento: preset => formMovimiento(null, preset),
