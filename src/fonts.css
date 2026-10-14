@@ -1,0 +1,7 @@
+/* Delight (títulos) — archivos en public/fonts. Inter (textos) viene de Google Fonts en index.html. */
+@font-face{font-family:'Delight';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/Delight-Regular.woff2') format('woff2')}
+@font-face{font-family:'Delight';font-style:normal;font-weight:500;font-display:swap;src:url('/fonts/Delight-Medium.woff2') format('woff2')}
+@font-face{font-family:'Delight';font-style:normal;font-weight:600;font-display:swap;src:url('/fonts/Delight-SemiBold.woff2') format('woff2')}
+@font-face{font-family:'Delight';font-style:normal;font-weight:700;font-display:swap;src:url('/fonts/Delight-Bold.woff2') format('woff2')}
+@font-face{font-family:'Delight';font-style:normal;font-weight:800;font-display:swap;src:url('/fonts/Delight-ExtraBold.woff2') format('woff2')}
+@font-face{font-family:'Delight';font-style:normal;font-weight:900;font-display:swap;src:url('/fonts/Delight-Black.woff2') format('woff2')}

@@ -186,7 +186,7 @@ export function initAdmin(ctx) {
   }
 
   // PDF del resumen con la marca 2026: isologo arriba, Delight en títulos, Inter en textos, logotipo al pie.
-  // Delight: se usa la instalada en la compu; si no está, la de /fonts/Delight-Bold.woff2 (si se sube al repo); si no, Inter.
+  // Delight sale de /fonts del propio sitio (URL absoluta: la ventana de impresión es about:blank).
   function printResumen() {
     const rd = AD.rd, cli = S.C.find(x => x.nombre === rd.cliente) || {};
     const cfg = (AD.AJ && AD.AJ.resumen_pdf) || {};
@@ -197,8 +197,9 @@ export function initAdmin(ctx) {
     const links = (arr, sep) => (arr || []).map(([t, u]) => u ? '<a href="' + esc(u) + '">' + esc(t) + '</a>' : esc(t)).join(sep);
     const cuentas = (cfg.cuentas || []).map(c => '<div class="cta"><h3>' + esc(c.titulo) + (c.sub ? ' <small>(' + esc(c.sub) + ')</small>' : '') + '</h3>' +
       (c.campos || []).map(([k, v]) => '<dt>' + esc(k) + ':</dt><dd>' + esc(v) + '</dd>').join('') + '</div>').join('');
+    const FONTS = [['Regular', 400], ['Medium', 500], ['SemiBold', 600], ['Bold', 700], ['ExtraBold', 800], ['Black', 900]].map(([n, w]) => "@font-face{font-family:'Delight';font-weight:" + w + ";src:url('" + location.origin + '/fonts/Delight-' + n + ".woff2') format('woff2')}").join('');
     const css = `
-      @font-face{font-family:'Delight Web';font-weight:400 900;src:url('/fonts/Delight-Bold.woff2') format('woff2')}
+      ` + FONTS + `
       @page{size:A4;margin:0}
       *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       :root{--ink:#111;--muted:#555;--acc:#FC4855;--rule:#8a8a8a}
@@ -208,7 +209,7 @@ export function initAdmin(ctx) {
       a{color:inherit;text-decoration:none}
       .iso{width:32mm;margin:0 auto 11mm;color:var(--ink)} .iso svg,.logo svg{display:block;width:100%;height:auto}
       .meta{font-size:11.5pt;line-height:1.35} .meta b{font-weight:700}
-      h1,h2,h3,.total{font-family:Delight,'Delight Web',Inter,sans-serif;font-weight:700;letter-spacing:-.01em}
+      h1,h2,h3,.total{font-family:Delight,Inter,sans-serif;font-weight:700;letter-spacing:0}
       h1{color:var(--acc);font-size:15pt;margin:10mm 0 0;padding:0 0 3mm;border-bottom:1px solid var(--rule)}
       .items{width:100%;border-collapse:collapse;margin-top:6mm} .items td{padding:2mm 1.5mm;font-weight:600;vertical-align:top} .items td.m{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
       .total{display:flex;gap:10mm;align-items:baseline;font-size:15pt;margin:9mm 0 0;padding-bottom:9mm;border-bottom:1px solid var(--rule)} .total span:last-child{font-variant-numeric:tabular-nums}
@@ -218,8 +219,8 @@ export function initAdmin(ctx) {
       .cta dt{font-weight:700} .cta dd{margin:0;overflow-wrap:anywhere}
       .cierre{margin:9mm 0 0}
       footer{margin-top:auto;padding-top:6mm;text-align:center;font-size:9pt}
-      footer .redes{font-family:Delight,'Delight Web',Inter,sans-serif;font-weight:700;font-size:10.5pt} footer .contacto{margin-top:1mm;color:#333}
-      .logo{width:24mm;margin:4mm auto 2mm;color:var(--ink)} footer .pie{font-family:Delight,'Delight Web',Inter,sans-serif;font-weight:700;font-size:9.5pt}
+      footer .redes{font-family:Delight,Inter,sans-serif;font-weight:700;font-size:10.5pt} footer .contacto{margin-top:1mm;color:#333}
+      .logo{width:24mm;margin:4mm auto 2mm;color:var(--ink)} footer .pie{font-family:Delight,Inter,sans-serif;font-weight:700;font-size:9.5pt}
       @media screen{body{background:#e9e9ec}.page{margin:24px auto;background:#fff;box-shadow:0 2px 24px rgba(0,0,0,.12)}}`;
     const html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Resumen-' + esc(rd.cliente) + '-' + esc(periodo) + '</title>' +
       '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">' +

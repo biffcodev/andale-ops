@@ -4,8 +4,8 @@
   --accent:#2C44D4; --accent-ink:#FFFFFF; --accent-soft:#E3E7FB;
   --ok:#1E7F4E; --warn:#A35E00; --crit:#B4363A; --money:#0F6B5C;
   --s-empezar:#566176; --s-curso:#2C44D4; --s-revision:#A35E00; --s-entregado:#1E7F4E; --s-pausado:#6B6787; --s-cancelado:#B4363A; --s-confirmar:#8A3FB8;
-  --f-display:"Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
-  --f-body:"Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-display:"Delight", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --f-body:"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --r:10px; --shadow:0 18px 40px -18px rgba(20,23,34,.35);
   color-scheme:light;
@@ -250,3 +250,6 @@ dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere;display:flex;gap:6px;align-
 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:999px;font-weight:600;font-size:14px;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion:no-preference){ .panel{animation:slide .18s ease-out} @keyframes slide{from{transform:translateX(24px);opacity:.6}} }
+
+.brand .logo{display:inline-block;height:.95em;width:auto;align-self:center;color:var(--fg)}
+.brand .logo svg{height:100%;width:auto;display:block}

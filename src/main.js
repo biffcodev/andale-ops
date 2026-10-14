@@ -1,6 +1,9 @@
+import './fonts.css';
 import './style.css';
+import { LOGO } from './marca.js';
 import * as data from './data.js';
 import { initAdmin } from './admin.js';
+document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
 let ADM = null, ADM_FN = {};
 
 /* ---------- Constantes ---------- */
@@ -711,12 +714,12 @@ async function reload() {
 }
 function showLogin(msg) {
   $('#top').hidden = true;
-  $('#view').innerHTML = '<div class="login"><div class="login-card"><div class="brand">àndale <small>Operaciones</small></div><p>Entrá con tu email de trabajo. Te mandamos un link para ingresar, sin contraseña.</p>' +
+  $('#view').innerHTML = '<div class="login"><div class="login-card"><div class="brand"><span class="logo" role="img" aria-label="àndale">' + LOGO + '</span> <small>Operaciones</small></div><p>Entrá con tu email de trabajo. Te mandamos un link para ingresar, sin contraseña.</p>' +
     '<form id="login"><input class="in" type="email" required autocomplete="email" placeholder="tu@email.com" aria-label="Email"><button class="btn primary" type="submit">Enviarme el link</button></form><p id="login-msg" class="muted" role="status">' + esc(msg || '') + '</p></div></div>';
 }
 function showNoAccess(email) {
   $('#top').hidden = true;
-  $('#view').innerHTML = '<div class="login"><div class="login-card"><div class="brand">àndale <small>Operaciones</small></div><h2>Tu email todavía no tiene acceso</h2><p>Entraste como <b>' + esc(email || '') + '</b>, pero no figura en el equipo. Pedile a Fer o a Jime que te carguen en Equipo con este email.</p><button class="btn" data-act="logout">Salir y probar con otro email</button></div></div>';
+  $('#view').innerHTML = '<div class="login"><div class="login-card"><div class="brand"><span class="logo" role="img" aria-label="àndale">' + LOGO + '</span> <small>Operaciones</small></div><h2>Tu email todavía no tiene acceso</h2><p>Entraste como <b>' + esc(email || '') + '</b>, pero no figura en el equipo. Pedile a Fer o a Jime que te carguen en Equipo con este email.</p><button class="btn" data-act="logout">Salir y probar con otro email</button></div></div>';
 }
 let started = false;
 async function start(sess) {
