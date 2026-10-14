@@ -121,9 +121,9 @@ async function all(table, build) {
 }
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
-  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj] = await Promise.all([
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
-    all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'),
+    all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
@@ -136,6 +136,7 @@ export async function loadAdmin() {
     PC: pc,
     MV: mv.map(r => ({ ...r, cliente: cn(r.cliente_id), persona: idx.personaAlias.get(r.persona_id) || '', ingreso: num(r.ingreso) || 0, egreso: num(r.egreso) || 0 })),
     AJ: Object.fromEntries(aj.map(r => [r.clave, r.valor])),
+    EM: em,
     G: gs.map(r => ({ ...r, cliente: cn(r.cliente_id), periodo: month(r.periodo), persona: idx.personaAlias.get(r.persona_id) || '' })),
   };
 }
@@ -146,6 +147,18 @@ export async function del(table, id, key = 'id') { check(await sb.from(table).de
 export async function upsert(table, row, onConflict) { check(await sb.from(table).upsert(row, onConflict ? { onConflict } : undefined)); }
 
 // ---------- Sesión ----------
+/** Envía un email por la Edge Function `enviar-email` (Resend). Solo admins. */
+export async function sendEmail(payload) {
+  const { data, error } = await sb.functions.invoke('enviar-email', { body: payload });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { }
+    if (/Failed to send a request|fetch/i.test(msg)) msg = 'No se pudo conectar con el servicio de emails. Revisá tu conexión.';
+    throw new Error(msg);
+  }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
 export async function session() { return (await sb.auth.getSession()).data.session; }
 export async function yo() { const d = check(await sb.rpc('yo')); return d && d[0] ? d[0] : null; }
 export async function sendLink(email) { check(await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin, shouldCreateUser: true } })); }

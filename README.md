@@ -53,3 +53,14 @@ npm run dev
 
 Cada push a `main` se publica solo. En el plan Hobby, Vercel **bloquea** los deploys de commits cuyo autor no es la cuenta dueña del proyecto.
 Commitear siempre como `biffcodev <257424274+biffcodev@users.noreply.github.com>` (configurado en `git config` local del repo).
+
+## Emails (Resend)
+
+La app manda emails con el estilo del resumen de cuenta: resumen (con PDF adjunto), recordatorio de pago, aviso de aumento,
+comprobante (factura ARCA / invoice) y mensajes libres. Uno por uno o en masa (resúmenes del mes, avisos de aumento).
+
+- Plantillas: `src/emails.js` · PDF vectorial: `src/pdf.js` (fuentes en `public/fonts/pdf/`, TrueType)
+- Envío: Edge Function `supabase/functions/enviar-email` (solo admins) → Resend. Registra cada envío en `emails` y la gestión del cliente.
+- Secretos de la función: `RESEND_API_KEY` (obligatorio), `EMAIL_FROM`, `EMAIL_REPLY_TO` (opcionales).
+- Imágenes del email: `public/marca/email-iso.png` y `email-logo.png`, servidas desde `https://andale-ops.vercel.app`.
+- Mails de acceso (login): `supabase/templates/*.html` → pegar en Supabase → Authentication → Emails, con Resend como SMTP.

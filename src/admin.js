@@ -1,14 +1,14 @@
 // Administración: precios y aumentos, cierre de mes (resumen → comprobante → cobro → recordatorio), facturas.
 // Solo para administradores. La base de datos además lo impide para otros roles.
 import * as data from './data.js';
-import { ISO, LOGO } from './marca.js';
+import * as E from './emails.js';
 
 export function initAdmin(ctx) {
   const { S, esc, opt, optsFrom, pill, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $ } = ctx;
   const MONEDAS = ['ARS', 'USD', 'EUR'];
   const EMISORES = ['Fer', 'Jime'];
   const TIPOS_COMP = ['Factura ARCA', 'Invoice', 'Otro'];
-  const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [],
+  const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [],
     mes: thisMonth(), sel: null, rd: null, ff: { estado: 'abiertas', cliente: '', emisor: '', anio: String(new Date().getFullYear()) },
     pp: { sel: new Set(), pct: '', desde: addMonth(thisMonth(), 1), motivo: '' }, form: null };
 
@@ -105,7 +105,7 @@ export function initAdmin(ctx) {
     const pendientes = {}; rows.forEach(r => r.facs.forEach(f => add(pendientes, f.moneda, f.saldo)));
     const env = rows.filter(r => r.res && r.res.estado === 'Enviado').length, conComp = rows.filter(r => r.facs.length).length;
     let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Cierre de mes</h1><p>Por cliente: resumen de cuenta → comprobante (factura ARCA o invoice) → cobro → recordatorio si vence. Se arma solo con los abonos activos y los proyectos que se facturan en el mes.</p></div>' +
-      '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px;text-transform:capitalize">' + esc(monthLabel(m)) + '</h2><button class="btn sm" data-act="aMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aMes" data-d="0">Este mes</button><button class="btn sm" data-act="aMes" data-d="1" aria-label="Mes siguiente">→</button></div></div></div>';
+      '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aMes" data-d="0">Este mes</button><button class="btn sm" data-act="aMes" data-d="1" aria-label="Mes siguiente">→</button></div></div></div>';
     h += '<section class="kpis">' +
       '<div class="kpi"><span class="eyebrow">A facturar</span><b style="font-size:22px;color:var(--money)">' + esc(multi(aFacturar)) + '</b><span>' + cl.length + ' clientes</span></div>' +
       '<div class="kpi"><span class="eyebrow">Resúmenes enviados</span><b>' + env + '</b><span>de ' + cl.length + '</span></div>' +
@@ -123,7 +123,7 @@ export function initAdmin(ctx) {
       const recTxt = r.rec ? '<span class="muted">' + fmt(r.rec.fecha) + '</span>' : (venc ? '<span class="days late">Mandar</span>' : '<span class="muted">—</span>');
       return '<tr class="click" data-act="aCuenta" data-cliente="' + esc(r.cliente) + '"><td class="name">' + esc(r.cliente) + '</td><td class="r"><span class="money"' + (r.res ? '' : ' style="opacity:.7"') + '>' + money(r.total, r.moneda) + '</span>' + (r.res ? '' : '<span class="sub">estimado</span>') + '</td><td>' + resTxt + '</td><td>' + compTxt + '</td><td>' + cobTxt + '</td><td>' + recTxt + '</td></tr>';
     }).join('');
-    h += '<section class="sheet"><div class="sheet-h"><h2>Clientes del mes</h2><div class="toolbar"><select class="in" id="a-otro" aria-label="Otro cliente">' + clienteOpts('', 'Cuenta de otro cliente…') + '</select><button class="btn sm" data-act="aCuentaOtro">Abrir</button><button class="btn sm" data-act="aCSV" title="Para la combinación de correspondencia de Gmail">Exportar CSV de envío</button></div></div>' +
+    h += '<section class="sheet"><div class="sheet-h"><h2>Clientes del mes</h2><div class="toolbar"><select class="in" id="a-otro" aria-label="Otro cliente">' + clienteOpts('', 'Cuenta de otro cliente…') + '</select><button class="btn sm" data-act="aCuentaOtro">Abrir</button><button class="btn sm primary" data-act="aMailResumenes">Enviar resúmenes por email</button><button class="btn sm" data-act="aCSV" title="Para la combinación de correspondencia de Gmail">Exportar CSV</button></div></div>' +
       (tr ? '<div class="tbl"><table><thead><tr><th>Cliente</th><th class="r">Total</th><th>Resumen</th><th>Comprobante</th><th>Cobro</th><th>Recordatorio</th></tr></thead><tbody>' + tr + '</tbody></table></div>' : emptyBox('Nada para facturar en ' + monthLabel(m), 'Cargá precios en los abonos activos o meses de facturación en los proyectos.')) + '</section>';
     return h;
   }
@@ -152,10 +152,10 @@ export function initAdmin(ctx) {
     const sug = sugerencias(rd.cliente, rd.m).filter(s => !rd.items.some(i => i.ref && i.ref === s.ref));
     const sent = rd.estado === 'Enviado';
     const items = rd.items.map((it, i) => '<div class="ri' + (it.inc ? '' : ' off') + '" style="display:grid;grid-template-columns:24px minmax(0,1fr) 150px 30px;gap:10px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line);' + (it.inc ? '' : 'opacity:.5') + '"><input type="checkbox" aria-label="Incluir" id="ri-' + i + '-inc" data-ri="' + i + '" data-rik="inc"' + (it.inc ? ' checked' : '') + '><div class="field" style="gap:2px"><input type="text" id="ri-' + i + '-c" data-ri="' + i + '" data-rik="concepto" value="' + esc(it.concepto) + '" placeholder="Concepto"><span class="hint">' + esc(it.origen || 'Manual') + '</span></div><div class="field"><input type="text" style="text-align:right" inputmode="decimal" id="ri-' + i + '-m" data-ri="' + i + '" data-rik="monto" value="' + esc(it.monto) + '" placeholder="Monto"></div><button class="btn ghost sm" data-act="aRiDel" data-i="' + i + '" aria-label="Quitar ítem">✕</button></div>').join('');
-    const facs = c.facs.map(f => '<div class="row" style="cursor:default"><span class="d">' + fmt(f.fecha) + '</span><span class="t"><b>' + esc(f.tipo) + ' ' + esc(f.numero || 's/n') + (f.emisor ? ' · ' + esc(f.emisor) : '') + '</b><span><span class="money">' + money(f.monto, f.moneda) + '</span> · cobrado ' + money(f.cobrado, f.moneda) + (f.vencimiento ? ' · vence ' + fmt(f.vencimiento) : '') + (f.link_pdf ? ' · <a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</span></span><span class="toolbar">' + efPill(f) + (f.saldo > 0.009 ? '<button class="btn sm" data-act="aCobro" data-id="' + esc(f.id) + '">Registrar cobro</button>' : '') + '<button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Editar</button></span></div>').join('');
+    const facs = c.facs.map(f => '<div class="row" style="cursor:default"><span class="d">' + fmt(f.fecha) + '</span><span class="t"><b>' + esc(f.tipo) + ' ' + esc(f.numero || 's/n') + (f.emisor ? ' · ' + esc(f.emisor) : '') + '</b><span><span class="money">' + money(f.monto, f.moneda) + '</span> · cobrado ' + money(f.cobrado, f.moneda) + (f.vencimiento ? ' · vence ' + fmt(f.vencimiento) : '') + (f.link_pdf ? ' · <a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</span></span><span class="toolbar">' + efPill(f) + (f.saldo > 0.009 ? '<button class="btn sm" data-act="aCobro" data-id="' + esc(f.id) + '">Registrar cobro</button>' : '') + '<button class="btn sm" data-act="aMailFactura" data-id="' + esc(f.id) + '">Enviar</button><button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Editar</button></span></div>').join('');
     const gest = c.gest.map(g => '<div class="row" style="cursor:default"><span class="d">' + fmt(g.fecha) + '</span><span class="t"><b>' + esc(g.tipo) + '</b><span>' + esc([g.canal, g.persona, g.nota].filter(Boolean).join(' · ')) + '</span></span><button class="btn ghost sm" data-act="aGestDel" data-id="' + esc(g.id) + '" aria-label="Borrar">✕</button></div>').join('');
     return '<button class="btn ghost sm" data-act="aBack" style="justify-self:start">← Cierre de ' + esc(monthLabel(rd.m)) + '</button>' +
-      '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">' + esc(rd.cliente) + '</h1><p style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Cuenta de <b style="color:var(--fg);text-transform:capitalize">' + esc(monthLabel(rd.m)) + '</b>' + (ca.cuit ? ' · CUIT ' + esc(ca.cuit) : '') + (ca.carpeta_admin ? ' · <a href="' + esc(ca.carpeta_admin) + '" target="_blank" rel="noopener">Carpeta de administración</a>' : '') + '</p></div>' +
+      '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">' + esc(rd.cliente) + '</h1><p style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Cuenta de <b style="color:var(--fg)">' + esc(cap(monthLabel(rd.m))) + '</b>' + (ca.cuit ? ' · CUIT ' + esc(ca.cuit) : '') + (ca.carpeta_admin ? ' · <a href="' + esc(ca.carpeta_admin) + '" target="_blank" rel="noopener">Carpeta de administración</a>' : '') + '</p></div>' +
       '<div class="toolbar"><button class="btn" data-act="aClienteAdm" data-cliente="' + esc(rd.cliente) + '">Datos de facturación</button></div></div>' +
       '<div class="grid2"><div class="stack">' +
       '<section class="sheet"><div class="sheet-h"><h2>1 · Resumen de cuenta</h2><span class="toolbar">' + pill(rd.estado, rd.estado === 'Enviado' ? '--s-entregado' : rd.estado === 'Borrador' ? '--s-revision' : '--s-empezar') + '<label class="muted" for="rd-mon">Moneda</label><select class="in" id="rd-mon" data-rdk="moneda">' + optsFrom(MONEDAS, rd.moneda) + '</select></span></div>' +
@@ -164,81 +164,227 @@ export function initAdmin(ctx) {
       (sug.length ? '<div style="border-top:1px solid var(--line)">' + sug.map(s => '<div class="row" style="cursor:default"><span class="d">' + esc(s.origen) + '</span><span class="t"><b>' + esc(s.concepto) + '</b><span>' + (s.monto ? money(parseMonto(s.monto), s.moneda) : 'sin monto') + '</span></span><button class="btn sm" data-act="aSugAdd" data-ref="' + esc(s.ref) + '">Agregar</button></div>').join('') + '</div>' : '') +
       '<div class="sheet-b" style="display:grid;gap:10px;border-top:1px solid var(--line)"><div class="field"><label for="rd-nota">Nota al pie</label><textarea id="rd-nota" rows="2" data-rdk="nota" placeholder="Ej.: datos de pago, vencimiento">' + esc(rd.nota) + '</textarea></div>' +
       '<div class="field"><label for="rd-pdf">Link al PDF del resumen (Drive)</label><input id="rd-pdf" data-rdk="link_pdf" value="' + esc(rd.link_pdf) + '" placeholder="https://drive.google.com/..."></div>' +
-      '<div class="toolbar"><button class="btn sm" data-act="aRiAdd">+ Ítem manual</button><button class="btn sm" data-act="aCopy" data-what="resumen">Copiar texto</button><button class="btn sm" data-act="aPrint">Ver para imprimir / PDF</button></div>' +
+      '<div class="toolbar"><button class="btn sm" data-act="aRiAdd">+ Ítem manual</button><button class="btn sm" data-act="aCopy" data-what="resumen">Copiar texto</button><button class="btn sm" data-act="aPrint">Ver PDF</button><button class="btn sm primary" data-act="aMailResumen">Enviar por email</button></div>' +
       '<div class="toolbar"><button class="btn" data-act="aResSave" data-estado="' + (sent ? 'Enviado' : 'Borrador') + '">Guardar' + (sent ? ' cambios' : ' borrador') + '</button>' + (sent ? '<button class="btn ghost" data-act="aResSave" data-estado="Borrador">Volver a borrador</button>' : '<button class="btn primary" data-act="aResSave" data-estado="Enviado">Marcar como enviado</button>') + '</div></div></section></div>' +
       '<div class="stack">' +
       '<section class="sheet"><div class="sheet-h"><h2>2 · Comprobantes</h2><button class="btn sm primary" data-act="aFactura">+ Comprobante</button></div>' + (facs ? '<div class="rows">' + facs + '</div>' : emptyBox('Sin comprobantes este mes', 'Cargá la factura ARCA o el invoice con su número y el link al PDF.')) +
       (c.facs.length ? '<div class="count">Emitido <b class="money">' + money(c.emitido, c.moneda) + '</b> · cobrado <b class="money">' + money(c.cobrado, c.moneda) + '</b> · saldo <b class="money">' + money(c.saldo, c.moneda) + '</b></div>' : '') + '</section>' +
-      '<section class="sheet"><div class="sheet-h"><h2>3 · Seguimiento</h2><span class="toolbar"><button class="btn sm" data-act="aRecordatorio">Recordatorio de pago</button><button class="btn sm" data-act="aGest">+ Registrar</button></span></div>' + (gest ? '<div class="rows">' + gest + '</div>' : emptyBox('Sin gestiones registradas', 'Envíos de resumen, de factura y recordatorios quedan acá con fecha.')) + '</section>' +
+      '<section class="sheet"><div class="sheet-h"><h2>3 · Seguimiento</h2><span class="toolbar"><button class="btn sm" data-act="aRecordatorio">Recordatorio de pago</button><button class="btn sm" data-act="aMailLibre">Email</button><button class="btn sm" data-act="aGest">+ Registrar</button></span></div>' + (gest ? '<div class="rows">' + gest + '</div>' : emptyBox('Sin gestiones registradas', 'Envíos de resumen, de factura y recordatorios quedan acá con fecha.')) + '</section>' +
       '</div></div>';
   }
 
-  async function saveResumen(estado) {
+  async function saveResumen(estado, opts = {}) {
     const rd = AD.rd; const cid = data.ids.cliente(rd.cliente); if (!cid) { toast('Cliente no encontrado'); return; }
     const items = rd.items.filter(i => i.concepto.trim() || i.monto).map(i => ({ inc: !!i.inc, origen: i.origen || 'Manual', ref: i.ref || '', concepto: i.concepto.trim(), monto: parseMonto(i.monto) }));
     const row = { cliente_id: cid, periodo: rd.m + '-01', moneda: rd.moneda, items, total: r2(totalItems(rd.items)), nota: rd.nota.trim(), estado, enviado_el: estado === 'Enviado' ? (rd.enviado_el || today()) : null, link_pdf: rd.link_pdf.trim() };
     try {
       if (rd.id) await data.upd('resumenes', rd.id, row); else rd.id = (await data.ins('resumenes', row)).id;
-      if (estado === 'Enviado' && rd.estado !== 'Enviado') await data.ins('gestiones', { cliente_id: cid, periodo: rd.m + '-01', tipo: 'Resumen de cuenta', fecha: today(), canal: 'Email', persona_id: data.ids.persona(S.me.alias) });
+      if (estado === 'Enviado' && rd.estado !== 'Enviado' && !opts.sinGestion) await data.ins('gestiones', { cliente_id: cid, periodo: rd.m + '-01', tipo: 'Resumen de cuenta', fecha: today(), canal: 'Email', persona_id: data.ids.persona(S.me.alias) });
       rd.estado = estado; rd.enviado_el = row.enviado_el || '';
-      toast(estado === 'Enviado' ? 'Resumen marcado como enviado' : 'Resumen guardado'); await ctx.reload();
-    } catch (err) { toast(err.message); }
+      if (!opts.silencioso) { toast(estado === 'Enviado' ? 'Resumen marcado como enviado' : 'Resumen guardado'); await ctx.reload(); }
+    } catch (err) { if (opts.silencioso) throw err; toast(err.message); }
   }
 
-  // PDF del resumen con la marca 2026: isologo arriba, Delight en títulos, Inter en textos, logotipo al pie.
-  // Delight sale de /fonts del propio sitio (URL absoluta: la ventana de impresión es about:blank).
-  function printResumen() {
-    const rd = AD.rd, cli = S.C.find(x => x.nombre === rd.cliente) || {};
-    const cfg = (AD.AJ && AD.AJ.resumen_pdf) || {};
-    const plata = n => { try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: rd.moneda || 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0); } catch (e) { return (rd.moneda || '') + ' ' + n; } };
-    const periodo = cap(monthLabel(rd.m).replace(' de ', ' '));
-    const contacto = (cli.contacto || '').split(/[,/]/)[0].trim();
-    const items = rd.items.filter(i => i.inc && i.concepto.trim());
-    const links = (arr, sep) => (arr || []).map(([t, u]) => u ? '<a href="' + esc(u) + '">' + esc(t) + '</a>' : esc(t)).join(sep);
-    const cuentas = (cfg.cuentas || []).map(c => '<div class="cta"><h3>' + esc(c.titulo) + (c.sub ? ' <small>(' + esc(c.sub) + ')</small>' : '') + '</h3>' +
-      (c.campos || []).map(([k, v]) => '<dt>' + esc(k) + ':</dt><dd>' + esc(v) + '</dd>').join('') + '</div>').join('');
-    const FONTS = [['Regular', 400], ['Medium', 500], ['SemiBold', 600], ['Bold', 700], ['ExtraBold', 800], ['Black', 900]].map(([n, w]) => "@font-face{font-family:'Delight';font-weight:" + w + ";src:url('" + location.origin + '/fonts/Delight-' + n + ".woff2') format('woff2')}").join('');
-    const css = `
-      ` + FONTS + `
-      @page{size:A4;margin:0}
-      *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-      :root{--ink:#111;--muted:#555;--acc:#FC4855;--rule:#8a8a8a}
-      html,body{margin:0;background:#fff}
-      body{font:400 10.5pt/1.45 Inter,system-ui,sans-serif;color:var(--ink)}
-      .page{width:210mm;height:297mm;overflow:hidden;padding:16mm 21mm 12mm;display:flex;flex-direction:column}
-      a{color:inherit;text-decoration:none}
-      .iso{width:32mm;margin:0 auto 11mm;color:var(--ink)} .iso svg,.logo svg{display:block;width:100%;height:auto}
-      .meta{font-size:11.5pt;line-height:1.35} .meta b{font-weight:700}
-      h1,h2,h3,.total{font-family:Delight,Inter,sans-serif;font-weight:700;letter-spacing:0}
-      h1{color:var(--acc);font-size:15pt;margin:10mm 0 0;padding:0 0 3mm;border-bottom:1px solid var(--rule)}
-      .items{width:100%;border-collapse:collapse;margin-top:6mm} .items td{padding:2mm 1.5mm;font-weight:600;vertical-align:top} .items td.m{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-      .total{display:flex;gap:10mm;align-items:baseline;font-size:15pt;margin:9mm 0 0;padding-bottom:9mm;border-bottom:1px solid var(--rule)} .total span:last-child{font-variant-numeric:tabular-nums}
-      .nota{margin:5mm 0 0} .nota b{font-weight:700} .extra{margin:3mm 0 0;white-space:pre-wrap}
-      .ctas{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;margin:9mm 0 0;padding:0 1.5mm;font-size:9.5pt;line-height:1.3}
-      .cta h3{color:var(--acc);font-size:13pt;margin:0 0 5mm} .cta h3 small{font-family:Inter,sans-serif;font-weight:400;font-size:8pt;color:var(--ink);letter-spacing:0}
-      .cta dt{font-weight:700} .cta dd{margin:0;overflow-wrap:anywhere}
-      .cierre{margin:9mm 0 0}
-      footer{margin-top:auto;padding-top:6mm;text-align:center;font-size:9pt}
-      footer .redes{font-family:Delight,Inter,sans-serif;font-weight:700;font-size:10.5pt} footer .contacto{margin-top:1mm;color:#333}
-      .logo{width:24mm;margin:4mm auto 2mm;color:var(--ink)} footer .pie{font-family:Delight,Inter,sans-serif;font-weight:700;font-size:9.5pt}
-      @media screen{body{background:#e9e9ec}.page{margin:24px auto;background:#fff;box-shadow:0 2px 24px rgba(0,0,0,.12)}}`;
-    const html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Resumen-' + esc(rd.cliente) + '-' + esc(periodo) + '</title>' +
-      '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">' +
-      '<style>' + css + '</style></head><body><main class="page">' +
-      '<div class="iso">' + ISO + '</div>' +
-      '<div class="meta">' + (contacto ? 'Cliente: <b>' + esc(contacto) + '</b><br>' : '') + 'Cuenta: <b>' + esc(rd.cliente) + '</b> Periodo: <b>' + esc(periodo) + '</b></div>' +
-      '<h1>Resumen de Cuenta</h1>' +
-      '<table class="items"><tbody>' + items.map(i => '<tr><td>' + esc(i.concepto.trim()) + '</td><td class="m">' + esc(plata(parseMonto(i.monto))) + '</td></tr>').join('') + '</tbody></table>' +
-      '<div class="total"><span>Total a abonar</span><span>' + esc(plata(totalItems(rd.items))) + '</span></div>' +
-      (cfg.nota ? '<p class="nota"><b>NOTA</b> ' + esc(cfg.nota).replace('SIN EXCEPCIÓN', '<b>SIN EXCEPCIÓN</b>') + '</p>' : '') +
-      (rd.nota.trim() ? '<p class="extra">' + esc(rd.nota.trim()) + '</p>' : '') +
-      (cuentas ? '<section class="ctas">' + cuentas + '</section>' : '') +
-      (cfg.cierre ? '<p class="cierre">' + esc(cfg.cierre) + '</p>' : '') +
-      '<footer><div class="redes">' + links(cfg.redes, ' | ') + '</div><div class="contacto">' + links(cfg.contacto, ' | ') + '</div><div class="logo">' + LOGO + '</div>' + (cfg.pie ? '<div class="pie">' + esc(cfg.pie) + '</div>' : '') + '</footer>' +
-      '</main><script>(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => setTimeout(() => window.print(), 150))<\/script></body></html>';
-    const w = window.open('', '_blank'); if (!w) { toast('El navegador bloqueó la ventana. Permití ventanas emergentes para este sitio.'); return; }
-    w.document.write(html); w.document.close();
+  /* ---------- PDF y emails con la marca ---------- */
+  const cfgMarca = () => (AD.AJ && AD.AJ.resumen_pdf) || {};
+  const periodoTit = m => cap(monthLabel(m).replace(' de ', ' '));
+  const periodoTxt = m => monthLabel(m).replace(' de ', ' ');
+  const contactoFull = cliente => ((S.C.find(x => x.nombre === cliente) || {}).contacto || '').split(/[,/]/)[0].trim();
+  const mailsDe = cliente => { const c = S.C.find(x => x.nombre === cliente) || {}; return (cadm(cliente).email_facturacion || c.email || '').split(/[,;\s]+/).filter(Boolean).join(', '); };
+  const firma = () => 'Saludos,\n' + (((S.me && (S.me.nombre || S.me.alias)) || '').split(' ')[0] || 'Equipo') + '\nàndale';
+  const pdfLib = () => import('./pdf.js');
+  const itemsDe = r => r.items.filter(i => i.inc && String(i.concepto || '').trim()).map(i => ({ concepto: String(i.concepto).trim(), monto: parseMonto(i.monto) || 0 }));
+  async function pdfResumen(r) { // r: { cliente, m, moneda, items, nota }
+    const { resumenPdf, bytesBase64 } = await pdfLib();
+    const items = itemsDe(r);
+    const bytes = await resumenPdf({ cfg: cfgMarca(), contacto: contactoFull(r.cliente), cuenta: r.cliente, periodo: periodoTit(r.m), moneda: r.moneda, items, total: r2(items.reduce((a, i) => a + i.monto, 0)), nota: r.nota || '' });
+    return { bytes, nombre: 'Resumen-' + r.cliente + '-' + periodoTit(r.m) + '.pdf', base64: bytesBase64(bytes) };
   }
+  async function printResumen() {
+    const rd = AD.rd; if (!itemsDe(rd).length) { toast('El resumen no tiene ítems'); return; }
+    const w = window.open('', '_blank');
+    try { const { abrirPdf } = await pdfLib(); const p = await pdfResumen(rd); abrirPdf(p.bytes, p.nombre.replace(/\.pdf$/, ''), w); }
+    catch (err) { if (w) w.close(); toast(err.message); }
+  }
+
+  // Compositor: vista previa en vivo del email con la marca, edición de destinatarios, asunto y mensaje.
+  let prevT;
+  function openComposer(o) {
+    const base = o.build({ mensaje: o.mensaje || '', ...(o.values || {}) });
+    const vals = Object.assign({ para: o.para || '', cc: '', asunto: o.asunto || base.asunto, mensaje: o.mensaje || '', copia: true }, o.values || {});
+    const adj = o.adjuntos || [];
+    openPanel({
+      title: o.titulo, eyebrow: o.eyebrow || 'Enviar email', saveLabel: 'Enviar', busyLabel: 'Enviando…', composer: o,
+      intro: 'Sale desde <b>administracion@weareandale.com</b>. Las respuestas del cliente llegan a esa casilla.' + (o.intro2 ? '<br><b>' + esc(o.intro2) + '</b>' : ''),
+      values: vals,
+      fields: [
+        { k: 'para', label: 'Para', req: 1, full: 1, hint: (vals.para ? 'Email de facturación del cliente. ' : 'Este cliente no tiene email cargado. ') + 'Varios, separados por coma.', ph: 'cliente@empresa.com' },
+        { k: 'cc', label: 'CC', full: 1, ph: 'Opcional' },
+        { k: 'asunto', label: 'Asunto', req: 1, full: 1 },
+        ...(o.extraFields || []),
+        { k: 'mensaje', label: 'Mensaje', type: 'textarea', rows: 7, full: 1 },
+        { k: 'copia', label: 'Mandarme una copia a administracion@weareandale.com', type: 'check' },
+      ],
+      extra: (adj.length ? '<div class="field full"><span class="lbl">Adjuntos</span><div class="tags" style="gap:6px">' + adj.map((a, i) => '<button type="button" class="btn sm" data-act="aAdjVer" data-i="' + i + '">📎 ' + esc(a.nombre) + '</button>').join('') + '</div></div>' : '') +
+        '<div class="field full"><span class="lbl">Vista previa</span><iframe id="mail-prev" title="Vista previa del email" style="width:100%;height:560px;border:1px solid var(--line);border-radius:8px;background:#f1f1f1"></iframe></div>' +
+        '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aMailCopy">Copiar texto (WhatsApp)</button>' + (o.extraBtns || '') + '</div>',
+      onSave: async v => {
+        const b = o.build(v);
+        const r = await data.sendEmail({ tipo: o.tipo, cliente_id: o.cliente ? data.ids.cliente(o.cliente) : null, periodo: o.periodo ? o.periodo + '-01' : null, factura_id: o.factura_id || null,
+          para: v.para, cc: v.cc, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia, adjuntos: adj.map(a => ({ nombre: a.nombre, base64: a.base64 })) });
+        if (o.onSent) await o.onSent(v, r);
+        toast('Email enviado a ' + v.para);
+      },
+    });
+    AD.adj = adj;
+    refreshPreview();
+  }
+  function composerValues() {
+    const o = AD.form && AD.form.composer; if (!o) return null;
+    const v = {}; for (const f of AD.form.fields) { const el = $('#af-' + f.k); if (el) v[f.k] = f.type === 'check' ? el.checked : el.value; }
+    return v;
+  }
+  function refreshPreview() {
+    const o = AD.form && AD.form.composer, fr = $('#mail-prev'); if (!o || !fr) return;
+    const v = composerValues(); fr.srcdoc = o.build(v).html.split(E.APP_URL).join(location.origin); // imágenes del deploy actual en la vista previa
+  }
+
+  // Envío masivo: misma plantilla para varios clientes, uno por uno, con su PDF si corresponde.
+  function openBulk(o) {
+    const conMail = o.items.filter(i => i.para);
+    openPanel({
+      title: o.titulo, eyebrow: 'Envío por email', saveLabel: 'Enviar', busyLabel: 'Enviando…',
+      intro: 'Se manda un email a cada cliente con sus propios datos. En el mensaje podés usar <b>{nombre}</b>, <b>{cuenta}</b> y <b>{periodo}</b>. ' + (o.items.length - conMail.length ? '<b>' + (o.items.length - conMail.length) + '</b> sin email cargado quedan afuera.' : ''),
+      values: { asunto: o.asunto, mensaje: o.mensaje, copia: true },
+      fields: [
+        { k: 'asunto', label: 'Asunto', req: 1, full: 1 },
+        { k: 'mensaje', label: 'Mensaje', type: 'textarea', rows: 7, full: 1 },
+        { k: 'copia', label: 'Mandarme copia de cada uno', type: 'check' },
+      ],
+      extra: '<div class="field full"><span class="lbl">Destinatarios</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' +
+        o.items.map((it, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-bulk="' + i + '"' + (it.para ? ' checked' : ' disabled') + '><span class="t"><b>' + esc(it.label) + '</b><span>' + esc(it.para || 'sin email · cargalo en Datos de facturación') + (it.sub ? ' · ' + esc(it.sub) : '') + '</span></span><span class="days far" id="bulk-st-' + i + '"></span></label>').join('') + '</div></div>' +
+        '<p class="formnote" id="bulk-prog" style="grid-column:1/-1" aria-live="polite"></p>',
+      onSave: async v => {
+        const sel = o.items.map((it, i) => [it, i]).filter(([it, i]) => it.para && ($('[data-bulk="' + i + '"]') || {}).checked);
+        if (!sel.length) throw new Error('No hay destinatarios seleccionados');
+        const fails = []; let n = 0;
+        for (const [it, i] of sel) {
+          const st = $('#bulk-st-' + i), prog = $('#bulk-prog');
+          if (prog) prog.textContent = 'Enviando ' + (++n) + ' de ' + sel.length + '…';
+          const fill = t => String(t || '').replace(/\{nombre\}/g, it.nombre || '').replace(/\{cuenta\}/g, it.label).replace(/\{periodo\}/g, it.periodo || '').replace(/Hola ,/g, 'Hola,');
+          try { await o.send(it, { asunto: fill(v.asunto), mensaje: fill(v.mensaje), copia: v.copia }); if (st) { st.textContent = '✓ Enviado'; st.className = 'days'; st.style.color = 'var(--ok)'; } }
+          catch (err) { fails.push(it.label + ': ' + err.message); if (st) { st.textContent = 'Error'; st.className = 'days late'; } }
+          await new Promise(r => setTimeout(r, 600)); // Resend: máx. 2 por segundo
+        }
+        if (fails.length) { await ctx.reload(); throw new Error(fails.length + ' sin enviar. ' + fails[0]); }
+        toast(sel.length + ' emails enviados');
+      },
+    });
+  }
+
+  function servicioDe(a) { return a.tipo === 'Redes' ? 'Redes sociales' + (a.plan ? ' · plan ' + a.plan : '') : a.tipo === 'Ads' ? 'Ads (gestión de campañas)' : a.tipo; }
+  function datosAviso(p) {
+    const a = S.A.find(x => x._id === p.abono_id); if (!a) return null;
+    const prev = AD.PR.filter(x => x.abono_id === a._id && x.desde < p.desde).sort((x, y) => y.desde.localeCompare(x.desde))[0];
+    const pct = prev && prev.monto ? String(Math.round((p.monto / prev.monto - 1) * 1000) / 10).replace('.', ',') : '';
+    return { a, prev, pct };
+  }
+
+  const mail = {
+    resumen(rd) {
+      const items = itemsDe(rd); if (!items.length) { toast('El resumen no tiene ítems'); return; }
+      const total = r2(items.reduce((a, i) => a + i.monto, 0)), nombre = contactoDe(rd.cliente);
+      toast('Preparando el PDF…');
+      pdfResumen(rd).then(pdf => openComposer({
+        titulo: 'Resumen de cuenta', eyebrow: rd.cliente + ' · ' + periodoTit(rd.m), tipo: 'Resumen de cuenta', cliente: rd.cliente, periodo: rd.m,
+        para: mailsDe(rd.cliente), mensaje: E.textos.resumen({ nombre, periodo: periodoTxt(rd.m) }), adjuntos: [pdf],
+        build: v => E.resumenEmail({ cfg: cfgMarca(), contacto: contactoFull(rd.cliente), cuenta: rd.cliente, periodo: periodoTit(rd.m), moneda: rd.moneda, items, total, nota: rd.nota, mensaje: v.mensaje, firma: firma(), asunto: v.asunto }),
+        onSent: async () => { AD.rd = rd; await saveResumen('Enviado', { sinGestion: true, silencioso: true }); },
+      })).catch(err => toast(err.message));
+    },
+    recordatorio(c) {
+      const abiertas = c.facs.filter(f => f.saldo > 0.009);
+      const pend = abiertas.length ? abiertas.map(f => ({ concepto: f.tipo + ' ' + (f.numero || 's/n') + (f.vencimiento ? ' · venció ' + fmt(f.vencimiento) : ''), monto: f.saldo })) : itemsDe(c.res || { items: [] });
+      const moneda = abiertas[0] ? abiertas[0].moneda : (c.moneda || 'ARS');
+      const total = r2(pend.reduce((a, i) => a + i.monto, 0));
+      if (!pend.length) { toast('No hay saldo pendiente para recordar'); return; }
+      const go = adj => openComposer({
+        titulo: 'Recordatorio de pago', eyebrow: c.cliente + ' · ' + periodoTit(c.m), tipo: 'Recordatorio de pago', cliente: c.cliente, periodo: c.m, factura_id: abiertas.length === 1 ? abiertas[0].id : null,
+        para: mailsDe(c.cliente), mensaje: E.textos.recordatorio({ nombre: contactoDe(c.cliente), periodo: periodoTxt(c.m) }), adjuntos: adj,
+        build: v => E.recordatorioEmail({ cfg: cfgMarca(), contacto: contactoFull(c.cliente), cuenta: c.cliente, periodo: periodoTit(c.m), moneda, pendientes: pend, total, mensaje: v.mensaje, firma: firma(), asunto: v.asunto }),
+        extraBtns: '<button type="button" class="btn sm ghost" data-act="aRecordatorioManual">Registrar por otro canal</button>',
+      });
+      if (c.res && itemsDe(c.res).length) { toast('Preparando el PDF…'); pdfResumen({ cliente: c.cliente, m: c.m, moneda: c.res.moneda, items: c.res.items, nota: c.res.nota }).then(p => go([p])).catch(() => go([])); }
+      else go([]);
+    },
+    factura(f) {
+      const comp = (f.tipo === 'Invoice' ? 'el invoice' : 'la factura') + (f.numero ? ' N° ' + f.numero : '');
+      openComposer({
+        titulo: f.tipo + ' ' + (f.numero || 's/n'), eyebrow: f.cliente, tipo: 'Factura enviada', cliente: f.cliente, periodo: f.periodo || null, factura_id: f.id,
+        para: mailsDe(f.cliente), mensaje: E.textos.factura({ nombre: contactoDe(f.cliente), comprobante: comp, periodo: f.periodo ? periodoTxt(f.periodo) : '' }),
+        values: { conPago: f.saldo > 0.009 },
+        extraFields: [{ k: 'conPago', label: 'Incluir datos de pago', type: 'check' }],
+        build: v => E.facturaEmail({ cfg: cfgMarca(), contacto: contactoFull(f.cliente), cuenta: f.cliente, periodo: f.periodo ? periodoTit(f.periodo) : '', tipo: f.tipo, numero: f.numero, fecha: f.fecha, vencimiento: f.vencimiento, monto: f.monto, moneda: f.moneda, link: f.link_pdf, conPago: v.conPago, mensaje: v.mensaje, firma: firma(), asunto: v.asunto }),
+        intro2: f.link_pdf ? '' : 'Este comprobante no tiene link al PDF: el email sale sin botón.',
+      });
+      if (!f.link_pdf) toast('Ojo: el comprobante no tiene link al PDF cargado');
+    },
+    aviso(p) {
+      const d = datosAviso(p); if (!d) return;
+      const { a, prev, pct } = d;
+      openComposer({
+        titulo: 'Aviso de aumento', eyebrow: a.cliente, tipo: 'Aviso de aumento', cliente: a.cliente, periodo: p.desde,
+        para: mailsDe(a.cliente), mensaje: E.textos.aviso({ nombre: contactoDe(a.cliente), servicio: servicioDe(a).toLowerCase(), desde: periodoTxt(p.desde), pct }),
+        build: v => E.avisoEmail({ cfg: cfgMarca(), contacto: contactoFull(a.cliente), cuenta: a.cliente, servicio: servicioDe(a), anterior: prev ? prev.monto : null, nuevo: p.monto, moneda: p.moneda, desde: periodoTit(p.desde), mensaje: v.mensaje, firma: firma(), asunto: v.asunto }),
+        onSent: async () => { await data.upd('precios_abono', p.id, { aviso_enviado: today() }); },
+        extraBtns: '<button type="button" class="btn sm ghost" data-act="aAvisoManual" data-id="' + esc(p.id) + '">Avisado por otro canal</button>',
+      });
+    },
+    libre(cliente) {
+      openComposer({
+        titulo: 'Email a ' + cliente, eyebrow: 'Notificación', tipo: 'Otro', cliente,
+        para: mailsDe(cliente), mensaje: E.textos.libre({ nombre: contactoDe(cliente) }), asunto: '',
+        values: { titulo: '', botonUrl: '', botonTexto: 'Ver más', conPago: false },
+        extraFields: [
+          { k: 'titulo', label: 'Título (opcional)', full: 1, ph: 'Ej.: Novedades de la cuenta' },
+          { k: 'botonUrl', label: 'Link (opcional)', type: 'url', ph: 'https://…' },
+          { k: 'botonTexto', label: 'Texto del botón' },
+          { k: 'conPago', label: 'Incluir datos de pago', type: 'check' },
+        ],
+        build: v => E.libreEmail({ cfg: cfgMarca(), contacto: contactoFull(cliente), cuenta: cliente, titulo: v.titulo, mensaje: v.mensaje, botonUrl: v.botonUrl, botonTexto: v.botonTexto, conPago: v.conPago, firma: firma(), asunto: v.asunto || (v.titulo ? v.titulo + ' · àndale' : '') }),
+      });
+    },
+    resumenes(m) {
+      const rs = AD.R.filter(r => r.periodo === m && r.estado !== 'Enviado' && itemsDe(r).length).sort((a, b) => cmp(a.cliente, b.cliente));
+      if (!rs.length) { toast('No hay resúmenes guardados sin enviar en ' + monthLabel(m) + '. Guardalos primero como borrador.'); return; }
+      openBulk({
+        titulo: 'Resúmenes de ' + periodoTit(m), asunto: 'Resumen de cuenta · {cuenta} · ' + periodoTit(m), mensaje: E.textos.resumen({ nombre: '{nombre}', periodo: periodoTxt(m) }),
+        items: rs.map(r => ({ label: r.cliente, nombre: contactoDe(r.cliente), para: mailsDe(r.cliente), sub: money(r.total, r.moneda), periodo: periodoTxt(m), r })),
+        send: async (it, v) => {
+          const r = it.r, items = itemsDe(r), pdf = await pdfResumen({ cliente: r.cliente, m, moneda: r.moneda, items: r.items, nota: r.nota });
+          const b = E.resumenEmail({ cfg: cfgMarca(), contacto: contactoFull(r.cliente), cuenta: r.cliente, periodo: periodoTit(m), moneda: r.moneda, items, total: r2(items.reduce((a, i) => a + i.monto, 0)), nota: r.nota, mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
+          await data.sendEmail({ tipo: 'Resumen de cuenta', cliente_id: r.cliente_id, periodo: m + '-01', para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia, adjuntos: [{ nombre: pdf.nombre, base64: pdf.base64 }] });
+          await data.upd('resumenes', r.id, { estado: 'Enviado', enviado_el: today() });
+        },
+      });
+    },
+    avisos() {
+      const m = thisMonth();
+      const ps = AD.PR.filter(p => p.desde > m && !p.aviso_enviado).map(p => ({ p, d: datosAviso(p) })).filter(x => x.d && x.d.a.estado === 'Activo').sort((x, y) => cmp(x.d.a.cliente, y.d.a.cliente));
+      if (!ps.length) { toast('No hay aumentos pendientes de avisar'); return; }
+      openBulk({
+        titulo: 'Avisos de aumento', asunto: 'Actualización de tu abono · desde ' + periodoTit(ps[0].p.desde),
+        mensaje: E.textos.aviso({ nombre: '{nombre}', servicio: 'tu abono', desde: '{periodo}', pct: '' }),
+        items: ps.map(({ p, d }) => ({ label: d.a.cliente, nombre: contactoDe(d.a.cliente), para: mailsDe(d.a.cliente), sub: servicioDe(d.a) + ' · ' + money(p.monto, p.moneda) + ' desde ' + fmt(p.desde), periodo: periodoTxt(p.desde), p, d })),
+        send: async (it, v) => {
+          const { p, d } = it;
+          const b = E.avisoEmail({ cfg: cfgMarca(), contacto: contactoFull(d.a.cliente), cuenta: d.a.cliente, servicio: servicioDe(d.a), anterior: d.prev ? d.prev.monto : null, nuevo: p.monto, moneda: p.moneda, desde: periodoTit(p.desde), mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
+          await data.sendEmail({ tipo: 'Aviso de aumento', cliente_id: data.ids.cliente(d.a.cliente), periodo: p.desde + '-01', para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia });
+          await data.upd('precios_abono', p.id, { aviso_enviado: today() });
+        },
+      });
+    },
+  };
 
   function exportCSV() {
     const m = AD.mes; const rows = [['Nombre', 'Apellido', 'Cuenta', 'Fecha', 'Servicio', 'email', 'Total', 'File Attachments']];
@@ -274,7 +420,7 @@ export function initAdmin(ctx) {
     const deud = Object.entries(deudores).sort((a, b) => cmp(a[0], b[0]));
     if (deud.length) h += '<section class="sheet"><div class="sheet-h"><h2>Quién debe</h2><span class="muted">' + deud.length + ' clientes</span></div><div class="sheet-b"><div class="tags" style="gap:8px">' + deud.map(([c, acc]) => '<button class="btn sm" data-act="aFf" data-k="cliente" data-v="' + esc(c) + '">' + esc(c) + ' · <span class="money">' + esc(multi(acc)) + '</span></button>').join('') + '</div></div></section>';
     if (!list.length) return h + '<section class="sheet">' + emptyBox(AD.F.length ? 'Ningún comprobante coincide' : 'Todavía no hay comprobantes cargados', AD.F.length ? 'Probá con otro filtro.' : 'Se cargan desde el Cierre de mes o con “+ Comprobante”.') + '</section>';
-    const rows = list.map(f => '<tr><td class="mono">' + fmt(f.fecha) + '</td><td class="name">' + esc(f.cliente) + '<span class="sub">' + esc(f.concepto || (f.periodo ? monthLabel(f.periodo) : '')) + '</span></td><td>' + esc(f.tipo) + ' ' + esc(f.numero || 's/n') + (f.link_pdf ? ' <a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</td><td>' + esc(f.emisor || '—') + '</td><td class="r"><span class="money">' + money(f.monto, f.moneda) + '</span></td><td class="r">' + (f.saldo > 0.009 ? '<span class="money">' + money(f.saldo, f.moneda) + '</span>' : '<span class="muted">—</span>') + '</td><td>' + efPill(f) + (f.vencimiento ? '<span class="sub">vence ' + fmt(f.vencimiento) + '</span>' : '') + '</td><td class="r"><span class="toolbar" style="justify-content:flex-end">' + (f.saldo > 0.009 ? '<button class="btn sm" data-act="aCobro" data-id="' + esc(f.id) + '">Cobro</button>' : '') + '<button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Editar</button></span></td></tr>').join('');
+    const rows = list.map(f => '<tr><td class="mono">' + fmt(f.fecha) + '</td><td class="name">' + esc(f.cliente) + '<span class="sub">' + esc(f.concepto || (f.periodo ? monthLabel(f.periodo) : '')) + '</span></td><td>' + esc(f.tipo) + ' ' + esc(f.numero || 's/n') + (f.link_pdf ? ' <a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</td><td>' + esc(f.emisor || '—') + '</td><td class="r"><span class="money">' + money(f.monto, f.moneda) + '</span></td><td class="r">' + (f.saldo > 0.009 ? '<span class="money">' + money(f.saldo, f.moneda) + '</span>' : '<span class="muted">—</span>') + '</td><td>' + efPill(f) + (f.vencimiento ? '<span class="sub">vence ' + fmt(f.vencimiento) + '</span>' : '') + '</td><td class="r"><span class="toolbar" style="justify-content:flex-end">' + (f.saldo > 0.009 ? '<button class="btn sm" data-act="aCobro" data-id="' + esc(f.id) + '">Cobro</button>' : '') + '<button class="btn sm" data-act="aMailFactura" data-id="' + esc(f.id) + '">Enviar</button><button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Editar</button></span></td></tr>').join('');
     return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Comprobante</th><th>Emite</th><th class="r">Monto</th><th class="r">Saldo</th><th>Estado</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' comprobantes · total ' + esc(multi(tot)) + ' · por cobrar ' + esc(multi(sal)) + '</div></section>';
   }
 
@@ -284,7 +430,8 @@ export function initAdmin(ctx) {
     const ab = S.A.filter(a => a.estado === 'Activo').sort((a, b) => cmp(a.cliente, b.cliente) || cmp(a.tipo, b.tipo));
     const pct = parseMonto(pp.pct);
     const sel = ab.filter(a => pp.sel.has(a._id));
-    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Precios y aumentos</h1><p>El precio vigente de cada abono y su historial. Para un aumento, tildá los abonos, poné el porcentaje y desde qué mes rige: se guarda como precio nuevo sin perder el anterior.</p></div></div>';
+    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Precios y aumentos</h1><p>El precio vigente de cada abono y su historial. Para un aumento, tildá los abonos, poné el porcentaje y desde qué mes rige: se guarda como precio nuevo sin perder el anterior.</p></div>' +
+      (AD.PR.some(p => p.desde > m && !p.aviso_enviado) ? '<div class="toolbar"><button class="btn primary" data-act="aAvisos">Avisar aumentos por email</button></div>' : '') + '</div>';
     h += '<section class="sheet"><div class="sheet-h"><h2>Aplicar aumento</h2><span class="muted">' + sel.length + ' abonos seleccionados</span></div><div class="sheet-b"><div class="toolbar">' +
       '<div class="field"><label for="pp-pct">Aumento %</label><input class="in" id="pp-pct" data-app="pct" inputmode="decimal" value="' + esc(pp.pct) + '" placeholder="4" style="width:90px"></div>' +
       '<div class="field"><label for="pp-desde">Rige desde</label><input class="in" id="pp-desde" type="month" data-app="desde" value="' + esc(pp.desde) + '"></div>' +
@@ -294,7 +441,7 @@ export function initAdmin(ctx) {
       const cur = precioEn(a._id, m), next = precioEn(a._id, '9999-12'), hist = historial(a._id);
       const futuro = next && next.desde > m ? next : null;
       const nuevo = pct && cur && pp.sel.has(a._id) ? r2(cur.monto * (1 + pct / 100)) : null;
-      const aviso = futuro ? (futuro.aviso_enviado ? '<span class="muted">Avisado ' + fmt(futuro.aviso_enviado) + '</span>' : '<button class="btn sm" data-act="aAviso" data-id="' + esc(futuro.id) + '">Avisar al cliente</button>') : '';
+      const aviso = futuro ? (futuro.aviso_enviado ? '<span class="muted">Avisado ' + fmt(futuro.aviso_enviado) + '</span>' : '<button class="btn sm" data-act="aAviso" data-id="' + esc(futuro.id) + '">Avisar por email</button>') : '';
       return '<tr><td><input type="checkbox" aria-label="Seleccionar" data-ppsel="' + esc(a._id) + '"' + (pp.sel.has(a._id) ? ' checked' : '') + (cur ? '' : ' disabled') + '></td><td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button><span class="sub">' + esc(a.tipo + (a.plan ? ' · ' + a.plan : '')) + '</span></td>' +
         '<td class="r">' + (cur ? '<span class="money">' + money(cur.monto, cur.moneda) + '</span><span class="sub">desde ' + fmt(cur.desde) + '</span>' : '<span class="days late">Sin precio</span>') + '</td>' +
         '<td class="r">' + (futuro ? '<span class="money">' + money(futuro.monto, futuro.moneda) + '</span><span class="sub">desde ' + fmt(futuro.desde) + (futuro.motivo ? ' · ' + esc(futuro.motivo) : '') + '</span>' : nuevo ? '<span class="money" style="opacity:.7">' + money(nuevo, cur.moneda) + '</span><span class="sub">vista previa</span>' : '<span class="muted">—</span>') + '</td>' +
@@ -304,6 +451,11 @@ export function initAdmin(ctx) {
   }
 
   /* ---------- Sección en la ficha del cliente ---------- */
+  function emailsDe(cliente) {
+    const cid = data.ids.cliente(cliente), es = AD.EM.filter(x => x.cliente_id === cid).slice(0, 10);
+    if (!es.length) return '';
+    return '<div class="sheet-b" style="border-top:1px solid var(--line);display:grid;gap:6px"><b>Emails enviados</b><div class="rows">' + es.map(x => '<div class="row" style="cursor:default"><span class="d">' + fmt(String(x.created_at).slice(0, 10)) + '</span><span class="t"><b>' + esc(x.asunto) + '</b><span>' + esc(x.tipo + ' · ' + (x.para || []).join(', ') + (x.adjuntos && x.adjuntos.length ? ' · 📎 ' + x.adjuntos.join(', ') : '')) + (x.error ? ' · ' + esc(x.error) : '') + '</span></span>' + pill(x.estado, x.estado === 'Enviado' ? '--s-entregado' : '--s-cancelado') + '</div>').join('') + '</div></div>';
+  }
   function fichaSection(c) {
     const ca = cadm(c.nombre);
     const facs = AD.F.filter(f => f.cliente === c.nombre).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
@@ -320,7 +472,8 @@ export function initAdmin(ctx) {
       (facs.length ? '<div class="rows" style="border-top:1px solid var(--line)">' + facs.slice(0, 8).map(f => '<button class="row" data-act="aFactura" data-id="' + esc(f.id) + '"><span class="d">' + fmt(f.fecha) + '</span><span class="t"><b>' + esc(f.tipo + ' ' + (f.numero || 's/n')) + '</b><span class="money">' + money(f.monto, f.moneda) + '</span></span>' + efPill(f) + '</button>').join('') + '</div>' : '') +
       '<div class="sheet-b" style="border-top:1px solid var(--line);display:grid;gap:8px"><b>Proyectos: meses de facturación</b>' +
       (proys.length ? proys.map(p => { const cs = cuotas.filter(x => x.proyecto_id === p._id); return '<div class="toolbar" style="justify-content:space-between"><span>' + esc(p.proyecto) + (cs.length ? ' · ' + cs.map(x => fmt(x.periodo) + ' ' + money(x.monto, x.moneda)).join(', ') : ' <span class="muted">· sin meses</span>') + '</span><button class="btn ghost sm" data-act="aCuotas" data-id="' + esc(p._id) + '">Editar</button></div>'; }).join('') : '<span class="muted">Sin proyectos.</span>') +
-      '<span class="toolbar"><button class="btn sm" data-act="aCuentaDe" data-cliente="' + esc(c.nombre) + '">Cuenta de ' + esc(monthLabel(thisMonth())) + '</button></span></div></section>';
+      '<span class="toolbar"><button class="btn sm" data-act="aCuentaDe" data-cliente="' + esc(c.nombre) + '">Cuenta de ' + esc(monthLabel(thisMonth())) + '</button><button class="btn sm" data-act="aMailLibre" data-cliente="' + esc(c.nombre) + '">Enviar email</button></span></div>' +
+      emailsDe(c.nombre) + '</section>';
   }
 
   /* ---------- Formularios (panel lateral) ---------- */
@@ -355,7 +508,7 @@ export function initAdmin(ctx) {
   }
   async function submitPanel() {
     const v = readPanel(); if (!v) return;
-    const btn = $('#asave'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    const btn = $('#asave'); if (btn) { btn.disabled = true; btn.textContent = AD.form.busyLabel || 'Guardando…'; }
     try { await AD.form.onSave(v); ctx.closeForm(); await ctx.reload(); }
     catch (err) { toast(err.message); if (btn) { btn.disabled = false; btn.textContent = AD.form.saveLabel || 'Guardar'; } }
   }
@@ -503,7 +656,7 @@ export function initAdmin(ctx) {
     const deuda = AD.MV.filter(x => x.reintegro_a && !x.reintegrado && x.egreso > 0);
     const porSocio = {}; deuda.forEach(x => { porSocio[x.reintegro_a] = porSocio[x.reintegro_a] || {}; add(porSocio[x.reintegro_a], x.moneda, x.egreso); });
     let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Caja</h1><p>Ingresos y egresos con el mismo plan de cuentas de la planilla. Los cobros de facturas entran solos. Los saldos incluyen el acumulado al 1/1/2026.</p></div>' +
-      '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px;text-transform:capitalize">' + esc(monthLabel(m)) + '</h2><button class="btn sm" data-act="aCjMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aCjMes" data-d="0">Este mes</button><button class="btn sm" data-act="aCjMes" data-d="1" aria-label="Mes siguiente">→</button></div><button class="btn primary" data-act="aMov">+ Movimiento</button></div></div>';
+      '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aCjMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aCjMes" data-d="0">Este mes</button><button class="btn sm" data-act="aCjMes" data-d="1" aria-label="Mes siguiente">→</button></div><button class="btn primary" data-act="aMov">+ Movimiento</button></div></div>';
     h += '<section class="kpis">' +
       '<div class="kpi"><span class="eyebrow">Saldo en pesos</span><b style="font-size:24px;color:var(--money)">' + money(saldo.ARS || 0, 'ARS') + '</b><span>hoy, todas las cajas</span></div>' +
       '<div class="kpi"><span class="eyebrow">Saldo en dólares</span><b style="font-size:24px;color:var(--money)">' + money(saldo.USD || 0, 'USD') + '</b><span>' + (saldo.EUR ? money(saldo.EUR, 'EUR') + ' en euros' : 'hoy, todas las cajas') + '</span></div>' +
@@ -584,7 +737,15 @@ export function initAdmin(ctx) {
     aCSV: () => exportCSV(),
     aFactura: t => formFactura(t.dataset.id || null),
     aCobro: t => formCobro(t.dataset.id),
-    aRecordatorio: () => formGestion('Recordatorio de pago', recordatorioTexto(cuenta(AD.rd.cliente, AD.rd.m))),
+    aRecordatorio: () => mail.recordatorio(cuenta(AD.rd.cliente, AD.rd.m)),
+    aRecordatorioManual: () => formGestion('Recordatorio de pago', recordatorioTexto(cuenta(AD.rd.cliente, AD.rd.m))),
+    aMailResumen: () => mail.resumen(AD.rd),
+    aMailResumenes: () => mail.resumenes(AD.mes),
+    aMailFactura: t => { const f = AD.F.find(x => x.id === t.dataset.id); if (f) mail.factura(f); },
+    aMailLibre: t => mail.libre(t.dataset.cliente || (AD.rd && AD.rd.cliente)),
+    aAvisos: () => mail.avisos(),
+    aAdjVer: async t => { const a = AD.adj[+t.dataset.i]; if (!a) return; const w = window.open('', '_blank'); const { abrirPdf } = await pdfLib(); abrirPdf(a.bytes, a.nombre.replace(/\.pdf$/, ''), w); },
+    aMailCopy: () => { const o = AD.form && AD.form.composer; if (o) ctx.copyText(o.build(composerValues()).texto); },
     aGest: () => formGestion(),
     aGestDel: async t => { try { await data.del('gestiones', t.dataset.id); await ctx.reload(); } catch (err) { toast(err.message); } },
     aClienteAdm: t => formClienteAdm(t.dataset.cliente),
@@ -599,7 +760,8 @@ export function initAdmin(ctx) {
       const rows = [...AD.pp.sel].map(id => { const cur = precioEn(id, thisMonth()); return cur ? { abono_id: id, desde: desde + '-01', monto: r2(cur.monto * (1 + pct / 100)), moneda: cur.moneda, motivo: AD.pp.motivo || ('Aumento ' + String(pct).replace('.', ',') + '%') } : null; }).filter(Boolean);
       try { for (const r of rows) await data.upsert('precios_abono', r, 'abono_id,desde'); toast('Aumento cargado en ' + rows.length + ' abonos'); AD.pp.sel.clear(); AD.pp.pct = ''; await ctx.reload(); } catch (err) { toast(err.message); }
     },
-    aAviso: t => {
+    aAviso: t => { const p = AD.PR.find(x => x.id === t.dataset.id); if (p) mail.aviso(p); },
+    aAvisoManual: t => {
       const p = AD.PR.find(x => x.id === t.dataset.id); const a = p && S.A.find(x => x._id === p.abono_id); if (!a) return;
       openPanel({ title: 'Aviso de aumento', eyebrow: a.cliente, saveLabel: 'Marcar como avisado', intro: 'Copiá el mensaje, ajustalo si hace falta y mandalo. Después marcalo como avisado.',
         values: { texto: avisoTexto(p.id), fecha: today(), canal: 'WhatsApp' },
@@ -614,6 +776,7 @@ export function initAdmin(ctx) {
   // Entradas propias de Administración
   document.addEventListener('input', e => {
     const t = e.target;
+    if (AD.form && AD.form.composer && t.closest && t.closest('#aform')) { clearTimeout(prevT); prevT = setTimeout(refreshPreview, 250); return; }
     if (t.dataset.ri !== undefined && t.type !== 'checkbox' && AD.rd) { AD.rd.items[+t.dataset.ri][t.dataset.rik] = t.value; ctx.render(); return; }
     if (t.dataset.rdk && t.tagName !== 'SELECT' && AD.rd) { AD.rd[t.dataset.rdk] = t.value; return; }
     if (t.dataset.app) { AD.pp[t.dataset.app] = t.value; ctx.render(); return; }
@@ -621,6 +784,7 @@ export function initAdmin(ctx) {
   });
   document.addEventListener('change', e => {
     const t = e.target;
+    if (AD.form && AD.form.composer && t.type === 'checkbox' && t.closest && t.closest('#aform')) { refreshPreview(); return; }
     if (t.dataset.ri !== undefined && t.type === 'checkbox' && AD.rd) { AD.rd.items[+t.dataset.ri].inc = t.checked; ctx.render(); return; }
     if (t.dataset.rdk && t.tagName === 'SELECT' && AD.rd) { AD.rd[t.dataset.rdk] = t.value; ctx.render(); return; }
     if (t.dataset.aff) { AD.ff[t.dataset.aff] = t.value; ctx.render(); return; }
