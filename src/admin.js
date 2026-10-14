@@ -198,12 +198,14 @@ export function initAdmin(ctx) {
   const contactoFull = cliente => ((S.C.find(x => x.nombre === cliente) || {}).contacto || '').split(/[,/]/)[0].trim();
   const mailsDe = cliente => { const c = S.C.find(x => x.nombre === cliente) || {}; return (cadm(cliente).email_facturacion || c.email || '').split(/[,;\s]+/).filter(Boolean).join(', '); };
   const firma = () => 'Saludos,\n' + (((S.me && (S.me.nombre || S.me.alias)) || '').split(' ')[0] || 'Equipo') + '\nàndale';
-  const pdfLib = () => import('./pdf.js');
+  const pdfLib = () => import('./docs.js');
+  const estiloDoc = () => ((AD.AJ && AD.AJ.documentos) || {}).estilo || 'editorial';
+  const hoyDMY = () => { const [y, m, d] = today().split('-'); return d + '/' + m + '/' + y; };
   const itemsDe = r => r.items.filter(i => i.inc && String(i.concepto || '').trim()).map(i => ({ concepto: String(i.concepto).trim(), monto: parseMonto(i.monto) || 0 }));
   async function pdfResumen(r) { // r: { cliente, m, moneda, items, nota }
-    const { resumenPdf, bytesBase64 } = await pdfLib();
+    const { resumenDoc, bytesBase64 } = await pdfLib();
     const items = itemsDe(r);
-    const bytes = await resumenPdf({ cfg: cfgMarca(), contacto: contactoFull(r.cliente), cuenta: r.cliente, periodo: periodoTit(r.m), moneda: r.moneda, items, total: r2(items.reduce((a, i) => a + i.monto, 0)), nota: r.nota || '' });
+    const bytes = await resumenDoc({ cfg: cfgMarca(), estilo: estiloDoc(), emitido: hoyDMY(), contacto: contactoFull(r.cliente), cuenta: r.cliente, periodo: periodoTit(r.m), moneda: r.moneda, items, total: r2(items.reduce((a, i) => a + i.monto, 0)), nota: r.nota || '' });
     return { bytes, nombre: 'Resumen-' + r.cliente + '-' + periodoTit(r.m) + '.pdf', base64: bytesBase64(bytes) };
   }
   async function printResumen() {
@@ -932,7 +934,7 @@ export function initAdmin(ctx) {
   }
 
   /* ---------- Módulos: sueldos y pagos, asistente ---------- */
-  const kit = { AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
+  const kit = { estiloDoc, hoyDMY, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
     formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a),
     openComposer: o => openComposer(o), cfgMarca: () => cfgMarca(), firma: () => firma(), mailsDe: c => mailsDe(c), cuotasPlan };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;

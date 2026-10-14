@@ -29,7 +29,7 @@ export function propuestaHTML(p, marca = {}, o = {}) {
   const items = (p.items || []).filter(i => i.concepto || i.monto);
   const cliente = p.cliente || p.prospecto || '';
   return '<article class="pz">' +
-    '<header class="pz-h"><span class="pz-logo">' + LOGO + '</span><span class="pz-meta">Propuesta ' + esc(p.numero || '') + '<br><span>' + esc(fecha(p.fecha)) + (p.fecha ? ' · válida hasta ' + esc(fecha(venceEl(p))) : '') + '</span></span></header>' +
+    '<header class="pz-h"><span class="pz-brand"><span class="pz-isoh">' + ISO + '</span><span class="pz-logo">' + LOGO + '</span></span><span class="pz-meta">Propuesta ' + esc(p.numero || '') + '<br><span>' + esc(fecha(p.fecha)) + (p.fecha ? ' · válida hasta ' + esc(fecha(venceEl(p))) : '') + '</span></span></header>' +
     '<p class="pz-eye">' + esc(['Propuesta', p.tipo].filter(Boolean).join(' · ')) + '</p>' +
     '<h1>' + esc(p.titulo || 'Propuesta sin título') + '</h1>' +
     (cliente ? '<p class="pz-para">Para ' + esc(cliente) + (p.contacto ? ' · ' + esc(p.contacto) : '') + '</p>' : '') +
@@ -45,6 +45,6 @@ export function propuestaHTML(p, marca = {}, o = {}) {
     '<div class="pz-total"><span>Total</span><b>' + esc(plata(totalDe(p), cur)) + '</b></div>' +
     (planTexto(p) ? '<p class="pz-plan"><b>Forma de pago:</b> ' + esc(planTexto(p)) + '</p>' : '') + '</section>' +
     sec('Condiciones', parr(c.condiciones)) +
-    '<footer class="pz-f"><span class="pz-iso">' + ISO + '</span><span>weareandale.com</span><span class="pz-c">' + esc((marca.contacto || []).filter(x => !/weareandale\.com\/?$/.test(x[1] || '')).slice(0, 2).map(x => x[0]).join('  ·  ')) + '</span></footer>' +
+    '<footer class="pz-f"><span>weareandale.com</span><span class="pz-c">' + esc((marca.contacto || []).filter(x => !/weareandale\.com\/?$/.test(x[1] || '')).slice(0, 2).map(x => x[0]).join('  ·  ')) + '</span></footer>' +
     '</article>';
 }

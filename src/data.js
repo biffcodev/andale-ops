@@ -2,10 +2,10 @@
 // La interfaz trabaja con nombres (cliente, alias de personas); la base con ids.
 import { createClient } from '@supabase/supabase-js';
 
-const URL = import.meta.env.VITE_SUPABASE_URL;
+const SB_URL = import.meta.env.VITE_SUPABASE_URL;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const configured = Boolean(URL && KEY);
-export const sb = configured ? createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }) : null;
+export const configured = Boolean(SB_URL && KEY);
+export const sb = configured ? createClient(SB_URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }) : null;
 
 const T = {
   proyecto:     { table: 'proyectos',      join: ['proyecto_responsables', 'proyecto_id'] },

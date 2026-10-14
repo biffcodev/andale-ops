@@ -503,7 +503,7 @@ function vFicha() {
     '<div class="stack">' +
     '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + as.filter(a => a.estado === 'Activo').length + ' activos</span></div>' + (as.length ? '<div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('Sin abonos', '')) + '</section>' +
     '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' +
-    '<section class="sheet"><div class="sheet-h"><h2>Seguimiento</h2><span class="muted num">' + ms.length + '</span></div>' + (ms.length ? '<div class="timeline">' + ms.map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Sin comunicaciones registradas', 'Registrá reuniones, llamadas y acuerdos con este cliente.')) + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Seguimiento</h2><span class="muted num">' + ms.length + '</span></div>' + (ms.length ? '<div class="timeline">' + ms.map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Todavía no hay seguimiento', 'Registrá reuniones, llamadas y acuerdos con este cliente.')) + '</section>' +
     '</div></div>';
 }
 

@@ -3,8 +3,12 @@
   background:#fff;color:var(--pz-ink);font:15px/1.6 "Inter",system-ui,sans-serif;max-width:760px;margin:0 auto;padding:44px 52px 36px;border-radius:14px;box-shadow:0 1px 0 var(--pz-line),0 18px 40px -24px rgba(23,23,28,.25)}
 .pz h1,.pz h2{font-family:"Delight","Inter",sans-serif;letter-spacing:-.02em;color:var(--pz-ink);text-wrap:balance}
 .pz-h{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:56px}
-.pz-logo{display:block;width:92px;color:var(--pz-ink)}
+.pz-brand{display:flex;align-items:center;gap:14px}
+.pz-isoh{display:block;width:54px;color:var(--pz-ink)}
+.pz-isoh svg{width:100%;height:auto;display:block}
+.pz-logo{display:block;width:96px;color:var(--pz-ink)}
 .pz-logo svg{width:100%;height:auto;display:block}
+.pz-h{align-items:center}
 .pz-meta{text-align:right;font-size:12.5px;font-weight:600;line-height:1.5}
 .pz-meta span{font-weight:400;color:var(--pz-muted)}
 .pz-eye{margin:0;color:var(--pz-coral-ink);font-weight:600;font-size:13.5px}

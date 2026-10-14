@@ -94,7 +94,7 @@ export function initEquipo(ctx, k) {
       const tot = {}; its.forEach(i => add(tot, i.moneda, i.monto));
       const pend = its.filter(i => !i.movimiento_id), movs = [...new Set(its.filter(i => i.movimiento_id).map(i => i.movimiento_id))].map(movDe).filter(Boolean);
       const estado = !pend.length ? '<span class="days" style="color:var(--ok)">✓ Pagado ' + esc(movs.map(v => fmt(v.fecha).slice(0, 5)).join(', ')) + '</span>' : '<button class="btn sm primary" data-act="pgPagar" data-id="' + esc(c.id) + '">Pagar ' + esc(multi(pend.reduce((acc, i) => add(acc, i.moneda, i.monto), {}))) + '</button>';
-      return '<section class="sheet"><div class="sheet-h"><h2 style="font-size:17px"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button> <span class="muted" style="font-size:13px;font-weight:500">' + esc([c.tipo, c.rubro].filter(Boolean).join(' · ')) + '</span></h2><span class="toolbar">' + estado + '</span></div><div class="rows">' +
+      return '<section class="sheet"><div class="sheet-h"><h2 style="font-size:17px"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button> <span class="muted" style="font-size:13px;font-weight:500">' + esc([c.tipo, c.rubro].filter(Boolean).join(' · ')) + '</span></h2><span class="toolbar">' + estado + '<button class="btn ghost sm" data-act="pgRecibo" data-id="' + esc(c.id) + '" title="Comprobante en PDF">PDF</button>' + (c.email ? '<button class="btn ghost sm" data-act="pgReciboMail" data-id="' + esc(c.id) + '" title="Mandar el comprobante por email">Enviar</button>' : '') + '</span></div><div class="rows">' +
         its.map(i => '<div class="row" style="cursor:default"><span class="d">' + esc(i.tipo) + '</span><span class="t"><b>' + esc(i.concepto) + '</b>' + (i.notas ? '<span>' + esc(i.notas) + '</span>' : '') + '</span><span class="toolbar"><span class="money">' + money(i.monto, i.moneda) + '</span>' + (i.movimiento_id ? '<span class="days" style="color:var(--ok)">✓</span>' : '<button class="btn ghost sm" data-act="pgItem" data-id="' + esc(i.id) + '">Editar</button>') + '</span></div>').join('') +
         '</div><div class="count" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Total <b class="money">' + esc(multi(tot)) + '</b></span><button class="btn ghost sm" data-act="pgItem" data-colab="' + esc(c.id) + '">+ Ítem</button></div></section>';
     }).join('');
@@ -287,6 +287,23 @@ export function initEquipo(ctx, k) {
     });
   }
 
+  /* ---------- comprobante de pago ---------- */
+  async function reciboPdf(cid) {
+    const c = colab(cid), m = AD.pg.mes, its = liqMes(m).filter(l => l.colaborador_id === cid);
+    if (!c || !its.length) throw new Error('No hay ítems para ' + ((c && c.nombre) || 'esta persona') + ' en ' + monthLabel(m));
+    const movs = [...new Set(its.filter(i => i.movimiento_id).map(i => i.movimiento_id))].map(movDe).filter(Boolean);
+    const caja = id => ((AD.CJ || []).find(x => x.id === id) || {}).nombre || '';
+    const dmy = d => { const [y, mm, dd] = String(d).slice(0, 10).split('-'); return dd + '/' + mm + '/' + y; };
+    const { reciboDoc, bytesBase64 } = await import('./docs.js');
+    const periodo = cap(monthLabel(m).replace(' de ', ' '));
+    const bytes = await reciboDoc({ cfg: k.cfgMarca(), estilo: k.estiloDoc(), emitido: k.hoyDMY(), periodo, nombre: c.nombre,
+      detalle: [c.tipo, c.vinculo, c.rubro].filter(Boolean).join(' · '), cuit: c.cuit || '',
+      items: its.map(i => ({ tipo: i.tipo, concepto: i.concepto, monto: i.monto, moneda: i.moneda, pagado: !!i.movimiento_id })),
+      pagos: movs.map(v => ({ fecha: dmy(v.fecha), caja: caja(v.caja_id), monto: v.egreso, moneda: v.moneda })),
+      destino: [['Banco', c.banco], ['CBU / CVU', c.cbu], ['Alias', c.alias_cbu]] });
+    return { bytes, nombre: 'Comprobante-' + c.nombre.replace(/\s+/g, '-') + '-' + periodo.replace(/\s+/g, '-') + '.pdf', base64: bytesBase64(bytes), c, periodo };
+  }
+
   /* ---------- acciones ---------- */
   const actions = {
     pgMes: t => { const n = +t.dataset.d; AD.pg.mes = n ? addMonth(AD.pg.mes, n) : thisMonth(); ctx.render(); },
@@ -298,6 +315,15 @@ export function initEquipo(ctx, k) {
     pgExtraDel: async t => { const x = AD.CF.find(y => y.id === t.dataset.id); try { await data.del('conceptos_fijos', t.dataset.id); await ctx.reload(); if (x) formColaborador(x.colaborador_id); } catch (err) { toast(err.message); } },
     pgItem: t => formItem(t.dataset.id || null, t.dataset.colab || null),
     pgPagar: t => formPagar(t.dataset.id),
+    pgRecibo: async t => { const w = window.open('', '_blank'); try { const { abrirPdf } = await import('./docs.js'); const p = await reciboPdf(t.dataset.id); abrirPdf(p.bytes, p.nombre.replace(/\.pdf$/, ''), w); } catch (err) { if (w) w.close(); toast(err.message); } },
+    pgReciboMail: async t => {
+      let p; try { toast('Preparando el PDF…'); p = await reciboPdf(t.dataset.id); } catch (err) { toast(err.message); return; }
+      const E = await import('./emails.js'), nom = p.c.nombre.split(' ')[0];
+      k.openComposer({ titulo: 'Enviar comprobante', eyebrow: p.c.nombre + ' · ' + p.periodo, tipo: 'Otro', cliente: null, para: p.c.email, asunto: 'Comprobante de pago · ' + p.periodo,
+        adjuntos: [{ nombre: p.nombre, base64: p.base64, bytes: p.bytes }],
+        mensaje: 'Hola ' + nom + ', ¿cómo estás?\n\nTe mandamos adjunto el comprobante de ' + p.periodo + '.\n\nCualquier cosa, avisanos.',
+        build: v => E.libreEmail({ cfg: k.cfgMarca(), contacto: p.c.nombre, cuenta: p.c.nombre, titulo: 'Comprobante de ' + p.periodo, mensaje: v.mensaje, firma: k.firma(), asunto: v.asunto }) });
+    },
     pgAumento: () => formAumento(),
     pgGenerar: async () => {
       const m = AD.pg.mes, rows = faltantes(m).map(p => ({ ...p, periodo: m + '-01' }));
