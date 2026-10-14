@@ -7,6 +7,7 @@ import { initAdmin } from './admin.js';
 import { initIA } from './ia.js';
 import { initCombo } from './combo.js';
 import { initMails } from './mails.js';
+import { initIntegraciones } from './integraciones.js';
 initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
 let ADM = null, ADM_FN = {}, MAIL = null;
@@ -165,7 +166,12 @@ function links(o) {
 const emptyBox = (title, text) => '<div class="empty"><b>' + esc(title) + '</b>' + (text || '') + '</div>';
 // WhatsApp directo (sin API): abre el chat con el teléfono del cliente.
 function waNum(tel) { let d = String(tel || '').replace(/\D/g, ''); if (!d) return ''; if (d.startsWith('00')) d = d.slice(2); if (!d.startsWith('54') && d.length <= 11) d = '549' + d.replace(/^0/, '').replace(/^(\d{2,4})15/, '$1'); return d; }
-function waBtn(c, txt) { const n = waNum(c.tel); return n && integ('whatsapp') ? '<a class="btn" href="https://wa.me/' + n + (txt ? '?text=' + encodeURIComponent(txt) : '') + '" target="_blank" rel="noopener">WhatsApp</a>' : ''; }
+function waBtn(c, txt) {
+  const n = waNum(c.tel); if (!n || !integ('whatsapp')) return '';
+  const nom = (c.contacto || '').split(/[,/]/)[0].trim().split(' ')[0];
+  const m = txt || String(integr().cfgGet('whatsapp', 'msg') || '').replace(/\\n/g, '\n').replace(/\{nombre\}/g, nom).replace(/ ,/g, ',');
+  return '<a class="btn" href="https://wa.me/' + n + (m ? '?text=' + encodeURIComponent(m) : '') + '" target="_blank" rel="noopener">WhatsApp</a>';
+}
 // Integraciones simples que se prenden y apagan desde Configuración → Integraciones (lista 'integraciones').
 const INTEG_DEF = ['whatsapp', 'calendario', 'ia', 'email'];
 const integ = k => (S.L.integraciones || INTEG_DEF).includes(k);
@@ -814,48 +820,16 @@ function vListas() {
   return h + '</div>';
 }
 
-/* ---------- Integraciones ---------- */
-// Lo que está conectado de verdad, lo que se prende y apaga, y lo que viene (sin conectar todavía).
-const INTEGS = [
-  { k: 'email', n: 'Email', c: '#FC4855', d: 'Mails a clientes, resúmenes de cuenta e invoices salen desde administracion@weareandale.com.', st: 'on', fija: 1 },
-  { k: 'ia', n: 'Mr. Piggy (IA)', c: '#17171C', d: 'Responde preguntas, redacta mails, arma tareas y carga gastos o charlas. Funciona con Claude.', st: 'on', fija: 1 },
-  { k: 'drive', n: 'Google Drive', c: '#1FA463', d: 'Lee las facturas de la carpeta de administración para cargarlas solas (en Cobros → Asistente).', st: 'on', fija: 1 },
-  { k: 'whatsapp', n: 'WhatsApp', c: '#25D366', d: 'Botón en cada cliente que abre el chat con su número, sin copiar y pegar.', st: 'tog' },
-  { k: 'calendario', n: 'Google Calendar', c: '#4285F4', d: 'Botón “Al calendario” en la entrega de cada proyecto: abre Google Calendar con el evento armado.', st: 'tog' },
-  { k: 'excel', n: 'Excel y Google Sheets', c: '#107C41', d: 'Bajá cualquier lista con el botón Excel de arriba. Se abre igual en Google Sheets.', st: 'on', fija: 1 },
-  { k: 'arca', n: 'ARCA', c: '#2B5DA8', d: 'Factura electrónica sin salir de la app. Hoy se factura en ARCA y acá se anota.', st: 'prox' },
-  { k: 'mercadopago', n: 'Mercado Pago', c: '#00B1EA', d: 'Link de pago en cada resumen de cuenta y cobro marcado solo.', st: 'prox' },
-  { k: 'wise', n: 'Wise', c: '#9FE870', d: 'Cobros del exterior en USD, EUR y GBP con los USD recibidos cargados solos.', st: 'prox' },
-  { k: 'meta', n: 'Meta Business', c: '#0866FF', d: 'Métricas de Instagram y Facebook de cada cliente para los informes.', st: 'prox' },
-  { k: 'linkedin', n: 'LinkedIn', c: '#0A66C2', d: 'Métricas de las páginas de empresa que manejamos.', st: 'prox' },
-  { k: 'slack', n: 'Slack', c: '#611F69', d: 'Avisos al equipo: entregas del día, tareas vencidas, pagos que entraron.', st: 'prox' },
-  { k: 'notion', n: 'Notion', c: '#191919', d: 'Briefs y actas de reunión enlazados a cada cliente y proyecto.', st: 'prox' },
-  { k: 'canva', n: 'Canva', c: '#00C4CC', d: 'Diseños del proyecto a mano desde la ficha.', st: 'prox' },
-  { k: 'figma', n: 'Figma', c: '#F24E1E', d: 'Archivos y prototipos de cada proyecto, con vista previa.', st: 'prox' },
-  { k: 'calendly', n: 'Calendly', c: '#006BFF', d: 'Reuniones agendadas por clientes que quedan como charla.', st: 'prox' },
-];
-function vIntegraciones() {
-  const L = S.L.integraciones || INTEG_DEF, admin = isAdmin();
-  const quiere = k => L.includes('quiero:' + k);
-  const card = x => {
-    const on = x.fija || L.includes(x.k);
-    const badge = x.st === 'prox' ? '<span class="ig-b prox">Próximamente</span>' : on ? '<span class="ig-b on">' + (x.fija ? 'Conectada' : 'Activa') + '</span>' : '<span class="ig-b off">Apagada</span>';
-    const pie = x.st === 'tog' ? (admin ? '<label class="sw"><input type="checkbox" data-integ="' + x.k + '"' + (on ? ' checked' : '') + '><span></span><b>' + (on ? 'Prendida' : 'Apagada') + '</b></label>' : '<span class="muted">' + (on ? 'Prendida' : 'Apagada') + '</span>')
-      : x.st === 'prox' ? (admin ? '<button class="btn sm' + (quiere(x.k) ? ' primary' : '') + '" data-act="integQuiero" data-k="' + x.k + '">' + (quiere(x.k) ? '★ La queremos' : '☆ La queremos') + '</button>' : (quiere(x.k) ? '<span class="muted">★ En la lista de pedidas</span>' : '<span></span>'))
-      : '<span class="muted">Siempre activa</span>';
-    return '<article class="ig' + (x.st === 'prox' ? ' prox' : '') + '"><div class="ig-h"><span class="ig-i" style="--c:' + x.c + '">' + esc(x.n.charAt(0)) + '</span>' + badge + '</div><h3>' + esc(x.n) + '</h3><p>' + esc(x.d) + '</p><div class="ig-f">' + pie + '</div></article>';
-  };
-  const grupo = (t, sub, xs) => '<section class="ig-sec"><div class="ig-sh"><h2>' + t + '</h2><span class="muted">' + sub + '</span></div><div class="igs">' + xs.map(card).join('') + '</div></section>';
-  return '<div class="head"><div><h1>Integraciones</h1><p>Las apps que se conectan con àndale Operaciones. Las que dicen “Próximamente” todavía no están conectadas: marcá las que quieran y se priorizan.</p></div></div>' +
-    grupo('Conectadas', 'Funcionan hoy', INTEGS.filter(x => x.st !== 'prox')) +
-    grupo('Próximamente', INTEGS.filter(x => x.st === 'prox' && quiere(x.k)).length + ' pedidas', INTEGS.filter(x => x.st === 'prox'));
-}
+/* ---------- Integraciones (catálogo y configuración en integraciones.js) ---------- */
+let INTEGR = null;
+const integr = () => INTEGR || (INTEGR = initIntegraciones({ S, esc, opt, toast, $, data, render, isAdmin, isStaff, closeForm, ISO, emptyBox, DEF: INTEG_DEF }));
+const vIntegraciones = () => integr().view();
 // Link a Google Calendar (sin API): abre el evento ya armado para guardarlo.
 function gcalUrl(titulo, fecha, detalle) {
   if (!fecha) return ''; const d = fecha.replace(/-/g, ''); const n = new Date(fecha + 'T12:00'); n.setDate(n.getDate() + 1);
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titulo) + '&dates=' + d + '/' + n.toISOString().slice(0, 10).replace(/-/g, '') + '&details=' + encodeURIComponent(detalle || 'àndale Operaciones');
 }
-const calBtn = (titulo, fecha, detalle, cls) => integ('calendario') && fecha ? '<a class="btn ' + (cls || '') + '" href="' + esc(gcalUrl(titulo, fecha, detalle)) + '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅 Al calendario</a>' : '';
+const calBtn = (titulo, fecha, detalle, cls) => integ('calendario') && fecha ? '<a class="btn ' + (cls || '') + '" href="' + esc(gcalUrl(titulo, fecha, [detalle, integr().cfgGet('calendario', 'aviso')].filter(Boolean).join(' · '))) + '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅 Al calendario</a>' : '';
 const VIEW_FN = { inicio: vInicio, proyectos: vProyectos, abonos: vAbonos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, integraciones: vIntegraciones };
 
 /* ---------- Render ---------- */
@@ -1141,7 +1115,6 @@ async function saveListas(k, arr) {
 function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('Copiado'), () => toast(v)); } catch (e) { toast(v); } }
 const ACT = {
   go: t => { if (t.dataset.pend) S.mf.pend = true; go(t.dataset.view); },
-  integQuiero: t => { const k = 'quiero:' + t.dataset.k, L = S.L.integraciones || [...INTEG_DEF]; saveListas('integraciones', L.includes(k) ? L.filter(x => x !== k) : [...L, k]); },
   gqTarea: t => { ACT.pver(t); setTimeout(() => abrirTarea(t.dataset.id, +t.dataset.i), 0); },
   gqPiggy: () => { const q = $('#gq').value; $('#gq').value = ''; $('#gqres').hidden = true; if (IA) { IA.abrir(q); } },
   ptab: t => { S.ptab = t.dataset.t; render(); },
@@ -1234,7 +1207,7 @@ document.addEventListener('change', async e => {
     upd(kind, rec._id, { responsables: next }, resp(rec), true);
     return;
   }
-  if (t.dataset.integ) { const L = (S.L.integraciones || [...INTEG_DEF]).filter(x => x !== t.dataset.integ); saveListas('integraciones', t.checked ? [...L, t.dataset.integ] : L); return; }
+  if (t.dataset.integ) return;
   if (t.dataset.tk) {
     const p = S.P.find(x => x._id === t.dataset.pid); if (!p) return;
     const k = t.dataset.tk, v = t.value.trim(); if (k === 'n' && !v) { render(); return; }
@@ -1335,6 +1308,7 @@ async function reload() {
     const L = {}; for (const k of Object.keys(DEF)) L[k] = Array.isArray(d.L[k]) && d.L[k].length ? [...d.L[k]] : [...DEF[k]];
     for (const [k, v] of Object.entries(d.L || {})) if (k.startsWith('etapas:') && Array.isArray(v)) L[k] = [...v];
     L.integraciones = Array.isArray(d.L.integraciones) ? [...d.L.integraciones] : [...INTEG_DEF];
+    L.integraciones_cfg = Array.isArray(d.L.integraciones_cfg) ? [...d.L.integraciones_cfg] : [];
     Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, L, status: 'ok' });
     if (isAdmin() && ADM) await ADM.load();
     banner('');
@@ -1365,6 +1339,7 @@ async function start(sess) {
   if (isStaff() && !IA) {
     MAIL = initMails({ S, data, esc, opt, toast, $, closeForm, reload, ISO, marca: () => (ADM && ADM.cfgMarca ? ADM.cfgMarca() : null), servicios: n => serviciosDe(n).map(x => x.tipo).join(', ') });
     Object.assign(ACT, MAIL.acts);
+    Object.assign(ACT, integr().acts);
     IA = initIA({ S, esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
     Object.assign(ACT, IA.actions);
   }
