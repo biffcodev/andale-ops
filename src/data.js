@@ -214,6 +214,7 @@ function achicar(file, max) {
 }
 export async function session() { return (await sb.auth.getSession()).data.session; }
 export async function yo() { const d = check(await sb.rpc('yo')); return d && d[0] ? d[0] : null; }
+export async function rpc(fn, args) { return check(await sb.rpc(fn, args)); }
 export async function sendLink(email) { check(await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin, shouldCreateUser: true } })); }
 export async function logout() { await sb.auth.signOut(); }
 export function onAuth(fn) { sb.auth.onAuthStateChange((ev, s) => fn(ev, s)); }

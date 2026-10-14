@@ -296,12 +296,13 @@ export function initEquipo(ctx, k) {
     const dmy = d => { const [y, mm, dd] = String(d).slice(0, 10).split('-'); return dd + '/' + mm + '/' + y; };
     const { reciboDoc, bytesBase64 } = await import('./docs.js');
     const periodo = cap(monthLabel(m).replace(' de ', ' '));
-    const bytes = await reciboDoc({ cfg: k.cfgMarca(), estilo: k.estiloDoc(), emitido: k.hoyDMY(), periodo, nombre: c.nombre,
+    let numero = ''; try { numero = await data.rpc('numero_comprobante_pago', { cid, per: m + '-01' }); } catch (e) { /* sin número hasta correr la migración 0011 */ }
+    const bytes = await reciboDoc({ cfg: k.cfgDocs(), estilo: k.estiloDoc(), emitido: k.hoyDMY(), periodo, numero, email: c.email || '', nombre: c.nombre,
       detalle: [c.tipo, c.vinculo, c.rubro].filter(Boolean).join(' · '), cuit: c.cuit || '',
       items: its.map(i => ({ tipo: i.tipo, concepto: i.concepto, monto: i.monto, moneda: i.moneda, pagado: !!i.movimiento_id })),
       pagos: movs.map(v => ({ fecha: dmy(v.fecha), caja: caja(v.caja_id), monto: v.egreso, moneda: v.moneda })),
       destino: [['Banco', c.banco], ['CBU / CVU', c.cbu], ['Alias', c.alias_cbu]] });
-    return { bytes, nombre: 'Comprobante-' + c.nombre.replace(/\s+/g, '-') + '-' + periodo.replace(/\s+/g, '-') + '.pdf', base64: bytesBase64(bytes), c, periodo };
+    return { bytes, nombre: 'Comprobante-' + (numero ? numero + '-' : '') + c.nombre.replace(/\s+/g, '-') + '-' + periodo.replace(/\s+/g, '-') + '.pdf', base64: bytesBase64(bytes), c, periodo };
   }
 
   /* ---------- acciones ---------- */

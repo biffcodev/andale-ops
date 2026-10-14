@@ -114,11 +114,10 @@ export function initPropuestas(ctx, k) {
   async function guardar(extra = {}, silencio) {
     const d = AD.pz.d, l = limpia(d);
     if (!d.titulo.trim()) { toast('Poné un título'); $('[data-pz="titulo"]') && $('[data-pz="titulo"]').focus(); return null; }
-    if (!d.numero) d.numero = await siguienteNumero();
-    const row = { numero: d.numero, cliente_id: d.cliente ? data.ids.cliente(d.cliente) : null, prospecto: d.cliente ? '' : d.prospecto.trim(), contacto: d.contacto.trim(), email: d.email.trim(), titulo: d.titulo.trim(), tipo: d.tipo, estado: d.estado,
+    const row = { ...(d.numero ? { numero: d.numero } : {}), cliente_id: d.cliente ? data.ids.cliente(d.cliente) : null, prospecto: d.cliente ? '' : d.prospecto.trim(), contacto: d.contacto.trim(), email: d.email.trim(), titulo: d.titulo.trim(), tipo: d.tipo, estado: d.estado,
       fecha: d.fecha || today(), validez_dias: l.validez_dias, moneda: d.moneda, items: l.items, descuento: l.descuento, total: l.total, plan_pago: d.plan_pago, contenido: l.contenido, brief: d.brief, notas: d.notas, token: d.token || null, ...extra };
     try {
-      if (d.id) await data.upd('propuestas', d.id, row); else { const r = await data.ins('propuestas', { ...row, persona_id: data.ids.persona(S.me.alias) }); d.id = r.id; }
+      if (d.id) await data.upd('propuestas', d.id, row); else { const r = await data.ins('propuestas', { ...row, persona_id: data.ids.persona(S.me.alias) }); d.id = r.id; d.numero = r.numero || await siguienteNumero(); }
       Object.assign(d, extra); AD.pz.sel = d.id; AD.pz.dirty = false;
       if (!silencio) toast('Propuesta guardada');
       await ctx.reload(); return d;
@@ -133,7 +132,7 @@ export function initPropuestas(ctx, k) {
   }
   async function pdf() {
     const { propuestaDoc, bytesBase64 } = await import('./docs.js');
-    const l = limpia(AD.pz.d), bytes = await propuestaDoc({ ...l, cliente: AD.pz.d.cliente || AD.pz.d.prospecto }, { ...k.cfgMarca(), estilo: estilo() });
+    const l = limpia(AD.pz.d), cl = AD.pz.d.cliente, bytes = await propuestaDoc({ ...l, email: AD.pz.d.email, cliente: cl || AD.pz.d.prospecto, datos_cliente: cl ? k.datosClienteDoc(cl) : {}, emisor: cl ? (k.cadm(cl).emisor_default || '') : '' }, { ...k.cfgDocs(), estilo: estilo() });
     return { bytes, base64: bytesBase64(bytes), nombre: 'Propuesta ' + (AD.pz.d.numero || '') + ' ' + (AD.pz.d.cliente || AD.pz.d.prospecto || '') + '.pdf' };
   }
   async function convertir() {
