@@ -1,6 +1,7 @@
 // Administración: precios y aumentos, cierre de mes (resumen → comprobante → cobro → recordatorio), facturas.
 // Solo para administradores. La base de datos además lo impide para otros roles.
 import * as data from './data.js';
+import { ISO, LOGO } from './marca.js';
 
 export function initAdmin(ctx) {
   const { S, esc, opt, optsFrom, pill, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $ } = ctx;
@@ -184,14 +185,56 @@ export function initAdmin(ctx) {
     } catch (err) { toast(err.message); }
   }
 
+  // PDF del resumen con la marca 2026: isologo arriba, Delight en títulos, Inter en textos, logotipo al pie.
+  // Delight: se usa la instalada en la compu; si no está, la de /fonts/Delight-Bold.woff2 (si se sube al repo); si no, Inter.
   function printResumen() {
-    const rd = AD.rd, ca = cadm(rd.cliente);
-    const rows = rd.items.filter(i => i.inc && i.concepto.trim()).map(i => '<tr><td>' + esc(i.concepto) + '</td><td style="text-align:right">' + esc(money(parseMonto(i.monto), rd.moneda)) + '</td></tr>').join('');
-    const html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Resumen ' + esc(rd.cliente) + ' ' + esc(rd.m) + '</title><style>body{font:14px/1.5 Figtree,system-ui,sans-serif;color:#141722;max-width:720px;margin:48px auto;padding:0 24px}h1{font:700 28px Georgia,serif;margin:0}.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #141722;padding-bottom:16px;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}td{padding:10px 0;border-bottom:1px solid #ddd}tfoot td{font-weight:700;font-size:18px;border:0;padding-top:16px}.muted{color:#5A6174}</style></head><body>' +
-      '<div class="top"><div><h1>àndale</h1><div class="muted">Branding y comunicación</div></div><div style="text-align:right"><b>Resumen de cuenta</b><div class="muted" style="text-transform:capitalize">' + esc(monthLabel(rd.m)) + '</div></div></div>' +
-      '<div><b>' + esc(ca.razon_social || rd.cliente) + '</b>' + (ca.cuit ? '<div class="muted">CUIT ' + esc(ca.cuit) + '</div>' : '') + '</div>' +
-      '<table><tbody>' + rows + '</tbody><tfoot><tr><td>Total</td><td style="text-align:right">' + esc(money(totalItems(rd.items), rd.moneda)) + '</td></tr></tfoot></table>' +
-      (rd.nota.trim() ? '<p style="margin-top:28px;white-space:pre-wrap">' + esc(rd.nota.trim()) + '</p>' : '') + '<script>window.onload=()=>window.print()<\/script></body></html>';
+    const rd = AD.rd, cli = S.C.find(x => x.nombre === rd.cliente) || {};
+    const cfg = (AD.AJ && AD.AJ.resumen_pdf) || {};
+    const plata = n => { try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: rd.moneda || 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0); } catch (e) { return (rd.moneda || '') + ' ' + n; } };
+    const periodo = cap(monthLabel(rd.m).replace(' de ', ' '));
+    const contacto = (cli.contacto || '').split(/[,/]/)[0].trim();
+    const items = rd.items.filter(i => i.inc && i.concepto.trim());
+    const links = (arr, sep) => (arr || []).map(([t, u]) => u ? '<a href="' + esc(u) + '">' + esc(t) + '</a>' : esc(t)).join(sep);
+    const cuentas = (cfg.cuentas || []).map(c => '<div class="cta"><h3>' + esc(c.titulo) + (c.sub ? ' <small>(' + esc(c.sub) + ')</small>' : '') + '</h3>' +
+      (c.campos || []).map(([k, v]) => '<dt>' + esc(k) + ':</dt><dd>' + esc(v) + '</dd>').join('') + '</div>').join('');
+    const css = `
+      @font-face{font-family:'Delight Web';font-weight:400 900;src:url('/fonts/Delight-Bold.woff2') format('woff2')}
+      @page{size:A4;margin:0}
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      :root{--ink:#111;--muted:#555;--acc:#FC4855;--rule:#8a8a8a}
+      html,body{margin:0;background:#fff}
+      body{font:400 10.5pt/1.45 Inter,system-ui,sans-serif;color:var(--ink)}
+      .page{width:210mm;height:297mm;overflow:hidden;padding:16mm 21mm 12mm;display:flex;flex-direction:column}
+      a{color:inherit;text-decoration:none}
+      .iso{width:32mm;margin:0 auto 11mm;color:var(--ink)} .iso svg,.logo svg{display:block;width:100%;height:auto}
+      .meta{font-size:11.5pt;line-height:1.35} .meta b{font-weight:700}
+      h1,h2,h3,.total{font-family:Delight,'Delight Web',Inter,sans-serif;font-weight:700;letter-spacing:-.01em}
+      h1{color:var(--acc);font-size:15pt;margin:10mm 0 0;padding:0 0 3mm;border-bottom:1px solid var(--rule)}
+      .items{width:100%;border-collapse:collapse;margin-top:6mm} .items td{padding:2mm 1.5mm;font-weight:600;vertical-align:top} .items td.m{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+      .total{display:flex;gap:10mm;align-items:baseline;font-size:15pt;margin:9mm 0 0;padding-bottom:9mm;border-bottom:1px solid var(--rule)} .total span:last-child{font-variant-numeric:tabular-nums}
+      .nota{margin:5mm 0 0} .nota b{font-weight:700} .extra{margin:3mm 0 0;white-space:pre-wrap}
+      .ctas{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;margin:9mm 0 0;padding:0 1.5mm;font-size:9.5pt;line-height:1.3}
+      .cta h3{color:var(--acc);font-size:13pt;margin:0 0 5mm} .cta h3 small{font-family:Inter,sans-serif;font-weight:400;font-size:8pt;color:var(--ink);letter-spacing:0}
+      .cta dt{font-weight:700} .cta dd{margin:0;overflow-wrap:anywhere}
+      .cierre{margin:9mm 0 0}
+      footer{margin-top:auto;padding-top:6mm;text-align:center;font-size:9pt}
+      footer .redes{font-family:Delight,'Delight Web',Inter,sans-serif;font-weight:700;font-size:10.5pt} footer .contacto{margin-top:1mm;color:#333}
+      .logo{width:24mm;margin:4mm auto 2mm;color:var(--ink)} footer .pie{font-family:Delight,'Delight Web',Inter,sans-serif;font-weight:700;font-size:9.5pt}
+      @media screen{body{background:#e9e9ec}.page{margin:24px auto;background:#fff;box-shadow:0 2px 24px rgba(0,0,0,.12)}}`;
+    const html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Resumen-' + esc(rd.cliente) + '-' + esc(periodo) + '</title>' +
+      '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">' +
+      '<style>' + css + '</style></head><body><main class="page">' +
+      '<div class="iso">' + ISO + '</div>' +
+      '<div class="meta">' + (contacto ? 'Cliente: <b>' + esc(contacto) + '</b><br>' : '') + 'Cuenta: <b>' + esc(rd.cliente) + '</b> Periodo: <b>' + esc(periodo) + '</b></div>' +
+      '<h1>Resumen de Cuenta</h1>' +
+      '<table class="items"><tbody>' + items.map(i => '<tr><td>' + esc(i.concepto.trim()) + '</td><td class="m">' + esc(plata(parseMonto(i.monto))) + '</td></tr>').join('') + '</tbody></table>' +
+      '<div class="total"><span>Total a abonar</span><span>' + esc(plata(totalItems(rd.items))) + '</span></div>' +
+      (cfg.nota ? '<p class="nota"><b>NOTA</b> ' + esc(cfg.nota).replace('SIN EXCEPCIÓN', '<b>SIN EXCEPCIÓN</b>') + '</p>' : '') +
+      (rd.nota.trim() ? '<p class="extra">' + esc(rd.nota.trim()) + '</p>' : '') +
+      (cuentas ? '<section class="ctas">' + cuentas + '</section>' : '') +
+      (cfg.cierre ? '<p class="cierre">' + esc(cfg.cierre) + '</p>' : '') +
+      '<footer><div class="redes">' + links(cfg.redes, ' | ') + '</div><div class="contacto">' + links(cfg.contacto, ' | ') + '</div><div class="logo">' + LOGO + '</div>' + (cfg.pie ? '<div class="pie">' + esc(cfg.pie) + '</div>' : '') + '</footer>' +
+      '</main><script>(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => setTimeout(() => window.print(), 150))<\/script></body></html>';
     const w = window.open('', '_blank'); if (!w) { toast('El navegador bloqueó la ventana. Permití ventanas emergentes para este sitio.'); return; }
     w.document.write(html); w.document.close();
   }

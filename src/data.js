@@ -121,9 +121,9 @@ async function all(table, build) {
 }
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
-  const [ca, pr, pf, rs, fs, cj, pc, mv, gs] = await Promise.all([
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
-    all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'),
+    all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
@@ -135,6 +135,7 @@ export async function loadAdmin() {
     CJ: cj.map(r => ({ ...r, saldo_inicial: num(r.saldo_inicial) || 0 })),
     PC: pc,
     MV: mv.map(r => ({ ...r, cliente: cn(r.cliente_id), persona: idx.personaAlias.get(r.persona_id) || '', ingreso: num(r.ingreso) || 0, egreso: num(r.egreso) || 0 })),
+    AJ: Object.fromEntries(aj.map(r => [r.clave, r.valor])),
     G: gs.map(r => ({ ...r, cliente: cn(r.cliente_id), periodo: month(r.periodo), persona: idx.personaAlias.get(r.persona_id) || '' })),
   };
 }
