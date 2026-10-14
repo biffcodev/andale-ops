@@ -2,13 +2,15 @@
 // Solo para administradores. La base de datos además lo impide para otros roles.
 import * as data from './data.js';
 import * as E from './emails.js';
+import { initEquipo } from './equipo.js';
+import { initAsistente } from './asistente.js';
 
 export function initAdmin(ctx) {
   const { S, esc, opt, optsFrom, pill, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $ } = ctx;
   const MONEDAS = ['ARS', 'USD', 'EUR'];
   const EMISORES = ['Fer', 'Jime'];
   const TIPOS_COMP = ['Factura ARCA', 'Invoice', 'Otro'];
-  const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], rt: { anio: String(new Date().getFullYear()), ver: 'proyectos' },
+  const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'proyectos' },
     mes: thisMonth(), sel: null, rd: null, ff: { estado: 'abiertas', cliente: '', emisor: '', anio: String(new Date().getFullYear()) },
     pp: { sel: new Set(), pct: '', desde: addMonth(thisMonth(), 1), motivo: '' }, form: null };
 
@@ -319,17 +321,41 @@ export function initAdmin(ctx) {
       if (c.res && itemsDe(c.res).length) { toast('Preparando el PDF…'); pdfResumen({ cliente: c.cliente, m: c.m, moneda: c.res.moneda, items: c.res.items, nota: c.res.nota }).then(p => go([p])).catch(() => go([])); }
       else go([]);
     },
-    factura(f) {
+    async factura(f) {
       const comp = (f.tipo === 'Invoice' ? 'el invoice' : 'la factura') + (f.numero ? ' N° ' + f.numero : '');
-      openComposer({
+      const da = AD.DA.find(x => x.factura_id === f.id); let adjuntos = [];
+      if (da) {
+        toast('Bajando el PDF de Drive…');
+        try { const r = await data.asistente({ accion: 'drive_descargar', archivo_id: da.id }); adjuntos = [{ nombre: /\.pdf$/i.test(r.nombre) ? r.nombre : r.nombre + '.pdf', base64: r.base64, bytes: AS.b64Bytes(r.base64) }]; }
+        catch (err) { toast('No se pudo adjuntar el PDF: ' + err.message); }
+      }
+      openComposer({ adjuntos,
         titulo: f.tipo + ' ' + (f.numero || 's/n'), eyebrow: f.cliente, tipo: 'Factura enviada', cliente: f.cliente, periodo: f.periodo || null, factura_id: f.id,
         para: mailsDe(f.cliente), mensaje: E.textos.factura({ nombre: contactoDe(f.cliente), comprobante: comp, periodo: f.periodo ? periodoTxt(f.periodo) : '' }),
         values: { conPago: f.saldo > 0.009 },
         extraFields: [{ k: 'conPago', label: 'Incluir datos de pago', type: 'check' }],
         build: v => E.facturaEmail({ cfg: cfgMarca(), contacto: contactoFull(f.cliente), cuenta: f.cliente, periodo: f.periodo ? periodoTit(f.periodo) : '', tipo: f.tipo, numero: f.numero, fecha: f.fecha, vencimiento: f.vencimiento, monto: f.monto, moneda: f.moneda, link: f.link_pdf, conPago: v.conPago, mensaje: v.mensaje, firma: firma(), asunto: v.asunto }),
-        intro2: f.link_pdf ? '' : 'Este comprobante no tiene link al PDF: el email sale sin botón.',
+        intro2: f.link_pdf || adjuntos.length ? '' : 'Este comprobante no tiene link al PDF: el email sale sin botón.',
       });
-      if (!f.link_pdf) toast('Ojo: el comprobante no tiene link al PDF cargado');
+      if (!f.link_pdf && !adjuntos.length) toast('Ojo: el comprobante no tiene link al PDF cargado');
+    },
+    recordatorios() {
+      const porCliente = new Map();
+      AD.F.filter(f => estadoFactura(f) === 'Vencida').forEach(f => { if (!porCliente.has(f.cliente)) porCliente.set(f.cliente, []); porCliente.get(f.cliente).push(f); });
+      if (!porCliente.size) { toast('No hay comprobantes vencidos'); return; }
+      const items = [...porCliente.entries()].sort((a, b) => cmp(a[0], b[0])).map(([cliente, fs]) => {
+        const moneda = fs[0].moneda, mismas = fs.filter(f => f.moneda === moneda), m = mismas.map(f => f.periodo).filter(Boolean).sort().pop() || thisMonth();
+        const ult = AD.G.filter(g => g.cliente === cliente && g.tipo === 'Recordatorio de pago').sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+        return { label: cliente, nombre: contactoDe(cliente), para: mailsDe(cliente), periodo: periodoTxt(m), m, moneda, fs: mismas, sub: multi(fs.reduce((acc, f) => add(acc, f.moneda, f.saldo), {})) + (ult ? ' · último recordatorio ' + fmt(ult.fecha) : '') };
+      });
+      openBulk({
+        titulo: 'Recordatorios de pago', asunto: 'Recordatorio de pago · {cuenta}', mensaje: E.textos.recordatorio({ nombre: '{nombre}', periodo: '{periodo}' }), items,
+        send: async (it, v) => {
+          const pend = it.fs.map(f => ({ concepto: f.tipo + ' ' + (f.numero || 's/n') + (f.vencimiento ? ' · venció ' + fmt(f.vencimiento) : ''), monto: f.saldo }));
+          const b = E.recordatorioEmail({ cfg: cfgMarca(), contacto: contactoFull(it.label), cuenta: it.label, periodo: periodoTit(it.m), moneda: it.moneda, pendientes: pend, total: r2(pend.reduce((a, i) => a + i.monto, 0)), mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
+          await data.sendEmail({ tipo: 'Recordatorio de pago', cliente_id: data.ids.cliente(it.label), periodo: it.m + '-01', factura_id: it.fs.length === 1 ? it.fs[0].id : null, para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia });
+        },
+      });
     },
     aviso(p) {
       const d = datosAviso(p); if (!d) return;
@@ -529,7 +555,7 @@ export function initAdmin(ctx) {
   function renderImp() {
     const box = $('#imp-box'); if (!box) return;
     box.innerHTML = AD.impDraft.map((x, i) => '<div class="improw"><select class="in" aria-label="Destino" data-impi="' + i + '" data-impk="dest">' + destinosOpts(x.dest) + '</select><input class="in" inputmode="decimal" aria-label="Monto" placeholder="Monto" data-impi="' + i + '" data-impk="monto" value="' + esc(x.monto) + '"><button type="button" class="btn ghost sm" data-act="aImpDel" data-i="' + i + '" aria-label="Quitar">✕</button></div>').join('') +
-      '<div class="toolbar"><button type="button" class="btn sm" data-act="aImpAdd">+ Agregar destino</button>' + (AD.impDraft.length > 1 ? '<button type="button" class="btn ghost sm" data-act="aImpSplit">Repartir en partes iguales</button>' : '') + (AD.impCopy ? '<button type="button" class="btn ghost sm" data-act="aImpCopy">Copiar reparto del pago anterior a ' + esc(AD.impCopy.contraparte) + '</button>' : '') + '</div>' +
+      '<div class="toolbar"><button type="button" class="btn sm" data-act="aImpAdd">+ Agregar destino</button>' + (AD.impDraft.length > 1 ? '<button type="button" class="btn ghost sm" data-act="aImpSplit">Repartir en partes iguales</button>' : '') + (AD.impCopy ? '<button type="button" class="btn ghost sm" data-act="aImpCopy">Copiar reparto del pago anterior a ' + esc(AD.impCopy.contraparte) + '</button>' : '') + '<button type="button" class="btn ghost sm" id="imp-ia" data-act="aImpIA">✨ Sugerir reparto</button></div>' +
       '<span class="hint" id="imp-sum">' + impSumHtml() + '</span>';
   }
   async function guardarImp(movId) {
@@ -575,7 +601,7 @@ export function initAdmin(ctx) {
       h += '<section class="sheet"><div class="sheet-h"><h2>Abonos · ' + esc(y) + '</h2><span class="muted">ingresos según precio vigente de cada mes; la pauta de Ads no cuenta como ingreso</span></div>' + (rows.length ? '<div class="tbl"><table><thead><tr><th>Abono</th><th class="r">Ingresos</th><th class="r">Costos</th><th class="r">Margen</th><th></th></tr></thead><tbody>' +
         rows.map(r => '<tr><td class="name">' + esc(r.a.cliente) + '<span class="sub">' + esc(r.a.tipo + (r.a.plan ? ' · ' + r.a.plan : '') + (r.a.estado !== 'Activo' ? ' · ' + r.a.estado : '')) + '</span></td><td class="r money">' + esc(multi(r.ing) || '—') + '</td><td class="r money">' + esc(multi(r.cost) || '—') + '</td><td class="r"><b class="money">' + (r.margen != null ? money(r.margen, r.mon) : '—') + '</b>' + (r.pct != null ? '<span class="sub">' + r.pct + '%</span>' : '') + '</td><td class="r">' + (r.a.tipo === 'Ads' ? '<button class="btn ghost sm" data-act="aAds" data-abono="' + esc(r.a._id) + '">Pauta</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('Sin datos para ' + y, 'Cargá precios en los abonos.')) + '</section>';
     }
-    h += '<section class="sheet"><div class="sheet-h"><h2>Pagos a proveedores sin imputar</h2><span class="muted">' + sinImp.length + '</span></div>' + (sinImp.length ? '<div class="rows">' + sinImp.slice(0, 30).map(({ v, falta }) => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b>' + esc(v.contraparte || v.subcuenta) + ' · <span class="money">' + money(falta, v.moneda) + '</span></b><span>' + esc(v.detalle || '') + '</span></span><button class="btn sm" data-act="aMov" data-id="' + esc(v.id) + '">Imputar</button></div>').join('') + '</div>' : emptyBox('Todo imputado', 'Los pagos a proveedores del año ya están asignados a abonos o proyectos.')) + '</section>';
+    h += '<section class="sheet"><div class="sheet-h"><h2>Pagos a proveedores sin imputar</h2><span class="toolbar"><span class="muted">' + sinImp.length + '</span>' + (sinImp.length ? '<button class="btn sm" data-act="aImpIAvarios">✨ Repartir con IA</button>' : '') + '</span></div>' + (sinImp.length ? '<div class="rows">' + sinImp.slice(0, 30).map(({ v, falta }) => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b>' + esc(v.contraparte || v.subcuenta) + ' · <span class="money">' + money(falta, v.moneda) + '</span></b><span>' + esc(v.detalle || '') + '</span></span><button class="btn sm" data-act="aMov" data-id="' + esc(v.id) + '">Imputar</button></div>').join('') + '</div>' : emptyBox('Todo imputado', 'Los pagos a proveedores del año ya están asignados a abonos o proyectos.')) + '</section>';
     return h;
   }
   const isOpenP = p => !['Entregado', 'Cancelado'].includes(p.estado);
@@ -666,12 +692,17 @@ export function initAdmin(ctx) {
   async function submitPanel() {
     const v = readPanel(); if (!v) return;
     const btn = $('#asave'); if (btn) { btn.disabled = true; btn.textContent = AD.form.busyLabel || 'Guardando…'; }
-    try { await AD.form.onSave(v); ctx.closeForm(); await ctx.reload(); }
+    try { await AD.form.onSave(v); ctx.closeForm(); await ctx.reload(); const after = AD.postSave; AD.postSave = null; if (after) after(); }
     catch (err) { toast(err.message); if (btn) { btn.disabled = false; btn.textContent = AD.form.saveLabel || 'Guardar'; } }
   }
 
-  function formFactura(id, preset) {
+  function formFactura(id, preset, opts = {}) {
     const f = id ? AD.F.find(x => x.id === id) : null;
+    const driveLibres = AD.DA.filter(d => !d.factura_id && d.estado !== 'Ignorado');
+    const iaBox = '<div class="field full"><span class="lbl">Completar desde el PDF</span><div class="toolbar">' +
+      '<label class="btn sm" style="cursor:pointer"><span id="ff-ia-lbl">✨ Leer PDF</span><input type="file" id="ff-ia" accept="application/pdf,image/*" hidden></label>' +
+      (driveLibres.length ? '<select class="in" id="ff-drive" aria-label="Archivo de Drive">' + opt('', 'O elegí uno de Drive (' + driveLibres.length + ')', '') + driveLibres.slice(0, 200).map(d => opt(d.id, d.nombre + (d.datos && d.datos.total != null ? ' · ' + money(d.datos.total, d.datos.moneda) : ''), '')).join('') + '</select>' : '') +
+      '</div><span class="hint">La IA lee el comprobante y completa los campos. Revisalos antes de guardar.</span></div>';
     const cliente = f ? f.cliente : (preset && preset.cliente) || (AD.rd && AD.rd.cliente) || '';
     const ca = cadm(cliente);
     const base = f || Object.assign({ tipo: ca.comprobante_default || 'Factura ARCA', emisor: ca.emisor_default || '', fecha: today(), moneda: AD.rd ? AD.rd.moneda : (ca.moneda || 'ARS'), monto: AD.rd ? r2(totalItems(AD.rd.items)) : '', periodo: AD.rd ? AD.rd.m : thisMonth(), concepto: AD.rd ? 'Servicios ' + monthLabel(AD.rd.m) : '' }, preset || {});
@@ -693,10 +724,15 @@ export function initAdmin(ctx) {
         { k: 'link_pdf', label: 'Link al PDF (carpeta de administración)', type: 'url', full: 1, ph: 'https://drive.google.com/...' },
         { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2 },
       ],
-      extra: f && f.cobrado > 0 ? '<p class="formnote">Cobrado: ' + money(f.cobrado, f.moneda) + '. Los cobros están en Caja.</p>' : '',
+      extra: (f ? '' : iaBox) + (f && f.cobrado > 0 ? '<p class="formnote">Cobrado: ' + money(f.cobrado, f.moneda) + '. Los cobros están en Caja.</p>' : '') + (opts.archivo ? '<p class="formnote">Desde Drive: <a href="' + esc(opts.archivo.link) + '" target="_blank" rel="noopener">' + esc(opts.archivo.nombre) + '</a>. Al guardar queda vinculado.</p>' : ''),
       onSave: async v => {
         const row = { cliente_id: data.ids.cliente(v.cliente), tipo: v.tipo, emisor: v.emisor || '', numero: v.numero, periodo: v.periodo ? v.periodo + '-01' : null, fecha: v.fecha, vencimiento: v.vencimiento || null, moneda: v.moneda, monto: v.monto, concepto: v.concepto, link_pdf: v.link_pdf, notas: v.notas };
-        if (f) await data.upd('facturas', f.id, row); else await data.ins('facturas', row);
+        const archivo = opts.archivo || (AD.form && AD.form.archivo) || null;
+        let fid = f && f.id;
+        if (f) await data.upd('facturas', f.id, row); else fid = (await data.ins('facturas', row)).id;
+        if (opts.onSaved) await opts.onSaved(fid, v);
+        else if (archivo && !f) { await data.upd('drive_archivos', archivo.id, { factura_id: fid }); await AS.aprender(archivo, v); }
+        else if (!f && AD.form && AD.form.archivoDatos) await AS.aprender({ datos: AD.form.archivoDatos }, v);
         toast(f ? 'Comprobante actualizado' : 'Comprobante cargado');
       },
       onDelete: f ? async () => { await data.upd('facturas', f.id, { anulada: true }); toast('Comprobante anulado'); } : null,
@@ -862,7 +898,8 @@ export function initAdmin(ctx) {
       extra: '<div class="field full"><span class="lbl">Costo de… (para ver el margen)</span><div id="imp-box" class="impbox"></div></div><datalist id="dl-sub">' + subs.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist><datalist id="dl-partes">' + partes.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist>' + (x && x.factura_id ? '<p class="formnote">Es el cobro de una factura: si lo borrás, la factura vuelve a quedar con saldo.</p>' : ''),
       onSave: async v => {
         const cli = S.C.find(c => c.nombre === v.contraparte), per = S.E.find(e => e.persona === v.contraparte);
-        const row = { fecha: v.fecha, cuenta: v.cuenta, subcuenta: v.subcuenta, contraparte: v.contraparte, cliente_id: cli ? cli._id : (x ? x.cliente_id : null), persona_id: per ? per._id : (x ? x.persona_id : null), detalle: v.detalle, ingreso: v.tipo === 'Ingreso' ? v.monto : 0, egreso: v.tipo === 'Egreso' ? v.monto : 0, moneda: v.moneda, caja_id: v.caja || null, reintegro_a: v.reintegro_a || '', reintegrado: !!v.reintegrado };
+        const co = EQ.colabPorNombre(v.contraparte);
+        const row = { fecha: v.fecha, cuenta: v.cuenta, subcuenta: v.subcuenta, contraparte: v.contraparte, cliente_id: cli ? cli._id : (x ? x.cliente_id : null), persona_id: per ? per._id : co && co.persona_id ? co.persona_id : (x ? x.persona_id : null), colaborador_id: co ? co.id : (x && x.contraparte === v.contraparte ? x.colaborador_id || null : null), detalle: v.detalle, ingreso: v.tipo === 'Ingreso' ? v.monto : 0, egreso: v.tipo === 'Egreso' ? v.monto : 0, moneda: v.moneda, caja_id: v.caja || null, reintegro_a: v.reintegro_a || '', reintegrado: !!v.reintegrado };
         let mid = x && x.id;
         if (x) await data.upd('movimientos', x.id, row); else mid = (await data.ins('movimientos', row)).id;
         if (v.tipo === 'Egreso') await guardarImp(mid); else if (x && AD.IMP.some(i => i.movimiento_id === x.id)) await data.del('imputaciones', x.id, 'movimiento_id');
@@ -878,6 +915,12 @@ export function initAdmin(ctx) {
     setCopy(); AD.form.onInput = () => { const had = !!AD.impCopy; setCopy(); if (had !== !!AD.impCopy) renderImp(); else updateImpSum(); };
     renderImp();
   }
+
+  /* ---------- Módulos: sueldos y pagos, asistente ---------- */
+  const kit = { AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
+    formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a) };
+  const EQ = initEquipo(ctx, kit); kit.equipo = EQ;
+  const AS = initAsistente(ctx, kit);
 
   /* ---------- Acciones ---------- */
   const actions = {
@@ -974,10 +1017,11 @@ export function initAdmin(ctx) {
   });
   document.addEventListener('submit', e => { if (e.target.id === 'aform') { e.preventDefault(); submitPanel(); } });
 
+  Object.assign(actions, EQ.actions, AS.actions);
   return {
     load, actions, fichaSection, AD,
-    views: [['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['rentabilidad', 'Rentabilidad', vRent]],
-    counts: () => ({ facturas: AD.F.filter(f => estadoFactura(f) === 'Vencida').length }),
+    views: [['asistente', 'Asistente', AS.view], ['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['pagos', 'Pagos', EQ.view], ['rentabilidad', 'Rentabilidad', vRent]],
+    counts: () => (AD.ok ? { facturas: AD.F.filter(f => estadoFactura(f) === 'Vencida').length, asistente: AS.count() } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; },
   };
 }

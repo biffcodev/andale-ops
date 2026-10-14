@@ -275,3 +275,7 @@ th.sel,td.sel{width:34px;padding-right:0}
 @media (max-width:520px){.improw{grid-template-columns:1fr 100px 32px}}
 .etapas .chk{font-size:14px;font-weight:500;color:var(--fg);flex:1;min-width:0}
 .etapas input[type=checkbox]{width:16px;height:16px;padding:0;flex:none}
+/* Filas con casilla (envíos masivos, pagos, propuestas de la IA) */
+.field label.row b{color:inherit}
+label.row:has(> input[type=checkbox]){grid-template-columns:28px minmax(0,1fr) auto}
+.row .t>span{display:block}

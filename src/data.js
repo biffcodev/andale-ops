@@ -122,9 +122,12 @@ async function all(table, build) {
 }
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
-  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp] = await Promise.all([
+  const desdeMes = new Date(); desdeMes.setDate(1); desdeMes.setHours(0, 0, 0, 0);
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
     all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })), all('proyecto_finanzas'), all('abono_finanzas'), all('imputaciones'),
+    all('colaboradores', q => q.order('nombre')), all('remuneraciones'), all('conceptos_fijos'), all('liquidaciones'), all('drive_archivos', q => q.order('modificado', { ascending: false, nullsFirst: false })),
+    all('ia_log', q => q.gte('created_at', desdeMes.toISOString())),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
@@ -141,6 +144,12 @@ export async function loadAdmin() {
     PFZ: new Map(pfz.map(r => [r.proyecto_id, { ...r, presupuesto: num(r.presupuesto), inicio_cobro: month(r.inicio_cobro) }])),
     ABF: new Map(abf.map(r => [r.abono_id, { ...r, inversion: num(r.inversion) }])),
     IMP: imp.map(r => ({ ...r, monto: num(r.monto) || 0 })),
+    CO: co.map(r => ({ ...r, persona: idx.personaAlias.get(r.persona_id) || '' })),
+    RM: rm.map(r => ({ ...r, desde: month(r.desde), monto: num(r.monto) })),
+    CF: cf.map(r => ({ ...r, desde: month(r.desde), hasta: month(r.hasta), monto: num(r.monto) })),
+    LQ: lq.map(r => ({ ...r, periodo: month(r.periodo), monto: num(r.monto) })),
+    DA: da.map(r => ({ ...r, datos: r.datos || {} })),
+    IL: il,
     G: gs.map(r => ({ ...r, cliente: cn(r.cliente_id), periodo: month(r.periodo), persona: idx.personaAlias.get(r.persona_id) || '' })),
   };
 }
@@ -158,6 +167,18 @@ export async function sendEmail(payload) {
     let msg = error.message;
     try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { }
     if (/Failed to send a request|fetch/i.test(msg)) msg = 'No se pudo conectar con el servicio de emails. Revisá tu conexión.';
+    throw new Error(msg);
+  }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
+/** Llama a la Edge Function `asistente` (Drive + IA). Solo admins. */
+export async function asistente(payload) {
+  const { data, error } = await sb.functions.invoke('asistente', { body: payload });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { }
+    if (/Failed to send a request|fetch/i.test(msg)) msg = 'No se pudo conectar con el asistente. Revisá tu conexión o que la función esté publicada.';
     throw new Error(msg);
   }
   if (data && data.error) throw new Error(data.error);

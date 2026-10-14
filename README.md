@@ -72,3 +72,21 @@ comprobante (factura ARCA / invoice) y mensajes libres. Uno por uno o en masa (r
 - **Presupuesto y plan de pagos** (`proyecto_finanzas`, solo admins): genera las cuotas en `proyecto_facturacion`.
 - **Pauta de Ads** (`abono_finanzas`, solo admins): si la adelanta àndale, el resumen suma “Inversión en pauta” aparte del honorario.
 - **Costos** (`imputaciones`, solo admins): un egreso de Caja se reparte entre abonos/proyectos → vista Rentabilidad (margen de contribución).
+
+## Sueldos y pagos
+Pestaña **Pagos** (solo admins). Cada persona del equipo, socia o proveedor es un *colaborador* (`colaboradores`), con:
+- sueldo u honorario con historial (`remuneraciones`, un registro por aumento) y extras fijos (`conceptos_fijos`: bondi, Adobe…);
+- aguinaldo automático en junio y diciembre: 50% de la mejor remuneración del semestre, proporcional a los días trabajados;
+- liquidación del mes (`liquidaciones`): se genera con un clic y al pagar se crea el egreso en Caja (`movimientos.colaborador_id`). Pagado = tiene movimiento.
+Los colaboradores iniciales salen de las contrapartes de Costo Laboral y Proveedores de Caja (migración 0007).
+
+## Asistente: Drive + IA
+Pestaña **Asistente** y Edge Function `asistente` (verify_jwt apagado: valida admin con `yo()` o el secreto de pg_cron).
+- **Checklist del cierre**: abonos sin precio, resúmenes sin armar (los arma en borrador), sin enviar, vencidos (recordatorios en lote), aumentos sin avisar, sueldos y pagos a proveedores sin imputar.
+- **Drive** (solo lectura, cuenta de servicio): lista la carpeta de facturas, reconoce los nombres de ARCA (`CUIT_011_PV_NUM.pdf`), la IA lee cada PDF y propone el comprobante (cliente por CUIT, emisor por CUIT). Al enviar una factura vinculada, el PDF va adjunto.
+- **Conciliar el banco**: PDF/Excel/CSV del extracto → movimientos propuestos con el plan de cuentas, cobros de facturas y duplicados marcados. Se confirman antes de cargar.
+- **Repartir pagos a proveedores** entre abonos/proyectos (para Rentabilidad), en lote o dentro de un movimiento.
+- **Resumen por email** los días 1 y 8 a las 9 (pg_cron, migración 0008).
+
+Secretos (Supabase → Edge Functions → Secrets): `ANTHROPIC_API_KEY` (cuenta de àndale en console.anthropic.com), `GOOGLE_SERVICE_ACCOUNT` (JSON de la cuenta de servicio con Drive API habilitada; compartir la carpeta con su email como Lector), opcional `IA_MODEL` (default `claude-sonnet-5-5`). El uso queda en `ia_log`.
+`xlsx` (SheetJS 0.18.5) se usa solo para leer extractos que suben los admins; se carga bajo demanda.
