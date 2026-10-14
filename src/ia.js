@@ -154,6 +154,7 @@ export function initIA(ctx) {
     iaAbrir: () => abrir(),
     iaCerrar: () => cerrar(),
     iaChip: t => { abrir(t.dataset.t); enviar(); },
+    iaPreguntar: t => { abrir(t.dataset.q); enviar(); },
     iaAccion: t => { const h = st.hist[+t.dataset.i]; if (h && h.r && h.r.accion) ejecutar(h.r.accion); },
     iaCliente: async t => {
       const n = t.dataset.cliente; resumenes[n] = { busy: true }; render();

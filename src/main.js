@@ -368,26 +368,151 @@ function vLista() {
   }).join('') + '<div class="count num" style="padding:0 4px">' + list.length + ' de ' + S.P.length + ' proyectos · tocá el nombre de un grupo para plegarlo</div>';
 }
 
-function vProyectoFicha() {
-  const p = S.P.find(x => x._id === S.pficha);
-  const back = '<button class="btn ghost sm" data-act="pback" style="justify-self:start">← Proyectos</button>';
-  if (!p) return back + '<section class="sheet">' + emptyBox('Ese proyecto no existe o no tenés acceso', '') + '</section>';
-  const can = canEditProj(p), { e, done, total } = etapaInfo(p);
-  const ms = S.M.filter(m => m.cliente === p.cliente).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 6);
+/* ---------- Detalle de una tarea (panel lateral) ---------- */
+function abrirTarea(pid, i) {
+  const p = S.P.find(x => x._id === pid); if (!p) return;
+  const can = canEditProj(p), x = i >= 0 ? etapasDe(p)[i] : { n: '', ok: false };
+  if (!x) return;
+  S.tkf = { pid, i }; S.form = null;
+  const ro = can ? '' : ' disabled', k = estTk(x);
+  $('#panel').innerHTML = '<form id="tkform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(p.proyecto) + ' · ' + esc(p.cliente) + '</span><h2 id="panel-title">' + (i >= 0 ? 'Tarea' : 'Nueva tarea') + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+    '<div class="panel-b">' +
+    '<div class="field full"><label for="tk-n">Tarea</label><input id="tk-n" value="' + esc(x.n) + '" placeholder="Ej.: Presentar 2 rutas de logo"' + ro + '></div>' +
+    '<div class="field"><label for="tk-est">Estado</label><select id="tk-est"' + ro + '>' + TK_EST.map(([v, l]) => opt(v, l, k)).join('') + '</select></div>' +
+    '<div class="field"><label for="tk-prio">Prioridad</label><select id="tk-prio"' + ro + '>' + opt('', 'Sin prioridad', x.prio || '') + PRIOS.map(v => opt(v, v, x.prio || '')).join('') + '</select></div>' +
+    '<div class="field"><label for="tk-resp">Responsable</label><select id="tk-resp"' + ro + '>' + opt('', 'Sin asignar', x.resp || '') + [...new Set([...personas(), x.resp].filter(Boolean))].map(a => opt(a, a, x.resp || '')).join('') + '</select></div>' +
+    '<div class="field"><label for="tk-fecha">Para cuándo</label><input id="tk-fecha" type="date" value="' + esc(x.fecha || '') + '"' + ro + '></div>' +
+    '<div class="field full"><label for="tk-nota">Notas</label><textarea id="tk-nota" rows="6" placeholder="Detalles, links, lo que pidió el cliente…"' + ro + '>' + esc(x.nota || '') + '</textarea></div>' +
+    (x.fecha && integ('calendario') ? '<div class="toolbar full">' + calBtn(x.n + ' · ' + p.proyecto, x.fecha, 'Tarea del proyecto ' + p.proyecto + ' (' + p.cliente + ')', 'sm') + '</div>' : '') +
+    '</div><div class="panel-f"><span>' + (can && i >= 0 ? '<button type="button" class="btn ghost danger" data-act="tkBorrar">Borrar tarea</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">' + (can ? 'Cancelar' : 'Cerrar') + '</button>' + (can ? '<button type="submit" class="btn primary">' + (i >= 0 ? 'Guardar' : 'Agregar') + '</button>' : '') + '</span></div></form>';
+  $('#panel').hidden = false; $('#scrim').hidden = false;
+  setTimeout(() => { const n = $('#tk-n'); if (n && i < 0) n.focus(); }, 30);
+}
+async function guardarTareaPanel() {
+  const f = S.tkf; if (!f) return; const p = S.P.find(x => x._id === f.pid); if (!p) return;
+  const n = ($('#tk-n').value || '').trim(); if (!n) { toast('Escribí la tarea'); $('#tk-n').focus(); return; }
+  const base = f.i >= 0 ? etapasDe(p)[f.i] : {};
+  const x = conEst({ ...base, n, resp: $('#tk-resp').value, fecha: $('#tk-fecha').value, prio: $('#tk-prio').value, nota: $('#tk-nota').value.trim() }, $('#tk-est').value);
+  const next = f.i >= 0 ? etapasDe(p).map((y, i) => i === f.i ? x : y) : [...etapasDe(p), x];
+  closeForm(); S.tkf = null;
+  await guardarTareas(p, next, f.i >= 0 ? 'Tarea guardada' : 'Tarea agregada');
+}
+
+/* ---------- Ficha del proyecto: gestor de proyecto (tareas, tablero, cronograma) ---------- */
+const TK_EST = [['', 'Por hacer', '--s-empezar'], ['curso', 'En curso', '--s-curso'], ['hecha', 'Hecha', '--s-entregado']];
+const estTk = x => x.ok ? 'hecha' : (x.est === 'curso' ? 'curso' : '');
+const ESTV = k => (TK_EST.find(e => e[0] === k) || TK_EST[0]);
+function conEst(x, k) { return { ...x, ok: k === 'hecha', est: k === 'curso' ? 'curso' : '' }; }
+function avance(p) { const e = etapasDe(p); return e.length ? Math.round(e.filter(x => x.ok).length / e.length * 100) : 0; }
+function tkPrioSel(p, x, i) {
+  return '<select class="tk-prio' + (x.prio ? '' : ' vacia') + '" style="--c:var(' + (PRIO_COLOR[x.prio] || '--muted') + ')" aria-label="Prioridad de la tarea" data-tk="prio" data-pid="' + esc(p._id) + '" data-i="' + i + '">' + opt('', '⚑', x.prio || '') + PRIOS.map(v => opt(v, '⚑ ' + v, x.prio || '')).join('') + '</select>';
+}
+function tkRow(p, x, i, can) {
+  const pid = esc(p._id), ps = personas(), k = estTk(x);
+  return '<div class="tkr' + (x.ok ? ' done' : '') + '" data-tki="' + i + '">' +
+    '<input type="checkbox" class="tk-ok" aria-label="Tarea hecha" data-etoggle="' + pid + '" data-i="' + i + '"' + (x.ok ? ' checked' : '') + (can ? '' : ' disabled') + '>' +
+    '<button class="tkr-n" data-act="tkAbrir" data-id="' + pid + '" data-i="' + i + '"><span>' + esc(x.n) + '</span>' + (x.nota ? '<i class="tkr-nota" title="Tiene notas">≡</i>' : '') + '</button>' +
+    '<span class="tk-who">' + (x.resp ? av(x.resp, fotoDe(x.resp)) : '<span class="av vacio" title="Sin asignar">+</span>') +
+    (can ? '<select aria-label="Quién la hace" data-tk="resp" data-pid="' + pid + '" data-i="' + i + '">' + opt('', 'Sin asignar', x.resp || '') + [...new Set([...ps, x.resp].filter(Boolean))].map(a => opt(a, a, x.resp || '')).join('') + '</select>' : '<span>' + esc(x.resp || '—') + '</span>') + '</span>' +
+    (can ? '<label class="tk-date">' + (fechaTarea(x.fecha, x.ok) || '<span class="tk-f vacia">Fecha</span>') + '<input type="date" aria-label="Para cuándo" value="' + esc(x.fecha || '') + '" data-tk="fecha" data-pid="' + pid + '" data-i="' + i + '"></label>' : (fechaTarea(x.fecha, x.ok) || '<span class="muted">—</span>')) +
+    (can ? tkPrioSel(p, x, i) : (prioFlag(x.prio) || '<span></span>')) +
+    '</div>';
+}
+function pfTareas(p, can) {
+  const e = etapasDe(p).map((x, i) => ({ x, i }));
+  const grupos = TK_EST.map(([k, l, c]) => [k, l, c, e.filter(o => estTk(o.x) === k)]);
+  const tpl = plantilla(p.tipo), pid = esc(p._id);
+  const add = can ? '<form class="tkr-add" data-tkadd="' + pid + '"><span class="tkr-plus" aria-hidden="true">+</span><input class="in" name="n" placeholder="Agregar tarea y Enter" aria-label="Nueva tarea" autocomplete="off"><select class="in" name="resp" aria-label="Quién la hace">' + opt('', 'Sin asignar', '') + personas().map(a => opt(a, a, '')).join('') + '</select><input class="in" type="date" name="fecha" aria-label="Para cuándo"><button class="btn sm primary">Agregar</button></form>' : '';
+  let h = '<div class="tkl">';
+  if (!e.length) h += '<div class="tkl-empty"><b>Este proyecto todavía no tiene tareas.</b><span>Sumalas abajo' + (tpl.length ? ', usá las tareas modelo de ' + esc(p.tipo) : '') + (isStaff() ? ' o pedile a Mr. Piggy que las arme.' : '.') + '</span>' +
+    (can ? '<span class="toolbar" style="justify-content:center">' + (tpl.length ? '<button class="btn sm" data-act="etCargar" data-id="' + pid + '">Usar tareas modelo de ' + esc(p.tipo) + '</button>' : '') + (isStaff() ? '<button class="btn sm primary" data-act="tkIA" data-id="' + pid + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Que Mr. Piggy arme las tareas</button>' : '') + '</span>' : '') + '</div>';
+  grupos.forEach(([k, l, c, arr]) => {
+    if (!arr.length && k !== '') return;
+    const key = 'tk:' + p._id + ':' + k, cerrado = k === 'hecha' ? !S.gcl.has(key + ':open') : S.gcl.has(key);
+    h += '<section class="tkg' + (cerrado ? ' cerrado' : '') + '" style="--c:var(' + c + ')"><button class="grp-h" data-act="tkGrp" data-g="' + esc(key) + '" data-hecha="' + (k === 'hecha' ? 1 : '') + '" aria-expanded="' + !cerrado + '"><span class="chev" aria-hidden="true">▾</span><span class="grp-pill">' + l + '</span><span class="grp-n">' + arr.length + '</span></button>' +
+      (cerrado ? '' : '<div class="tkg-b"><div class="tkr tkr-h" aria-hidden="true"><span></span><span>Tarea</span><span>Responsable</span><span>Fecha</span><span>Prioridad</span></div>' + arr.map(o => tkRow(p, o.x, o.i, can)).join('') + (k === '' ? add : '') + '</div>') + '</section>';
+  });
+  return h + '</div>';
+}
+function pfTablero(p, can) {
+  const e = etapasDe(p).map((x, i) => ({ x, i }));
+  if (!e.length) return pfTareas(p, can);
+  return '<p class="muted" style="margin:0 0 10px">Arrastrá una tarea a otra columna para cambiarle el estado.</p><div class="tkb">' + TK_EST.map(([k, l, c]) => {
+    const arr = e.filter(o => estTk(o.x) === k);
+    return '<div class="col" style="--c:var(' + c + ')" data-drop="t:' + k + '"><div class="col-h">' + pill(l, c) + '<span class="n">' + arr.length + '</span></div>' +
+      arr.map(({ x, i }) => '<button class="card tkc' + (x.ok ? ' done' : '') + '" style="--t:var(' + (PRIO_COLOR[x.prio] || '--line-2') + ')" data-act="tkAbrir" data-id="' + esc(p._id) + '" data-i="' + i + '" data-drag="t:' + esc(p._id) + ':' + i + '"' + (can ? ' draggable="true"' : '') + '><span class="pj">' + esc(x.n) + '</span>' + (x.nota ? '<span class="cl">' + esc(x.nota.slice(0, 90)) + '</span>' : '') + '<span class="ft">' + (x.resp ? whos([x.resp]) : '<span class="tag">Sin asignar</span>') + '<span class="ft-r">' + prioFlag(x.prio) + fechaTarea(x.fecha, x.ok) + '</span></span></button>').join('') +
+      (k === '' && can ? '<button class="btn ghost sm tkb-add" data-act="tkNueva" data-id="' + esc(p._id) + '">+ Tarea</button>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+function pfCronograma(p) {
+  const e = etapasDe(p).map((x, i) => ({ x, i }));
+  const fechas = e.map(o => o.x.fecha).filter(Boolean);
+  if (!fechas.length && !p.entrega) return emptyBox('Para ver el cronograma, poné fechas a las tareas', 'Cada tarea con fecha aparece en la línea de tiempo, junto con hoy y la entrega pactada.');
+  const t = today(), ds = [p.fechaInicio, t, p.entrega, ...fechas].filter(Boolean).sort();
+  const a = new Date(ds[0] + 'T12:00'), b = new Date(ds[ds.length - 1] + 'T12:00'); a.setDate(a.getDate() - 2); b.setDate(b.getDate() + 3);
+  const tot = Math.max(1, Math.round((b - a) / 864e5)), pos = f => Math.max(0, Math.min(100, (new Date(f + 'T12:00') - a) / 864e5 / tot * 100));
+  const semanas = []; const s = new Date(a); s.setDate(s.getDate() + ((8 - s.getDay()) % 7)); for (; s <= b; s.setDate(s.getDate() + 7)) semanas.push(s.toISOString().slice(0, 10));
+  const marcas = '<div class="gt-axis">' + semanas.map(w => '<span style="left:' + pos(w).toFixed(2) + '%">' + fmtShort(w) + '</span>').join('') + '</div>';
+  const lineas = '<i class="gt-hoy" style="left:' + pos(t).toFixed(2) + '%" title="Hoy"></i>' + (p.entrega ? '<i class="gt-ent" style="left:' + pos(p.entrega).toFixed(2) + '%" title="Entrega pactada ' + fmt(p.entrega) + '"></i>' : '');
+  const ord = [...e].sort((x, y) => (x.x.fecha || '9999').localeCompare(y.x.fecha || '9999'));
+  let prev = p.fechaInicio || (fechas.length ? [...fechas].sort()[0] : t);
+  const filas = ord.map(({ x, i }) => {
+    if (!x.fecha) return '<div class="gt-r"><button class="gt-n" data-act="tkAbrir" data-id="' + esc(p._id) + '" data-i="' + i + '">' + esc(x.n) + '</button><div class="gt-t">' + lineas + '<span class="gt-sin">sin fecha</span></div></div>';
+    const desde = prev < x.fecha ? prev : x.fecha, l = pos(desde), r = pos(x.fecha); prev = x.fecha;
+    const k = estTk(x), c = ESTV(k)[2], late = !x.ok && diff(x.fecha) < 0;
+    return '<div class="gt-r"><button class="gt-n" data-act="tkAbrir" data-id="' + esc(p._id) + '" data-i="' + i + '">' + esc(x.n) + '</button><div class="gt-t">' + lineas +
+      '<span class="gt-bar' + (late ? ' late' : '') + '" style="left:' + l.toFixed(2) + '%;width:' + Math.max(1.2, r - l).toFixed(2) + '%;--c:var(' + c + ')" title="' + esc(x.n + ' · ' + fmt(x.fecha) + (x.resp ? ' · ' + x.resp : '')) + '">' + (x.resp ? '<b>' + esc(initials(x.resp)) + '</b>' : '') + '</span></div></div>';
+  }).join('');
+  return '<div class="gt"><div class="gt-r gt-head"><span></span>' + marcas + '</div>' + filas + '</div><p class="muted gt-ley"><i class="gt-hoy-k"></i> Hoy' + (p.entrega ? ' &nbsp; <i class="gt-ent-k"></i> Entrega pactada ' + fmt(p.entrega) : '') + ' &nbsp;·&nbsp; Cada barra va de la tarea anterior a su fecha.</p>';
+}
+function pfDetalles(p, can) {
   const fila = (k, v) => '<dt>' + k + '</dt><dd>' + (v || '<span class="muted">—</span>') + '</dd>';
   const lk = links(p);
-  const estado = can ? '<select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado">' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select>' : stPill(p.estado);
-  return back +
-    '<div class="head"><div><button class="btn link eyebrow" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente) + '</button><h1 style="margin-top:4px">' + esc(p.proyecto) + '</h1>' +
-    '<p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">' + estado + prioSelect(p) + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + daysBadge(p) + '</p></div>' +
-    '<div class="toolbar">' + calBtn('Entrega: ' + p.proyecto + ' · ' + p.cliente, isOpen(p) ? p.entrega : '', 'Entrega pactada del proyecto ' + p.proyecto + ' (' + p.cliente + ')') + (can ? '<button class="btn primary" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar proyecto</button>' : '') + '</div></div>' +
-    '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
-    fila('Responsables', picker('proyecto', p)) + fila('Inicio', p.fechaInicio ? fmt(p.fechaInicio) : '') + fila('Entrega pactada', p.entrega ? fmt(p.entrega) : '') + fila('Entregado', p.entregaReal ? fmt(p.entregaReal) : '') +
+  return '<section class="sheet"><div class="sheet-h"><h2>Datos del proyecto</h2>' + (can ? '<button class="btn sm" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar</button>' : '') + '</div><div class="sheet-b"><dl class="kv">' +
+    fila('Cliente', '<button class="btn link" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente) + '</button>') + fila('Tipo', esc(p.tipo || '')) + fila('Inicio', p.fechaInicio ? fmt(p.fechaInicio) : '') + fila('Entrega pactada', p.entrega ? fmt(p.entrega) : '') + fila('Entregado', p.entregaReal ? fmt(p.entregaReal) : '') +
     fila('Entregables', p.entregables ? '<span style="white-space:pre-wrap">' + esc(p.entregables) + '</span>' : '') + fila('Links', lk && lk.indexOf('href') > -1 ? lk : '') + fila('Notas', p.notas ? '<span style="white-space:pre-wrap">' + esc(p.notas) + '</span>' : '') +
-    '</dl></div></section>' + (isAdmin() && ADM && ADM.proyectoSection ? ADM.proyectoSection(p) : '') + '</div>' +
-    '<div class="stack"><section class="sheet"><div class="sheet-h"><h2>Tareas</h2>' + (total ? '<span class="etp">' + segs(e) + '<span class="muted num">' + done + ' de ' + total + '</span></span>' : '') + '</div><div class="sheet-b">' + tareasHtml(p) + '</div></section>' +
-    '<section class="sheet"><div class="sheet-h"><h2>Charlas con ' + esc(p.cliente) + '</h2>' + addBtn('comunicacion', 'Anotar charla', { cliente: p.cliente }) + '</div>' + (ms.length ? '<div class="timeline">' + ms.map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Sin reuniones ni acuerdos registrados', 'Registrá lo que se habló con el cliente y el próximo paso.')) + '</section>' +
-    '</div></div>';
+    '</dl></div></section>';
+}
+function pfCharlas(p) {
+  const ms = S.M.filter(m => m.cliente === p.cliente).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  return '<section class="sheet"><div class="sheet-h"><h2>Charlas con ' + esc(p.cliente) + '</h2>' + addBtn('comunicacion', 'Anotar charla', { cliente: p.cliente }) + '</div>' + (ms.length ? '<div class="timeline">' + ms.slice(0, 20).map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Sin charlas anotadas', 'Anotá lo que se habló con el cliente y el próximo paso.')) + '</section>';
+}
+function pfLado(p) {
+  const e = etapasDe(p), hechas = e.filter(x => x.ok).length, pct = avance(p), venc = e.filter(x => !x.ok && x.fecha && diff(x.fecha) < 0).length;
+  const prox = e.filter(x => !x.ok && x.fecha).sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
+  const gente = [...new Set([...resp(p), ...e.map(x => x.resp).filter(Boolean)])];
+  const ring = '<svg viewBox="0 0 36 36" class="ring" aria-hidden="true"><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--line)" stroke-width="4"/><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--s-entregado)" stroke-width="4" stroke-linecap="round" stroke-dasharray="' + (pct * 0.974).toFixed(1) + ' 100" transform="rotate(-90 18 18)"/></svg>';
+  const L = [['drive', 'Carpeta Drive'], ['slides', 'Presentación'], ['canva', 'Canva']].filter(([k]) => isUrl(p[k]));
+  return '<aside class="pf-side">' +
+    '<section class="pf-card"><div class="pf-av">' + ring + '<b>' + pct + '%</b></div><div class="pf-st"><span><b>' + hechas + '</b> de ' + e.length + ' tareas hechas</span>' + (venc ? '<span class="crit"><b>' + venc + '</b> vencida' + (venc > 1 ? 's' : '') + '</span>' : '') + (prox ? '<span>Próxima: <b>' + esc(prox.n) + '</b> · ' + fechaTarea(prox.fecha) + '</span>' : '') + (p.entrega && isOpen(p) ? '<span>Entrega pactada <b>' + fmt(p.entrega) + '</b> ' + daysBadge(p) + '</span>' : '') + '</div></section>' +
+    '<section class="pf-card"><h3>Equipo</h3>' + (gente.length ? '<div class="pf-gente">' + gente.map(a => { const n = e.filter(x => x.resp === a && !x.ok).length; return '<span class="who1">' + av(a, fotoDe(a)) + '<span><b>' + esc(a) + '</b><small>' + (n ? n + ' tarea' + (n > 1 ? 's' : '') + ' pendiente' + (n > 1 ? 's' : '') : 'sin tareas pendientes') + '</small></span></span>'; }).join('') + '</div>' : '<p class="muted">Nadie asignado todavía.</p>') + '<div style="margin-top:8px">' + picker('proyecto', p) + '</div></section>' +
+    (L.length ? '<section class="pf-card"><h3>Archivos</h3><div class="pf-links">' + L.map(([k, l]) => '<a class="btn sm" href="' + esc(p[k]) + '" target="_blank" rel="noopener">' + l + ' ↗</a>').join('') + '</div></section>' : '') +
+    (isStaff() ? '<section class="pf-card pf-ia"><h3><span class="pig" aria-hidden="true">' + ISO + '</span> Mr. Piggy</h3><div class="pf-links"><button class="btn sm" data-act="tkIA" data-id="' + esc(p._id) + '">Armar o completar tareas</button><button class="btn sm" data-act="iaPreguntar" data-q="' + esc('¿Cómo viene el proyecto ' + p.proyecto + ' de ' + p.cliente + '? Qué falta, quién tiene qué y si llegamos a la entrega.') + '">¿Cómo viene?</button></div></section>' : '') +
+    '</aside>';
+}
+function vProyectoFicha() {
+  const p = S.P.find(x => x._id === S.pficha);
+  if (!p) return '<section class="sheet">' + emptyBox('Ese proyecto no existe o no tenés acceso', '') + '<div class="sheet-b"><button class="btn" data-act="pback">← Volver a Proyectos</button></div></section>';
+  const can = canEditProj(p), e = etapasDe(p), pct = avance(p);
+  const ms = S.M.filter(m => m.cliente === p.cliente).length;
+  const tabs = [['tareas', 'Tareas'], ['tablero', 'Tablero'], ['crono', 'Cronograma'], ['detalles', 'Detalles'], ['charlas', 'Charlas' + (ms ? ' ' + ms : '')], ...(isAdmin() && ADM && ADM.proyectoSection ? [['plata', 'Precio y cobro']] : [])];
+  const tab = tabs.some(t => t[0] === S.ptab) ? S.ptab : 'tareas';
+  const estado = can ? '<select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado del proyecto" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado">' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select>' : stPill(p.estado);
+  const fechas = (p.fechaInicio || p.entrega) ? '<span class="pf-fechas">' + (p.fechaInicio ? fmt(p.fechaInicio) : '…') + ' → ' + (p.entrega ? '<b>' + fmt(p.entrega) + '</b>' : 'sin entrega') + '</span>' : '';
+  const cliC = S.C.find(c => c.nombre === p.cliente) || {};
+  let body = '';
+  if (tab === 'tareas') body = '<div class="pf-grid"><div>' + pfTareas(p, can) + '</div>' + pfLado(p) + '</div>';
+  else if (tab === 'tablero') body = pfTablero(p, can);
+  else if (tab === 'crono') body = '<section class="sheet"><div class="sheet-b">' + pfCronograma(p) + '</div></section>';
+  else if (tab === 'detalles') body = '<div class="pf-grid"><div>' + pfDetalles(p, can) + '</div>' + pfLado(p) + '</div>';
+  else if (tab === 'charlas') body = pfCharlas(p);
+  else if (tab === 'plata') body = ADM.proyectoSection(p);
+  return '<div class="pf-head" style="--t:var(' + (TIPO_COLOR[p.tipo] || '--accent') + ')">' +
+    '<div class="pf-top"><span class="pf-ico" aria-hidden="true">' + ICON.proyectos + '</span><div class="pf-tit"><button class="btn link pf-cli" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + av(p.cliente, cliC.avatar, 'sq') + esc(p.cliente) + '</button><h1>' + esc(p.proyecto) + '</h1></div>' +
+    '<div class="toolbar pf-acc">' + (isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(p.cliente) + '">✉ Mail al cliente</button>' : '') + calBtn('Entrega: ' + p.proyecto + ' · ' + p.cliente, isOpen(p) ? p.entrega : '', 'Entrega pactada del proyecto ' + p.proyecto + ' (' + p.cliente + ')') + (can ? '<button class="btn primary" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar proyecto</button>' : '') + '</div></div>' +
+    '<div class="pf-meta">' + estado + prioSelect(p) + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + fechas + daysBadge(p) +
+    '<span class="pf-prog" title="' + pct + '% de las tareas hechas"><span class="pf-bar"><i style="width:' + pct + '%"></i></span><b>' + pct + '%</b><span class="muted">' + e.filter(x => x.ok).length + '/' + e.length + '</span></span></div>' +
+    '<nav class="pf-tabs" aria-label="Secciones del proyecto">' + tabs.map(([k, l]) => '<button data-act="ptab" data-t="' + k + '"' + (tab === k ? ' aria-current="page"' : '') + '>' + l + '</button>').join('') + '</nav></div>' + body;
 }
 
 /* ---------- Imprimir, exportar y compartir (en todas las vistas) ---------- */
@@ -406,10 +531,55 @@ function herramientas() {
     '<details class="share"><summary class="btn ghost sm" title="Compartir">' + ico.share + '<span>Compartir</span></summary><div class="menu-pop">' +
     '<button class="btn ghost sm" data-act="shareCopy">Copiar link</button><button class="btn ghost sm" data-act="shareWa">Enviar por WhatsApp</button><button class="btn ghost sm" data-act="shareMail">Enviar por email</button></div></details></div>';
 }
+// Barra superior: dónde estás, buscador, imprimir/exportar/compartir y "+ Nuevo".
 function ponerHerramientas() {
-  const head = document.querySelector('#view .head'); if (!head || head.querySelector('.pagetools')) return;
-  head.insertAdjacentHTML('beforeend', herramientas());
+  const tb = $('#topbar'); if (!tb || !S.me) return;
+  tb.hidden = false;
+  const lab = (views().find(v => v[0] === S.view) || [, 'Inicio'])[1];
+  const sep = '<span class="cr-sep" aria-hidden="true">/</span>';
+  let cr = '<button class="cr" data-act="go" data-view="' + esc(S.view) + '">' + (ICON[S.view] || '') + '<span>' + esc(lab) + '</span></button>';
+  if (S.view === 'proyectos' && S.pficha) { const p = S.P.find(x => x._id === S.pficha); if (p) cr = '<button class="cr" data-act="pback">' + ICON.proyectos + '<span>Proyectos</span></button>' + sep + '<button class="cr" data-act="ficha" data-cliente="' + esc(p.cliente) + '"><span>' + esc(p.cliente) + '</span></button>' + sep + '<span class="cr on">' + esc(p.proyecto) + '</span>'; }
+  else if (S.view === 'clientes' && S.ficha) cr = '<button class="cr" data-act="back">' + ICON.clientes + '<span>Clientes</span></button>' + sep + '<span class="cr on">' + esc(S.ficha) + '</span>';
+  $('#crumbs').innerHTML = cr;
+  $('#ttools').innerHTML = herramientas();
+  const n = [];
+  if (isStaff()) n.push('<button class="btn ghost sm" data-act="new" data-kind="proyecto"' + (S.ficha ? ' data-preset="' + esc(JSON.stringify({ cliente: S.ficha })) + '"' : '') + '>Proyecto</button>');
+  if (isStaff() && S.pficha) n.push('<button class="btn ghost sm" data-act="tkNueva" data-id="' + esc(S.pficha) + '">Tarea en este proyecto</button>');
+  if (isStaff() || isExt()) n.push('<button class="btn ghost sm" data-act="new" data-kind="comunicacion"' + (S.ficha ? ' data-preset="' + esc(JSON.stringify({ cliente: S.ficha })) + '"' : '') + '>Charla</button>');
+  if (isStaff()) n.push('<button class="btn ghost sm" data-act="new" data-kind="cliente">Cliente</button>', '<button class="btn ghost sm" data-act="mail"' + (S.ficha ? ' data-cliente="' + esc(S.ficha) + '"' : '') + '>Mail a clientes</button>');
+  if (isAdmin() && ADM) n.push('<button class="btn ghost sm" data-act="aMov">Gasto o ingreso</button>');
+  $('#tnew').innerHTML = n.length ? '<details class="share tnew"><summary class="btn primary sm">+ Nuevo</summary><div class="menu-pop">' + n.join('') + '</div></details>' : '';
 }
+/* Buscador global */
+function buscar(q) {
+  const k = norm(q).trim(); if (k.length < 2) return [];
+  const out = [];
+  S.C.filter(c => norm(c.nombre + ' ' + (c.contacto || '')).includes(k)).slice(0, 5).forEach(c => out.push({ g: 'Clientes', h: '<button class="tsr" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + av(c.nombre, c.avatar, 'sq') + '<span><b>' + esc(c.nombre) + '</b><small>' + esc(c.contacto || VER_CL[c.estado] || c.estado || '') + '</small></span></button>' }));
+  S.P.filter(p => norm(p.proyecto + ' ' + p.cliente + ' ' + (p.tipo || '')).includes(k)).sort((a, b) => isOpen(b) - isOpen(a)).slice(0, 6).forEach(p => out.push({ g: 'Proyectos', h: '<button class="tsr" data-act="pver" data-id="' + esc(p._id) + '"><span class="tsr-i" style="--c:var(' + stVar(p.estado) + ')"></span><span><b>' + esc(p.proyecto) + '</b><small>' + esc(p.cliente + ' · ' + p.estado) + '</small></span></button>' }));
+  S.P.forEach(p => etapasDe(p).forEach((x, i) => { if (out.filter(o => o.g === 'Tareas').length < 6 && norm(x.n).includes(k)) out.push({ g: 'Tareas', h: '<button class="tsr" data-act="gqTarea" data-id="' + esc(p._id) + '" data-i="' + i + '"><span class="tsr-c' + (x.ok ? ' ok' : '') + '">' + (x.ok ? '✓' : '') + '</span><span><b>' + esc(x.n) + '</b><small>' + esc(p.proyecto + ' · ' + p.cliente + (x.resp ? ' · ' + x.resp : '')) + '</small></span></button>' }); }));
+  return out;
+}
+function pintarBusqueda() {
+  const i = $('#gq'), box = $('#gqres'); if (!i || !box) return;
+  const r = buscar(i.value);
+  if (!i.value.trim()) { box.hidden = true; return; }
+  box.hidden = false;
+  let g = ''; box.innerHTML = r.length ? r.map(o => (o.g !== g ? '<span class="tsr-g">' + (g = o.g) + '</span>' : '') + o.h).join('') : '<span class="tsr-v">Nada con “' + esc(i.value) + '”. <button class="btn link" data-act="gqPiggy">Preguntale a Mr. Piggy</button></span>';
+}
+document.addEventListener('input', e => { if (e.target.id === 'gq') pintarBusqueda(); });
+document.addEventListener('focusin', e => { if (e.target.id === 'gq' && e.target.value.trim()) pintarBusqueda(); });
+document.addEventListener('click', e => { const box = $('#gqres'); if (!box || box.hidden) return; if (e.target.closest && (e.target.closest('.tsr') || !e.target.closest('.tsearch'))) { box.hidden = true; if (e.target.closest('.tsr')) $('#gq').value = ''; } });
+document.addEventListener('keydown', e => {
+  const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === '/' && !typing && $('#gq') && !$('#topbar').hidden) { e.preventDefault(); $('#gq').focus(); return; }
+  if (t && t.id === 'gq') {
+    if (e.key === 'Escape') { t.value = ''; $('#gqres').hidden = true; t.blur(); }
+    if (e.key === 'Enter') { const b = document.querySelector('#gqres .tsr'); if (b) { e.preventDefault(); b.click(); } }
+    if (e.key === 'ArrowDown') { const b = document.querySelector('#gqres .tsr'); if (b) { e.preventDefault(); b.focus(); } }
+  } else if (t && t.classList && t.classList.contains('tsr') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    e.preventDefault(); const all = [...document.querySelectorAll('#gqres .tsr')], k = all.indexOf(t) + (e.key === 'ArrowDown' ? 1 : -1); if (k < 0) $('#gq').focus(); else if (all[k]) all[k].focus();
+  }
+});
 async function exportarVista() {
   const tablas = [...document.querySelectorAll('#view table')];
   if (!tablas.length) { toast('Esta vista no tiene tablas para exportar'); return; }
@@ -899,7 +1069,7 @@ function openForm(kind, id, preset) {
   if (kind === 'proyecto') { S.form.etapas = JSON.parse(JSON.stringify(vals.etapas || [])); if (!S.form.etapas.length && plantilla(vals.tipo).length && !rec) S.form.etapas = plantilla(vals.tipo).map(n => ({ n, ok: false })); renderEtapasField(); }
   if (!rec) { const first = p.querySelector('.panel-b input:not([type=checkbox]):not([disabled]),.panel-b select:not([disabled]),.panel-b textarea:not([disabled])'); if (first) first.focus(); }
 }
-function closeForm() { $('#panel').hidden = true; $('#scrim').hidden = true; S.form = null; }
+function closeForm() { $('#panel').hidden = true; $('#scrim').hidden = true; S.form = null; S.tkf = null; }
 
 async function saveForm() {
   if (!S.form || S.form.ro) return;
@@ -972,6 +1142,14 @@ function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('
 const ACT = {
   go: t => { if (t.dataset.pend) S.mf.pend = true; go(t.dataset.view); },
   integQuiero: t => { const k = 'quiero:' + t.dataset.k, L = S.L.integraciones || [...INTEG_DEF]; saveListas('integraciones', L.includes(k) ? L.filter(x => x !== k) : [...L, k]); },
+  gqTarea: t => { ACT.pver(t); setTimeout(() => abrirTarea(t.dataset.id, +t.dataset.i), 0); },
+  gqPiggy: () => { const q = $('#gq').value; $('#gq').value = ''; $('#gqres').hidden = true; if (IA) { IA.abrir(q); } },
+  ptab: t => { S.ptab = t.dataset.t; render(); },
+  tkGrp: t => { const g = t.dataset.g, k = t.dataset.hecha ? g + ':open' : g; if (S.gcl.has(k)) S.gcl.delete(k); else S.gcl.add(k); lsSet('gcl', JSON.stringify([...S.gcl])); render(); },
+  tkAbrir: t => abrirTarea(t.dataset.id, +t.dataset.i),
+  tkNueva: t => abrirTarea(t.dataset.id, -1),
+  tkGuardar: () => guardarTareaPanel(),
+  tkBorrar: () => { const f = S.tkf; if (!f) return; const p = S.P.find(x => x._id === f.pid); if (!p) return; closeForm(); guardarTareas(p, etapasDe(p).filter((x, i) => i !== f.i), 'Tarea borrada'); },
   grpTog: t => { const g = t.dataset.g; if (S.gcl.has(g)) S.gcl.delete(g); else S.gcl.add(g); lsSet('gcl', JSON.stringify([...S.gcl])); render(); },
   kbMover: t => { const kb = document.querySelector('.kb'); if (kb) kb.scrollBy({ left: +t.dataset.d * Math.max(260, kb.clientWidth * .8), behavior: 'smooth' }); },
   tab: t => { S.tab[t.dataset.hub] = t.dataset.t; if (ADM) ADM.resetView(); render(); window.scrollTo(0, 0); },
@@ -983,7 +1161,7 @@ const ACT = {
   afTipo: t => { S.af.tipo = t.dataset.tipo; render(); },
   ficha: t => { S.ficha = t.dataset.cliente; S.pficha = null; S.view = 'clientes'; try { history.replaceState(null, '', '#clientes/' + encodeURIComponent(S.ficha)); } catch (e) { } render(); window.scrollTo(0, 0); },
   back: () => { S.ficha = null; try { history.replaceState(null, '', '#clientes'); } catch (e) { } render(); },
-  pver: t => { const id = t.dataset.id; S.pficha = id; S.ficha = null; S.view = 'proyectos'; closeForm(); try { history.replaceState(null, '', '#proyectos/' + id); } catch (e) { } render(); window.scrollTo(0, 0); },
+  pver: t => { const id = t.dataset.id; if (S.pficha !== id) S.ptab = 'tareas'; S.pficha = id; S.ficha = null; S.view = 'proyectos'; closeForm(); try { history.replaceState(null, '', '#proyectos/' + id); } catch (e) { } render(); window.scrollTo(0, 0); },
   pback: () => { S.pficha = null; try { history.replaceState(null, '', '#proyectos'); } catch (e) { } render(); },
   print: () => window.print(),
   exportar: () => exportarVista(),
@@ -1096,6 +1274,7 @@ document.addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target;
   if (f.id === 'form') { saveForm(); return; }
+  if (f.id === 'tkform') { guardarTareaPanel(); return; }
   if (f.dataset.tkadd) {
     const p = S.P.find(x => x._id === f.dataset.tkadd), n = f.elements.n.value.trim(); if (!p || !n) return;
     await guardarTareas(p, [...etapasDe(p), { n, ok: false, resp: f.elements.resp.value, fecha: f.elements.fecha.value }]);
@@ -1134,6 +1313,14 @@ document.addEventListener('dragover', e => { const col = e.target.closest && e.t
 document.addEventListener('drop', e => {
   const col = e.target.closest && e.target.closest('[data-drop]'); if (!col || !dragId) return;
   e.preventDefault(); col.classList.remove('over');
+  if (dragId.startsWith('t:')) {
+    const [, pid, si] = dragId.split(':'), k = (col.dataset.drop || '').slice(2); dragId = null;
+    const p = S.P.find(x => x._id === pid); if (!p || !col.dataset.drop.startsWith('t:')) return;
+    const i = +si, x = etapasDe(p)[i]; if (!x || estTk(x) === k) return;
+    guardarTareas(p, etapasDe(p).map((y, j) => j === i ? conEst(y, k) : y));
+    return;
+  }
+  if (col.dataset.drop.startsWith('t:')) { dragId = null; return; }
   const p = S.P.find(x => x._id === dragId), estado = col.dataset.drop; dragId = null;
   if (!p || p.estado === estado) return;
   const patch = { estado }; if (estado === 'Entregado' && !p.entregaReal) patch.entregaReal = today();
