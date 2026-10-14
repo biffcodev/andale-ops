@@ -48,3 +48,8 @@ npm run dev
 
 - Facturas de junio a octubre 2026: la planilla de facturación dejó de actualizarse en mayo; cargar con Jime.
 - Login con Google.
+
+## Deploy (Vercel Hobby)
+
+Cada push a `main` se publica solo. En el plan Hobby, Vercel **bloquea** los deploys de commits cuyo autor no es la cuenta dueña del proyecto.
+Commitear siempre como `biffcodev <257424274+biffcodev@users.noreply.github.com>` (configurado en `git config` local del repo).
