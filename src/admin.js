@@ -512,7 +512,7 @@ export function initAdmin(ctx) {
     const f = finProyecto(p), facturadas = f.cs.filter(c => f.env.has('pf:' + c.id)).length;
     const vals = { presupuesto: f.fz.presupuesto ?? (f.programado || ''), moneda: f.moneda, plan_pago: f.fz.plan_pago || (f.cs.length ? 'Personalizado' : '50/50'), inicio_cobro: f.fz.inicio_cobro || (f.cs[0] ? f.cs[0].periodo : thisMonth()), regenerar: !f.cs.length, notas: f.fz.notas || '' };
     const resumenHtml = () => '<div class="field full"><span class="lbl">Cómo viene</span><dl class="kv">' +
-      '<dt>Presupuesto</dt><dd class="money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</dd>' +
+      '<dt>Precio total</dt><dd class="money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</dd>' +
       '<dt>Cobros planificados</dt><dd class="money">' + money(f.programado, f.moneda) + ' <span class="muted">(' + f.cs.length + ')</span></dd>' +
       '<dt>Ya incluido en resúmenes enviados</dt><dd class="money">' + money(f.facturado, f.moneda) + '</dd>' +
       '<dt>Costos de proveedores</dt><dd class="money">' + esc(multi(f.cost)) + '</dd>' +
@@ -520,11 +520,11 @@ export function initAdmin(ctx) {
     const cuotasHtml = '<div class="field full"><span class="lbl">Cuotas cargadas</span>' + (f.cs.length ? '<div class="rows" style="border:1px solid var(--line);border-radius:8px">' + f.cs.map(c => '<div class="row" style="cursor:default"><span class="d">' + fmt(c.periodo) + '</span><span class="t"><b class="money">' + money(c.monto, c.moneda) + '</b><span>' + esc(c.concepto || '') + (f.env.has('pf:' + c.id) ? ' · <b style="color:var(--ok)">facturada</b>' : '') + '</span></span>' + (f.env.has('pf:' + c.id) ? '' : '<button type="button" class="btn ghost sm" data-act="aCuotaDel" data-id="' + esc(c.id) + '" aria-label="Quitar">✕</button>') + '</div>').join('') + '</div>' : '<span class="muted">Ninguna todavía.</span>') +
       '<span class="toolbar" style="margin-top:6px"><button type="button" class="btn ghost sm" data-act="aCuotas" data-id="' + esc(p._id) + '">+ Agregar cobro</button></span></div>';
     openPanel({
-      title: p.proyecto, eyebrow: 'Presupuesto y cobro · ' + p.cliente, saveLabel: 'Guardar',
-      intro: 'Cargá el presupuesto aprobado y cómo se paga: las cuotas se generan solas y aparecen en el resumen de cada mes.' + (facturadas ? ' <b>Hay ' + facturadas + ' cuota(s) ya facturada(s): no se regeneran; ajustá las restantes a mano.</b>' : ''),
+      title: p.proyecto, eyebrow: 'Precio y cobro · ' + p.cliente, saveLabel: 'Guardar',
+      intro: 'Cuánto nos paga el cliente por este trabajo y en cuántas veces. Con eso se arman las cuotas solas y aparecen en el resumen de cada mes. Si el proyecto salió de un presupuesto aceptado (“Convertir en proyecto”), esto ya viene cargado.' + (facturadas ? ' <b>Hay ' + facturadas + ' cuota(s) ya facturada(s): no se regeneran; ajustá las restantes a mano.</b>' : ''),
       values: vals,
       fields: [
-        { k: 'presupuesto', label: 'Presupuesto aprobado', num: 1 },
+        { k: 'presupuesto', label: 'Precio total acordado', num: 1, ph: 'Ej: 1.200.000', hint: 'El total que el cliente aceptó pagar por este trabajo, sin la pauta. Si se cobra en cuotas, poné el total igual.' },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
         { k: 'plan_pago', label: 'Forma de pago', type: 'select', opts: PLANES_PAGO },
         { k: 'inicio_cobro', label: 'Primera cuota (mes)', type: 'month', month: 1 },
@@ -544,7 +544,7 @@ export function initAdmin(ctx) {
           await data.del('proyecto_facturacion', p._id, 'proyecto_id');
           await data.insMany('proyecto_facturacion', cs.map(c => ({ proyecto_id: p._id, periodo: c.periodo + '-01', concepto: c.concepto, monto: c.monto, moneda: v.moneda })));
         }
-        toast('Presupuesto guardado' + (v.regenerar && cs.length ? ' · ' + cs.length + ' cuota(s) generada(s)' : ''));
+        toast('Precio guardado' + (v.regenerar && cs.length ? ' · ' + cs.length + ' cuota(s) generada(s)' : ''));
       },
     });
     AD.form.onInput();
@@ -615,7 +615,7 @@ export function initAdmin(ctx) {
         ps.map(({ p, f }) => '<tr><td class="name">' + esc(p.proyecto) + '<span class="sub">' + esc(p.cliente) + (f.fz.plan_pago ? ' · ' + esc(f.fz.plan_pago) : '') + '</span></td><td>' + pill(p.estado, ctx.stVar ? ctx.stVar(p.estado) : '--muted') + '</td>' +
           '<td class="r money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</td><td class="r money">' + money(f.facturado, f.moneda) + '</td><td class="r money">' + (f.presupuesto != null ? money(r2(f.presupuesto - f.facturado), f.moneda) : '—') + '</td>' +
           '<td class="r money">' + esc(multi(f.cost) || '—') + '</td><td class="r"><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? '<span class="sub">' + f.pct + '%</span>' : '') + '</td>' +
-          '<td class="r"><button class="btn ghost sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">Editar</button></td></tr>').join('') + '</tbody></table></div>' : emptyBox('Todavía no hay proyectos con presupuesto', 'Abrí un proyecto → “Presupuesto y cobro” y cargá el monto aprobado y la forma de pago.')) + '</section>';
+          '<td class="r"><button class="btn ghost sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">Editar</button></td></tr>').join('') + '</tbody></table></div>' : emptyBox('Todavía no hay proyectos con precio cargado', 'Abrí un proyecto → “Precio y cobro” y cargá cuánto se cobra y en cuántas veces.')) + '</section>';
     } else {
       const meses = []; for (let i = 1; i <= 12; i++) { const mm = y + '-' + String(i).padStart(2, '0'); if (mm <= m) meses.push(mm); }
       const rows = S.A.map(a => {
@@ -692,13 +692,13 @@ export function initAdmin(ctx) {
   function proyectoSection(p) {
     const f = finProyecto(p), pend = r2((f.presupuesto || 0) - f.facturado);
     const cuotas = f.cs.map(c => '<div class="row" style="cursor:default"><span class="d">' + fmt(c.periodo) + '</span><span class="t"><b class="money">' + money(c.monto, c.moneda) + '</b><span>' + esc(c.concepto || '') + '</span></span>' + (f.env.has('pf:' + c.id) ? pill('Facturada', '--s-entregado') : pill('Pendiente', '--s-empezar')) + '</div>').join('');
-    return '<section class="sheet"><div class="sheet-h"><h2>Presupuesto y cobro</h2><button class="btn sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">' + (f.presupuesto != null ? 'Editar' : 'Cargar presupuesto') + '</button></div>' +
+    return '<section class="sheet"><div class="sheet-h"><h2>Precio y cobro</h2><button class="btn sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">' + (f.presupuesto != null ? 'Editar' : 'Cargar precio') + '</button></div>' +
       (f.presupuesto != null || f.cs.length ? '<div class="sheet-b"><dl class="kv">' +
-        '<dt>Presupuesto</dt><dd><b class="money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</b>' + (f.fz.plan_pago ? ' <span class="muted">' + esc(f.fz.plan_pago) + '</span>' : '') + '</dd>' +
+        '<dt>Precio total</dt><dd><b class="money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</b>' + (f.fz.plan_pago ? ' <span class="muted">' + esc(f.fz.plan_pago) + '</span>' : '') + '</dd>' +
         '<dt>Facturado</dt><dd class="money">' + money(f.facturado, f.moneda) + (f.presupuesto != null && pend > 0.009 ? ' <span class="muted">· falta ' + money(pend, f.moneda) + '</span>' : '') + '</dd>' +
         '<dt>Costos</dt><dd class="money">' + esc(multi(f.cost)) + '</dd>' +
         '<dt>Margen</dt><dd><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? ' ' + pill(f.pct + '%', f.pct >= 50 ? '--s-entregado' : f.pct >= 25 ? '--s-revision' : '--s-cancelado') : '') + '</dd></dl></div>' + (cuotas ? '<div class="rows" style="border-top:1px solid var(--line)">' + cuotas + '</div>' : '')
-        : emptyBox('Sin presupuesto cargado', 'Cargá el monto aprobado y la forma de pago: las cuotas aparecen solas en el resumen de cada mes.')) + '</section>';
+        : emptyBox('Todavía no cargaste cuánto se cobra', 'Poné el precio total y en cuántas veces: las cuotas aparecen solas en el resumen de cada mes.')) + '</section>';
   }
 
   /* ---------- Formularios (panel lateral) ---------- */

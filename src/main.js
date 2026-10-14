@@ -387,7 +387,7 @@ function vTablero() {
         return '<button class="card' + (late ? ' late' : '') + '" data-act="pver" data-id="' + esc(p._id) + '" data-drag="' + esc(p._id) + '"' + (canEditProj(p) ? ' draggable="true"' : '') + '><span class="cl">' + esc(p.cliente) + '</span><span class="pj">' + esc(p.proyecto) + '</span>' + (etapasDe(p).length ? '<span class="et">' + segs(etapasDe(p)) + esc(etapaInfo(p).cur) + '</span>' : '') + '<span class="ft">' + (resp(p).length ? whos(resp(p)) : '<span class="tag">Sin responsable</span>') + (p.entrega ? '<span class="mono">' + fmtShort(p.entrega) + '</span>' : '') + '</span></button>';
       }).join('') + '</div>';
   }).join('');
-  return '<p class="muted" style="margin:0">Arrastrá una tarjeta a otra columna para cambiarle el estado. En el celular, tocala y cambiá el estado en el formulario.</p><div class="kb">' + cols + '</div>';
+  return '<p class="muted" style="margin:0">Arrastrá una tarjeta a otra columna para cambiarle el estado. Para ver más columnas usá las flechas ‹ › o arrastrá el fondo.</p><div class="kbw"><button type="button" class="kbnav l" data-act="kbMover" data-d="-1" aria-label="Ver columnas de la izquierda">‹</button><div class="kb">' + cols + '</div><button type="button" class="kbnav r" data-act="kbMover" data-d="1" aria-label="Ver columnas de la derecha">›</button></div>';
 }
 
 function vCalendario() {
@@ -590,11 +590,36 @@ function vListas() {
 const VIEW_FN = { inicio: vInicio, proyectos: vProyectos, abonos: vAbonos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas };
 
 /* ---------- Render ---------- */
+document.addEventListener('change', e => { if (e.target.matches && e.target.matches('[data-srvab="Redes"]')) { const b = document.getElementById('srvplan'); if (b) b.hidden = !e.target.checked; } });
+function kbFlechas(kb) {
+  const w = kb && kb.parentElement; if (!w) return;
+  kb.style.setProperty('--kb-top', Math.round(kb.getBoundingClientRect().top + window.scrollY + 24) + 'px');
+  const max = kb.scrollWidth - kb.clientWidth;
+  w.classList.toggle('puede-l', kb.scrollLeft > 4); w.classList.toggle('puede-r', kb.scrollLeft < max - 4);
+}
+document.addEventListener('scroll', e => { if (e.target.classList && e.target.classList.contains('kb')) kbFlechas(e.target); }, true);
+window.addEventListener('resize', () => kbFlechas(document.querySelector('.kb')));
+// Rueda vertical sobre los títulos de columna (o el fondo) => desplaza de costado
+document.addEventListener('wheel', e => {
+  const kb = e.target.closest && e.target.closest('.kb'); if (!kb || e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  const col = e.target.closest('.col'), enTitulo = e.target.closest('.col-h');
+  if (col && !enTitulo && col.scrollHeight > col.clientHeight) return;
+  if (kb.scrollWidth <= kb.clientWidth) return;
+  e.preventDefault(); kb.scrollLeft += e.deltaY;
+}, { passive: false });
+// Arrastrar el fondo del tablero para moverlo de costado
+document.addEventListener('pointerdown', e => {
+  const kb = e.target.closest && e.target.closest('.kb'); if (!kb || e.button !== 0 || e.pointerType !== 'mouse' || e.target.closest('.card,button,a,input,select')) return;
+  const x0 = e.clientX, l0 = kb.scrollLeft; let movio = false;
+  const mv = ev => { const dx = ev.clientX - x0; if (Math.abs(dx) > 3) { movio = true; kb.classList.add('paneando'); } kb.scrollLeft = l0 - dx; };
+  const up = () => { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); kb.classList.remove('paneando'); if (movio) { const k = ev => ev.stopPropagation(); document.addEventListener('click', k, true); setTimeout(() => document.removeEventListener('click', k, true), 0); } };
+  document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+});
 function render() {
   if (!S.me) return;
   const a = document.activeElement, fid = a && a.id && $('#view').contains(a) ? a.id : null;
   const sel = fid && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
-  const kb = document.querySelector('.kb'), kbLeft = kb ? kb.scrollLeft : 0;
+  const kb = document.querySelector('.kb'), kbLeft = kb ? kb.scrollLeft : 0, kbTops = kb ? [...kb.querySelectorAll('.col')].map(c => c.scrollTop) : [];
   if (!views().some(v => v[0] === S.view)) S.view = isExt() ? 'mis' : 'inicio';
   const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length };
   const item = ([k, l]) => '<button class="snav-i" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + (ICON[k] || '') + '<span class="snav-l">' + l + '</span>' + (counts[k] ? '<span class="snav-n' + (k === 'cobros' ? ' hot' : '') + '">' + counts[k] + '</span>' : '') + '</button>';
@@ -608,7 +633,7 @@ function render() {
   if (S.status === 'loading') { $('#view').innerHTML = '<section class="sheet">' + emptyBox('Cargando datos del equipo…', '') + '</section>'; return; }
   $('#view').innerHTML = viewFn(S.view)();
   ponerHerramientas();
-  const kb2 = document.querySelector('.kb'); if (kb2) kb2.scrollLeft = kbLeft;
+  const kb2 = document.querySelector('.kb'); if (kb2) { kb2.scrollLeft = kbLeft; kb2.querySelectorAll('.col').forEach((c, i) => { c.scrollTop = kbTops[i] || 0; }); kbFlechas(kb2); }
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { } } }
 }
 function banner(msg, err) { const b = $('#banner'); if (!msg) { b.hidden = true; return; } b.innerHTML = msg; b.className = 'banner' + (err ? ' err' : ''); b.hidden = false; }
@@ -686,7 +711,6 @@ const FORMS = {
     { k: 'nombre', label: 'Cliente', req: 1, full: 1 },
     { k: 'estado', label: 'Estado', type: 'select', html: v => opt('__auto', 'Automático', v) + optsFrom(S.L.estadosCliente, v === '__auto' ? '' : v, undefined, VER_CL), hint: 'Se calcula solo con sus abonos y proyectos. Elegí otro solo si no coincide.' },
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
-    { k: 'plan', label: 'Plan', type: 'select', opts: () => S.L.planes, blank: '—' },
     { k: 'contacto', label: 'Contacto (nombre)' },
     { k: 'email', label: 'Email', type: 'email' },
     { k: 'tel', label: 'Teléfono / WhatsApp', type: 'tel' },
@@ -753,9 +777,20 @@ function openForm(kind, id, preset) {
   if (ro) foot = '<span class="muted">Solo lectura.</span><button type="button" class="btn" data-act="close">Cerrar</button>';
   else foot = '<span id="delzone">' + (rec && (isStaff() && (kind !== 'persona' || isAdmin())) ? '<button type="button" class="btn ghost danger" data-act="del">Eliminar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="savebtn">' + (rec ? 'Guardar cambios' : 'Crear ' + def.title) + '</button></span>';
   let adminBtn = '';
-  if (isAdmin() && rec && kind === 'proyecto') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aProyAdm" data-id="' + esc(rec._id) + '">Presupuesto y cobro (administración)</button></div>';
+  if (isAdmin() && rec && kind === 'proyecto') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aProyAdm" data-id="' + esc(rec._id) + '">Precio y cobro</button></div>';
   if (isAdmin() && rec && kind === 'abono') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aPrecio" data-abono="' + esc(rec._id) + '">Precio del abono (administración)</button>' + (rec.tipo === 'Ads' ? '<button type="button" class="btn sm" data-act="aAds" data-abono="' + esc(rec._id) + '">Pauta de Ads (administración)</button>' : '') + '</div>';
-  const extra = adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
+  let servBox = '';
+  if (kind === 'cliente' && !ro) {
+    const tAb = S.L.tiposAbono || ['Redes', 'Ads'], tPr = (S.L.tipos || []).filter(t => !tAb.includes(t));
+    servBox = rec
+      ? '<div class="field full"><span class="lbl">Servicios</span><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (servPills(rec.nombre).replace('<span class="srvs"></span>', '<span class="muted">Todavía ninguno</span>')) + '</div><div class="toolbar" style="margin-top:8px"><button type="button" class="btn sm" data-act="new" data-kind="abono" data-preset="' + esc(JSON.stringify({ cliente: rec.nombre })) + '">+ Abono (redes, ads)</button><button type="button" class="btn sm" data-act="new" data-kind="proyecto" data-preset="' + esc(JSON.stringify({ cliente: rec.nombre })) + '">+ Proyecto (branding, web…)</button></div><span class="hint">Los servicios salen solos de sus abonos y proyectos.</span></div>'
+      : '<div class="field full srvpick"><span class="lbl">¿Qué le vamos a hacer?</span><div class="multi">' +
+        tAb.map(t => '<label><input type="checkbox" data-srvab="' + esc(t) + '"> ' + esc(t) + ' <small class="muted">· mensual</small></label>').join('') +
+        tPr.map(t => '<label><input type="checkbox" data-srvpr="' + esc(t) + '"> ' + esc(t) + '</label>').join('') + '</div>' +
+        '<div id="srvplan" hidden style="margin-top:10px;max-width:260px"><label class="lbl" for="f-srvplan">Plan de redes</label><select id="f-srvplan">' + optsFrom(S.L.planes, '', '—') + '</select></div>' +
+        '<span class="hint">Se crea un abono por cada servicio mensual (desde este mes) y un proyecto “Por empezar” por cada trabajo puntual. Después los ajustás.</span></div>';
+  }
+  const extra = servBox + adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
   const p = $('#panel');
   p.innerHTML = '<form id="form" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + (rec ? (ro ? 'Ver ' : 'Editar ') + def.title : 'Alta') + '</span><h2 id="panel-title">' + (rec ? esc(def.label(rec) || def.title) : def.nuevo) + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
     '<div class="panel-b">' + (IA && kind === 'comunicacion' && !rec ? IA.charlaHtml() : '') + def.fields.filter(f => !f.adv).map(f => fieldHtml(f, vals[f.k], ro)).join('') +
@@ -797,8 +832,16 @@ async function saveForm() {
   const prev = id ? S[def.arr].find(x => x._id === id) : null;
   const btn = $('#savebtn'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
+    const srvAb = kind === 'cliente' && !prev ? [...document.querySelectorAll('[data-srvab]:checked')].map(x => x.dataset.srvab) : [];
+    const srvPr = kind === 'cliente' && !prev ? [...document.querySelectorAll('[data-srvpr]:checked')].map(x => x.dataset.srvpr) : [];
+    const plan = ($('#f-srvplan') || {}).value || '';
     await data.save(kind, id, out, prev ? resp(prev) : []);
-    closeForm(); toast(prev ? 'Cambios guardados' : 'Creado'); await reload();
+    if (srvAb.length || srvPr.length) {
+      await reload();
+      for (const t of srvAb) await data.save('abono', null, { cliente: out.nombre, tipo: t, plan: t === 'Redes' ? plan : '', desde: thisMonth(), estado: 'Activo', responsables: out.responsables || [] }, []);
+      for (const t of srvPr) await data.save('proyecto', null, { cliente: out.nombre, proyecto: t + ' · ' + out.nombre, tipo: t, estado: 'Por empezar', fechaInicio: today(), responsables: out.responsables || [] }, []);
+    }
+    closeForm(); toast(prev ? 'Cambios guardados' : 'Creado' + (srvAb.length + srvPr.length ? ' con ' + (srvAb.length + srvPr.length) + ' servicios' : '')); await reload();
   } catch (err) { toast(err.message); if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
 }
 async function delRecord() {
@@ -828,6 +871,7 @@ async function saveListas(k, arr) {
 function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('Copiado'), () => toast(v)); } catch (e) { toast(v); } }
 const ACT = {
   go: t => { if (t.dataset.pend) S.mf.pend = true; go(t.dataset.view); },
+  kbMover: t => { const kb = document.querySelector('.kb'); if (kb) kb.scrollBy({ left: +t.dataset.d * Math.max(260, kb.clientWidth * .8), behavior: 'smooth' }); },
   tab: t => { S.tab[t.dataset.hub] = t.dataset.t; if (ADM) ADM.resetView(); render(); window.scrollTo(0, 0); },
   goProy: t => { S.f = { q: '', estado: t.dataset.estado || '', tipo: t.dataset.tipo || '', resp: '', cliente: '', plazo: t.dataset.plazo || '', abiertos: !(t.dataset.estado && CERRADOS.has(t.dataset.estado)) }; S.mode = 'lista'; go('proyectos'); },
   calendar: () => { S.mode = 'calendario'; lsSet('mode', 'calendario'); go('proyectos'); },
