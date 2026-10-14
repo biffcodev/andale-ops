@@ -4,6 +4,7 @@ import * as data from './data.js';
 import * as E from './emails.js';
 import { initEquipo } from './equipo.js';
 import { initAsistente } from './asistente.js';
+import { initStats } from './stats.js';
 
 export function initAdmin(ctx) {
   const { S, esc, opt, optsFrom, pill, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $ } = ctx;
@@ -27,7 +28,7 @@ export function initAdmin(ctx) {
   const r2 = n => Math.round(n * 100) / 100;
   const add = (acc, cur, n) => { if (n) acc[cur || 'ARS'] = (acc[cur || 'ARS'] || 0) + n; return acc; };
   const multi = acc => { const e = Object.entries(acc).filter(([, v]) => Math.abs(v) > 0.004); return e.length ? e.map(([c, v]) => money(v, c)).join(' + ') : money(0, 'ARS'); };
-  const lock = '<span class="tag" style="color:var(--money);background:color-mix(in srgb,var(--money) 12%,transparent)">Solo administradores</span>';
+  const lock = ''; // la barra lateral ya agrupa Administración
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 
   /* ---------- datos derivados ---------- */
@@ -108,7 +109,7 @@ export function initAdmin(ctx) {
     rows.forEach(r => { add(aFacturar, r.moneda, r.total); r.facs.forEach(f => { add(emitido, f.moneda, f.monto); add(cobrado, f.moneda, f.cobrado); }); });
     const pendientes = {}; rows.forEach(r => r.facs.forEach(f => add(pendientes, f.moneda, f.saldo)));
     const env = rows.filter(r => r.res && r.res.estado === 'Enviado').length, conComp = rows.filter(r => r.facs.length).length;
-    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Cierre de mes</h1><p>Por cliente: resumen de cuenta → comprobante (factura ARCA o invoice) → cobro → recordatorio si vence. Se arma solo con los abonos activos y los proyectos que se facturan en el mes.</p></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Cierre de mes</h1><p>Resumen, comprobante, cobro y recordatorio de cada cliente del mes.</p></div>' +
       '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aMes" data-d="0">Este mes</button><button class="btn sm" data-act="aMes" data-d="1" aria-label="Mes siguiente">→</button></div></div></div>';
     h += '<section class="kpis">' +
       '<div class="kpi"><span class="eyebrow">A facturar</span><b style="font-size:22px;color:var(--money)">' + esc(multi(aFacturar)) + '</b><span>' + cl.length + ' clientes</span></div>' +
@@ -118,7 +119,7 @@ export function initAdmin(ctx) {
       '</section>';
     const sinPrecio = S.A.filter(a => abonoEnMes(a, m) && !precioEn(a._id, m));
     if (sinPrecio.length) h += '<section class="callout"><p><b>' + sinPrecio.length + ' abonos</b> de este mes no tienen precio cargado, así que el resumen sale sin monto. Cargalos en Precios.</p><button class="btn" data-act="go" data-view="precios">Ir a Precios</button></section>';
-    const step = (ok, txt, warn) => '<span class="days ' + (ok ? '' : warn ? 'late' : 'far') + '" style="' + (ok ? 'color:var(--ok)' : '') + '">' + (ok ? '✓ ' : '') + esc(txt) + '</span>';
+    const step = (ok, txt, warn) => pill(txt, ok ? '--s-entregado' : warn ? '--crit' : '--s-empezar');
     const tr = rows.map(r => {
       const resTxt = r.res ? (r.res.estado === 'Enviado' ? step(true, 'Enviado ' + fmt(r.res.enviado_el || '').slice(0, 5)) : step(false, 'Borrador')) : step(false, 'Sin armar');
       const compTxt = r.facs.length ? step(true, r.facs.map(f => (f.tipo === 'Invoice' ? 'Invoice ' : 'Fact. ') + (f.numero || 's/n') + (f.emisor ? ' · ' + f.emisor : '')).join(', ')) : step(false, 'Sin emitir');
@@ -159,7 +160,7 @@ export function initAdmin(ctx) {
     const facs = c.facs.map(f => '<div class="row" style="cursor:default"><span class="d">' + fmt(f.fecha) + '</span><span class="t"><b>' + esc(f.tipo) + ' ' + esc(f.numero || 's/n') + (f.emisor ? ' · ' + esc(f.emisor) : '') + '</b><span><span class="money">' + money(f.monto, f.moneda) + '</span> · cobrado ' + money(f.cobrado, f.moneda) + (f.vencimiento ? ' · vence ' + fmt(f.vencimiento) : '') + (f.link_pdf ? ' · <a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</span></span><span class="toolbar">' + efPill(f) + (f.saldo > 0.009 ? '<button class="btn sm" data-act="aCobro" data-id="' + esc(f.id) + '">Registrar cobro</button>' : '') + '<button class="btn sm" data-act="aMailFactura" data-id="' + esc(f.id) + '">Enviar</button><button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Editar</button></span></div>').join('');
     const gest = c.gest.map(g => '<div class="row" style="cursor:default"><span class="d">' + fmt(g.fecha) + '</span><span class="t"><b>' + esc(g.tipo) + '</b><span>' + esc([g.canal, g.persona, g.nota].filter(Boolean).join(' · ')) + '</span></span><button class="btn ghost sm" data-act="aGestDel" data-id="' + esc(g.id) + '" aria-label="Borrar">✕</button></div>').join('');
     return '<button class="btn ghost sm" data-act="aBack" style="justify-self:start">← Cierre de ' + esc(monthLabel(rd.m)) + '</button>' +
-      '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">' + esc(rd.cliente) + '</h1><p style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Cuenta de <b style="color:var(--fg)">' + esc(cap(monthLabel(rd.m))) + '</b>' + (ca.cuit ? ' · CUIT ' + esc(ca.cuit) : '') + (ca.carpeta_admin ? ' · <a href="' + esc(ca.carpeta_admin) + '" target="_blank" rel="noopener">Carpeta de administración</a>' : '') + '</p></div>' +
+      '<div class="head"><div>' + lock + '<h1>' + esc(rd.cliente) + '</h1><p style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Cuenta de <b style="color:var(--fg)">' + esc(cap(monthLabel(rd.m))) + '</b>' + (ca.cuit ? ' · CUIT ' + esc(ca.cuit) : '') + (ca.carpeta_admin ? ' · <a href="' + esc(ca.carpeta_admin) + '" target="_blank" rel="noopener">Carpeta de administración</a>' : '') + '</p></div>' +
       '<div class="toolbar"><button class="btn" data-act="aClienteAdm" data-cliente="' + esc(rd.cliente) + '">Datos de facturación</button></div></div>' +
       '<div class="grid2"><div class="stack">' +
       '<section class="sheet"><div class="sheet-h"><h2>1 · Resumen de cuenta</h2><span class="toolbar">' + pill(rd.estado, rd.estado === 'Enviado' ? '--s-entregado' : rd.estado === 'Borrador' ? '--s-revision' : '--s-empezar') + '<label class="muted" for="rd-mon">Moneda</label><select class="in" id="rd-mon" data-rdk="moneda">' + optsFrom(MONEDAS, rd.moneda) + '</select></span></div>' +
@@ -440,7 +441,7 @@ export function initAdmin(ctx) {
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
     const tot = {}, sal = {}; list.forEach(f => { add(tot, f.moneda, f.monto); add(sal, f.moneda, f.saldo); });
     const deudores = {}; AD.F.filter(f => f.saldo > 0.009).forEach(f => { (deudores[f.cliente] = deudores[f.cliente] || {}); add(deudores[f.cliente], f.moneda, f.saldo); });
-    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Facturas e invoices</h1><p>Todos los comprobantes emitidos, quién los emitió y cuánto falta cobrar. El saldo se calcula con los cobros registrados en caja.</p></div><div class="toolbar"><button class="btn primary" data-act="aFactura">+ Comprobante</button></div></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Facturas e invoices</h1><p>Comprobantes emitidos y lo que falta cobrar.</p></div><div class="toolbar"><button class="btn primary" data-act="aFactura">+ Comprobante</button></div></div>' +
       '<div class="toolbar"><div class="seg" role="group" aria-label="Estado">' + [['abiertas', 'Por cobrar'], ['vencidas', 'Vencidas'], ['pagadas', 'Pagadas'], ['todas', 'Todas']].map(([k, l]) => '<button data-act="aFf" data-k="estado" data-v="' + k + '" aria-pressed="' + (ff.estado === k) + '">' + l + '</button>').join('') + '</div>' +
       '<select class="in" id="ff-c" data-aff="cliente" aria-label="Cliente">' + clienteOpts(ff.cliente, 'Todos los clientes') + '</select>' +
       '<select class="in" id="ff-e" data-aff="emisor" aria-label="Emisor">' + opt('', 'Todos los emisores', ff.emisor) + EMISORES.map(e => opt(e, 'Emite ' + e, ff.emisor)).join('') + '</select>' +
@@ -575,7 +576,7 @@ export function initAdmin(ctx) {
     const sinImp = provAnio.map(v => ({ v, falta: r2(v.egreso - imputadoDe(v.id)) })).filter(x => x.falta > 0.009).sort((a, b) => (b.v.fecha || '').localeCompare(a.v.fecha || ''));
     const accSin = {}; sinImp.forEach(x => add(accSin, x.v.moneda, x.falta));
     const accImp = {}; AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (mv && (mv.fecha || '').startsWith(y)) add(accImp, mv.moneda, x.monto); });
-    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Rentabilidad</h1><p>Cuánto deja cada proyecto y cada abono: lo que se cobra menos lo que se paga a proveedores imputado (Ads, web, fotos). Es margen de contribución: no descuenta sueldos ni gastos fijos.</p></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Rentabilidad</h1><p>Lo que deja cada proyecto y abono después de pagar proveedores. No descuenta sueldos ni gastos fijos.</p></div>' +
       '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['proyectos', 'Proyectos'], ['abonos', 'Abonos']].map(([k, l]) => '<button data-act="aRtVer" data-v="' + k + '" aria-pressed="' + (rt.ver === k) + '">' + l + '</button>').join('') + '</div>' +
       '<select class="in" aria-label="Año" data-art="anio">' + anios.map(a => opt(a, a, y)).join('') + '</select></div></div>';
     h += '<section class="kpis"><div class="kpi"><span class="eyebrow">Costos imputados ' + esc(y) + '</span><b style="font-size:20px" class="money">' + esc(multi(accImp)) + '</b><span>a abonos y proyectos</span></div>' +
@@ -612,7 +613,7 @@ export function initAdmin(ctx) {
     const ab = S.A.filter(a => a.estado === 'Activo').sort((a, b) => cmp(a.cliente, b.cliente) || cmp(a.tipo, b.tipo));
     const pct = parseMonto(pp.pct);
     const sel = ab.filter(a => pp.sel.has(a._id));
-    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Precios y aumentos</h1><p>El precio vigente de cada abono y su historial. Para un aumento, tildá los abonos, poné el porcentaje y desde qué mes rige: se guarda como precio nuevo sin perder el anterior.</p></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Precios y aumentos</h1><p>Precio vigente de cada abono, aumentos e historial.</p></div>' +
       (AD.PR.some(p => p.desde > m && !p.aviso_enviado) ? '<div class="toolbar"><button class="btn primary" data-act="aAvisos">Avisar aumentos por email</button></div>' : '') + '</div>';
     h += '<section class="sheet"><div class="sheet-h"><h2>Aplicar aumento</h2><span class="muted">' + sel.length + ' abonos seleccionados</span></div><div class="sheet-b"><div class="toolbar">' +
       '<div class="field"><label for="pp-pct">Aumento %</label><input class="in" id="pp-pct" data-app="pct" inputmode="decimal" value="' + esc(pp.pct) + '" placeholder="4" style="width:90px"></div>' +
@@ -848,7 +849,7 @@ export function initAdmin(ctx) {
     const ingM = {}, egM = {}; delMes.forEach(x => { if (x.cuenta !== 'Saldo Inicial') { add(ingM, x.moneda, x.ingreso); add(egM, x.moneda, x.egreso); } });
     const deuda = AD.MV.filter(x => x.reintegro_a && !x.reintegrado && x.egreso > 0);
     const porSocio = {}; deuda.forEach(x => { porSocio[x.reintegro_a] = porSocio[x.reintegro_a] || {}; add(porSocio[x.reintegro_a], x.moneda, x.egreso); });
-    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Caja</h1><p>Ingresos y egresos con el mismo plan de cuentas de la planilla. Los cobros de facturas entran solos. Los saldos incluyen el acumulado al 1/1/2026.</p></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Caja</h1><p>Ingresos y egresos con el plan de cuentas de siempre. Los cobros de facturas entran solos.</p></div>' +
       '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aCjMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aCjMes" data-d="0">Este mes</button><button class="btn sm" data-act="aCjMes" data-d="1" aria-label="Mes siguiente">→</button></div><button class="btn primary" data-act="aMov">+ Movimiento</button></div></div>';
     h += '<section class="kpis">' +
       '<div class="kpi"><span class="eyebrow">Saldo en pesos</span><b style="font-size:24px;color:var(--money)">' + money(saldo.ARS || 0, 'ARS') + '</b><span>hoy, todas las cajas</span></div>' +
@@ -921,6 +922,7 @@ export function initAdmin(ctx) {
     formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a) };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;
   const AS = initAsistente(ctx, kit);
+  const ST = initStats(ctx, kit);
 
   /* ---------- Acciones ---------- */
   const actions = {
@@ -1017,10 +1019,10 @@ export function initAdmin(ctx) {
   });
   document.addEventListener('submit', e => { if (e.target.id === 'aform') { e.preventDefault(); submitPanel(); } });
 
-  Object.assign(actions, EQ.actions, AS.actions);
+  Object.assign(actions, EQ.actions, AS.actions, ST.actions);
   return {
     load, actions, fichaSection, AD,
-    views: [['asistente', 'Asistente', AS.view], ['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['pagos', 'Pagos', EQ.view], ['rentabilidad', 'Rentabilidad', vRent]],
+    views: [['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['pagos', 'Pagos', EQ.view], ['rentabilidad', 'Rentabilidad', vRent]],
     counts: () => (AD.ok ? { facturas: AD.F.filter(f => estadoFactura(f) === 'Vencida').length, asistente: AS.count() } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; },
   };

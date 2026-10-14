@@ -71,7 +71,7 @@ export function initEquipo(ctx, k) {
     const lq = liqMes(m), falt = faltantes(m);
     const pend = {}, pag = {}; lq.forEach(l => add(l.movimiento_id ? pag : pend, l.moneda, l.monto));
     const laboral = {}, prov = {}; AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.egreso > 0).forEach(v => { if (v.cuenta === 'Costo Laboral') add(laboral, v.moneda, v.egreso); else if (v.cuenta === 'Proveedores') add(prov, v.moneda, v.egreso); });
-    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Sueldos y pagos</h1><p>Equipo, socias y proveedores: cuánto cobra cada uno, extras, aguinaldo y la liquidación de cada mes. Al pagar, el egreso queda cargado en Caja.</p></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Sueldos y pagos</h1><p>Sueldos, honorarios, extras y aguinaldo. Al pagar, el egreso queda en Caja.</p></div>' +
       '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="pgMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="pgMes" data-d="0">Este mes</button><button class="btn sm" data-act="pgMes" data-d="1" aria-label="Mes siguiente">→</button></div></div></div>';
     h += '<section class="kpis">' +
       '<div class="kpi ' + (Object.keys(pend).length ? 'warn' : '') + '"><span class="eyebrow">Falta pagar en ' + esc(monthLabel(m).split(' ')[0]) + '</span><b style="font-size:22px">' + esc(multi(pend)) + '</b><span>' + lq.filter(l => !l.movimiento_id).length + ' ítems</span></div>' +

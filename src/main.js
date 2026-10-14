@@ -1,6 +1,7 @@
 import './fonts.css';
 import './style.css';
 import { LOGO } from './marca.js';
+import { ICON } from './iconos.js';
 import * as data from './data.js';
 import { initAdmin } from './admin.js';
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
@@ -22,6 +23,7 @@ const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
 const CERRADOS = new Set(['Entregado', 'Cancelado']);
 const ST_COLOR = { 'Presupuestado': '--s-presup', 'Por empezar': '--s-empezar', 'En curso': '--s-curso', 'En revisión': '--s-revision', 'Entregado': '--s-entregado', 'Pausado': '--s-pausado', 'Cancelado': '--s-cancelado', 'A confirmar': '--s-confirmar' };
 const CL_COLOR = { 'Activo': '--s-entregado', 'A confirmar': '--s-confirmar', 'Proyectos': '--s-curso', 'Pausado': '--s-pausado', 'Inactivo': '--s-empezar' };
+const TIPO_COLOR = { Branding: '--accent', Packaging: '--s-revision', Web: '--s-curso', Diseño: '--s-confirmar', Audiovisual: '--s-presup', Redes: '--accent', Ads: '--s-curso', Otro: '--s-empezar' };
 const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': '--s-empezar' };
 const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
 const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Comunicaciones'], ['listas', 'Listas']];
@@ -44,7 +46,10 @@ const fmtShort = s => { if (!s) return ''; const [, m, d] = s.split('-'); return
 const cmp = (a, b) => String(a || '').localeCompare(String(b || ''), 'es', { sensitivity: 'base' });
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const isOpen = p => !CERRADOS.has(p.estado);
+const cap1 = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 const initials = s => String(s || '?').trim().slice(0, 2).toUpperCase();
+const AV_HUES = ['--s-curso', '--s-confirmar', '--s-presup', '--s-revision', '--s-entregado', '--accent', '--s-cancelado'];
+const avStyle = n => { let h = 0; for (const ch of String(n || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return '--c:var(' + AV_HUES[h % AV_HUES.length] + ')'; };
 const stVar = e => ST_COLOR[e] || '--muted';
 const isUrl = s => /^https?:\/\//i.test(String(s || ''));
 const resp = o => Array.isArray(o.responsables) ? o.responsables : [];
@@ -106,7 +111,7 @@ const clPill = e => pill(e, CL_COLOR[e] || '--muted');
 const abPill = e => pill(e, AB_COLOR[e] || '--muted');
 function whos(arr) {
   if (!arr || !arr.length) return '<span class="muted">Sin asignar</span>';
-  return '<span class="whos"><span class="avs">' + arr.map(p => '<span class="av" title="' + esc(p) + '">' + esc(initials(p)) + '</span>').join('') + '</span><span class="wn">' + esc(arr.join(', ')) + '</span></span>';
+  return '<span class="whos"><span class="avs">' + arr.map(p => '<span class="av" style="' + avStyle(p) + '" title="' + esc(p) + '">' + esc(initials(p)) + '</span>').join('') + '</span><span class="wn">' + esc(arr.join(', ')) + '</span></span>';
 }
 function picker(kind, o) {
   const sel = resp(o), key = kind + ':' + o._id;
@@ -157,7 +162,7 @@ const proyectosDe = n => S.P.filter(p => p.cliente === n);
 const abonosDe = n => S.A.filter(a => a.cliente === n);
 const pendientes = () => S.M.filter(m => !m.hecho && m.proximo).sort((a, b) => (a.fechaProximo || '9999').localeCompare(b.fechaProximo || '9999'));
 const abonoLabel = a => (a.tipo || 'Abono') + (a.plan ? ' · ' + a.plan : '');
-const abonoTags = n => { const as = abonosDe(n).filter(a => a.estado === 'Activo'); return as.length ? '<span class="tags">' + as.map(a => '<span class="tag">' + esc(abonoLabel(a)) + '</span>').join('') + '</span>' : ''; };
+const abonoTags = n => { const as = abonosDe(n).filter(a => a.estado === 'Activo'); return as.length ? '<span class="tags">' + as.map(a => '<span class="tag svc" style="--c:var(' + (a.tipo === 'Ads' ? '--s-curso' : '--accent') + ')">' + esc(abonoLabel(a)) + '</span>').join('') + '</span>' : ''; };
 
 /* Estado del cliente: se calcula solo (abono activo → Activo; proyecto abierto → Proyectos; nada → Inactivo)
    salvo que se haya fijado a mano. La base aplica la misma regla con un trigger. */
@@ -201,7 +206,9 @@ function vInicio() {
   const conf = S.P.filter(p => p.estado === 'A confirmar').length;
   const sinResp = open.filter(p => !resp(p).length).length + ab.filter(a => !resp(a).length).length;
 
-  let h = '<section class="kpis">' +
+  const hora = new Date().getHours(), saludo = hora < 13 ? 'Buen día' : hora < 20 ? 'Buenas tardes' : 'Buenas noches';
+  let h = '<div class="head"><div><h1>' + saludo + ', ' + esc(S.me.alias) + '</h1><p>' + esc(cap1(new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }))) + (late.length ? ' · <b style="color:var(--crit)">' + late.length + ' entregas atrasadas</b>' : '') + '</p></div></div>' +
+    '<section class="kpis">' +
     kpiBtn(ab.length, 'Abonos activos', abR + ' de redes · ' + abA + ' de Ads', 'data-act="go" data-view="abonos"') +
     kpiBtn(open.length, 'Proyectos abiertos', S.P.filter(p => p.estado === 'En curso').length + ' en curso', 'data-act="goProy"') +
     kpiBtn(late.length, 'Atrasados', in7.length + ' entregan en 7 días', 'data-act="goProy" data-plazo="' + (late.length ? 'atrasados' : '7dias') + '"', late.length ? 'alert' : (in7.length ? 'warn' : '')) +
@@ -215,14 +222,14 @@ function vInicio() {
     h += '<section class="callout"><p>' + parts.join('. ') + '. Estado y responsables se cambian directo en la fila de cada lista.</p><button class="btn" data-act="goProy" data-estado="' + (conf ? 'A confirmar' : '') + '">Revisar proyectos</button></section>';
   }
 
-  const estados = S.L.estadosProyecto.map(e => [e, S.P.filter(p => p.estado === e).length]);
+  const estados = S.L.estadosProyecto.map(e => [e, S.P.filter(p => p.estado === e).length]).filter(x => x[1]);
   const maxE = Math.max(1, ...estados.map(x => x[1]));
   const tipos = S.L.tipos.map(t => [t, open.filter(p => p.tipo === t).length]).filter(x => x[1]);
   const maxT = Math.max(1, ...tipos.map(x => x[1]));
   const bars = (arr, max, colorFn, attr) => '<div class="bars">' + arr.map(([k, n]) => '<button class="bar" data-act="goProy" ' + attr + '="' + esc(k) + '" style="--c:var(' + colorFn(k) + ')"><span class="lab">' + esc(k) + '</span><span class="track"><span class="fill" style="width:' + (n / max * 100).toFixed(1) + '%"></span></span><span class="n">' + n + '</span></button>').join('') + '</div>';
   h += '<div class="grid2">' +
-    '<section class="sheet"><div class="sheet-h"><h2>Proyectos por estado</h2><span class="muted num">' + S.P.length + ' en total</span></div><div class="sheet-b">' + bars(estados, maxE, stVar, 'data-estado') + '</div></section>' +
-    '<section class="sheet"><div class="sheet-h"><h2>Proyectos abiertos por tipo</h2><span class="muted num">' + open.length + ' abiertos</span></div><div class="sheet-b">' + (tipos.length ? bars(tipos, maxT, () => '--accent', 'data-tipo') : emptyBox('Sin proyectos abiertos', '')) + '</div></section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Proyectos por estado</h2><span class="muted num">' + S.P.length + ' en total</span></div><div class="sheet-b"><div class="stbar">' + estados.map(([e, n]) => '<span style="flex:' + n + ';background:var(' + stVar(e) + ')" title="' + esc(e + ': ' + n) + '"></span>').join('') + '</div>' + bars(estados, maxE, stVar, 'data-estado') + '</div></section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Proyectos abiertos por tipo</h2><span class="muted num">' + open.length + ' abiertos</span></div><div class="sheet-b">' + (tipos.length ? bars(tipos, maxT, t => TIPO_COLOR[t] || '--accent', 'data-tipo') : emptyBox('Sin proyectos abiertos', '')) + '</div></section>' +
     '</div>';
 
   const prox = open.filter(p => p.entrega).sort(sortByEntrega).slice(0, 12);
@@ -240,7 +247,7 @@ function vInicio() {
 function vProyectos() {
   const f = S.f;
   const modes = [['lista', 'Lista'], ['tablero', 'Tablero'], ['calendario', 'Calendario']];
-  let h = '<div class="head"><div><h1>Proyectos</h1><p>' + (isExt() ? 'Los proyectos donde figurás como responsable.' : 'Trabajos puntuales con inicio y entrega. Los servicios que se repiten todos los meses van en Abonos.') + '</p></div>' +
+  let h = '<div class="head"><div><h1>Proyectos</h1><p>' + (isExt() ? 'Los proyectos donde figurás como responsable.' : 'Trabajos puntuales con entrega: branding, web, packaging.') + '</p></div>' +
     '<div class="toolbar"><div class="seg" role="group" aria-label="Vista">' + modes.map(([k, l]) => '<button data-act="mode" data-mode="' + k + '" aria-pressed="' + (S.mode === k) + '">' + l + '</button>').join('') + '</div>' + addBtn('proyecto', 'Proyecto') + '</div></div>';
   h += '<div class="toolbar">' +
     '<input class="in" type="search" id="pq" data-bind="f.q" placeholder="Buscar cliente o proyecto" value="' + esc(f.q) + '">' +
@@ -264,7 +271,7 @@ function vLista() {
     const dis = canEditProj(p) ? '' : ' disabled';
     return '<tr>' +
       '<td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente || '—') + '</button></td>' +
-      '<td><button class="btn link" style="font-weight:500" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">' + esc(p.proyecto) + '</button><span class="sub">' + esc(p.tipo || '') + '</span></td>' +
+      '<td><button class="btn link" style="font-weight:500" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">' + esc(p.proyecto) + '</button>' + (p.tipo ? '<span class="sub"><span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span></span>' : '') + '</td>' +
       '<td>' + picker('proyecto', p) + '</td>' +
       '<td>' + etapaCell(p) + '</td>' +
       '<td class="n">' + (p.entrega ? '<span class="mono">' + fmt(p.entrega) + '</span><span class="sub">' + daysBadge(p) + '</span>' : '<span class="muted">—</span>') + '</td>' +
@@ -327,14 +334,14 @@ function vAbonos() {
   const base = S.A.filter(a => (!af.estado || a.estado === af.estado));
   const list = base.filter(a => (!af.tipo || a.tipo === af.tipo) && (!af.resp || (af.resp === '__none' ? !resp(a).length : hasResp(a, af.resp))) && (!q || norm(a.cliente + ' ' + (a.plan || '') + ' ' + (a.notas || '')).includes(q))).sort((a, b) => cmp(a.cliente, b.cliente) || cmp(a.tipo, b.tipo));
   const dis = isStaff() ? '' : ' disabled';
-  let h = '<div class="head"><div><h1>Abonos</h1><p>' + (isExt() ? 'Las cuentas mensuales donde figurás como responsable.' : 'Servicios que se repiten todos los meses, como la gestión de redes y las campañas de Ads.') + '</p></div><div class="toolbar">' + addBtn('abono', 'Abono') + '</div></div>' +
+  let h = '<div class="head"><div><h1>Abonos</h1><p>' + (isExt() ? 'Las cuentas mensuales donde figurás como responsable.' : 'Lo que se factura todos los meses: redes y Ads.') + '</p></div><div class="toolbar">' + addBtn('abono', 'Abono') + '</div></div>' +
     '<div class="toolbar"><input class="in" type="search" id="aq" data-bind="af.q" placeholder="Buscar cliente o plan" value="' + esc(af.q) + '">' +
     '<div class="seg" role="group" aria-label="Tipo">' + tipos.map(t => '<button data-act="afTipo" data-tipo="' + esc(t) + '" aria-pressed="' + (af.tipo === t) + '">' + (t || 'Todos') + ' <span class="c">' + base.filter(a => !t || a.tipo === t).length + '</span></button>').join('') + '</div>' +
     '<select class="in" id="ae" data-bind="af.estado" aria-label="Estado">' + opt('', 'Todos los estados', af.estado) + ESTADOS_ABONO.map(e => opt(e, e === 'Activo' ? 'Activos' : e === 'Pausado' ? 'Pausados' : 'Dados de baja', af.estado)).join('') + '</select>' +
     (isStaff() ? '<select class="in" id="ar" data-bind="af.resp" aria-label="Responsable">' + opt('', 'Todo el equipo', af.resp) + opt('__none', 'Sin asignar', af.resp) + personas().map(p => opt(p, p, af.resp)).join('') + '</select>' : '') + '</div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox(S.A.length ? 'Ningún abono coincide' : 'Todavía no hay abonos', S.A.length ? 'Probá con otro filtro.' : (isStaff() ? 'Cargá el primero con “+ Abono”.' : '')) + '</section>';
   const rows = list.map(a => '<tr><td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button></td>' +
-    '<td><span class="tag">' + esc(a.tipo || '—') + '</span></td><td>' + (a.plan ? esc(a.plan) : '<span class="muted">—</span>') + '</td>' +
+    '<td><span class="tag svc" style="--c:var(' + (a.tipo === 'Ads' ? '--s-curso' : '--accent') + ')">' + esc(a.tipo || '—') + '</span></td><td>' + (a.plan ? esc(a.plan) : '<span class="muted">—</span>') + '</td>' +
     '<td>' + picker('abono', a) + '</td>' +
     '<td class="mono">' + (a.desde ? esc(fmt(a.desde)) : '<span class="muted">—</span>') + (a.hasta ? ' → ' + esc(fmt(a.hasta)) : '') + '</td>' +
     '<td><select class="cellsel st" style="--c:var(' + (AB_COLOR[a.estado] || '--muted') + ')" aria-label="Estado" data-upd="abono" data-id="' + esc(a._id) + '" data-field="estado"' + dis + '>' + optsFrom(ESTADOS_ABONO, a.estado || '') + '</select></td>' +
@@ -346,7 +353,7 @@ function vMis() {
   const ps = personas();
   if (isExt()) S.yo = S.me.alias;
   if (!S.yo && S.me) S.yo = S.me.alias;
-  let h = '<div class="head"><div><h1>' + (isExt() ? 'Mis trabajos' : 'Mis trabajos') + '</h1><p>Cuentas mensuales, entregas, clientes y próximos pasos a cargo de cada persona.</p></div>' +
+  let h = '<div class="head"><div><h1>' + (isExt() ? 'Mis trabajos' : 'Mis trabajos') + '</h1><p>Lo que tiene a cargo cada persona.</p></div>' +
     (isStaff() ? '<div class="toolbar"><label class="muted" for="yo">Ver como</label><select class="in" id="yo" data-bind="yo">' + ps.map(p => opt(p, p, S.yo)).join('') + '</select></div>' : '') + '</div>';
   const yo = S.yo, mine = S.P.filter(p => hasResp(p, yo) && isOpen(p)).sort(sortByEntrega);
   const late = mine.filter(p => plazoOk(p, 'atrasados')), week = mine.filter(p => plazoOk(p, '7dias'));
@@ -375,7 +382,7 @@ function vClientes() {
   const estados = ['', ...S.L.estadosCliente];
   const counts = e => S.C.filter(c => !e || c.estado === e).length;
   const list = S.C.filter(c => (!cf.estado || c.estado === cf.estado) && (!q || norm(c.nombre + ' ' + (c.contacto || '') + ' ' + (c.servicio || '')).includes(q))).sort((a, b) => cmp(a.nombre, b.nombre));
-  let h = '<div class="head"><div><h1>Clientes</h1><p>' + (isExt() ? 'Los clientes de los trabajos que tenés asignados.' : 'Tocá un cliente para ver su ficha. El estado se calcula solo según sus abonos y proyectos; si lo cambiás a mano queda fijado.') + '</p></div><div class="toolbar">' + addBtn('cliente', 'Cliente') + '</div></div>' +
+  let h = '<div class="head"><div><h1>Clientes</h1><p>' + (isExt() ? 'Los clientes de los trabajos que tenés asignados.' : 'El estado se calcula solo con sus abonos y proyectos.') + '</p></div><div class="toolbar">' + addBtn('cliente', 'Cliente') + '</div></div>' +
     '<div class="toolbar"><input class="in" type="search" id="cq" data-bind="cf.q" placeholder="Buscar cliente o contacto" value="' + esc(cf.q) + '">' +
     (isStaff() ? '<div class="seg" role="group" aria-label="Estado">' + estados.map(e => '<button data-act="cfEstado" data-estado="' + esc(e) + '" aria-pressed="' + (cf.estado === e) + '">' + (e || 'Todos') + ' <span class="c">' + counts(e) + '</span></button>').join('') + '</div>' : '') + '</div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox(S.C.length ? 'Ningún cliente coincide' : 'Todavía no hay clientes', S.C.length ? 'Probá con otro estado o búsqueda.' : '') + '</section>';
@@ -431,7 +438,7 @@ function comItem(m, inFicha) {
 
 function vEquipo() {
   const list = [...S.E].sort((a, b) => (b.activo !== false) - (a.activo !== false) || cmp(a.persona, b.persona));
-  let h = '<div class="head"><div><h1>Equipo y accesos</h1><p>Quién es quién y qué ve cada uno. Para que alguien entre, cargale su email y un rol. Administrador ve todo; Equipo ve lo operativo; Externo solo los trabajos donde figura como responsable.</p></div><div class="toolbar">' + addBtn('persona', 'Persona') + '</div></div>';
+  let h = '<div class="head"><div><h1>Equipo y accesos</h1><p>Quién entra a la app y qué ve cada uno.</p></div><div class="toolbar">' + addBtn('persona', 'Persona') + '</div></div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay personas cargadas', '') + '</section>';
   const rows = list.map(e => {
     const ab = S.A.filter(a => a.estado === 'Activo' && hasResp(a, e.persona)).length, pr = S.P.filter(p => isOpen(p) && hasResp(p, e.persona)).length;
@@ -444,14 +451,14 @@ function vComs() {
   const mf = S.mf, q = norm(mf.q);
   const list = S.M.filter(m => (!mf.cliente || m.cliente === mf.cliente) && (!mf.pend || (!m.hecho && m.proximo)) && (!q || norm([m.cliente, m.resumen, m.acuerdo, m.proximo, m.conQuien].join(' ')).includes(q)))
     .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.creado || '').localeCompare(a.creado || ''));
-  let h = '<div class="head"><div><h1>Comunicaciones</h1><p>Reuniones, llamadas y mensajes importantes. Lo pendiente aparece en el Inicio hasta que lo tildes.</p></div><div class="toolbar">' + addBtn('comunicacion', 'Comunicación') + '</div></div>' +
+  let h = '<div class="head"><div><h1>Comunicaciones</h1><p>Reuniones y acuerdos con clientes. Lo pendiente aparece en Inicio.</p></div><div class="toolbar">' + addBtn('comunicacion', 'Comunicación') + '</div></div>' +
     '<div class="toolbar"><input class="in" type="search" id="mq" data-bind="mf.q" placeholder="Buscar en resúmenes y acuerdos" value="' + esc(mf.q) + '"><select class="in" id="mc" data-bind="mf.cliente" aria-label="Cliente">' + clienteOpts(mf.cliente, 'Todos los clientes') + '</select><label class="chk"><input type="checkbox" id="mp" data-bind="mf.pend"' + (mf.pend ? ' checked' : '') + '> Solo con paso pendiente</label></div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox(S.M.length ? 'Ninguna comunicación coincide' : 'Todavía no hay comunicaciones', S.M.length ? '' : 'Registrá la primera reunión o llamada con un cliente.') + '</section>';
   return h + '<section class="sheet"><div class="timeline">' + list.map(m => comItem(m, false)).join('') + '</div><div class="count num">' + list.length + ' registros</div></section>';
 }
 
 function vListas() {
-  let h = '<div class="head"><div><h1>Listas</h1><p>Las opciones de los desplegables. Quitar un valor no cambia los registros que ya lo usan.</p></div></div><div class="lists">';
+  let h = '<div class="head"><div><h1>Listas</h1><p>Las opciones de los desplegables.</p></div></div><div class="lists">';
   const etapaKeys = (S.L.tipos || []).filter(t => !['Redes', 'Ads'].includes(t)).map(t => ['etapas:' + t, 'Etapas · ' + t]);
   for (const [k, label] of [...Object.entries(LIST_LABELS), ...etapaKeys]) {
     const arr = S.L[k] || [];
@@ -472,15 +479,16 @@ function render() {
   const kb = document.querySelector('.kb'), kbLeft = kb ? kb.scrollLeft : 0;
   if (!views().some(v => v[0] === S.view)) S.view = isExt() ? 'mis' : 'inicio';
   const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length };
-  const tab = ([k, l]) => '<button class="tab" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + l + (counts[k] ? '<span class="tab-n">' + counts[k] + '</span>' : '') + '</button>';
-  const admKeys = isAdmin() && ADM ? ADM.views.map(v => v[0]) : [];
-  $('#nav').innerHTML = views().filter(v => !admKeys.includes(v[0])).map(tab).join('');
+  const item = ([k, l]) => '<button class="snav-i" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + (ICON[k] || '') + '<span class="snav-l">' + l + '</span>' + (counts[k] ? '<span class="snav-n' + (k === 'asistente' || k === 'facturas' ? ' hot' : '') + '">' + counts[k] + '</span>' : '') + '</button>';
+  const admKeys = isAdmin() && ADM ? ADM.views.map(v => v[0]) : [], conf = ['equipo', 'listas'];
+  const trabajo = views().filter(v => !admKeys.includes(v[0]) && !conf.includes(v[0])), ajustes = views().filter(v => conf.includes(v[0]));
+  $('#nav').innerHTML = '<span class="snav-g">Trabajo</span>' + trabajo.map(item).join('') + (ajustes.length ? '<span class="snav-g">Equipo y ajustes</span>' + ajustes.map(item).join('') : '');
   const nav2 = $('#nav2'), adm = views().filter(v => admKeys.includes(v[0]));
-  nav2.hidden = !adm.length; nav2.innerHTML = adm.length ? '<span class="tabs-lbl">Administración</span>' + adm.map(tab).join('') : '';
+  nav2.hidden = !adm.length; nav2.innerHTML = adm.length ? '<span class="snav-g">Administración</span>' + adm.map(item).join('') : '';
   const sync = $('#sync');
   sync.className = 'sync ' + (S.status === 'ok' ? 'ok' : S.status === 'offline' ? 'err' : '');
   sync.lastElementChild.textContent = S.status === 'ok' ? 'En vivo' : S.status === 'offline' ? 'Sin conexión' : 'Conectando';
-  $('#me').innerHTML = esc(S.me.alias) + ' · ' + pill(ROLES[S.me.rol], ROL_COLOR[S.me.rol]);
+  $('#me').innerHTML = '<span class="av" style="' + avStyle(S.me.alias) + '">' + esc(initials(S.me.alias)) + '</span><span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>';
   if (S.status === 'loading') { $('#view').innerHTML = '<section class="sheet">' + emptyBox('Cargando datos del equipo…', '') + '</section>'; return; }
   $('#view').innerHTML = viewFn(S.view)();
   const kb2 = document.querySelector('.kb'); if (kb2) kb2.scrollLeft = kbLeft;
@@ -653,7 +661,8 @@ function setBind(path, v) {
   o[ks[ks.length - 1]] = v;
   if (path === 'yo') lsSet('yo', v);
 }
-function go(view) { S.view = view; S.ficha = null; if (ADM) ADM.resetView(); try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
+function menu(open) { const o = open === undefined ? !document.body.classList.contains('menu-open') : open; document.body.classList.toggle('menu-open', o); $('#sidescrim').hidden = !o; }
+function go(view) { menu(false); S.view = view; S.ficha = null; if (ADM) ADM.resetView(); try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
 async function saveListas(k, arr) {
   const prev = S.L[k]; S.L[k] = arr; render();
   try { await data.saveLista(k, arr); toast('Lista actualizada'); }
@@ -679,6 +688,7 @@ const ACT = {
   calMove: t => { const n = +t.dataset.d; S.cal = n ? addMonth(S.cal || thisMonth(), n) : null; render(); },
   copy: t => copyText(t.dataset.v),
   listDel: t => { const k = t.dataset.k, i = +t.dataset.i; saveListas(k, S.L[k].filter((_, j) => j !== i)); },
+  menu: () => menu(),
   logout: async () => { await data.logout(); location.reload(); },
   cSelNone: () => { S.csel.clear(); render(); },
   etCargar: t => { const p = S.P.find(x => x._id === t.dataset.id); if (p) upd('proyecto', p._id, { etapas: plantilla(p.tipo).map(n => ({ n, ok: false })) }); },

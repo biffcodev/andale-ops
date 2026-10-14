@@ -11,22 +11,25 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 </head>
 <body>
-<div id="app">
-  <header class="top" id="top" hidden>
-    <div class="wrap">
-      <div class="top-row">
-        <div class="brand"><span class="logo" role="img" aria-label="àndale"></span> <small>Operaciones</small></div>
-        <div class="top-meta"><span id="hoy"></span><span id="me"></span><span id="sync" class="sync"><i></i><span>Conectando</span></span><button class="btn ghost sm" data-act="logout">Salir</button></div>
-      </div>
-      <nav class="tabs" id="nav" aria-label="Secciones"></nav>
-      <nav class="tabs tabs-adm" id="nav2" aria-label="Administración" hidden></nav>
+<div id="app" class="app">
+  <aside class="side" id="top" hidden>
+    <div class="side-h">
+      <div class="brand"><span class="logo" role="img" aria-label="àndale"></span> <small>Operaciones</small></div>
+      <button class="btn ghost sm side-x" data-act="menu" aria-label="Cerrar menú">✕</button>
     </div>
-  </header>
-  <div class="wrap">
-    <div id="banner" class="banner" hidden></div>
-    <main id="view"></main>
+    <nav class="snav" id="nav" aria-label="Secciones"></nav>
+    <nav class="snav" id="nav2" aria-label="Administración" hidden></nav>
+    <div class="side-f"><span id="me"></span><span id="sync" class="sync"><i></i><span>Conectando</span></span><button class="btn ghost sm" data-act="logout">Salir</button></div>
+  </aside>
+  <div class="main">
+    <div class="mbar" id="mbar"><button class="btn ghost" data-act="menu" aria-label="Abrir menú"><span class="burger"></span></button><div class="brand"><span class="logo" role="img" aria-label="àndale"></span></div><span id="hoy"></span></div>
+    <div class="wrap">
+      <div id="banner" class="banner" hidden></div>
+      <main id="view"></main>
+    </div>
   </div>
 </div>
+<div id="sidescrim" class="scrim side-scrim" data-act="menu" hidden></div>
 <div id="scrim" class="scrim" data-act="close" hidden></div>
 <aside id="panel" class="panel" hidden aria-modal="true" role="dialog" aria-labelledby="panel-title"></aside>
 <div id="toast" class="toast" hidden></div>

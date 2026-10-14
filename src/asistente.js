@@ -271,7 +271,7 @@ export function initAsistente(ctx, k) {
   function vAsistente() {
     if (!AD.as.estado && !AD.as.estadoBusy) setTimeout(() => cargarEstado(), 0);
     const st = AD.as.estado || {}, m = AD.as.mes, c = checklist(m);
-    let h = '<div class="head"><div>' + lock + '<h1 style="margin-top:6px">Asistente</h1><p>Lo que falta para cerrar el mes, las facturas que están en Drive y la conciliación del banco. La IA propone; ustedes confirman antes de que se guarde nada.</p></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Asistente</h1><p>Lo que falta para cerrar el mes. La IA propone; nada se guarda sin que lo confirmen.</p></div>' +
       '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="asMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="asMes" data-d="0">Este mes</button><button class="btn sm" data-act="asMes" data-d="1" aria-label="Mes siguiente">→</button></div></div></div>';
     // Resumen IA
     const b = AD.as.brief;
