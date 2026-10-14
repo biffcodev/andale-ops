@@ -108,6 +108,42 @@ export async function update(kind, id, patch, prevResp) {
 export async function remove(kind, id) { check(await sb.from(T[kind].table).delete().eq('id', id)); }
 export async function saveLista(clave, valores) { check(await sb.from('listas').upsert({ clave, valores, updated_at: new Date().toISOString() })); }
 
+// ---------- Administración (solo admin; la base no devuelve nada a otros roles) ----------
+export const ids = { cliente: n => idx.clienteId.get(n) || null, clienteName: id => idx.clienteName.get(id) || '', persona: a => (a ? idx.personaId.get(a) || null : null), alias: id => idx.personaAlias.get(id) || '' };
+async function all(table, build) {
+  const out = []; const step = 1000;
+  for (let from = 0; ; from += step) {
+    let q = sb.from(table).select('*'); if (build) q = build(q);
+    const rows = check(await q.range(from, from + step - 1)) || [];
+    out.push(...rows); if (rows.length < step) break;
+  }
+  return out;
+}
+const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
+export async function loadAdmin() {
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs] = await Promise.all([
+    all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
+    all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'),
+  ]);
+  const cn = id => idx.clienteName.get(id) || '';
+  return {
+    CA: new Map(ca.map(r => [cn(r.cliente_id), r])),
+    PR: pr.map(r => ({ ...r, desde: month(r.desde), monto: num(r.monto) })),
+    PF: pf.map(r => ({ ...r, periodo: month(r.periodo), monto: num(r.monto) })),
+    R: rs.map(r => ({ ...r, cliente: cn(r.cliente_id), periodo: month(r.periodo), total: num(r.total) || 0, items: Array.isArray(r.items) ? r.items : [] })),
+    F: fs.map(r => ({ ...r, cliente: cn(r.cliente_id), periodo: month(r.periodo), monto: num(r.monto) || 0, cobrado: num(r.cobrado) || 0, saldo: num(r.saldo) || 0 })),
+    CJ: cj.map(r => ({ ...r, saldo_inicial: num(r.saldo_inicial) || 0 })),
+    PC: pc,
+    MV: mv.map(r => ({ ...r, cliente: cn(r.cliente_id), persona: idx.personaAlias.get(r.persona_id) || '', ingreso: num(r.ingreso) || 0, egreso: num(r.egreso) || 0 })),
+    G: gs.map(r => ({ ...r, cliente: cn(r.cliente_id), periodo: month(r.periodo), persona: idx.personaAlias.get(r.persona_id) || '' })),
+  };
+}
+export async function ins(table, row) { return check(await sb.from(table).insert(row).select().single()); }
+export async function insMany(table, rows) { if (rows.length) check(await sb.from(table).insert(rows)); }
+export async function upd(table, id, patch, key = 'id') { check(await sb.from(table).update(patch).eq(key, id)); }
+export async function del(table, id, key = 'id') { check(await sb.from(table).delete().eq(key, id)); }
+export async function upsert(table, row, onConflict) { check(await sb.from(table).upsert(row, onConflict ? { onConflict } : undefined)); }
+
 // ---------- Sesión ----------
 export async function session() { return (await sb.auth.getSession()).data.session; }
 export async function yo() { const d = check(await sb.rpc('yo')); return d && d[0] ? d[0] : null; }

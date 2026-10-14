@@ -33,10 +33,18 @@ npm run dev
 
 1. `supabase/migrations/0001_schema.sql`: personas, roles, clientes, abonos, proyectos, comunicaciones, listas y RLS.
 2. `supabase/migrations/0002_administracion.sql`: precios, resúmenes, facturas, caja y cobranza (solo administradores).
-3. `supabase/seed/0001_datos_actuales.sql`: datos migrados desde la versión anterior.
+3. `supabase/seed/0001_datos_actuales.sql`: clientes, abonos, proyectos y equipo migrados desde la versión anterior.
+4. `supabase/seed/0002_administracion.sql`: cajas, plan de cuentas, precios vigentes de octubre 2026 y datos fiscales encontrados en las planillas (todo marcado "confirmar").
+5. `supabase/seed/0003_caja_2026.sql`: movimientos de caja 2026 + saldo inicial al 1/1/2026. Verificado contra la hoja "Saldo de Cajas" (ARS 637.968,30 · USD 2.314,06 al 10/10/2026).
+
+## Administración (solo administradores)
+
+- **Cierre de mes**: por cliente, resumen de cuenta → comprobante (factura ARCA de Fer o Jime, o invoice) → cobro → recordatorio. Exporta el CSV para la combinación de correspondencia de Gmail y arma la versión imprimible del resumen.
+- **Facturas**: comprobantes, saldos y quién debe. Los cobros se registran como ingresos de caja vinculados a la factura.
+- **Precios**: precio vigente de cada abono con historial; aumentos masivos por porcentaje y aviso al cliente.
+- **Caja**: movimientos con el plan de cuentas de la planilla, saldos por moneda, lo que se les debe a los socios y resumen anual.
 
 ## Pendiente
 
-- Etapa 2: pantallas de Administración (precios y aumentos, resúmenes de cuenta, facturas ARCA/invoices, cobros, recordatorios, cierre de mes).
-- Etapa 3: Caja (importación desde 1/1/2026).
+- Facturas de junio a octubre 2026: la planilla de facturación dejó de actualizarse en mayo; cargar con Jime.
 - Login con Google.

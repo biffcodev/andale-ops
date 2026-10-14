@@ -1,5 +1,7 @@
 import './style.css';
 import * as data from './data.js';
+import { initAdmin } from './admin.js';
+let ADM = null, ADM_FN = {};
 
 /* ---------- Constantes ---------- */
 const DEF = {
@@ -63,8 +65,14 @@ const isAdmin = () => S.me && S.me.rol === 'admin';
 const isStaff = () => S.me && (S.me.rol === 'admin' || S.me.rol === 'equipo');
 const isExt = () => S.me && S.me.rol === 'externo';
 const canEditProj = p => isStaff() || (S.me && hasResp(p, S.me.alias));
-const views = () => isStaff() ? ALL_VIEWS : ALL_VIEWS.filter(v => EXT_VIEWS.includes(v[0]));
-{ const h = location.hash.slice(1); if (ALL_VIEWS.some(v => v[0] === h)) S.view = h; }
+const views = () => {
+  if (!isStaff()) return ALL_VIEWS.filter(v => EXT_VIEWS.includes(v[0]));
+  if (!isAdmin() || !ADM) return ALL_VIEWS;
+  const i = ALL_VIEWS.findIndex(v => v[0] === 'clientes') + 1;
+  return [...ALL_VIEWS.slice(0, i), ...ADM.views.map(([k, l]) => [k, l]), ...ALL_VIEWS.slice(i)];
+};
+const viewFn = k => VIEW_FN[k] || (isAdmin() && ADM_FN[k]);
+{ const h = location.hash.slice(1); if (h) S.view = h; }
 
 /* ---------- Selects ---------- */
 const opt = (v, label, cur) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label ?? v) + '</option>';
@@ -368,7 +376,7 @@ function vFicha() {
     '<dt>Instagram / web</dt><dd>' + link(c.web) + '</dd>' +
     '<dt>Carpeta</dt><dd>' + link(c.carpeta) + '</dd>' +
     '<dt>Notas</dt><dd>' + (c.notas ? '<span style="white-space:pre-wrap">' + esc(c.notas) + '</span>' : '<span class="muted">—</span>') + '</dd>' +
-    '</dl></div></section></div>' +
+    '</dl></div></section>' + (isAdmin() && ADM ? ADM.fichaSection(c) : '') + '</div>' +
     '<div class="stack">' +
     '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + as.filter(a => a.estado === 'Activo').length + ' activos</span></div>' + (as.length ? '<div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('Sin abonos', '')) + '</section>' +
     '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' +
@@ -424,14 +432,14 @@ function render() {
   const sel = fid && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
   const kb = document.querySelector('.kb'), kbLeft = kb ? kb.scrollLeft : 0;
   if (!views().some(v => v[0] === S.view)) S.view = isExt() ? 'mis' : 'inicio';
-  const counts = { proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length };
+  const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length };
   $('#nav').innerHTML = views().map(([k, l]) => '<button class="tab" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + l + (counts[k] ? '<span class="tab-n">' + counts[k] + '</span>' : '') + '</button>').join('');
   const sync = $('#sync');
   sync.className = 'sync ' + (S.status === 'ok' ? 'ok' : S.status === 'offline' ? 'err' : '');
   sync.lastElementChild.textContent = S.status === 'ok' ? 'En vivo' : S.status === 'offline' ? 'Sin conexión' : 'Conectando';
   $('#me').innerHTML = esc(S.me.alias) + ' · ' + pill(ROLES[S.me.rol], ROL_COLOR[S.me.rol]);
   if (S.status === 'loading') { $('#view').innerHTML = '<section class="sheet">' + emptyBox('Cargando datos del equipo…', '') + '</section>'; return; }
-  $('#view').innerHTML = VIEW_FN[S.view]();
+  $('#view').innerHTML = viewFn(S.view)();
   const kb2 = document.querySelector('.kb'); if (kb2) kb2.scrollLeft = kbLeft;
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { } } }
 }
@@ -528,7 +536,10 @@ function openForm(kind, id, preset) {
   let foot;
   if (ro) foot = '<span class="muted">Solo lectura.</span><button type="button" class="btn" data-act="close">Cerrar</button>';
   else foot = '<span id="delzone">' + (rec && (isStaff() && (kind !== 'persona' || isAdmin())) ? '<button type="button" class="btn ghost danger" data-act="del">Eliminar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="savebtn">' + (rec ? 'Guardar cambios' : 'Crear ' + def.title) + '</button></span>';
-  const extra = rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '';
+  let adminBtn = '';
+  if (isAdmin() && rec && kind === 'proyecto') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aCuotas" data-id="' + esc(rec._id) + '">Meses de facturación (administración)</button></div>';
+  if (isAdmin() && rec && kind === 'abono') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aPrecio" data-abono="' + esc(rec._id) + '">Precio del abono (administración)</button></div>';
+  const extra = adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
   const p = $('#panel');
   p.innerHTML = '<form id="form" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + (rec ? (ro ? 'Ver ' : 'Editar ') + def.title : 'Alta') + '</span><h2 id="panel-title">' + (rec ? esc(def.label(rec) || def.title) : def.nuevo) + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
     '<div class="panel-b">' + def.fields.map(f => fieldHtml(f, vals[f.k], ro)).join('') + extra + '</div><div class="panel-f">' + foot + '</div></form>';
@@ -586,7 +597,7 @@ function setBind(path, v) {
   o[ks[ks.length - 1]] = v;
   if (path === 'yo') lsSet('yo', v);
 }
-function go(view) { S.view = view; S.ficha = null; try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
+function go(view) { S.view = view; S.ficha = null; if (ADM) ADM.resetView(); try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
 async function saveListas(k, arr) {
   const prev = S.L[k]; S.L[k] = arr; render();
   try { await data.saveLista(k, arr); toast('Lista actualizada'); }
@@ -665,7 +676,7 @@ document.addEventListener('submit', async e => {
   }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.form) closeForm(); });
-window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VIEW_FN[v] && v !== S.view) { S.view = v; S.ficha = null; render(); } });
+window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (viewFn(v) && v !== S.view) { S.view = v; S.ficha = null; render(); } });
 
 /* Arrastrar en el tablero */
 let dragId = null;
@@ -688,6 +699,7 @@ async function reload() {
     const d = await data.loadAll();
     const L = {}; for (const k of Object.keys(DEF)) L[k] = Array.isArray(d.L[k]) && d.L[k].length ? [...d.L[k]] : [...DEF[k]];
     Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, L, status: 'ok' });
+    if (isAdmin() && ADM) await ADM.load();
     banner('');
   } catch (err) { S.status = 'offline'; banner(esc(err.message), true); }
   render();
@@ -708,6 +720,11 @@ async function start(sess) {
   try { me = await data.yo(); } catch (err) { showLogin(err.message); started = false; return; }
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
   S.me = me;
+  if (me.rol === 'admin' && !ADM) {
+    ADM = initAdmin({ S, esc, opt, optsFrom, pill, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
+    ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
+    Object.assign(ACT, ADM.actions);
+  }
   $('#top').hidden = false;
   $('#hoy').textContent = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   if (isExt()) S.yo = me.alias; else if (!S.yo) S.yo = me.alias;
