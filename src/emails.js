@@ -57,9 +57,47 @@ export const B = {
 };
 
 /** Estructura común: fondo blanco, columna de 560px alineada a la izquierda. `filas` = HTML de <tr>. */
+const PIE_TXT = cfg => esc(cfg.pie || 'with ❤ from cordoba | © àndale Strictly Confidential');
+const links = (arr, color, extra = '') => (arr || []).map(([t, u]) => '<a href="' + esc(u) + '" style="color:' + color + ';text-decoration:none;white-space:nowrap;' + extra + '">' + esc(t) + '</a>');
+const redesCap = cfg => (cfg.redes || []).map(([t, u]) => [t.charAt(0).toUpperCase() + t.slice(1), u]);
+const contactoSin = cfg => (cfg.contacto || []).filter(([t]) => !t.startsWith('@'));
+const DOT = '&nbsp;&nbsp;·&nbsp;&nbsp;';
+
+/** Variantes de pie. `cfg.pie_estilo`: 'editorial' | 'minimo' | 'banda' | 'firma' (la primera versión). */
+export const PIES = {
+  // Isologo grande solo, sitio en Delight, contacto y redes en gris en dos líneas.
+  editorial: cfg => sp(56) +
+    td('<img src="' + APP_URL + '/marca/email-iso.png" width="64" height="48" alt="àndale" style="display:block;border:0;width:64px;height:auto">') + sp(16) +
+    td('<a href="https://weareandale.com/" style="font-family:' + TITLE + ';font-size:20px;font-weight:700;color:' + INK + ';text-decoration:none">weareandale.com</a>') + sp(6) +
+    td(links(contactoSin(cfg).filter(([t]) => !/weareandale\.com$/.test(t) || t.includes('@')), MUTED).join(DOT), txt(13, MUTED)) +
+    td(links(redesCap(cfg), MUTED).join(DOT), txt(13, MUTED)) + sp(18) +
+    td(PIE_TXT(cfg), txt(11.5, '#a3a3a3')),
+  // Sin imágenes: tres líneas de texto gris, separadas por un filete.
+  minimo: cfg => sp(48) + '<tr><td style="border-top:1px solid ' + LINE + ';padding:18px 0 0;' + txt(12.5, MUTED, 'line-height:1.7') + '">' +
+    '<b style="color:' + INK + ';font-family:' + TITLE + '">àndale</b>' + DOT + 'Córdoba, Argentina<br>' +
+    links(contactoSin(cfg), MUTED).join(DOT) + '<br>' + links(redesCap(cfg), MUTED).join(DOT) +
+    '<br><span style="color:#a3a3a3;font-size:11.5px">' + PIE_TXT(cfg) + '</span></td></tr>',
+  // Banda negra al pie con isologo y logotipo en blanco.
+  banda: cfg => sp(48) + '<tr><td style="background:#111111;padding:28px 28px 26px;border-radius:10px">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>' +
+    '<td valign="middle"><img src="' + APP_URL + '/marca/email-logo-neg.png" width="92" height="22" alt="àndale" style="display:block;border:0;width:92px;height:auto"></td>' +
+    '<td valign="middle" align="right"><img src="' + APP_URL + '/marca/email-iso-neg.png" width="52" height="39" alt="" style="display:block;border:0;width:52px;height:auto;margin-left:auto"></td></tr></table>' +
+    '<div style="height:18px;line-height:18px;font-size:0">&nbsp;</div>' +
+    '<div style="' + txt(13, '#d6d6d6', 'line-height:1.75') + '">' + links(contactoSin(cfg), '#ffffff').join('<span style="color:#6b6b6b">' + DOT + '</span>') + '<br>' +
+    links(redesCap(cfg), '#ffffff', 'font-weight:700').join('<span style="color:#6b6b6b">' + DOT + '</span>') + '</div>' +
+    '<div style="' + txt(11.5, '#8c8c8c', 'padding:14px 0 0') + '">' + PIE_TXT(cfg) + '</div></td></tr>',
+  // Primera versión (isologo chico + bloque de texto al lado).
+  firma: cfg => sp(48) + '<tr><td style="border-top:1px solid ' + LINE + ';padding:22px 0 0">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>' +
+    '<td valign="top" style="padding:2px 16px 0 0"><img src="' + APP_URL + '/marca/email-iso.png" width="44" height="33" alt="" style="display:block;border:0;width:44px;height:auto"></td>' +
+    '<td valign="top" style="' + txt(12.5, MUTED, 'line-height:1.6') + '"><div style="font-family:' + TITLE + ';font-size:14px;font-weight:700;color:' + INK + '">àndale</div>' +
+    '<div>' + links(contactoSin(cfg), MUTED).join(DOT) + '</div><div style="padding:2px 0 0">' + links(redesCap(cfg), INK, 'font-weight:700').join(DOT) + '</div>' +
+    '<div style="padding:8px 0 0;font-size:11.5px">' + PIE_TXT(cfg) + '</div></td></tr></table></td></tr>',
+};
+
+/** Estructura común: fondo blanco, columna de 560px alineada a la izquierda. `filas` = HTML de <tr>. */
 export function layout({ cfg = {}, asunto = '', preheader = '', filas = '' }) {
-  const red = (cfg.redes || []).map(([t, u]) => '<a href="' + esc(u) + '" style="color:' + INK + ';text-decoration:none;font-weight:700">' + esc(t.charAt(0).toUpperCase() + t.slice(1)) + '</a>').join('&nbsp;&nbsp;·&nbsp;&nbsp;');
-  const contacto = (cfg.contacto || []).filter(([t]) => !t.startsWith('@')).map(([t, u]) => '<a href="' + esc(u) + '" style="color:' + MUTED + ';text-decoration:none;white-space:nowrap">' + esc(t) + '</a>').join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+  const pie = PIES[cfg.pie_estilo] || PIES.editorial;
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light">' +
     '<title>' + esc(asunto) + '</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">' +
     '<style>@font-face{font-family:Delight;font-weight:700;src:url(' + APP_URL + '/fonts/Delight-Bold.woff2) format("woff2")}body{margin:0;padding:0;background:#ffffff}a{color:' + INK + '}' +
@@ -69,14 +107,8 @@ export function layout({ cfg = {}, asunto = '', preheader = '', filas = '' }) {
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff"><tr><td align="left" class="col" style="padding:40px 32px 48px">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px">' +
     td('<img src="' + APP_URL + '/marca/email-logo.png" width="92" height="22" alt="àndale" style="display:block;border:0;width:92px;height:auto">') + sp(44) +
-    filas +
-    sp(48) + '<tr><td style="border-top:1px solid ' + LINE + ';padding:22px 0 0">' +
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>' +
-    '<td valign="top" style="padding:2px 16px 0 0"><img src="' + APP_URL + '/marca/email-iso.png" width="44" height="33" alt="" style="display:block;border:0;width:44px;height:auto"></td>' +
-    '<td valign="top" style="' + txt(12.5, MUTED, 'line-height:1.6') + '"><div style="font-family:' + TITLE + ';font-size:14px;font-weight:700;color:' + INK + '">àndale</div>' +
-    (contacto ? '<div>' + contacto + '</div>' : '') + (red ? '<div style="padding:2px 0 0">' + red + '</div>' : '') +
-    '<div style="padding:8px 0 0;font-size:11.5px">' + esc(cfg.pie || 'with ❤ from cordoba | © àndale Strictly Confidential') + '</div></td></tr></table>' +
-    '</td></tr></table></td></tr></table></body></html>';
+    filas + pie(cfg) +
+    '</table></td></tr></table></body></html>';
 }
 
 function textoPlano(partes, cfg) {
