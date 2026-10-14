@@ -56,7 +56,7 @@ export function friendly(err) {
   else if (/Failed to fetch|NetworkError/i.test(m)) msg = 'Sin conexión. Revisá internet y probá de nuevo.';
   const e = new Error(msg); e.code = code; e.denied = msg.startsWith('No tenés permiso'); return e;
 }
-const check = r => { if (r.error) throw friendly(r.error); return r.data; };
+const check = r => { if (r.error) { const e = friendly(r.error); e.raw = r.error.code + ' ' + r.error.message; throw e; } return r.data; };
 
 // ---------- Lectura ----------
 export async function loadAll() {
@@ -120,14 +120,16 @@ async function all(table, build) {
   }
   return out;
 }
+// Tablas nuevas (migración 0007): si todavía no existen, la app sigue andando sin esos módulos.
+const opcional = p => p.catch(e => { if (/PGRST205|42P01|Could not find the table|does not exist/i.test((e && (e.raw || e.code + ' ' + e.message)) || '')) return []; throw e; });
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
   const desdeMes = new Date(); desdeMes.setDate(1); desdeMes.setHours(0, 0, 0, 0);
   const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
     all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })), all('proyecto_finanzas'), all('abono_finanzas'), all('imputaciones'),
-    all('colaboradores', q => q.order('nombre')), all('remuneraciones'), all('conceptos_fijos'), all('liquidaciones'), all('drive_archivos', q => q.order('modificado', { ascending: false, nullsFirst: false })),
-    all('ia_log', q => q.gte('created_at', desdeMes.toISOString())),
+    opcional(all('colaboradores', q => q.order('nombre'))), opcional(all('remuneraciones')), opcional(all('conceptos_fijos')), opcional(all('liquidaciones')), opcional(all('drive_archivos', q => q.order('modificado', { ascending: false, nullsFirst: false }))),
+    opcional(all('ia_log', q => q.gte('created_at', desdeMes.toISOString()))),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
