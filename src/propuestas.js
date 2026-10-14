@@ -95,7 +95,7 @@ export function initPropuestas(ctx, k) {
       '<label class="field"><span class="lbl">Fecha</span><input class="in" type="date" data-pz="fecha" value="' + esc(String(d.fecha || '').slice(0, 10)) + '"></label>' +
       '<label class="field"><span class="lbl">Válida por (días)</span><input class="in" inputmode="numeric" data-pz="validez_dias" value="' + esc(d.validez_dias) + '"></label></div></section>' +
       '';
-    const secBrief = '<section class="sheet pz-ia"><div class="sheet-h"><h2>' + (pre ? 'Para la IA <small class="muted" style="font-weight:500">· opcional</small>' : 'Brief') + '</h2><span class="toolbar">' + (d.cliente ? '<button class="btn ghost sm" data-act="pzNotas">Traer notas del seguimiento</button>' : '') + '<button class="btn primary sm" data-act="pzIA"' + (AD.pz.busy ? ' disabled' : '') + '>' + (AD.pz.busy ? (pre ? 'Calculando…' : 'Redactando…') : (pre ? '✨ Sugerir precios con IA' : '✨ Redactar con IA')) + '</button></span></div><div class="sheet-b">' +
+    const secBrief = '<section class="sheet pz-ia"><div class="sheet-h"><h2>' + (pre ? 'Para la IA <small class="muted" style="font-weight:500">· opcional</small>' : 'Brief') + '</h2><span class="toolbar">' + (d.cliente ? '<button class="btn ghost sm" data-act="pzNotas">Traer las charlas con el cliente</button>' : '') + '<button class="btn primary sm" data-act="pzIA"' + (AD.pz.busy ? ' disabled' : '') + '>' + (AD.pz.busy ? (pre ? 'Calculando…' : 'Redactando…') : (pre ? '✨ Sugerir precios con IA' : '✨ Redactar con IA')) + '</button></span></div><div class="sheet-b">' +
       tA('pz-brief', 'brief', d.brief, pre ? 3 : 5, pre ? 'Qué hay que cotizar: cantidades, plazos, lo que pidió el cliente…' : 'Qué necesita el cliente, qué se habló en la reunión, presupuesto que mencionó, plazos, referencias…', 'data-pz') +
       '<span class="hint">' + (pre ? 'La IA arma los ítems y sugiere precios mirando proyectos, propuestas y presupuestos anteriores. Solo cambia el detalle y la forma de pago.' : 'La IA usa este brief, los proyectos y propuestas anteriores con su precio' + (((AD.AJ && AD.AJ.drive) || {}).carpeta_propuestas ? ' y propuestas viejas de Drive' : '') + '. Reemplaza el contenido y la inversión: revisalos antes de enviar.') + '</span>' +
       (ia ? '<div class="pz-just"><b>Cómo llegó al precio</b> (interno)<p>' + esc(ia.justificacion_precio || '') + '</p><span class="muted">Usó ' + ia.referencias.proyectos + ' proyectos, ' + ia.referencias.propuestas + ' propuestas y presupuestos' + (ia.referencias.drive.length ? ' y ' + esc(ia.referencias.drive.join(', ')) : '') + '.</span></div>' : '') + '</div></section>';
@@ -184,7 +184,7 @@ export function initPropuestas(ctx, k) {
     pzItDel: t => { AD.pz.d.items.splice(+t.dataset.i, 1); AD.pz.dirty = true; ctx.render(); },
     pzNotas: () => {
       const d = AD.pz.d, ms = S.M.filter(m => m.cliente === d.cliente).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 4);
-      if (!ms.length) { toast('No hay seguimiento registrado con ' + d.cliente); return; }
+      if (!ms.length) { toast('No hay charlas anotadas con ' + d.cliente); return; }
       d.brief = (d.brief ? d.brief.trim() + '\n\n' : '') + ms.map(m => '[' + (m.fecha || '') + ' · ' + (m.canal || '') + '] ' + [m.resumen, m.acuerdo && 'Acuerdo: ' + m.acuerdo].filter(Boolean).join(' ')).join('\n');
       AD.pz.dirty = true; ctx.render();
     },

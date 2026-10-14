@@ -584,3 +584,16 @@ body.ia-on{overflow:hidden}
 .row.click{cursor:pointer}
 .row.click:hover{background:color-mix(in srgb,var(--fg) 3%,transparent)}
 input[list]::-webkit-calendar-picker-indicator{display:none!important}
+/* Servicios de un cliente (salen de proyectos y abonos) */
+.srv{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:12.5px;font-weight:600;white-space:nowrap;color:var(--muted);border:1px solid var(--line-2);background:transparent}
+.srv.on{color:var(--c,var(--fg));border-color:transparent;background:color-mix(in srgb,var(--c,var(--muted)) 13%,transparent)}
+.srv.on::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.srvs{display:inline-flex;flex-wrap:wrap;gap:4px}
+/* Lo que hicimos juntos */
+.hist{list-style:none;margin:0;padding:6px 0;position:relative}
+.hist li{position:relative}
+.hist-i{display:grid;grid-template-columns:104px minmax(0,1fr) auto;gap:12px;align-items:center;width:100%;padding:9px 18px;border:0;background:none;text-align:left;cursor:pointer;font:inherit;color:inherit}
+.hist-i:hover{background:color-mix(in srgb,var(--fg) 3%,transparent)}
+.hist-i .t{display:grid;min-width:0}.hist-i .t b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hist-i .t span{font-size:13px;color:var(--muted)}
+.hist-i .srv{position:relative;z-index:1;background:var(--surface)}
+.hist-i .srv.on{background:color-mix(in srgb,var(--c,var(--muted)) 13%,var(--surface))}

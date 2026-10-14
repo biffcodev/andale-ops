@@ -12,11 +12,12 @@ export function initIA(ctx) {
     ? ['¿Quién nos debe plata?', 'Cargá un gasto de 50 mil de Meta Ads para Apromax', 'Anotá que hablé con Lomo Loco: quieren 2 posteos más por semana', 'Armá un presupuesto de fotos de producto para Pasta Fusión', '¿Cuánto entró este mes?']
     : ['¿Qué tengo que entregar esta semana?', 'Anotá que hablé con Lomo Loco: quieren 2 posteos más por semana', '¿Qué proyectos están atrasados?'];
 
+  const serviciosTxt = n => [...new Set([...S.A.filter(a => a.cliente === n).map(a => a.tipo + (a.estado === 'Activo' ? ' (vigente)' : '')), ...S.P.filter(p => p.cliente === n && p.tipo).map(p => p.tipo)])].join(', ');
   /* ---------- contexto que se le manda (lo que este usuario ya puede ver) ---------- */
   function contexto() {
     const abiertos = S.P.filter(p => !['Entregado', 'Cancelado', 'Finalizado'].includes(p.estado));
     const c = {
-      clientes: S.C.map(x => ({ nombre: x.nombre, estado: x.estado, contacto: x.contacto || '', servicio: x.servicio || '' })),
+      clientes: S.C.map(x => ({ nombre: x.nombre, estado: x.estado, contacto: x.contacto || '', servicios: serviciosTxt(x.nombre) })),
       equipo: S.E.filter(e => e.activo !== false).map(e => ({ alias: e.persona, nombre: e.nombre || '', puesto: e.puesto || '' })),
       abonos: S.A.filter(a => a.estado !== 'Baja').map(a => ({ cliente: a.cliente, tipo: a.tipo, plan: a.plan || '', estado: a.estado, responsables: a.responsables || [] })),
       proyectos_abiertos: abiertos.map(p => ({ cliente: p.cliente, nombre: p.proyecto, tipo: p.tipo || '', estado: p.estado, entrega: p.entrega || '', responsables: p.responsables || [] })),
