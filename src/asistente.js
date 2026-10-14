@@ -128,8 +128,18 @@ export function initAsistente(ctx, k) {
     }
     AD.as.driveBusy = ''; toast(ok + ' leídos' + (mal ? ' · ' + mal + ' no se pudieron leer' : '')); await ctx.reload();
   }
+  // Resúmenes que faltan: se arman con lo que corresponde a cada cliente en el mes (abonos, cuotas, pautas).
+  function filasArmar(m) {
+    const cl = checklist(m).sinArmar;
+    return cl.map(c => { const sug = k.sugerencias(c, m), items = sug.map(s => ({ inc: true, origen: s.origen, ref: s.ref, concepto: s.concepto, monto: parseMonto(s.monto) })); return { cliente_id: data.ids.cliente(c), periodo: m + '-01', moneda: (sug[0] && sug[0].moneda) || k.cadm(c).moneda || 'ARS', items, total: r2(items.reduce((a, i) => a + (i.monto || 0), 0)), nota: '', estado: 'Borrador' }; }).filter(r => r.cliente_id);
+  }
+  const listosDrive = () => AD.DA.filter(d => d.estado === 'Leído').map(d => ({ d, mt: matchArchivo(d), p: presetDesde(d) })).filter(x => x.mt.cliente && !x.mt.existente && !x.mt.nota && x.p.monto && x.p.fecha && x.d.datos.es_comprobante !== false);
+  async function cargarDeDrive(x) {
+    const p = x.p, f = await data.ins('facturas', { cliente_id: data.ids.cliente(p.cliente), tipo: p.tipo, emisor: p.emisor || '', numero: p.numero, periodo: p.periodo ? p.periodo + '-01' : null, fecha: p.fecha, vencimiento: p.vencimiento || null, moneda: p.moneda, monto: p.monto, concepto: p.concepto, link_pdf: p.link_pdf, notas: p.notas });
+    await data.upd('drive_archivos', x.d.id, { factura_id: f.id }); await aprender(x.d, p);
+  }
   async function crearTodos() {
-    const listos = AD.DA.filter(d => d.estado === 'Leído').map(d => ({ d, mt: matchArchivo(d), p: presetDesde(d) })).filter(x => x.mt.cliente && !x.mt.existente && !x.mt.nota && x.p.monto && x.p.fecha && x.d.datos.es_comprobante !== false);
+    const listos = listosDrive();
     if (!listos.length) { toast('No hay facturas con cliente reconocido para cargar solas'); return; }
     openPanel({
       title: 'Cargar ' + listos.length + ' facturas', eyebrow: 'Desde Drive', saveLabel: 'Cargar', busyLabel: 'Cargando…',
@@ -140,8 +150,7 @@ export function initAsistente(ctx, k) {
         let n = 0;
         for (const [i, x] of listos.entries()) {
           if (!($('[data-asct="' + i + '"]') || {}).checked) continue;
-          const p = x.p, f = await data.ins('facturas', { cliente_id: data.ids.cliente(p.cliente), tipo: p.tipo, emisor: p.emisor || '', numero: p.numero, periodo: p.periodo ? p.periodo + '-01' : null, fecha: p.fecha, vencimiento: p.vencimiento || null, moneda: p.moneda, monto: p.monto, concepto: p.concepto, link_pdf: p.link_pdf, notas: p.notas });
-          await data.upd('drive_archivos', x.d.id, { factura_id: f.id }); await aprender(x.d, p); n++;
+          await cargarDeDrive(x); n++;
         }
         toast(n + ' facturas cargadas');
       },
@@ -289,7 +298,8 @@ export function initAsistente(ctx, k) {
     ];
     const pend = its.filter(x => !x[0]), okN = its.length - pend.length;
     let h = '<section class="sheet"><div class="sheet-h"><h2>' + (pend.length ? 'Para cerrar ' + esc(monthLabel(m)) : '✓ ' + esc(cap(monthLabel(m))) + ' está al día') + '</h2><span class="toolbar">' +
-      (pend.length ? '<button class="btn sm" data-act="asBrief"' + (AD.as.briefBusy ? ' disabled' : '') + '>' + (AD.as.briefBusy ? 'Pensando…' : '✨ ¿Por dónde empiezo?') + '</button>' : '') + '</span></div>' +
+      (pend.length ? '<button class="btn sm" data-act="asBrief"' + (AD.as.briefBusy ? ' disabled' : '') + '>' + (AD.as.briefBusy ? 'Pensando…' : '¿Por dónde empiezo?') + '</button><button class="btn sm primary" data-act="asCierre">✨ Hacer el cierre en un clic</button>' : '') + '</span></div>' +
+      (AD.as.ultimoCierre && AD.as.ultimoCierre.m === m ? '<div class="sheet-b" style="border-bottom:1px solid var(--line);display:grid;gap:4px"><b>Cierre de las ' + esc(AD.as.ultimoCierre.cuando) + '</b>' + AD.as.ultimoCierre.hecho.map(x => '<span>✓ ' + esc(x) + '</span>').join('') + AD.as.ultimoCierre.errores.map(x => '<span style="color:var(--crit)">✗ ' + esc(x) + '</span>').join('') + '</div>' : '') +
       (b ? '<div class="sheet-b" style="border-bottom:1px solid var(--line);display:grid;gap:8px;background:color-mix(in srgb,var(--accent) 6%,var(--surface))"><b style="font-family:var(--f-display);font-size:19px">' + esc(b.titular) + '</b><ul style="margin:0;padding-left:18px;display:grid;gap:4px">' + (b.puntos || []).map(p => '<li>' + (p.prioridad === 'alta' ? '<b style="color:var(--crit)">Urgente:</b> ' : '') + esc(p.texto) + '</li>').join('') + '</ul></div>' : '') +
       (pend.length ? '<div class="rows">' + pend.map(([ok, n, t, sub, btn]) => item(ok, n, t, sub, btn)).join('') + '</div>' : '') +
       '<div class="count">' + (okN ? '✓ ' + pl(okN, 'cosa al día', 'cosas al día') : '') + (c.cuotas.length ? (okN ? ' · ' : '') + 'Este mes se cobran ' + pl(c.cuotas.length, 'cuota', 'cuotas') + ' de proyectos.' : '') + '</div></section>';
@@ -297,6 +307,48 @@ export function initAsistente(ctx, k) {
     return h;
   }
   function vAsistente() { return pendientesHtml(AD.as.mes); }
+
+  /* ---------- Cierre en un clic ---------- */
+  function abrirCierre() {
+    const m = AD.as.mes = AD.mes || AD.as.mes, c = checklist(m), st = AD.as.estado || {}, cfg = cfgDrive();
+    const B = k.cierre, bRes = () => B.bulkResumenes(m), bRec = B.bulkRecordatorios(), bAv = B.bulkAvisos();
+    const sinMail = it => it.filter(x => !x.para).map(x => x.label);
+    const resAhora = (bRes() || { items: [] }).items, conRes = resAhora.filter(x => x.para).length + c.sinArmar.length;
+    const pasos = [
+      st.drive && cfg.carpeta ? { k: 'drive', label: 'Buscar facturas nuevas en Drive, leerlas y cargar las que reconozca', sub: 'Las que no reconozca quedan en “Facturas en Drive” para mirarlas.' } : null,
+      c.sinArmar.length ? { k: 'armar', label: 'Preparar ' + pl(c.sinArmar.length, 'resumen que falta', 'resúmenes que faltan'), sub: lista(c.sinArmar) + (c.sinPrecio.length ? ' · ojo: ' + pl(c.sinPrecio.length, 'abono no tiene', 'abonos no tienen') + ' precio y saldría sin monto' : '') } : null,
+      conRes ? { k: 'enviar', label: 'Mandar por email ' + pl(conRes, 'resumen', 'resúmenes') + ' con el PDF', sub: sinMail(resAhora).length ? 'Sin email (no se mandan): ' + sinMail(resAhora).join(', ') : 'Cada uno con su resumen adjunto y una copia para vos.' } : null,
+      bRec && bRec.items.length ? { k: 'recs', label: 'Mandar recordatorio de pago a ' + pl(bRec.items.filter(x => x.para).length, 'cliente', 'clientes'), sub: bRec.items.map(x => x.label + ' (' + x.sub.split(' · ')[0] + ')').join(', ') } : null,
+      bAv && bAv.items.length ? { k: 'avisos', label: 'Avisar ' + pl(bAv.items.filter(x => x.para).length, 'aumento', 'aumentos') + ' de precio', sub: bAv.items.map(x => x.label).join(', ') } : null,
+    ].filter(Boolean);
+    if (!pasos.length) { toast('No hay nada pendiente para el cierre de ' + monthLabel(m)); return; }
+    openPanel({
+      title: 'Cierre de ' + monthLabel(m), eyebrow: '✨ En un clic', saveLabel: 'Hacer el cierre', busyLabel: 'Haciendo el cierre…',
+      intro: 'Esto es lo que voy a hacer, en este orden. Destildá lo que no quieras. Los emails salen desde administracion@weareandale.com.',
+      values: {}, fields: [],
+      extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:10px">' + pasos.map((p, i) => '<label class="row" style="cursor:pointer;grid-template-columns:24px 22px minmax(0,1fr)"><input type="checkbox" data-cp="' + p.k + '" checked><span class="muted">' + (i + 1) + '</span><span class="t"><b style="white-space:normal">' + esc(p.label) + '</b><span style="white-space:normal">' + esc(p.sub || '') + '</span></span></label>').join('') + '</div></div><p class="formnote" id="cierre-prog" style="grid-column:1/-1" aria-live="polite"></p>',
+      onSave: async () => {
+        const v = Object.fromEntries(pasos.map(p => [p.k, !!($('[data-cp="' + p.k + '"]') || {}).checked]));
+        if (!Object.values(v).some(Boolean)) throw new Error('Tildá al menos un paso');
+        const prog = t => { const el = $('#cierre-prog'); if (el) el.textContent = t; }, hecho = [], errores = [];
+        const correr = async (label, fn) => { prog(label + '…'); try { const r = await fn(); if (r) hecho.push(r); } catch (e) { errores.push(label + ': ' + e.message); } await ctx.reload(); };
+        if (v.drive) await correr('Revisando Drive', async () => {
+          await data.asistente({ accion: 'drive_sync' }); await ctx.reload();
+          const ids = AD.DA.filter(d => d.estado === 'Nuevo' || d.estado === 'Error').map(d => d.id).slice(0, 30);
+          for (let i = 0; i < ids.length; i += 3) { prog('Leyendo facturas de Drive (' + Math.min(i + 3, ids.length) + ' de ' + ids.length + ')…'); await data.asistente({ accion: 'leer_factura', archivo_ids: ids.slice(i, i + 3) }); }
+          await ctx.reload(); const ls = listosDrive(); for (const x of ls) await cargarDeDrive(x);
+          return ls.length ? pl(ls.length, 'factura cargada', 'facturas cargadas') + ' desde Drive' : 'Drive al día';
+        });
+        if (v.armar) await correr('Preparando resúmenes', async () => { const rows = filasArmar(m); if (rows.length) await data.insMany('resumenes', rows); return pl(rows.length, 'resumen preparado', 'resúmenes preparados'); });
+        const mandar = async (o, que) => { if (!o) return ''; const r = await B.enviarDirecto(o, (n, t) => prog(que + ' (' + n + ' de ' + t + ')…')); if (r.fails.length) errores.push(...r.fails); return r.ok ? r.ok + ' ' + que.toLowerCase().replace('mandando ', '') : ''; };
+        if (v.enviar) await correr('Mandando resúmenes', () => mandar(bRes(), 'Mandando resúmenes'));
+        if (v.recs) await correr('Mandando recordatorios', () => mandar(B.bulkRecordatorios(), 'Mandando recordatorios'));
+        if (v.avisos) await correr('Avisando aumentos', () => mandar(B.bulkAvisos(), 'Avisando aumentos'));
+        AD.as.ultimoCierre = { m, hecho, errores, cuando: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) };
+        toast(errores.length ? 'Cierre hecho con ' + pl(errores.length, 'problema', 'problemas') + ': mirá el detalle arriba.' : '✓ Cierre de ' + monthLabel(m) + ' hecho');
+      },
+    });
+  }
   function driveView() {
     if (!AD.as.estado && !AD.as.estadoBusy) setTimeout(() => cargarEstado(), 0);
     return '<div class="head"><div>' + lock + '<h1>Facturas en Drive</h1><p>Las facturas que hacen en ARCA y guardan en la carpeta de Drive. La IA las lee y las carga; vos confirmás.</p></div></div>' + driveHtml(AD.as.estado || {});
@@ -370,11 +422,11 @@ export function initAsistente(ctx, k) {
       AD.as.briefBusy = false; ctx.render();
     },
     asArmar: async () => {
-      const m = AD.as.mes, cl = checklist(m).sinArmar;
-      const rows = cl.map(c => { const sug = k.sugerencias(c, m), items = sug.map(s => ({ inc: true, origen: s.origen, ref: s.ref, concepto: s.concepto, monto: parseMonto(s.monto) })); return { cliente_id: data.ids.cliente(c), periodo: m + '-01', moneda: (sug[0] && sug[0].moneda) || k.cadm(c).moneda || 'ARS', items, total: r2(items.reduce((a, i) => a + (i.monto || 0), 0)), nota: '', estado: 'Borrador' }; }).filter(r => r.cliente_id);
+      const rows = filasArmar(AD.as.mes);
       try { await data.insMany('resumenes', rows); toast(rows.length + ' resúmenes preparados. Revisalos en Cobros del mes.'); await ctx.reload(); } catch (err) { toast(err.message); }
     },
     asMailRes: () => k.mail.resumenes(AD.as.mes),
+    asCierre: () => abrirCierre(),
     asRecs: () => k.mail.recordatorios(),
     asImpAll: () => repartirTodos(),
     asDf: t => { AD.as.df = t.dataset.v; ctx.render(); },

@@ -161,7 +161,7 @@ export function initAdmin(ctx) {
     const sug = sugerencias(rd.cliente, rd.m).filter(s => !rd.items.some(i => i.ref && i.ref === s.ref));
     const sent = rd.estado === 'Enviado';
     const items = rd.items.map((it, i) => '<div class="ri' + (it.inc ? '' : ' off') + '" style="display:grid;grid-template-columns:24px minmax(0,1fr) 150px 30px;gap:10px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line);' + (it.inc ? '' : 'opacity:.5') + '"><input type="checkbox" aria-label="Incluir" id="ri-' + i + '-inc" data-ri="' + i + '" data-rik="inc"' + (it.inc ? ' checked' : '') + '><div class="field" style="gap:2px"><input type="text" id="ri-' + i + '-c" data-ri="' + i + '" data-rik="concepto" value="' + esc(it.concepto) + '" placeholder="Concepto"><span class="hint">' + esc(it.origen || 'Manual') + '</span></div><div class="field"><input type="text" style="text-align:right" inputmode="decimal" id="ri-' + i + '-m" data-ri="' + i + '" data-rik="monto" value="' + esc(it.monto) + '" placeholder="Monto"></div><button class="btn ghost sm" data-act="aRiDel" data-i="' + i + '" aria-label="Quitar línea">✕</button></div>').join('');
-    const facs = c.facs.map(f => '<div class="row" style="cursor:default"><span class="d">' + fmt(f.fecha) + '</span><span class="t"><b>' + esc(verTipo(f.tipo)) + ' ' + esc(f.numero || 'sin número') + (f.emisor ? ' · ' + esc(f.emisor) : '') + '</b><span><span class="money">' + money(f.monto, f.moneda) + '</span> · cobrado ' + money(f.cobrado, f.moneda) + (f.vencimiento ? ' · vence ' + fmt(f.vencimiento) : '') + (f.link_pdf ? ' · <a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</span></span><span class="toolbar">' + efPill(f) + (f.saldo > 0.009 ? '<button class="btn sm" data-act="aCobro" data-id="' + esc(f.id) + '">Registrar cobro</button>' : '') + '<button class="btn sm" data-act="aMailFactura" data-id="' + esc(f.id) + '">Enviar</button><button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Editar</button></span></div>').join('');
+    const facs = c.facs.map(f => '<div class="row" style="cursor:default;grid-template-columns:92px minmax(0,1fr)"><span class="d">' + fmt(f.fecha) + '</span><span class="t"><b>' + esc(verTipo(f.tipo)) + ' ' + esc(f.numero || 'sin número') + (f.emisor ? ' · ' + esc(f.emisor) : '') + '</b><span><span class="money">' + money(f.monto, f.moneda) + '</span> · cobrado ' + money(f.cobrado, f.moneda) + (f.vencimiento ? ' · vence ' + fmt(f.vencimiento) : '') + (f.link_pdf ? ' · <a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</span><span class="toolbar" style="margin-top:8px;flex-wrap:wrap">' + efPill(f) + (f.saldo > 0.009 ? '<button class="btn sm" data-act="aCobro" data-id="' + esc(f.id) + '">Registrar cobro</button>' : '') + '<button class="btn sm" data-act="aMailFactura" data-id="' + esc(f.id) + '">Enviar</button><button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Editar</button></span></span></div>').join('');
     const gest = c.gest.map(g => '<div class="row" style="cursor:default"><span class="d">' + fmt(g.fecha) + '</span><span class="t"><b>' + esc(g.tipo) + '</b><span>' + esc([g.canal, g.persona, g.nota].filter(Boolean).join(' · ')) + '</span></span><button class="btn ghost sm" data-act="aGestDel" data-id="' + esc(g.id) + '" aria-label="Borrar">✕</button></div>').join('');
     return '<button class="btn ghost sm" data-act="aBack" style="justify-self:start">← Cobros de ' + esc(monthLabel(rd.m)) + '</button>' +
       '<div class="head"><div>' + lock + '<h1>' + esc(rd.cliente) + '</h1><p style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Cuenta de <b style="color:var(--fg)">' + esc(cap(monthLabel(rd.m))) + '</b>' + (ca.cuit ? ' · CUIT ' + esc(ca.cuit) : '') + (ca.carpeta_admin ? ' · <a href="' + esc(ca.carpeta_admin) + '" target="_blank" rel="noopener">Carpeta de administración</a>' : '') + '</p></div>' +
@@ -173,8 +173,9 @@ export function initAdmin(ctx) {
       (sug.length ? '<div style="border-top:1px solid var(--line)">' + sug.map(s => '<div class="row" style="cursor:default"><span class="d">' + esc(s.origen) + '</span><span class="t"><b>' + esc(s.concepto) + '</b><span>' + (s.monto ? money(parseMonto(s.monto), s.moneda) : 'sin monto') + '</span></span><button class="btn sm" data-act="aSugAdd" data-ref="' + esc(s.ref) + '">Agregar</button></div>').join('') + '</div>' : '') +
       '<div class="sheet-b" style="display:grid;gap:10px;border-top:1px solid var(--line)"><div class="field"><label for="rd-nota">Nota al pie</label><textarea id="rd-nota" rows="2" data-rdk="nota" placeholder="Ej.: datos de pago, vencimiento">' + esc(rd.nota) + '</textarea></div>' +
       '<div class="field"><label for="rd-pdf">Link al PDF del resumen (Drive)</label><input id="rd-pdf" data-rdk="link_pdf" value="' + esc(rd.link_pdf) + '" placeholder="https://drive.google.com/..."></div>' +
-      '<div class="toolbar"><button class="btn sm" data-act="aRiAdd">+ Agregar línea</button><button class="btn sm" data-act="aCopy" data-what="resumen">Copiar texto</button><button class="btn sm" data-act="aPrint">Ver PDF</button><button class="btn sm primary" data-act="aMailResumen">Enviar por email</button></div>' +
-      '<div class="toolbar"><button class="btn" data-act="aResSave" data-estado="' + (sent ? 'Enviado' : 'Borrador') + '">Guardar' + (sent ? ' cambios' : '') + '</button>' + (sent ? '<button class="btn ghost" data-act="aResSave" data-estado="Borrador">Volver a editar</button>' : '<button class="btn primary" data-act="aResSave" data-estado="Enviado">Ya lo mandé por otro lado</button>') + '</div></div></section></div>' +
+      '<div class="toolbar"><button class="btn sm" data-act="aRiAdd">+ Agregar línea</button></div>' +
+      '<div class="toolbar res-acc"><button class="btn" data-act="aResSave" data-estado="' + (sent ? 'Enviado' : 'Borrador') + '">Guardar' + (sent ? ' cambios' : '') + '</button><button class="btn" data-act="aPrint">Ver PDF</button>' + (sent ? '' : '<button class="btn primary" data-act="aMailResumen">Enviar por email</button>') +
+      '<details class="share"><summary class="btn ghost" title="Más opciones">Más</summary><div class="menu-pop">' + (sent ? '<button class="btn ghost sm" data-act="aMailResumen">Volver a mandarlo por email</button>' : '') + '<button class="btn ghost sm" data-act="aCopy" data-what="resumen">Copiar el texto (para WhatsApp)</button>' + (sent ? '<button class="btn ghost sm" data-act="aResSave" data-estado="Borrador">Volver a editar</button>' : '<button class="btn ghost sm" data-act="aResSave" data-estado="Enviado">Ya lo mandé por otro lado</button>') + '</div></details></div></div></section></div>' +
       '<div class="stack">' +
       '<section class="sheet"><div class="sheet-h"><h2>2 · Facturas</h2><button class="btn sm primary" data-act="aFactura">+ Factura</button></div>' + (facs ? '<div class="rows">' + facs + '</div>' : emptyBox('Sin facturas este mes', 'Cargá la factura con su número y el link al PDF.')) +
       (c.facs.length ? '<div class="count">Facturado <b class="money">' + money(c.emitido, c.moneda) + '</b> · cobrado <b class="money">' + money(c.cobrado, c.moneda) + '</b> · falta cobrar <b class="money">' + money(c.saldo, c.moneda) + '</b></div>' : '') + '</section>' +
@@ -307,6 +308,65 @@ export function initAdmin(ctx) {
     return { a, prev, pct };
   }
 
+  function bulkRecordatorios() {
+      const porCliente = new Map();
+      AD.F.filter(f => estadoFactura(f) === 'Vencida').forEach(f => { if (!porCliente.has(f.cliente)) porCliente.set(f.cliente, []); porCliente.get(f.cliente).push(f); });
+      if (!porCliente.size) return null;
+      const items = [...porCliente.entries()].sort((a, b) => cmp(a[0], b[0])).map(([cliente, fs]) => {
+        const moneda = fs[0].moneda, mismas = fs.filter(f => f.moneda === moneda), m = mismas.map(f => f.periodo).filter(Boolean).sort().pop() || thisMonth();
+        const ult = AD.G.filter(g => g.cliente === cliente && g.tipo === 'Recordatorio de pago').sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+        return { label: cliente, nombre: contactoDe(cliente), para: mailsDe(cliente), periodo: periodoTxt(m), m, moneda, fs: mismas, sub: multi(fs.reduce((acc, f) => add(acc, f.moneda, f.saldo), {})) + (ult ? ' · último recordatorio ' + fmt(ult.fecha) : '') };
+      });
+      return {
+        titulo: 'Recordatorios de pago', asunto: 'Recordatorio de pago · {cuenta}', mensaje: E.textos.recordatorio({ nombre: '{nombre}', periodo: '{periodo}' }), items,
+        send: async (it, v) => {
+          const pend = it.fs.map(f => ({ concepto: f.tipo + ' ' + (f.numero || 'sin número') + (f.vencimiento ? ' · venció ' + fmt(f.vencimiento) : ''), monto: f.saldo }));
+          const b = E.recordatorioEmail({ cfg: cfgMarca(), contacto: contactoFull(it.label), cuenta: it.label, periodo: periodoTit(it.m), moneda: it.moneda, pendientes: pend, total: r2(pend.reduce((a, i) => a + i.monto, 0)), mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
+          await data.sendEmail({ tipo: 'Recordatorio de pago', cliente_id: data.ids.cliente(it.label), periodo: it.m + '-01', factura_id: it.fs.length === 1 ? it.fs[0].id : null, para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia });
+        },
+      };
+  }
+  function bulkResumenes(m) {
+      const rs = AD.R.filter(r => r.periodo === m && r.estado !== 'Enviado' && itemsDe(r).length).sort((a, b) => cmp(a.cliente, b.cliente));
+      if (!rs.length) return null;
+      return {
+        titulo: 'Resúmenes de ' + periodoTit(m), asunto: 'Resumen de cuenta · {cuenta} · ' + periodoTit(m), mensaje: E.textos.resumen({ nombre: '{nombre}', periodo: periodoTxt(m) }),
+        items: rs.map(r => ({ label: r.cliente, nombre: contactoDe(r.cliente), para: mailsDe(r.cliente), sub: money(r.total, r.moneda), periodo: periodoTxt(m), r })),
+        send: async (it, v) => {
+          const r = it.r, items = itemsDe(r), pdf = await pdfResumen({ id: r.id, numero: r.numero, cliente: r.cliente, m, moneda: r.moneda, items: r.items, nota: r.nota });
+          const b = E.resumenEmail({ cfg: cfgMarca(), contacto: contactoFull(r.cliente), cuenta: r.cliente, periodo: periodoTit(m), moneda: r.moneda, items, total: r2(items.reduce((a, i) => a + i.monto, 0)), nota: r.nota, mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
+          await data.sendEmail({ tipo: 'Resumen de cuenta', cliente_id: r.cliente_id, periodo: m + '-01', para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia, adjuntos: [{ nombre: pdf.nombre, base64: pdf.base64 }] });
+          await data.upd('resumenes', r.id, { estado: 'Enviado', enviado_el: today() });
+        },
+      };
+  }
+  function bulkAvisos() {
+      const m = thisMonth();
+      const ps = AD.PR.filter(p => p.desde > m && !p.aviso_enviado).map(p => ({ p, d: datosAviso(p) })).filter(x => x.d && x.d.a.estado === 'Activo').sort((x, y) => cmp(x.d.a.cliente, y.d.a.cliente));
+      if (!ps.length) return null;
+      return {
+        titulo: 'Avisos de aumento', asunto: 'Actualización de tu abono · desde ' + periodoTit(ps[0].p.desde),
+        mensaje: E.textos.aviso({ nombre: '{nombre}', servicio: 'tu abono', desde: '{periodo}', pct: '' }),
+        items: ps.map(({ p, d }) => ({ label: d.a.cliente, nombre: contactoDe(d.a.cliente), para: mailsDe(d.a.cliente), sub: servicioDe(d.a) + ' · ' + money(p.monto, p.moneda) + ' desde ' + fmt(p.desde), periodo: periodoTxt(p.desde), p, d })),
+        send: async (it, v) => {
+          const { p, d } = it;
+          const b = E.avisoEmail({ cfg: cfgMarca(), contacto: contactoFull(d.a.cliente), cuenta: d.a.cliente, servicio: servicioDe(d.a), anterior: d.prev ? d.prev.monto : null, nuevo: p.monto, moneda: p.moneda, desde: periodoTit(p.desde), mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
+          await data.sendEmail({ tipo: 'Aviso de aumento', cliente_id: data.ids.cliente(d.a.cliente), periodo: p.desde + '-01', para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia });
+          await data.upd('precios_abono', p.id, { aviso_enviado: today() });
+        },
+      };
+  }
+  // Manda un envío masivo sin abrir el panel (para el cierre en un clic). Saltea a quien no tiene email.
+  async function enviarDirecto(o, onProg) {
+    const sel = o.items.filter(it => it.para); const fails = []; let ok = 0;
+    for (const [n, it] of sel.entries()) {
+      if (onProg) onProg(n + 1, sel.length);
+      const fill = t => String(t || '').replace(/\{nombre\}/g, it.nombre || '').replace(/\{cuenta\}/g, it.label).replace(/\{periodo\}/g, it.periodo || '').replace(/Hola ,/g, 'Hola,');
+      try { await o.send(it, { asunto: fill(o.asunto), mensaje: fill(o.mensaje), copia: true }); ok++; } catch (err) { fails.push(it.label + ': ' + err.message); }
+      await new Promise(r => setTimeout(r, 600));
+    }
+    return { ok, fails, sinMail: o.items.filter(it => !it.para).map(it => it.label) };
+  }
   const mail = {
     resumen(rd) {
       const items = itemsDe(rd); if (!items.length) { toast('El resumen no tiene ítems'); return; }
@@ -352,24 +412,7 @@ export function initAdmin(ctx) {
       });
       if (!f.link_pdf && !adjuntos.length) toast('Ojo: la factura no tiene link al PDF cargado');
     },
-    recordatorios() {
-      const porCliente = new Map();
-      AD.F.filter(f => estadoFactura(f) === 'Vencida').forEach(f => { if (!porCliente.has(f.cliente)) porCliente.set(f.cliente, []); porCliente.get(f.cliente).push(f); });
-      if (!porCliente.size) { toast('No hay facturas vencidas'); return; }
-      const items = [...porCliente.entries()].sort((a, b) => cmp(a[0], b[0])).map(([cliente, fs]) => {
-        const moneda = fs[0].moneda, mismas = fs.filter(f => f.moneda === moneda), m = mismas.map(f => f.periodo).filter(Boolean).sort().pop() || thisMonth();
-        const ult = AD.G.filter(g => g.cliente === cliente && g.tipo === 'Recordatorio de pago').sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
-        return { label: cliente, nombre: contactoDe(cliente), para: mailsDe(cliente), periodo: periodoTxt(m), m, moneda, fs: mismas, sub: multi(fs.reduce((acc, f) => add(acc, f.moneda, f.saldo), {})) + (ult ? ' · último recordatorio ' + fmt(ult.fecha) : '') };
-      });
-      openBulk({
-        titulo: 'Recordatorios de pago', asunto: 'Recordatorio de pago · {cuenta}', mensaje: E.textos.recordatorio({ nombre: '{nombre}', periodo: '{periodo}' }), items,
-        send: async (it, v) => {
-          const pend = it.fs.map(f => ({ concepto: f.tipo + ' ' + (f.numero || 'sin número') + (f.vencimiento ? ' · venció ' + fmt(f.vencimiento) : ''), monto: f.saldo }));
-          const b = E.recordatorioEmail({ cfg: cfgMarca(), contacto: contactoFull(it.label), cuenta: it.label, periodo: periodoTit(it.m), moneda: it.moneda, pendientes: pend, total: r2(pend.reduce((a, i) => a + i.monto, 0)), mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
-          await data.sendEmail({ tipo: 'Recordatorio de pago', cliente_id: data.ids.cliente(it.label), periodo: it.m + '-01', factura_id: it.fs.length === 1 ? it.fs[0].id : null, para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia });
-        },
-      });
-    },
+    recordatorios() { const o = bulkRecordatorios(); if (!o) { toast('No hay facturas vencidas'); return; } openBulk(o); },
     aviso(p) {
       const d = datosAviso(p); if (!d) return;
       const { a, prev, pct } = d;
@@ -395,36 +438,8 @@ export function initAdmin(ctx) {
         build: v => E.libreEmail({ cfg: cfgMarca(), contacto: contactoFull(cliente), cuenta: cliente, titulo: v.titulo, mensaje: v.mensaje, botonUrl: v.botonUrl, botonTexto: v.botonTexto, conPago: v.conPago, firma: firma(), asunto: v.asunto || (v.titulo ? v.titulo + ' · àndale' : '') }),
       });
     },
-    resumenes(m) {
-      const rs = AD.R.filter(r => r.periodo === m && r.estado !== 'Enviado' && itemsDe(r).length).sort((a, b) => cmp(a.cliente, b.cliente));
-      if (!rs.length) { toast('No hay resúmenes guardados sin enviar en ' + monthLabel(m) + '. Primero guardalos.'); return; }
-      openBulk({
-        titulo: 'Resúmenes de ' + periodoTit(m), asunto: 'Resumen de cuenta · {cuenta} · ' + periodoTit(m), mensaje: E.textos.resumen({ nombre: '{nombre}', periodo: periodoTxt(m) }),
-        items: rs.map(r => ({ label: r.cliente, nombre: contactoDe(r.cliente), para: mailsDe(r.cliente), sub: money(r.total, r.moneda), periodo: periodoTxt(m), r })),
-        send: async (it, v) => {
-          const r = it.r, items = itemsDe(r), pdf = await pdfResumen({ id: r.id, numero: r.numero, cliente: r.cliente, m, moneda: r.moneda, items: r.items, nota: r.nota });
-          const b = E.resumenEmail({ cfg: cfgMarca(), contacto: contactoFull(r.cliente), cuenta: r.cliente, periodo: periodoTit(m), moneda: r.moneda, items, total: r2(items.reduce((a, i) => a + i.monto, 0)), nota: r.nota, mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
-          await data.sendEmail({ tipo: 'Resumen de cuenta', cliente_id: r.cliente_id, periodo: m + '-01', para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia, adjuntos: [{ nombre: pdf.nombre, base64: pdf.base64 }] });
-          await data.upd('resumenes', r.id, { estado: 'Enviado', enviado_el: today() });
-        },
-      });
-    },
-    avisos() {
-      const m = thisMonth();
-      const ps = AD.PR.filter(p => p.desde > m && !p.aviso_enviado).map(p => ({ p, d: datosAviso(p) })).filter(x => x.d && x.d.a.estado === 'Activo').sort((x, y) => cmp(x.d.a.cliente, y.d.a.cliente));
-      if (!ps.length) { toast('No hay aumentos pendientes de avisar'); return; }
-      openBulk({
-        titulo: 'Avisos de aumento', asunto: 'Actualización de tu abono · desde ' + periodoTit(ps[0].p.desde),
-        mensaje: E.textos.aviso({ nombre: '{nombre}', servicio: 'tu abono', desde: '{periodo}', pct: '' }),
-        items: ps.map(({ p, d }) => ({ label: d.a.cliente, nombre: contactoDe(d.a.cliente), para: mailsDe(d.a.cliente), sub: servicioDe(d.a) + ' · ' + money(p.monto, p.moneda) + ' desde ' + fmt(p.desde), periodo: periodoTxt(p.desde), p, d })),
-        send: async (it, v) => {
-          const { p, d } = it;
-          const b = E.avisoEmail({ cfg: cfgMarca(), contacto: contactoFull(d.a.cliente), cuenta: d.a.cliente, servicio: servicioDe(d.a), anterior: d.prev ? d.prev.monto : null, nuevo: p.monto, moneda: p.moneda, desde: periodoTit(p.desde), mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
-          await data.sendEmail({ tipo: 'Aviso de aumento', cliente_id: data.ids.cliente(d.a.cliente), periodo: p.desde + '-01', para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia });
-          await data.upd('precios_abono', p.id, { aviso_enviado: today() });
-        },
-      });
-    },
+    resumenes(m) { const o = bulkResumenes(m); if (!o) { toast('No hay resúmenes preparados sin enviar en ' + monthLabel(m) + '.'); return; } openBulk(o); },
+    avisos() { const o = bulkAvisos(); if (!o) { toast('No hay aumentos pendientes de avisar'); return; } openBulk(o); },
   };
 
   function exportCSV() {
@@ -972,7 +987,7 @@ export function initAdmin(ctx) {
   }
 
   /* ---------- Módulos: sueldos y pagos, asistente ---------- */
-  const kit = { estiloDoc, hoyDMY, cfgDocs, datosClienteDoc, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
+  const kit = { cierre: { bulkResumenes, bulkRecordatorios, bulkAvisos, enviarDirecto }, estiloDoc, hoyDMY, cfgDocs, datosClienteDoc, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
     formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a),
     openComposer: o => openComposer(o), cfgMarca: () => cfgMarca(), firma: () => firma(), mailsDe: c => mailsDe(c), cuotasPlan };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;

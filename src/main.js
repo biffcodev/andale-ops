@@ -613,13 +613,13 @@ const FORMS = {
     { k: 'etapas', label: 'Etapas', type: 'etapas', full: 1 },
     { k: 'fechaInicio', label: 'Fecha de inicio', type: 'date' },
     { k: 'entrega', label: 'Entrega pactada', type: 'date', hint: 'Opcional' },
-    { k: 'entregaReal', label: 'Entrega real', type: 'date' },
-    { k: 'entregables', label: 'Entregables', type: 'textarea', full: 1, rows: 2 },
-    { k: 'drive', label: 'Carpeta (Drive)', type: 'url', full: 1, ph: 'https://' },
-    { k: 'slides', label: 'Presentación (Slides)', type: 'url', ph: 'https://' },
-    { k: 'canva', label: 'Canva', type: 'url', ph: 'https://' },
-    { k: 'notas', label: 'Notas', type: 'textarea', full: 1 },
-  ], defaults: () => ({ estado: 'Por empezar', fechaInicio: today(), responsables: [] }), can: rec => rec ? canEditProj(rec) : isStaff() },
+    { k: 'entregaReal', label: 'Entrega real', type: 'date', adv: 1 },
+    { k: 'entregables', label: 'Entregables', type: 'textarea', full: 1, rows: 2, adv: 1 },
+    { k: 'drive', label: 'Carpeta (Drive)', type: 'url', full: 1, ph: 'https://', adv: 1 },
+    { k: 'slides', label: 'Presentación (Slides)', type: 'url', ph: 'https://', adv: 1 },
+    { k: 'canva', label: 'Canva', type: 'url', ph: 'https://', adv: 1 },
+    { k: 'notas', label: 'Notas', type: 'textarea', full: 1, adv: 1 },
+  ], masLabel: 'Links, entregables y notas', defaults: () => ({ estado: 'Por empezar', fechaInicio: today(), responsables: [] }), can: rec => rec ? canEditProj(rec) : isStaff() },
   abono: { arr: 'A', title: 'abono', nuevo: 'Nuevo abono', label: a => a.cliente + ' · ' + abonoLabel(a), fields: [
     { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, full: 1 },
     { k: 'tipo', label: 'Tipo', type: 'select', opts: () => S.L.tiposAbono, req: 1 },
@@ -707,7 +707,8 @@ function openForm(kind, id, preset) {
   const extra = adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
   const p = $('#panel');
   p.innerHTML = '<form id="form" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + (rec ? (ro ? 'Ver ' : 'Editar ') + def.title : 'Alta') + '</span><h2 id="panel-title">' + (rec ? esc(def.label(rec) || def.title) : def.nuevo) + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
-    '<div class="panel-b">' + (IA && kind === 'comunicacion' && !rec ? IA.charlaHtml() : '') + def.fields.map(f => fieldHtml(f, vals[f.k], ro)).join('') + extra + '</div><div class="panel-f">' + foot + '</div></form>';
+    '<div class="panel-b">' + (IA && kind === 'comunicacion' && !rec ? IA.charlaHtml() : '') + def.fields.filter(f => !f.adv).map(f => fieldHtml(f, vals[f.k], ro)).join('') +
+      (def.fields.some(f => f.adv) ? '<details class="mas full" id="f-mas"' + (rec ? ' open' : '') + '><summary>' + esc(def.masLabel || 'Más opciones') + '</summary><div class="mas-b">' + def.fields.filter(f => f.adv).map(f => fieldHtml(f, vals[f.k], ro)).join('') + '</div></details>' : '') + extra + '</div><div class="panel-f">' + foot + '</div></form>';
   p.hidden = false; $('#scrim').hidden = false;
   if (kind === 'proyecto') { S.form.etapas = JSON.parse(JSON.stringify(vals.etapas || [])); if (!S.form.etapas.length && plantilla(vals.tipo).length && !rec) S.form.etapas = plantilla(vals.tipo).map(n => ({ n, ok: false })); renderEtapasField(); }
   if (!rec) { const first = p.querySelector('.panel-b input:not([type=checkbox]):not([disabled]),.panel-b select:not([disabled]),.panel-b textarea:not([disabled])'); if (first) first.focus(); }
