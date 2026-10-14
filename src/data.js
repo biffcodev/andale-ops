@@ -73,8 +73,8 @@ export async function loadAll() {
   const meta = r => ({ creado: r.created_at, actualizado: r.updated_at });
 
   return {
-    E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, ...meta(p) })),
-    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, responsables: rc.get(c.id) || [], ...meta(c) })),
+    E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, avatar: p.avatar_url || '', ...meta(p) })),
+    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', responsables: rc.get(c.id) || [], ...meta(c) })),
     A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, responsables: ra.get(a.id) || [], ...meta(a) })),
     P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: Array.isArray(p.etapas) ? p.etapas : [], responsables: rp.get(p.id) || [], ...meta(p) })),
     M: d.comunicaciones.map(m => ({ _id: m.id, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
@@ -125,11 +125,12 @@ const opcional = p => p.catch(e => { if (/PGRST205|42P01|Could not find the tabl
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
   const desdeMes = new Date(); desdeMes.setDate(1); desdeMes.setHours(0, 0, 0, 0);
-  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il] = await Promise.all([
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il, prop] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
     all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })), all('proyecto_finanzas'), all('abono_finanzas'), all('imputaciones'),
     opcional(all('colaboradores', q => q.order('nombre'))), opcional(all('remuneraciones')), opcional(all('conceptos_fijos')), opcional(all('liquidaciones')), opcional(all('drive_archivos', q => q.order('modificado', { ascending: false, nullsFirst: false }))),
     opcional(all('ia_log', q => q.gte('created_at', desdeMes.toISOString()))),
+    opcional(all('propuestas', q => q.order('fecha', { ascending: false }))),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
@@ -152,6 +153,7 @@ export async function loadAdmin() {
     LQ: lq.map(r => ({ ...r, periodo: month(r.periodo), monto: num(r.monto) })),
     DA: da.map(r => ({ ...r, datos: r.datos || {} })),
     IL: il,
+    PROP: prop.map(r => ({ ...r, total: num(r.total) || 0, descuento: num(r.descuento) || 0 })),
     G: gs.map(r => ({ ...r, cliente: cn(r.cliente_id), periodo: month(r.periodo), persona: idx.personaAlias.get(r.persona_id) || '' })),
   };
 }
@@ -185,6 +187,30 @@ export async function asistente(payload) {
   }
   if (data && data.error) throw new Error(data.error);
   return data;
+}
+/** Sube una foto de perfil (achicada a 320 px) y la guarda en la persona o el cliente. */
+export async function subirAvatar(kind, id, file, propia) {
+  if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) throw new Error('Usá una imagen JPG, PNG o WebP.');
+  const blob = await achicar(file, 320);
+  const path = (kind === 'cliente' ? 'clientes/' : 'personas/') + id + '.webp';
+  const up = await sb.storage.from('avatares').upload(path, blob, { upsert: true, contentType: 'image/webp', cacheControl: '3600' });
+  if (up.error) throw friendly(up.error);
+  const url = sb.storage.from('avatares').getPublicUrl(path).data.publicUrl + '?v=' + Date.now();
+  if (kind === 'persona' && propia) check(await sb.rpc('mi_avatar', { url }));
+  else check(await sb.from(kind === 'cliente' ? 'clientes' : 'personas').update({ avatar_url: url }).eq('id', id));
+  return url;
+}
+function achicar(file, max) {
+  return new Promise((res, rej) => {
+    const img = new Image(); const u = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height)), w = Math.round(img.width * k), h = Math.round(img.height * k);
+      const s = Math.min(w, h), cv = document.createElement('canvas'); cv.width = cv.height = s; // recorte cuadrado centrado
+      cv.getContext('2d').drawImage(img, (img.width - s / k) / 2, (img.height - s / k) / 2, s / k, s / k, 0, 0, s, s);
+      URL.revokeObjectURL(u); cv.toBlob(b => b ? res(b) : rej(new Error('No se pudo procesar la imagen')), 'image/webp', 0.86);
+    };
+    img.onerror = () => rej(new Error('No se pudo leer la imagen')); img.src = u;
+  });
 }
 export async function session() { return (await sb.auth.getSession()).data.session; }
 export async function yo() { const d = check(await sb.rpc('yo')); return d && d[0] ? d[0] : null; }

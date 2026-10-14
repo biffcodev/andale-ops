@@ -29,7 +29,7 @@ export function initAsistente(ctx, k) {
     AD.as.estadoBusy = true;
     try { AD.as.estado = await data.asistente({ accion: 'estado' }); }
     catch (err) { AD.as.estado = { ia: false, drive: false, error: err.message }; }
-    AD.as.estadoBusy = false; if (S.view === 'asistente') ctx.render();
+    AD.as.estadoBusy = false; if (S.view === 'asistente' || S.view === 'ajustes') ctx.render();
   }
 
   /* ---------- checklist del cierre ---------- */
@@ -287,7 +287,7 @@ export function initAsistente(ctx, k) {
       item(!c.liqFalt.length && !c.liqPend.length, c.liqFalt.length + c.liqPend.length, c.liqFalt.length || c.liqPend.length ? 'Sueldos y honorarios: ' + [c.liqFalt.length ? pl(c.liqFalt.length, 'ítem sin liquidar', 'ítems sin liquidar') : '', c.liqPend.length ? pl(c.liqPend.length, 'pago pendiente', 'pagos pendientes') : ''].filter(Boolean).join(' y ') : 'Sueldos y honorarios pagados', c.liqPend.length ? esc(multi(c.liqPend.reduce((a, l) => add(a, l.moneda, l.monto), {}))) : '', '<button class="btn sm" data-act="go" data-view="pagos">Ir a Pagos</button>') +
       item(!c.sinImp.length, c.sinImp.length, c.sinImp.length ? pl(c.sinImp.length, 'pago a proveedores', 'pagos a proveedores') + ' sin repartir entre clientes' : 'Costos de proveedores imputados', c.sinImp.length ? 'Para ver el margen real de cada abono y proyecto' : '', '<button class="btn sm" data-act="asImpAll"' + (st.ia ? '' : ' disabled title="Falta configurar la IA"') + '>✨ Repartir con IA</button>') +
       '</div>' + (c.cuotas.length ? '<div class="count">Este mes se facturan ' + c.cuotas.length + ' cuotas de proyectos.</div>' : '') + '</section>';
-    h += driveHtml(st) + concSection(st) + configHtml(st);
+    h += driveHtml(st) + concSection(st) + (st.ia && st.drive ? '' : '<section class="callout"><p>Falta conectar ' + [st.ia ? '' : 'la IA', st.drive ? '' : 'Google Drive'].filter(Boolean).join(' y ') + '. Los pasos están en Configuración → Ajustes.</p><button class="btn" data-act="go" data-view="ajustes">Ir a Ajustes</button></section>');
     return h;
   }
   function driveHtml(st) {
@@ -326,15 +326,16 @@ export function initAsistente(ctx, k) {
     const usos = AD.IL || [], tin = usos.reduce((a, x) => a + (x.tokens_in || 0), 0), tout = usos.reduce((a, x) => a + (x.tokens_out || 0), 0);
     const pasosIA = '<ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li>Entrá a console.anthropic.com con una cuenta de àndale y cargá crédito (Billing).</li><li>API keys → Create key.</li><li>Supabase → Edge Functions → Secrets → agregá <code>ANTHROPIC_API_KEY</code> con esa clave.</li></ol>';
     const pasosDrive = '<ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li>console.cloud.google.com → proyecto nuevo “andale-ops”.</li><li>APIs y servicios → Biblioteca → habilitá <b>Google Drive API</b>.</li><li>IAM → Cuentas de servicio → Crear (sin roles) → Claves → Agregar clave → JSON.</li><li>Supabase → Edge Functions → Secrets → <code>GOOGLE_SERVICE_ACCOUNT</code> con el contenido completo del .json.</li><li>En Drive, compartí la carpeta de facturas con el email de la cuenta de servicio, como Lector.</li></ol>';
-    return '<details class="sheet" id="as-config"' + (st.ia && st.drive && cfg.carpeta ? '' : ' open') + '><summary class="sheet-h" style="cursor:pointer"><h2>Configuración</h2><span class="muted">IA ' + (st.ia ? '✓' : '✗') + ' · Drive ' + (st.drive ? '✓' : '✗') + '</span></summary><div class="sheet-b" style="display:grid;gap:16px">' +
+    return '<section class="sheet" id="as-config"><div class="sheet-h"><h2>IA, Drive y resumen por email</h2><span class="muted">IA ' + (st.ia ? '✓' : '✗') + ' · Drive ' + (st.drive ? '✓' : '✗') + '</span></div><div class="sheet-b" style="display:grid;gap:16px">' +
       (st.error ? '<p style="margin:0;color:var(--crit)">' + esc(st.error) + '</p>' : '') +
       '<div><b>IA (Claude)</b> · ' + ok(st.ia) + (st.modelo ? ' <span class="muted">· modelo ' + esc(st.modelo) + '</span>' : '') + (st.ia ? '<div class="muted" style="margin-top:4px">Este mes: ' + usos.length + ' consultas · ' + new Intl.NumberFormat('es-AR').format(tin) + ' tokens de entrada y ' + new Intl.NumberFormat('es-AR').format(tout) + ' de salida. El gasto se ve en console.anthropic.com.</div>' : pasosIA) + '</div>' +
       '<div><b>Google Drive</b> · ' + ok(st.drive) + (st.drive_email ? '<div style="margin-top:4px">Cuenta de servicio: <code>' + esc(st.drive_email) + '</code> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button></div>' : '') + (st.drive_error ? '<div style="color:var(--crit)">' + esc(st.drive_error) + '</div>' : '') + (st.drive ? '' : pasosDrive) +
-      '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta2" value="' + esc(cfg.carpeta_url || '') + '" placeholder="Link de la carpeta de facturas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta2">Guardar carpeta</button></div></div>' +
+      '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta2" value="' + esc(cfg.carpeta_url || '') + '" placeholder="Link de la carpeta de facturas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta2">Guardar carpeta de facturas</button></div>' +
+      '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta3" value="' + esc(cfg.carpeta_propuestas_url || '') + '" placeholder="Link de la carpeta de propuestas anteriores (opcional)" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta3" data-k="propuestas">Guardar carpeta de propuestas</button></div><span class="muted" style="display:block;font-size:13px;margin-top:6px">La IA toma de ahí hasta 3 propuestas viejas (Google Docs o PDF) como referencia de estilo y precios. Compartila también con la cuenta de servicio.</span></div>' +
       '<div><b>CUIT de quien factura</b><div class="muted" style="margin:2px 0 6px">Para reconocer de qué monotributo sale cada factura. Se completa solo la primera vez que confirmás un emisor.</div><div class="toolbar">' + k.EMISORES.map(e => '<label class="field" style="gap:2px"><span class="lbl">' + esc(e) + '</span><input class="in" id="as-cuit-' + esc(e) + '" value="' + esc((em[e] || {}).cuit || '') + '" inputmode="numeric" placeholder="20-12345678-9" style="width:170px"></label>').join('') + '<button class="btn sm" data-act="asCuits" style="align-self:end">Guardar</button></div></div>' +
       '<div><b>Resumen por email</b><div class="muted" style="margin:2px 0 6px">Los días 1 y 8 de cada mes, a las 9, el asistente les manda a los admins qué falta para cerrar.</div><div class="toolbar"><label class="chk"><input type="checkbox" data-asemail="1"' + (cfgAsist().email_activo !== false ? ' checked' : '') + '> Activado</label><button class="btn sm" data-act="asEmailYa">Mandarme uno ahora</button></div></div>' +
       '<p class="muted" style="margin:0;font-size:13px">Los PDFs y extractos que lee la IA se envían a la API de Anthropic solo para procesarlos; no se usan para entrenar modelos. Nada se guarda en la app sin que lo confirmen.</p>' +
-      '</div></details>';
+      '</div></section>';
   }
 
   /* ---------- acciones ---------- */
@@ -373,7 +374,9 @@ export function initAsistente(ctx, k) {
     asCarpeta: async t => {
       const raw = ($('#' + (t.dataset.from || 'as-carpeta')) || {}).value || '', id = carpetaId(raw);
       if (!id) { toast('No reconozco ese link. Copiá el de la carpeta desde la barra del navegador.'); return; }
-      try { await data.upsert('ajustes', { clave: 'drive', valor: { ...cfgDrive(), carpeta: id, carpeta_url: raw.startsWith('http') ? raw : 'https://drive.google.com/drive/folders/' + id } }, 'clave'); toast('Carpeta guardada'); await ctx.reload(); }
+      const url = raw.startsWith('http') ? raw : 'https://drive.google.com/drive/folders/' + id;
+      const v = t.dataset.k === 'propuestas' ? { carpeta_propuestas: id, carpeta_propuestas_url: url } : { carpeta: id, carpeta_url: url };
+      try { await data.upsert('ajustes', { clave: 'drive', valor: { ...cfgDrive(), ...v } }, 'clave'); toast('Carpeta guardada'); await ctx.reload(); }
       catch (err) { toast(err.message); }
     },
     asCuits: async () => {
@@ -409,5 +412,16 @@ export function initAsistente(ctx, k) {
   document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.asemail) actions.asEmailOn(e.target); });
   document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.cc !== undefined && t.type !== 'checkbox' && AD.as.conc) { const x = AD.as.conc.movimientos[+t.dataset.cc]; if (x) x[t.dataset.cck] = t.value; } });
 
-  return { actions, view: vAsistente, count: pendientesCount, presetDesde, aprender, b64Bytes };
+  function vAjustes() {
+    if (!AD.as.estado && !AD.as.estadoBusy) setTimeout(() => cargarEstado(), 0);
+    const st = AD.as.estado || {}, est = ((AD.AJ && AD.AJ.documentos) || {}).estilo || 'editorial';
+    const op = [['editorial', 'Editorial', 'Blanco, alineado a la izquierda, cifra grande. La misma línea que los emails.'], ['banda', 'Banda de marca', 'Encabezado coral con el logo en blanco y el total destacado.'], ['grilla', 'Grilla', 'Columna lateral con los datos y el isologo, más técnica.']];
+    return '<div class="head"><div><h1>Ajustes</h1><p>Documentos, conexiones con IA y Drive, y el resumen mensual por email.</p></div></div>' +
+      '<section class="sheet"><div class="sheet-h"><h2>Estilo de los documentos</h2><span class="muted">resúmenes, propuestas y recibos</span></div><div class="sheet-b estilos">' +
+      op.map(([kk, l, d]) => '<label class="estilo' + (est === kk ? ' on' : '') + '"><input type="radio" name="estilo" data-estilo="' + kk + '"' + (est === kk ? ' checked' : '') + '><b>' + l + '</b><span>' + d + '</span></label>').join('') + '</div></section>' +
+      configHtml(st);
+  }
+  document.addEventListener('change', async e => { const t = e.target; if (t.dataset && t.dataset.estilo) { try { await data.upsert('ajustes', { clave: 'documentos', valor: { ...((AD.AJ && AD.AJ.documentos) || {}), estilo: t.dataset.estilo } }, 'clave'); toast('Estilo de documentos: ' + t.dataset.estilo); await ctx.reload(); } catch (err) { toast(err.message); } } });
+
+  return { actions, view: vAsistente, ajustes: vAjustes, count: pendientesCount, presetDesde, aprender, b64Bytes };
 }

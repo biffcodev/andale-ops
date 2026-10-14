@@ -5,6 +5,7 @@ import * as E from './emails.js';
 import { initEquipo } from './equipo.js';
 import { initAsistente } from './asistente.js';
 import { initStats } from './stats.js';
+import { initPropuestas } from './propuestas.js';
 
 export function initAdmin(ctx) {
   const { S, esc, opt, optsFrom, pill, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $ } = ctx;
@@ -932,10 +933,12 @@ export function initAdmin(ctx) {
 
   /* ---------- Módulos: sueldos y pagos, asistente ---------- */
   const kit = { AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
-    formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a) };
+    formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a),
+    openComposer: o => openComposer(o), cfgMarca: () => cfgMarca(), firma: () => firma(), mailsDe: c => mailsDe(c), cuotasPlan };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;
   const AS = initAsistente(ctx, kit);
   const ST = initStats(ctx, kit);
+  const PZ = initPropuestas(ctx, kit);
 
   /* ---------- Acciones ---------- */
   const actions = {
@@ -1032,11 +1035,11 @@ export function initAdmin(ctx) {
   });
   document.addEventListener('submit', e => { if (e.target.id === 'aform') { e.preventDefault(); submitPanel(); } });
 
-  Object.assign(actions, EQ.actions, AS.actions, ST.actions);
+  Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions);
   return {
     load, actions, fichaSection, proyectoSection, AD,
-    views: [['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['pagos', 'Pagos', EQ.view], ['rentabilidad', 'Rentabilidad', vRent]],
+    views: [['propuestas', 'Propuestas', PZ.view], ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['pagos', 'Pagos', EQ.view], ['rentabilidad', 'Rentabilidad', vRent], ['ajustes', 'Ajustes', AS.ajustes]],
     counts: () => (AD.ok ? { facturas: AD.F.filter(f => estadoFactura(f) === 'Vencida').length, asistente: AS.count() } : {}),
-    resetView: () => { AD.sel = null; AD.rd = null; },
+    resetView: () => { AD.sel = null; AD.rd = null; PZ.reset(); },
   };
 }

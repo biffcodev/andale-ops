@@ -118,10 +118,14 @@ const pill = (txt, v) => txt ? '<span class="pill" style="--c:var(' + v + ')">' 
 const stPill = e => pill(e, stVar(e));
 const clPill = e => pill(e, CL_COLOR[e] || '--muted');
 const abPill = e => pill(e, AB_COLOR[e] || '--muted');
+const fotoDe = alias => (S.E.find(e => e.persona === alias) || {}).avatar || '';
+function av(nombre, foto, cls) { return foto ? '<span class="av' + (cls ? ' ' + cls : '') + '" title="' + esc(nombre) + '"><img src="' + esc(foto) + '" alt="" loading="lazy"></span>' : '<span class="av' + (cls ? ' ' + cls : '') + '" style="' + avStyle(nombre) + '" title="' + esc(nombre) + '">' + esc(initials(nombre)) + '</span>'; }
 function whos(arr) {
   if (!arr || !arr.length) return '<span class="muted">Sin asignar</span>';
-  return '<span class="whos"><span class="avs">' + arr.map(p => '<span class="av" style="' + avStyle(p) + '" title="' + esc(p) + '">' + esc(initials(p)) + '</span>').join('') + '</span><span class="wn">' + esc(arr.join(', ')) + '</span></span>';
+  return '<span class="whos"><span class="avs">' + arr.map(p => av(p, fotoDe(p))).join('') + '</span><span class="wn">' + esc(arr.join(', ')) + '</span></span>';
 }
+// Foto editable: un label con input de archivo encima del avatar
+function avEditable(kind, id, nombre, foto, cls, propia) { return '<label class="avedit" title="Cambiar foto">' + av(nombre, foto, cls) + '<input type="file" accept="image/png,image/jpeg,image/webp" hidden data-avatar="' + kind + '" data-id="' + esc(id) + '"' + (propia ? ' data-propia="1"' : '') + '><span class="avedit-i" aria-hidden="true">✎</span></label>'; }
 function picker(kind, o) {
   const sel = resp(o), key = kind + ':' + o._id;
   if (!isStaff()) return whos(sel);
@@ -465,7 +469,7 @@ function vClientes() {
   const rows = list.map(c => {
     const act = proyectosDe(c.nombre).filter(isOpen).length;
     const est = staff ? estadoSelect(c) : clPill(c.estado);
-    return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name">' + esc(c.nombre) + '</td><td>' + est + '</td><td>' + (abonoTags(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + esc(c.servicio || '') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(c.contacto || '') + '</td></tr>';
+    return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name"><span class="who1">' + av(c.nombre, c.avatar, 'sq') + esc(c.nombre) + '</span></td><td>' + est + '</td><td>' + (abonoTags(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + esc(c.servicio || '') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(c.contacto || '') + '</td></tr>';
   }).join('');
   const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado') + opt('__auto', '↺ Automático', S.cmasivo) + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
   const allSel = staff && list.length && list.every(c => S.csel.has(c._id));
@@ -485,7 +489,7 @@ function vFicha() {
   const abRow = a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(abonoLabel(a)) + '</b><span>' + (resp(a).length ? esc(resp(a).join(', ')) : 'sin responsable') + (a.desde ? ' · desde ' + esc(fmt(a.desde)) : '') + '</span></span>' + abPill(a.estado) + '</button>';
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   return back +
-    '<div class="head"><div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + abonoTags(c.nombre) + '<span>' + esc(c.servicio || '') + '</span></p></div>' +
+    '<div class="head"><div class="head-av">' + (isStaff() ? avEditable('cliente', c._id, c.nombre, c.avatar, 'xl sq') : av(c.nombre, c.avatar, 'xl sq')) + '<div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + abonoTags(c.nombre) + '<span>' + esc(c.servicio || '') + '</span></p></div></div>' +
     '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Seguimiento</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Comunicación', { cliente: c.nombre })) + '</div></div>' +
     '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
@@ -516,7 +520,7 @@ function vEquipo() {
   if (!list.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay personas cargadas', '') + '</section>';
   const rows = list.map(e => {
     const ab = S.A.filter(a => a.estado === 'Activo' && hasResp(a, e.persona)).length, pr = S.P.filter(p => isOpen(p) && hasResp(p, e.persona)).length;
-    return '<tr class="click" data-act="edit" data-kind="persona" data-id="' + esc(e._id) + '"' + (e.activo === false ? ' style="opacity:.55"' : '') + '><td>' + whos([e.persona]) + '</td><td>' + esc(e.nombre || '') + (e.puesto ? '<span class="sub">' + esc(e.puesto) + '</span>' : '') + '</td><td>' + pill(ROLES[e.rol] || e.rol, ROL_COLOR[e.rol] || '--muted') + '</td><td>' + (e.email ? esc(e.email) : '<span class="muted">Sin acceso</span>') + '</td><td class="n">' + ab + '</td><td class="n">' + pr + '</td><td>' + (e.activo === false ? '<span class="tag">Inactiva/o</span>' : '<span class="pill" style="--c:var(--ok)">Activa/o</span>') + '</td></tr>';
+    return '<tr class="click" data-act="edit" data-kind="persona" data-id="' + esc(e._id) + '"' + (e.activo === false ? ' style="opacity:.55"' : '') + '><td><span class="who1">' + (isAdmin() || (S.me && S.me.alias === e.persona) ? avEditable('persona', e._id, e.persona, e.avatar, '', !isAdmin()) : av(e.persona, e.avatar)) + '<b>' + esc(e.persona) + '</b></span></td><td>' + esc(e.nombre || '') + (e.puesto ? '<span class="sub">' + esc(e.puesto) + '</span>' : '') + '</td><td>' + pill(ROLES[e.rol] || e.rol, ROL_COLOR[e.rol] || '--muted') + '</td><td>' + (e.email ? esc(e.email) : '<span class="muted">Sin acceso</span>') + '</td><td class="n">' + ab + '</td><td class="n">' + pr + '</td><td>' + (e.activo === false ? '<span class="tag">Inactiva/o</span>' : '<span class="pill" style="--c:var(--ok)">Activa/o</span>') + '</td></tr>';
   }).join('');
   return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Persona</th><th>Nombre completo</th><th>Rol</th><th>Email de acceso</th><th>Cuentas mensuales</th><th>Proyectos abiertos</th><th>Estado</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
 }
@@ -560,7 +564,7 @@ function render() {
   const sync = $('#sync');
   sync.className = 'sync ' + (S.status === 'ok' ? 'ok' : S.status === 'offline' ? 'err' : '');
   sync.lastElementChild.textContent = S.status === 'ok' ? 'En vivo' : S.status === 'offline' ? 'Sin conexión' : 'Conectando';
-  $('#me').innerHTML = '<span class="av" style="' + avStyle(S.me.alias) + '">' + esc(initials(S.me.alias)) + '</span><span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>';
+  $('#me').innerHTML = avEditable('persona', S.me.id, S.me.alias, fotoDe(S.me.alias), '', true) + '<span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>';
   if (S.status === 'loading') { $('#view').innerHTML = '<section class="sheet">' + emptyBox('Cargando datos del equipo…', '') + '</section>'; return; }
   $('#view').innerHTML = viewFn(S.view)();
   ponerHerramientas();
@@ -796,8 +800,16 @@ document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.bind && t.type !== 'checkbox' && t.tagName !== 'SELECT') { setBind(t.dataset.bind, t.value); if (!t.dataset.bind.startsWith('listDraft')) render(); }
 });
-document.addEventListener('change', e => {
+document.addEventListener('change', async e => {
   const t = e.target;
+  if (t.dataset && t.dataset.avatar && t.files && t.files[0]) {
+    const f0 = t.files[0]; t.value = '';
+    if (f0.size > 8e6) { toast('La imagen pesa demasiado (máx. 8 MB)'); return; }
+    toast('Subiendo foto…');
+    try { await data.subirAvatar(t.dataset.avatar, t.dataset.id, f0, !!t.dataset.propia); toast('Foto actualizada'); await reload(); }
+    catch (err) { toast(err.message); }
+    return;
+  }
   if (t.dataset.bind && (t.type === 'checkbox' || t.tagName === 'SELECT')) { setBind(t.dataset.bind, t.type === 'checkbox' ? t.checked : t.value); render(); return; }
   if (t.dataset.rtoggle) {
     const kind = t.dataset.rtoggle, arr = S[FORMS[kind].arr];

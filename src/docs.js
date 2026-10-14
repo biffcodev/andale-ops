@@ -239,6 +239,76 @@ export async function resumenDoc(r) {
   return D.save();
 }
 
+
+/* ---------------- propuesta / presupuesto ---------------- */
+const lineasDe = v => (Array.isArray(v) ? v : String(v || '').split('\n')).map(x => String(x).trim()).filter(Boolean);
+export async function propuestaDoc(p, cfg = {}, estilo) {
+  const tema = TEMAS.includes(estilo) ? estilo : (TEMAS.includes(cfg.estilo) ? cfg.estilo : 'editorial');
+  const { totalDe, planTexto, venceEl, etapasDe } = await import('./propuesta-vista.js');
+  const fecha = d => { if (!d) return ''; const [y, m, dd] = String(d).slice(0, 10).split('-'); return dd + '/' + m + '/' + y; };
+  const D = await nuevoDoc('Propuesta ' + (p.numero || '') + ' ' + (p.cliente || p.prospecto || ''), { margen: 54, footH: 56, alPie: (D, n, t) => (tema === 'banda' ? pieBanda : tema === 'grilla' ? (d, c, a, b) => pieGrilla(d, c, a, b, 0) : pieEditorial)(D, cfg, n, t) });
+  const { F } = D, c = p.contenido || {}, cur = p.moneda || 'ARS', X = D.M, CW = D.cw;
+  D.addPage();
+  const cliente = p.cliente || p.prospecto || '';
+  if (tema === 'banda') {
+    const bh = 210; D.rect(0, H - bh, W, bh, COL.coral);
+    D.logo(X, H - 44, 70, COL.white);
+    D.right('Propuesta ' + (p.numero || ''), W - X, H - 52, F.s, 9, COL.white);
+    D.y = H - 104; D.text(['Propuesta', p.tipo].filter(Boolean).join(' · '), X, D.y, F.s, 10, COL.white);
+    D.y -= 6; for (const l of D.wrap(p.titulo || '', F.d, 28, CW)) { D.y -= 31; D.text(l, X, D.y, F.d, 28, COL.white); }
+    D.y = H - bh - 30;
+  } else {
+    if (tema === 'grilla') D.iso(X, D.y + 4, 52, COL.ink); else D.logo(X, D.y + 2, 74);
+    D.right('Propuesta ' + (p.numero || ''), W - X, D.y - 8, F.s, 9, COL.ink);
+    D.right(fecha(p.fecha) + (p.fecha ? ' · válida hasta ' + fecha(venceEl(p)) : ''), W - X, D.y - 20, F.r, 8.5, COL.muted);
+    D.y -= tema === 'grilla' ? 96 : 84;
+    D.text(['Propuesta', p.tipo].filter(Boolean).join(' · '), X, D.y, F.s, 10, COL.coral);
+    D.y -= 4; for (const l of D.wrap(p.titulo || 'Propuesta', F.d, 30, CW)) { D.y -= 33; D.text(l, X, D.y, F.d, 30, COL.ink); }
+    D.y -= 6;
+  }
+  if (cliente) { D.y -= 16; D.text('Para ' + cliente + (p.contacto ? ' · ' + p.contacto : ''), X, D.y, F.r, 10.5, COL.muted); }
+  if (c.intro) { D.y -= 14; for (const par of lineasDe(c.intro)) { D.para(par, X, F.r, 12, CW * 0.86, COL.ink, 1.5); D.y -= 6; } }
+  const seccion = (t) => { D.need(60); D.y -= 24; D.hline(D.y, X, W - X, COL.line); D.y -= 24; D.text(t, X, D.y, F.d, 15, tema === 'banda' ? COL.coralInk : COL.ink); D.y -= 6; };
+  const parrafos = v => { for (const par of lineasDe(v)) { D.para(par, X, F.r, 10.5, CW, COL.soft, 1.5); D.y -= 4; } };
+  const vinetas = (v, color = COL.soft) => { for (const it of lineasDe(v)) { const ls = D.wrap(it, F.r, 10.5, CW - 14); D.need(ls.length * 15 + 4); ls.forEach((l, i) => { D.y -= 15.5; if (!i) D.page.drawCircle({ x: X + 3, y: D.y + 3.4, size: 2, color: COL.coral }); D.text(l, X + 14, D.y, F.r, 10.5, color); }); D.y -= 2; } };
+  if (lineasDe(c.objetivo).length) { seccion('Objetivo'); parrafos(c.objetivo); }
+  if (lineasDe(c.alcance).length) { seccion('Alcance'); vinetas(c.alcance); }
+  const et = etapasDe(p);
+  if (et.length) {
+    const sem = et.reduce((a, e) => a + (Number(e.semanas) || 0), 0);
+    seccion('Etapas'); if (sem) D.text(sem + ' semanas aprox.', X + D.wid('Etapas', F.d, 15) + 10, D.y + 6, F.r, 9.5, COL.muted);
+    et.forEach((e, i) => {
+      const det = e.detalle ? D.wrap(e.detalle, F.r, 10, CW - 40) : [];
+      D.need(26 + det.length * 14);
+      D.y -= 22; D.page.drawCircle({ x: X + 10, y: D.y + 4, size: 10, color: COL.coralSoft });
+      const nn = String(i + 1); D.text(nn, X + 10 - D.wid(nn, F.b, 9.5) / 2, D.y + 0.8, F.b, 9.5, COL.coralInk);
+      D.text(e.nombre || '', X + 30, D.y, F.s, 11, COL.ink);
+      if (e.semanas) D.right(e.semanas + ' sem.', W - X, D.y, F.r, 9.5, COL.muted);
+      det.forEach(l => { D.y -= 14; D.text(l, X + 30, D.y, F.r, 10, COL.soft); });
+      D.y -= 6;
+    });
+  }
+  if (lineasDe(c.entregables).length) { seccion('Entregables'); vinetas(c.entregables); }
+  if (lineasDe(c.no_incluye).length) { seccion('No incluye'); vinetas(c.no_incluye, COL.muted); }
+  // Inversión
+  const items = (p.items || []).filter(i => i.concepto || i.monto);
+  seccion('Inversión'); D.y -= 4;
+  for (const it of items) {
+    const det = it.detalle ? D.wrap(it.detalle, F.r, 9.5, CW - 140) : [];
+    D.need(22 + det.length * 13);
+    D.y -= 18; D.text(it.concepto || '', X, D.y, F.s, 10.5, COL.ink); D.right(plata(it.monto, cur), W - X, D.y, F.s, 10.5, COL.ink);
+    det.forEach(l => { D.y -= 13; D.text(l, X, D.y, F.r, 9.5, COL.muted); });
+    D.y -= 9; D.hline(D.y, X, W - X, COL.line);
+  }
+  if (Number(p.descuento)) { D.y -= 18; D.text('Descuento', X, D.y, F.r, 10.5, COL.muted); D.right('− ' + plata(p.descuento, cur), W - X, D.y, F.s, 10.5, COL.muted); D.y -= 9; D.hline(D.y, X, W - X, COL.line); }
+  D.need(70);
+  if (tema === 'banda') { D.y -= 16; D.rect(X - 8, D.y - 54, CW + 16, 54, COL.ink, 8); D.text('Total', X + 10, D.y - 32, F.s, 11, COL.white); D.right(plata(totalDe(p), cur), W - X - 10, D.y - 36, F.d, 26, COL.white); D.y -= 62; }
+  else { D.y -= 40; D.text('Total', X, D.y, F.s, 11, COL.ink); D.right(plata(totalDe(p), cur), W - X, D.y - 2, F.d, 30, COL.ink); if (tema === 'grilla') D.page.drawRectangle({ x: W - X - 60, y: D.y - 14, width: 60, height: 3, color: COL.coral }); D.y -= 18; }
+  const plan = planTexto(p); if (plan) { D.y -= 6; D.para('Forma de pago: ' + plan, X, F.r, 10, CW, COL.soft); }
+  if (lineasDe(c.condiciones).length) { seccion('Condiciones'); parrafos(c.condiciones); }
+  return D.save();
+}
+
 /** Abre un PDF en una pestaña nueva (o lo descarga si el navegador bloquea la ventana). */
 export function abrirPdf(bytes, nombre, ventana) {
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));

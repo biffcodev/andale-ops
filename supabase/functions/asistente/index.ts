@@ -9,7 +9,7 @@
 //   RESEND_API_KEY / EMAIL_FROM   los mismos de `enviar-email`, para el resumen mensual
 //
 // Acciones (POST { accion, ... }):
-//   estado · drive_sync · drive_descargar · leer_factura · conciliar · imputar · cierre · cierre_email · cron_cierre
+//   estado · drive_sync · drive_descargar · leer_factura · conciliar · imputar · propuesta · cierre · cierre_email · cron_cierre
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const CORS = {
@@ -135,7 +135,7 @@ async function ajuste(sb: SupabaseClient, clave: string) { const { data } = awai
 
 async function driveSync(ctx: Ctx) {
   const cfg = await ajuste(ctx.sb, 'drive');
-  if (!cfg.carpeta) throw new Aviso('Falta indicar la carpeta de facturas de Drive (Asistente → Configuración).');
+  if (!cfg.carpeta) throw new Aviso('Falta indicar la carpeta de facturas de Drive (Configuración → Ajustes).');
   const { files, carpetas } = await listarCarpeta(cfg.carpeta);
   const ya = new Set<string>(); let from = 0;
   for (; ;) { const rows = chk(await ctx.sb.from('drive_archivos').select('file_id').range(from, from + 999)) as any[]; rows.forEach(r => ya.add(r.file_id)); if (rows.length < 1000) break; from += 1000; }
@@ -397,7 +397,7 @@ function emailCierre(m: string, b: { titular: string; puntos: any[] }) {
 <tr><td style="padding-top:10px;font:700 26px/1.2 Arial,sans-serif;color:#1A1A1A">${escH(b.titular)}</td></tr>
 <tr><td style="padding-top:18px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${li}</table></td></tr>
 <tr><td style="padding-top:24px"><a href="${APP_URL}/#asistente" style="display:inline-block;background:#1A1A1A;color:#FFFFFF;text-decoration:none;font:600 14px/1 Inter,Arial,sans-serif;padding:14px 20px;border-radius:999px">Abrir el asistente</a></td></tr>
-<tr><td style="padding-top:28px;font:12px/1.5 Inter,Arial,sans-serif;color:#9A9A9A">Lo manda la app de operaciones de àndale. Se desactiva en Asistente → Configuración.</td></tr>
+<tr><td style="padding-top:28px;font:12px/1.5 Inter,Arial,sans-serif;color:#9A9A9A">Lo manda la app de operaciones de àndale. Se desactiva en Configuración → Ajustes.</td></tr>
 </table></td></tr></table></body></html>`;
   const texto = 'Asistente · cierre de ' + mesTxt(m) + '\n\n' + b.titular + '\n\n' + b.puntos.map(p => '• ' + p.texto).join('\n') + '\n\n' + APP_URL + '/#asistente';
   return { html, texto };
@@ -420,6 +420,84 @@ async function enviarCierre(ctx: Ctx, m: string, soloA?: string[]) {
   await ctx.sb.from('emails').insert({ persona_id: ctx.personaId, tipo: 'Otro', periodo: m + '-01', para, cc: [], asunto, adjuntos: [], estado: res.ok ? 'Enviado' : 'Error', proveedor_id: out?.id || null, error: res.ok ? null : (out?.message || String(res.status)) });
   if (!res.ok) throw new Aviso('No se pudo enviar el resumen: ' + (out?.message || res.status), 502);
   return { ok: true, para, briefing: b };
+}
+
+
+/* ================= Propuestas: redactar y sugerir precio ================= */
+const PLANES = ['Contado', '50/50', '3 cuotas', '4 cuotas', '6 cuotas', 'Personalizado'];
+async function referenciasDrive(cfg: any, tipo: string, cliente: string) {
+  if (!cfg.carpeta_propuestas || !cuentaServicio()) return { bloques: [] as any[], nombres: [] as string[] };
+  const { files } = await listarCarpeta(cfg.carpeta_propuestas).catch(() => ({ files: [] as any[] }));
+  const docs = await (async () => { // también Google Docs (listarCarpeta solo trae PDFs)
+    try {
+      const q = encodeURIComponent(`'${cfg.carpeta_propuestas}' in parents and trashed = false and mimeType = 'application/vnd.google-apps.document'`);
+      const r = await (await gdrive(`files?q=${q}&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name,mimeType,modifiedTime)`)).json();
+      return r.files || [];
+    } catch { return []; }
+  })();
+  const pal = [tipo, cliente].join(' ').toLowerCase().split(/\W+/).filter(w => w.length > 3);
+  const score = (f: any) => pal.filter(w => f.name.toLowerCase().includes(w)).length * 1e13 + Date.parse(f.modifiedTime || 0);
+  const elegidos = [...files.filter((f: any) => f.mimeType === 'application/pdf'), ...docs].sort((a: any, b: any) => score(b) - score(a)).slice(0, 3);
+  const bloques: any[] = [], nombres: string[] = [];
+  for (const f of elegidos) {
+    try {
+      if (f.mimeType === 'application/vnd.google-apps.document') {
+        const t = await (await gdrive(`files/${f.id}/export?mimeType=text/plain`)).text();
+        bloques.push({ type: 'text', text: 'PROPUESTA ANTERIOR DE REFERENCIA (' + f.name + '):\n' + t.slice(0, 12000) });
+      } else {
+        const d = await descargar(f.id); if (d.bytes > 4_000_000) continue;
+        bloques.push(pdfBlock(d.base64), { type: 'text', text: '(Arriba: propuesta anterior de referencia, ' + f.name + ')' });
+      }
+      nombres.push(f.name);
+    } catch { /* sigue con las demás */ }
+  }
+  return { bloques, nombres };
+}
+async function propuestaIA(ctx: Ctx, b: any) {
+  const { sb } = ctx;
+  const tipo = String(b.tipo || ''), cliente = String(b.cliente || ''), moneda = String(b.moneda || 'ARS');
+  if (!String(b.brief || '').trim() && !String(b.titulo || '').trim()) throw new Aviso('Escribí el brief o al menos el título para que la IA tenga de dónde partir.');
+  const [clientes, proys, pfz, imps, props, listas, cfgDrive] = await Promise.all([
+    todos(sb, 'clientes', 'id,nombre'), todos(sb, 'proyectos', 'id,cliente_id,nombre,tipo,estado,fecha_inicio,entrega,entrega_real,created_at'),
+    todos(sb, 'proyecto_finanzas', 'proyecto_id,presupuesto,moneda,plan_pago'), todos(sb, 'imputaciones', 'proyecto_id,monto'),
+    todos(sb, 'propuestas', 'id,numero,titulo,tipo,estado,total,moneda,items,fecha'), todos(sb, 'listas', 'clave,valores'), ajuste(sb, 'drive'),
+  ]);
+  const cn = new Map(clientes.map((c: any) => [c.id, c.nombre]));
+  const costo = new Map<string, number>(); imps.forEach((i: any) => { if (i.proyecto_id) costo.set(i.proyecto_id, (costo.get(i.proyecto_id) || 0) + num(i.monto)); });
+  const sem = (a: string, z: string) => a && z ? Math.max(1, Math.round((Date.parse(z) - Date.parse(a)) / 6048e5)) : null;
+  const similares = proys.map((p: any) => ({ p, f: pfz.find((x: any) => x.proyecto_id === p.id) })).filter((x: any) => x.f && x.f.presupuesto)
+    .sort((a: any, z: any) => (z.p.tipo === tipo ? 1 : 0) - (a.p.tipo === tipo ? 1 : 0) || String(z.p.created_at).localeCompare(a.p.created_at)).slice(0, 15)
+    .map(({ p, f }: any) => `${cn.get(p.cliente_id)} · ${p.nombre} (${p.tipo}) · ${f.moneda} ${f.presupuesto} · ${f.plan_pago} · ${String(p.created_at).slice(0, 7)}` + (sem(p.fecha_inicio, p.entrega_real || p.entrega) ? ' · ' + sem(p.fecha_inicio, p.entrega_real || p.entrega) + ' semanas' : '') + (costo.get(p.id) ? ' · costos de proveedores ' + costo.get(p.id) : '') + ' · ' + p.estado);
+  const previas = props.filter((x: any) => x.id !== b.id && x.total).sort((a: any, z: any) => String(z.fecha).localeCompare(a.fecha)).slice(0, 12)
+    .map((x: any) => `${x.numero} · ${x.titulo} (${x.tipo}) · ${x.moneda} ${x.total} · ${x.estado} · ${String(x.fecha).slice(0, 7)} · ítems: ` + (x.items || []).map((i: any) => i.concepto + ' ' + i.monto).join('; '));
+  const plantilla = (listas.find((l: any) => l.clave === 'etapas:' + tipo) || {}).valores || [];
+  const refs = await referenciasDrive(cfgDrive, tipo, cliente);
+  const sys = 'Sos el director de cuentas de àndale, agencia de branding y comunicación de Córdoba, Argentina. Redactás propuestas comerciales que el cliente va a leer: ' +
+    'español rioplatense con vos, cálido, claro y concreto; frases cortas; nada de clichés de marketing ni promesas vacías; no inventes datos del cliente que no estén en el brief. ' +
+    'Estructura: intro (2 a 4 oraciones que muestren que entendimos el problema), objetivo, alcance (viñetas), etapas con semanas estimadas, entregables, qué no incluye, inversión por ítems, forma de pago y condiciones. ' +
+    'Para el precio usá como referencia los proyectos y propuestas anteriores de àndale: mismo tipo y alcance parecido; si son de meses anteriores y en pesos, ajustá por inflación (Argentina) y decilo en la justificación. ' +
+    'Si hay propuestas anteriores de referencia, imitá su estructura, tono y nivel de detalle. Montos en ' + moneda + ', redondeados. La justificación del precio es interna (no la ve el cliente).';
+  const ctxTxt = [
+    'TÍTULO: ' + (b.titulo || '(a definir)') + '\nTIPO: ' + (tipo || '(a definir)') + '\nCLIENTE: ' + (cliente || '(prospecto)') + '\nMONEDA: ' + moneda + '\nHOY: ' + hoyAR(),
+    'BRIEF Y NOTAS:\n' + String(b.brief || '').slice(0, 20000),
+    'ETAPAS HABITUALES PARA ' + (tipo || 'este tipo') + ': ' + (plantilla.join(' → ') || '(sin plantilla)'),
+    'PROYECTOS ANTERIORES CON PRESUPUESTO (cliente · proyecto · monto · plan · fecha · duración · costos · estado):\n' + (similares.join('\n') || '(ninguno cargado)'),
+    'PROPUESTAS ANTERIORES:\n' + (previas.join('\n') || '(ninguna)'),
+  ].join('\n\n');
+  const tool = {
+    name: 'redactar_propuesta', description: 'Propuesta lista para revisar.',
+    input_schema: { type: 'object', required: ['titulo', 'intro', 'objetivo', 'alcance', 'etapas', 'entregables', 'items', 'plan_pago', 'justificacion_precio'], properties: {
+      titulo: { type: 'string' }, intro: { type: 'string' }, objetivo: { type: 'string' },
+      alcance: { type: 'array', items: { type: 'string' } },
+      etapas: { type: 'array', items: { type: 'object', required: ['nombre'], properties: { nombre: { type: 'string' }, semanas: { type: ['number', 'null'] }, detalle: { type: 'string' } } } },
+      entregables: { type: 'array', items: { type: 'string' } }, no_incluye: { type: 'array', items: { type: 'string' } },
+      items: { type: 'array', items: { type: 'object', required: ['concepto', 'monto'], properties: { concepto: { type: 'string' }, detalle: { type: 'string' }, monto: { type: 'number' } } } },
+      plan_pago: { type: 'string', enum: PLANES }, validez_dias: { type: ['number', 'null'] }, condiciones: { type: 'string' },
+      justificacion_precio: { type: 'string', description: 'interna: en qué proyectos o propuestas te basaste y cómo ajustaste' },
+    } },
+  };
+  const r = await claude(ctx, 'propuesta', { system: sys, tool, maxTokens: 6000, content: [...refs.bloques, { type: 'text', text: ctxTxt }] });
+  return { ...r, referencias: { proyectos: similares.length, propuestas: previas.length, drive: refs.nombres } };
 }
 
 /* ================= Servidor ================= */
@@ -457,6 +535,7 @@ Deno.serve(async req => {
       case 'leer_factura': return json(await leerFactura(ctx, b));
       case 'conciliar': return json(await conciliar(ctx, b));
       case 'imputar': return json(await imputar(ctx, b));
+      case 'propuesta': return json(await propuestaIA(ctx, b));
       case 'cierre': {
         const m = /^\d{4}-\d{2}$/.test(b.periodo || '') ? b.periodo : mesAR();
         const c = b.checklist || await checklistServidor(sb, m);
