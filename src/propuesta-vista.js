@@ -18,6 +18,16 @@ export function planTexto(p) {
 }
 export function etapasDe(p) { return (p.contenido && Array.isArray(p.contenido.etapas) ? p.contenido.etapas : []).filter(e => e && (e.nombre || e.detalle)); }
 
+// Pie igual al de los emails: isologo, sitio, contacto, redes y leyenda.
+export function pieHTML(marca = {}) {
+  const link = ([t, u]) => '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(t) + '</a>';
+  const contacto = (marca.contacto || [['+54 9 351 705 3527', 'https://wa.me/5493517053527'], ['hello@weareandale.com', 'mailto:hello@weareandale.com']]).filter(([t]) => !t.startsWith('@') && !/^weareandale\.com$/.test(t));
+  const redes = (marca.redes || []).map(([t, u]) => [t.charAt(0).toUpperCase() + t.slice(1), u]);
+  const ley = esc(marca.pie || 'with ❤ from cordoba | © àndale Strictly Confidential').replace(/❤️?|♥/g, '<span class="pz-heart" aria-label="amor">♥</span>');
+  return '<footer class="pz-f"><span class="pz-iso">' + ISO + '</span><a class="pz-site" href="https://weareandale.com/" target="_blank" rel="noopener">weareandale.com</a>' +
+    '<p>' + contacto.map(link).join(' · ') + '</p>' + (redes.length ? '<p>' + redes.map(link).join(' · ') + '</p>' : '') + '<p class="pz-ley">' + ley + '</p></footer>';
+}
+
 /** @param {object} p propuesta  @param {{contacto?:Array, redes?:Array}} marca  @param {{interno?:boolean}} o */
 export function propuestaHTML(p, marca = {}, o = {}) {
   const c = p.contenido || {}, cur = p.moneda || 'ARS';
@@ -46,6 +56,6 @@ export function propuestaHTML(p, marca = {}, o = {}) {
     '<div class="pz-total"><span>Total</span><b>' + esc(plata(totalDe(p), cur)) + '</b></div>' +
     (planTexto(p) ? '<p class="pz-plan"><b>Forma de pago:</b> ' + esc(planTexto(p)) + '</p>' : '') + '</section>' +
     sec('Condiciones', parr(c.condiciones)) +
-    '<footer class="pz-f"><span>weareandale.com</span><span class="pz-c">' + esc((marca.contacto || []).filter(x => !/weareandale\.com\/?$/.test(x[1] || '')).slice(0, 2).map(x => x[0]).join('  ·  ')) + '</span></footer>' +
+    pieHTML(marca) +
     '</article>';
 }

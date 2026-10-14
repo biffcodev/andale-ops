@@ -414,14 +414,8 @@ export function initAsistente(ctx, k) {
 
   function vAjustes() {
     if (!AD.as.estado && !AD.as.estadoBusy) setTimeout(() => cargarEstado(), 0);
-    const st = AD.as.estado || {}, est = ((AD.AJ && AD.AJ.documentos) || {}).estilo || 'editorial';
-    const op = [['editorial', 'Editorial', 'Blanco, alineado a la izquierda, cifra grande. La misma línea que los emails.'], ['banda', 'Banda de marca', 'Encabezado coral con el logo en blanco y el total destacado.'], ['grilla', 'Grilla', 'Columna lateral con los datos y el isologo, más técnica.']];
-    return '<div class="head"><div><h1>Ajustes</h1><p>Documentos, conexiones con IA y Drive, y el resumen mensual por email.</p></div></div>' +
-      '<section class="sheet"><div class="sheet-h"><h2>Estilo de los documentos</h2><span class="muted">resúmenes, propuestas y recibos</span></div><div class="sheet-b estilos">' +
-      op.map(([kk, l, d]) => '<label class="estilo' + (est === kk ? ' on' : '') + '"><input type="radio" name="estilo" data-estilo="' + kk + '"' + (est === kk ? ' checked' : '') + '><b>' + l + '</b><span>' + d + '</span></label>').join('') + '</div></section>' +
-      configHtml(st);
+    return '<div class="head"><div><h1>Ajustes</h1><p>Conexiones con la IA y Drive, datos de facturación y el resumen mensual por email.</p></div></div>' + configHtml(AD.as.estado || {});
   }
-  document.addEventListener('change', async e => { const t = e.target; if (t.dataset && t.dataset.estilo) { try { await data.upsert('ajustes', { clave: 'documentos', valor: { ...((AD.AJ && AD.AJ.documentos) || {}), estilo: t.dataset.estilo } }, 'clave'); toast('Estilo de documentos: ' + t.dataset.estilo); await ctx.reload(); } catch (err) { toast(err.message); } } });
 
   return { actions, view: vAsistente, ajustes: vAjustes, count: pendientesCount, presetDesde, aprender, b64Bytes };
 }

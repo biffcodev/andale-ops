@@ -1,5 +1,5 @@
 // Documentos de àndale (PDF vectorial en el navegador, Delight + Inter embebidas).
-// Un motor con primitivas comunes y tres estilos: 'editorial', 'banda', 'grilla'.
+// Un motor con primitivas comunes y un solo estilo (editorial, con el chancho arriba y el pie de los emails).
 // Se usa para resúmenes de cuenta, presupuestos/propuestas, recibos y reportes.
 import { PDFDocument, rgb, PDFString, PDFName } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
@@ -73,9 +73,9 @@ export async function nuevoDoc(titulo, opts = {}) {
   return D;
 }
 
-/* ---------------- piezas por estilo ---------------- */
-// Encabezado editorial: el chancho (isologo) + logotipo, y hasta tres líneas a la derecha (qué es, número, fecha).
-function cabeceraEditorial(D, l1, l2, l3) {
+/* ---------------- piezas comunes ---------------- */
+// Encabezado: el chancho (isologo) + logotipo, y hasta tres líneas a la derecha (qué es, número, fecha).
+function cabecera(D, l1, l2, l3) {
   const top = D.y + 8, iw = 42, ih = ISO_VB[1] * iw / ISO_VB[0];
   D.iso(D.M, top, iw, COL.ink);
   const lw = 76, lh = LOGO_VB[1] * lw / LOGO_VB[0];
@@ -86,7 +86,7 @@ function cabeceraEditorial(D, l1, l2, l3) {
   D.y = top - ih;
 }
 
-// Datos de las dos partes en dos columnas: a quién va (cliente) y quién lo emite (àndale).
+// Datos de las dos partes en dos columnas: a quién va y quién lo emite (àndale).
 const fmtCuit = c => { const d = String(c || '').replace(/\D/g, ''); return d.length === 11 ? d.slice(0, 2) + '-' + d.slice(2, 10) + '-' + d.slice(10) : String(c || ''); };
 const NOMBRES_EMISOR = { Fer: 'Fernando Ambordt', Jime: 'Jimena Moyano' };
 export function datosAndale(cfg, emisor) {
@@ -117,226 +117,127 @@ function partes(D, cols, x = D.M, w = D.cw) {
   D.y = top - alto;
 }
 
-// Pie como el de los emails: isologo, sitio, contacto, redes y la leyenda (con el corazón dibujado).
+/* Pie: el mismo bloque que cierra los emails, con Delight e Inter.
+   Isologo · weareandale.com · contacto · redes · leyenda (con el corazón dibujado).
+   Va una sola vez, al final del documento y apoyado abajo; las demás páginas solo llevan el número. */
 const HEART = 'M5,8.6 C5,8.6 0,5.4 0,2.6 C0,1.1 1.1,0 2.5,0 C3.6,0 4.5,0.7 5,1.5 C5.5,0.7 6.4,0 7.5,0 C8.9,0 10,1.1 10,2.6 C10,5.4 5,8.6 5,8.6 Z';
+const GRIS_PIE = hex('#6B6B6B'), GRIS_LEYENDA = hex('#A3A3A3');
 function textoConCorazon(D, t, x, y, f, s, color) {
   const trozos = String(t).replace(/️/g, '').split(/❤|♥/);
   trozos.forEach((p, i) => {
     if (p) { D.text(p, x, y, f, s, color); x += D.wid(p, f, s); }
-    if (i < trozos.length - 1) { const hs = s * 0.85; D.page.drawSvgPath(HEART, { x: x + 0.5, y: y + hs * 0.86, scale: hs / 10, color: COL.coral }); x += hs + 1; }
+    if (i < trozos.length - 1) { const hs = s * 1.05; D.page.drawSvgPath(HEART, { x: x + 1, y: y + hs * 0.82, scale: hs / 10, color: hex('#E8322F') }); x += hs + 2; }
   });
 }
 function lineaLinks(D, items, x, y, f, s, color) {
   const sep = '  ·  ';
-  items.forEach(([t, u], i) => { const w = D.wid(t, f, s); D.text(t, x, y, f, s, color); D.link(x, y - 2, w, s + 3, u); x += w; if (i < items.length - 1) { D.text(sep, x, y, f, s, COL.line2); x += D.wid(sep, f, s); } });
+  items.forEach(([t, u], i) => { const w = D.wid(t, f, s); D.text(t, x, y, f, s, color); D.link(x, y - 2, w, s + 3, u); x += w; if (i < items.length - 1) { D.text(sep, x, y, f, s, color); x += D.wid(sep, f, s); } });
 }
-function pieEmail(D, cfg, n, tot) {
-  const y0 = 26, X = D.M;
-  textoConCorazon(D, cfg.pie || 'with ❤ from cordoba | © àndale Strictly Confidential', X, y0, D.F.r, 7, hex('#A3A3A3'));
-  const redes = (cfg.redes || []).map(([t, u]) => [t.charAt(0).toUpperCase() + t.slice(1), u]);
-  lineaLinks(D, redes, X, y0 + 14, D.F.r, 8, COL.muted);
-  const contacto = (cfg.contacto || []).filter(([t]) => !t.startsWith('@') && !/^weareandale\.com$/.test(t));
-  lineaLinks(D, contacto, X, y0 + 25.5, D.F.r, 8, COL.muted);
-  D.text('weareandale.com', X, y0 + 39, D.F.d, 11, COL.ink); D.link(X, y0 + 37, D.wid('weareandale.com', D.F.d, 11), 13, 'https://weareandale.com/');
-  D.iso(X, y0 + 73, 26, COL.ink);
-  if (tot > 1) D.right(n + ' / ' + tot, W - X, y0, D.F.r, 7.5, COL.muted);
+const PIE_Y = 30, PIE_ALTO = 114; // desde el borde inferior de la hoja
+function pieFinal(D, cfg) {
+  if (D.y < PIE_Y + PIE_ALTO + 22) D.addPage(); // si no entra con aire, va a una hoja nueva
+  const X = D.M; let y = PIE_Y;
+  textoConCorazon(D, cfg.pie || 'with ❤ from cordoba | © àndale Strictly Confidential', X, y, D.F.r, 8.5, GRIS_LEYENDA);
+  y += 22;
+  lineaLinks(D, (cfg.redes || []).map(([t, u]) => [t.charAt(0).toUpperCase() + t.slice(1), u]), X, y, D.F.r, 10, GRIS_PIE);
+  y += 15;
+  lineaLinks(D, (cfg.contacto || []).filter(([t]) => !t.startsWith('@') && !/^weareandale\.com$/.test(t)), X, y, D.F.r, 10, GRIS_PIE);
+  y += 21;
+  D.text('weareandale.com', X, y, D.F.d, 15, COL.ink); D.link(X, y - 3, D.wid('weareandale.com', D.F.d, 15), 18, 'https://weareandale.com/');
+  y += 19;
+  const iw = 46; D.iso(X, y + ISO_VB[1] * iw / ISO_VB[0], iw, COL.ink);
 }
-
-const TEMAS = ['editorial', 'banda', 'grilla'];
-export const ESTILOS = { editorial: 'Editorial', banda: 'Banda de marca', grilla: 'Grilla' };
-
-function pieEditorial(D, cfg, n, tot) {
-  const y = D.M - 6;
-  D.hline(y + 26, D.M, W - D.M, COL.line);
-  D.text('weareandale.com', D.M, y + 5, D.F.s, 8.5, COL.ink);
-  D.link(D.M, y + 2, D.wid('weareandale.com', D.F.s, 8.5), 11, 'https://weareandale.com/');
-  const contacto = (cfg.contacto || []).filter(c => !/weareandale\.com\/?$/.test(c[1] || '')).slice(0, 3).map(c => c[0]).join('   ');
-  D.right(contacto, W - D.M, y + 5, D.F.r, 8.5, COL.muted);
-  if (tot > 1) D.right(n + ' / ' + tot, W - D.M, y - 9, D.F.r, 7.5, COL.muted);
-}
-function pieBanda(D, cfg, n, tot) {
-  D.rect(0, 0, W, 4, COL.coral);
-  const y = D.M - 10;
-  const lw = 52; D.logo((W - lw) / 2, y + 22, lw, COL.ink);
-  const t = (cfg.redes || []).map(r => r[0]).join('  ·  ');
-  D.text(t, (W - D.wid(t, D.F.r, 8)) / 2, y, D.F.r, 8, COL.muted);
-  if (tot > 1) D.right(n + ' / ' + tot, W - D.M, y, D.F.r, 7.5, COL.muted);
-}
-function pieGrilla(D, cfg, n, tot, col) {
-  const y = D.M - 4;
-  D.hline(y + 22, D.M, W - D.M, COL.ink, 0.6);
-  D.logo(D.M, y + 13, 48, COL.ink);
-  const xs = D.M + col + 18;
-  const cont = (cfg.contacto || []).slice(0, 3).map(c => c[0]).join('   ');
-  D.text(cont, xs, y + 4, D.F.r, 8, COL.soft);
-  if (tot > 1) D.right(n + ' / ' + tot, W - D.M, y + 4, D.F.r, 7.5, COL.muted);
-}
+const numeroPagina = (D, n, tot) => { if (tot > 1) D.right(n + ' / ' + tot, W - D.M, PIE_Y - 12, D.F.r, 7.5, COL.muted); };
+const nuevo = (titulo, margen = 50) => nuevoDoc(titulo, { margen, footH: 30, alPie: numeroPagina });
 
 // Datos de pago en columnas
-function cuentasPago(D, cfg, x, w, tema) {
+function cuentasPago(D, cfg, x, w) {
   const cols = (cfg.cuentas || []); if (!cols.length) return;
   const gap = 14, cwid = (w - gap * (cols.length - 1)) / cols.length;
-  // alto previo para no cortar
-  const alto = Math.max(...cols.map(c => 34 + (c.campos || []).reduce((a, [, v]) => a + 11 + D.wrap(v, D.F.r, 8.5, cwid - (tema === 'banda' ? 20 : 0)).length * 10.5, 0)));
-  D.need(alto + 34);
-  if (tema === 'editorial') { D.y -= 22; D.text('Cómo pagar', x, D.y, D.F.d, 13, COL.ink); D.y -= 10; }
-  else if (tema === 'banda') { D.y -= 24; D.text('Datos para el pago', x, D.y, D.F.d, 13, COL.coralInk); D.y -= 12; }
-  const top = D.y;
-  let low = top;
+  const alto = Math.max(...cols.map(c => 30 + (c.campos || []).reduce((a, [, v]) => a + 10 + D.wrap(v, D.F.s, 8.5, cwid).length * 10, 0)));
+  D.need(alto + 30);
+  D.y -= 22; D.text('Cómo pagar', x, D.y, D.F.d, 13, COL.ink); D.y -= 8;
+  const top = D.y; let low = top;
   cols.forEach((c, i) => {
-    const cx = x + i * (cwid + gap);
-    if (tema === 'banda') D.rect(cx, top - alto - 4, cwid, alto + 4, COL.paper, 6);
-    const px = tema === 'banda' ? cx + 10 : cx;
-    let yy = top - (tema === 'banda' ? 18 : 14);
-    D.text(c.titulo, px, yy, D.F.s, 10, COL.ink);
-    if (c.sub) D.text(c.sub, px + D.wid(c.titulo, D.F.s, 10) + 5, yy, D.F.r, 7.5, COL.muted);
-    yy -= 6;
+    const cx = x + i * (cwid + gap); let yy = top - 14;
+    D.text(c.titulo, cx, yy, D.F.s, 10, COL.ink);
+    if (c.sub) D.text(c.sub, cx + D.wid(c.titulo, D.F.s, 10) + 5, yy, D.F.r, 7.5, COL.muted);
+    yy -= 5;
     for (const [k, v] of c.campos || []) {
-      yy -= 11; D.text(k, px, yy, D.F.r, 7.5, COL.muted);
-      for (const l of D.wrap(v, D.F.s, 8.5, cwid - (tema === 'banda' ? 20 : 0))) { yy -= 10.5; D.text(l, px, yy, D.F.s, 8.5, COL.ink); }
+      yy -= 10; D.text(k, cx, yy, D.F.r, 7.5, COL.muted);
+      for (const l of D.wrap(v, D.F.s, 8.5, cwid)) { yy -= 10; D.text(l, cx, yy, D.F.s, 8.5, COL.ink); }
     }
     low = Math.min(low, yy);
   });
-  D.y = Math.min(low, top - alto) - 8;
+  D.y = Math.min(low, top - alto) - 6;
+}
+
+// Fila "Total a abonar" con la cifra a la derecha (y una nota chica en coral debajo del rótulo).
+function filaTotal(D, rotulo, cifra, nota) {
+  D.y -= 26;
+  D.text(rotulo, D.M, D.y + 2, D.F.s, 10, COL.ink);
+  if (nota) D.text(nota, D.M, D.y - 11, D.F.s, 8.5, COL.coralInk);
+  D.right(cifra, W - D.M, D.y - 2, D.F.d, 22, COL.ink);
+  D.y -= nota ? 22 : 16;
 }
 
 /* ---------------- resumen de cuenta ---------------- */
 /**
- * @param {{cfg:object, estilo?:string, contacto?:string, cuenta:string, periodo:string, moneda:string, items:{concepto:string,monto:number}[], total:number, nota?:string, vence?:string, emitido?:string}} r
+ * @param {{cfg:object, numero?:string, emisor?:string, cliente?:object, contacto?:string, cuenta:string, periodo:string, moneda:string,
+ *   items:{concepto:string,monto:number}[], total:number, nota?:string, vence?:string, emitido?:string}} r
  */
 export async function resumenDoc(r) {
-  const cfg = r.cfg || {}, tema = TEMAS.includes(r.estilo) ? r.estilo : (TEMAS.includes(cfg.estilo) ? cfg.estilo : 'editorial');
-  const col = 150; // ancho de la columna izquierda en 'grilla'
-  const D = await nuevoDoc('Resumen-' + r.cuenta + '-' + r.periodo, { margen: tema === 'grilla' ? 46 : 50, footH: tema === 'editorial' ? 64 : 54, alPie: (D, n, t) => (tema === 'editorial' ? pieEmail : tema === 'banda' ? pieBanda : (d, c, a, b) => pieGrilla(d, c, a, b, col))(D, cfg, n, t) });
+  const cfg = r.cfg || {};
+  const D = await nuevo('Resumen-' + (r.numero ? r.numero + '-' : '') + r.cuenta + '-' + r.periodo);
   const { F } = D;
   D.addPage();
   const nota = [cfg.nota, (r.nota || '').trim()].filter(Boolean).join('\n');
-  const vence = r.vence || '';
-
-  if (tema === 'editorial') {
-    cabeceraEditorial(D, 'Resumen de cuenta', r.numero ? 'N.º ' + r.numero : '', r.emitido ? 'Emitido ' + r.emitido : '');
-    D.y -= 38;
-    D.text('Resumen de cuenta · ' + r.periodo, D.M, D.y, F.s, 10, COL.coral);
-    D.y -= 30; D.text(r.cuenta, D.M, D.y, F.d, 26, COL.ink);
-    D.y -= 22; D.hline(D.y, D.M, W - D.M, COL.line);
-    partes(D, [datosCliente({ nombre: r.cuenta, contacto: r.contacto, ...(r.cliente || {}), alias: false }), datosAndale(cfg, r.emisor)]);
-    D.y -= 12; D.hline(D.y, D.M, W - D.M, COL.line);
-    D.y -= 26; D.text('Total a abonar', D.M, D.y + 2, F.s, 10, COL.ink);
-    D.right(plata(r.total, r.moneda), W - D.M, D.y, F.d, 22, COL.ink);
-    if (vence) { D.y -= 15; D.right('Vence el ' + vence, W - D.M, D.y, F.s, 9, COL.coralInk); }
-    D.y -= 22;
-    D.hline(D.y, D.M, W - D.M, COL.ink, 0.8); D.y -= 15;
-    D.text('Concepto', D.M, D.y, F.s, 8.5, COL.muted); D.right('Importe', W - D.M, D.y, F.s, 8.5, COL.muted); D.y -= 8;
-    for (const it of r.items) {
-      const ls = D.wrap(it.concepto, F.r, 10.5, D.cw - 130); D.need(ls.length * 14 + 14);
-      D.hline(D.y, D.M, W - D.M, COL.line); D.y -= 18;
-      ls.forEach((l, i) => D.text(l, D.M, D.y - i * 14, F.r, 10.5, COL.ink));
-      D.right(plata(it.monto, r.moneda), W - D.M, D.y, F.s, 10.5, COL.ink);
-      D.y -= (ls.length - 1) * 14 + 8;
-    }
-    D.hline(D.y, D.M, W - D.M, COL.ink, 0.8); D.y -= 18;
-    D.text('Total', D.M, D.y, F.b, 11, COL.ink); D.right(plata(r.total, r.moneda), W - D.M, D.y, F.b, 11, COL.ink);
-    if (nota) { D.y -= 30; const top = D.y + 6; const n = D.wrap(nota, F.r, 9.5, D.cw - 16).length; D.page.drawRectangle({ x: D.M, y: top - n * 14 - 8, width: 2, height: n * 14 + 8, color: COL.coral }); D.y += 4; D.para(nota, D.M + 14, F.r, 9.5, D.cw - 16, COL.soft, 1.47); }
-    cuentasPago(D, cfg, D.M, D.cw, tema);
-    if (cfg.cierre) { D.y -= 8; D.need(D.wrap(cfg.cierre, F.r, 9.5, D.cw).length * 14); D.para(cfg.cierre, D.M, F.r, 9.5, D.cw, COL.muted); }
+  cabecera(D, 'Resumen de cuenta', r.numero ? 'N.º ' + r.numero : '', r.emitido ? 'Emitido ' + r.emitido : '');
+  D.y -= 30;
+  D.text('Resumen de cuenta · ' + r.periodo, D.M, D.y, F.s, 10, COL.coral);
+  D.y -= 30; D.text(r.cuenta, D.M, D.y, F.d, 26, COL.ink);
+  D.y -= 20; D.hline(D.y, D.M, W - D.M, COL.line);
+  partes(D, [datosCliente({ nombre: r.cuenta, contacto: r.contacto, ...(r.cliente || {}), alias: false }), datosAndale(cfg, r.emisor)]);
+  D.y -= 10; D.hline(D.y, D.M, W - D.M, COL.line);
+  filaTotal(D, 'Total a abonar', plata(r.total, r.moneda), r.vence ? 'Vence el ' + r.vence : '');
+  D.y -= 4;
+  D.hline(D.y, D.M, W - D.M, COL.ink, 0.8); D.y -= 15;
+  D.text('Concepto', D.M, D.y, F.s, 8.5, COL.muted); D.right('Importe', W - D.M, D.y, F.s, 8.5, COL.muted); D.y -= 7;
+  for (const it of r.items) {
+    const ls = D.wrap(it.concepto, F.r, 10.5, D.cw - 130); D.need(ls.length * 14 + 12);
+    D.hline(D.y, D.M, W - D.M, COL.line); D.y -= 17;
+    ls.forEach((l, i) => D.text(l, D.M, D.y - i * 14, F.r, 10.5, COL.ink));
+    D.right(plata(it.monto, r.moneda), W - D.M, D.y, F.s, 10.5, COL.ink);
+    D.y -= (ls.length - 1) * 14 + 8;
   }
-
-  if (tema === 'banda') {
-    const bh = 176; D.rect(0, H - bh, W, bh, COL.coral);
-    D.logo(D.M, H - 40, 70, COL.white);
-    D.right('Emitido ' + (r.emitido || ''), W - D.M, H - 50, F.r, 8.5, COL.white);
-    D.text('Resumen de cuenta', D.M, H - 112, F.d, 30, COL.white);
-    D.text(r.periodo, D.M, H - 136, F.s, 12, COL.white);
-    D.y = H - bh - 26;
-    const cells = [['Cliente', r.cuenta], ['Contacto', r.contacto || '—'], ['Vencimiento', vence || '—']];
-    const cwid = D.cw / 3;
-    cells.forEach(([k, v], i) => { D.text(k, D.M + i * cwid, D.y, F.r, 8.5, COL.muted); D.text(v, D.M + i * cwid, D.y - 15, F.s, 11, COL.ink); });
-    D.y -= 44;
-    D.text('Detalle', D.M, D.y, F.d, 13, COL.coralInk); D.y -= 8;
-    r.items.forEach((it, i) => {
-      const ls = D.wrap(it.concepto, F.r, 10.5, D.cw - 150); const h = ls.length * 14 + 14; D.need(h);
-      if (i % 2 === 0) D.rect(D.M - 8, D.y - h, D.cw + 16, h, COL.coralSoft, 4);
-      D.y -= 18; ls.forEach((l, j) => D.text(l, D.M, D.y - j * 14, F.r, 10.5, COL.ink));
-      D.right(plata(it.monto, r.moneda), W - D.M, D.y, F.s, 10.5, COL.ink); D.y -= (ls.length - 1) * 14 + 10;
-    });
-    D.y -= 16; const th = 64; D.need(th + 10);
-    D.rect(D.M - 8, D.y - th, D.cw + 16, th, COL.ink, 8);
-    D.text('Total a abonar', D.M + 10, D.y - 26, F.s, 10, COL.white);
-    if (vence) D.text('Vence el ' + vence, D.M + 10, D.y - 42, F.r, 9, COL.white);
-    D.right(plata(r.total, r.moneda), W - D.M - 10, D.y - 42, F.d, 28, COL.white);
-    D.y -= th + 8;
-    if (nota) { D.y -= 10; D.para(nota, D.M, F.r, 9.5, D.cw, COL.soft); }
-    cuentasPago(D, cfg, D.M, D.cw, tema);
-    if (cfg.cierre) { D.y -= 6; D.para(cfg.cierre, D.M, F.r, 9.5, D.cw, COL.muted); }
-  }
-
-  if (tema === 'grilla') {
-    const xr = D.M + col + 18, rw = W - D.M - xr;
-    D.iso(D.M, D.y + 4, 64, COL.ink);
-    const yTop = D.y;
-    D.text('Resumen de cuenta', xr, yTop - 22, F.s, 9.5, COL.coral);
-    D.text(r.cuenta, xr, yTop - 58, F.d, 34, COL.ink);
-    let yl = yTop - 96;
-    [['Cliente', r.contacto || r.cuenta], ['Período', r.periodo], ['Emitido', r.emitido || '—'], ['Vence', vence || '—']].forEach(([k, v]) => { D.text(k, D.M, yl, F.r, 8, COL.muted); D.text(v, D.M, yl - 13, F.s, 10, COL.ink); yl -= 34; });
-    D.y = yTop - 96;
-    D.hline(D.y + 12, xr, W - D.M, COL.ink, 0.8);
-    for (const it of r.items) {
-      const ls = D.wrap(it.concepto, F.r, 10.5, rw - 120); D.y -= 6;
-      ls.forEach((l, i) => D.text(l, xr, D.y - i * 14, F.r, 10.5, COL.ink));
-      D.right(plata(it.monto, r.moneda), W - D.M, D.y, F.s, 10.5, COL.ink);
-      D.y -= (ls.length - 1) * 14 + 12; D.hline(D.y + 2, xr, W - D.M, COL.line); D.y -= 10;
-    }
-    D.y -= 18;
-    D.text('Total a abonar', xr, D.y, F.r, 9.5, COL.muted);
-    D.y -= 36; D.right(plata(r.total, r.moneda), W - D.M, D.y, F.d, 34, COL.ink);
-    D.page.drawRectangle({ x: W - D.M - 60, y: D.y - 12, width: 60, height: 3, color: COL.coral });
-    D.y -= 40;
-    if (nota) { D.para(nota, xr, F.r, 9.5, rw, COL.soft); D.y -= 6; }
-    D.vline(D.M + col, yTop - 80, D.M + 70, COL.line);
-    // pago en la columna derecha, apilado
-    const cols = cfg.cuentas || [];
-    if (cols.length) { D.y -= 14; D.text('Cómo pagar', xr, D.y, F.d, 12.5, COL.ink); D.y -= 4;
-      const gap = 12, cwid = (rw - gap * (cols.length - 1)) / cols.length, top = D.y; let low = top;
-      cols.forEach((c, i) => { const cx = xr + i * (cwid + gap); let yy = top - 16; D.text(c.titulo, cx, yy, F.s, 9.5, COL.ink); yy -= 4;
-        for (const [k, v] of c.campos || []) { yy -= 10.5; D.text(k, cx, yy, F.r, 7, COL.muted); for (const l of D.wrap(v, F.s, 7.8, cwid)) { yy -= 9.5; D.text(l, cx, yy, F.s, 7.8, COL.ink); } }
-        low = Math.min(low, yy); });
-      D.y = low - 10; }
-    if (cfg.cierre) { D.y -= 4; D.para(cfg.cierre, xr, F.r, 8.5, rw, COL.muted); }
-  }
+  D.hline(D.y, D.M, W - D.M, COL.ink, 0.8); D.y -= 17;
+  D.text('Total', D.M, D.y, F.b, 11, COL.ink); D.right(plata(r.total, r.moneda), W - D.M, D.y, F.b, 11, COL.ink);
+  if (nota) { D.y -= 24; const top = D.y + 6; const n = D.wrap(nota, F.r, 9.5, D.cw - 16).length; D.page.drawRectangle({ x: D.M, y: top - n * 14 - 8, width: 2, height: n * 14 + 8, color: COL.coral }); D.y += 4; D.para(nota, D.M + 14, F.r, 9.5, D.cw - 16, COL.soft, 1.47); }
+  cuentasPago(D, cfg, D.M, D.cw);
+  if (cfg.cierre) { D.y -= 6; D.need(D.wrap(cfg.cierre, F.r, 9.5, D.cw).length * 14); D.para(cfg.cierre, D.M, F.r, 9.5, D.cw, COL.muted); }
+  pieFinal(D, cfg);
   return D.save();
 }
 
-
 /* ---------------- propuesta / presupuesto ---------------- */
 const lineasDe = v => (Array.isArray(v) ? v : String(v || '').split('\n')).map(x => String(x).trim()).filter(Boolean);
-export async function propuestaDoc(p, cfg = {}, estilo) {
-  const tema = TEMAS.includes(estilo) ? estilo : (TEMAS.includes(cfg.estilo) ? cfg.estilo : 'editorial');
+export async function propuestaDoc(p, cfg = {}) {
   const { totalDe, planTexto, venceEl, etapasDe } = await import('./propuesta-vista.js');
   const fecha = d => { if (!d) return ''; const [y, m, dd] = String(d).slice(0, 10).split('-'); return dd + '/' + m + '/' + y; };
   const pre = p.clase === 'Presupuesto', PAL = pre ? 'Presupuesto' : 'Propuesta';
-  const D = await nuevoDoc(PAL + ' ' + (p.numero || '') + ' ' + (p.cliente || p.prospecto || ''), { margen: 54, footH: tema === 'editorial' ? 64 : 56, alPie: (D, n, t) => (tema === 'banda' ? pieBanda : tema === 'grilla' ? (d, c, a, b) => pieGrilla(d, c, a, b, 0) : pieEmail)(D, cfg, n, t) });
+  const D = await nuevo(PAL + ' ' + (p.numero || '') + ' ' + (p.cliente || p.prospecto || ''), 54);
   const { F } = D, c = p.contenido || {}, cur = p.moneda || 'ARS', X = D.M, CW = D.cw;
   D.addPage();
   const cliente = p.cliente || p.prospecto || '';
-  if (tema === 'banda') {
-    const bh = 210; D.rect(0, H - bh, W, bh, COL.coral);
-    D.logo(X, H - 44, 70, COL.white);
-    D.right(PAL + ' ' + (p.numero || ''), W - X, H - 52, F.s, 9, COL.white);
-    D.y = H - 104; D.text([PAL, p.tipo].filter(Boolean).join(' · '), X, D.y, F.s, 10, COL.white);
-    D.y -= 6; for (const l of D.wrap(p.titulo || '', F.d, 28, CW)) { D.y -= 31; D.text(l, X, D.y, F.d, 28, COL.white); }
-    D.y = H - bh - 30;
-  } else {
-    const meta2 = fecha(p.fecha) + (p.fecha ? (pre ? ' · válido hasta ' : ' · válida hasta ') + fecha(venceEl(p)) : '');
-    if (tema === 'grilla') { D.iso(X, D.y + 4, 52, COL.ink); D.right(PAL + ' ' + (p.numero || ''), W - X, D.y - 8, F.s, 9, COL.ink); D.right(meta2, W - X, D.y - 20, F.r, 8.5, COL.muted); D.y -= 96; }
-    else { cabeceraEditorial(D, PAL, p.numero ? 'N.º ' + p.numero : '', meta2); D.y -= 56; }
-    D.text([PAL, p.tipo].filter(Boolean).join(' · '), X, D.y, F.s, 10, COL.coral);
-    D.y -= 4; for (const l of D.wrap(p.titulo || PAL, F.d, 30, CW)) { D.y -= 33; D.text(l, X, D.y, F.d, 30, COL.ink); }
-    D.y -= 6;
-  }
-  if (tema === 'editorial') { D.y -= 18; D.hline(D.y, X, W - X, COL.line); partes(D, [datosCliente({ nombre: cliente, contacto: p.contacto, email: p.email, ...(p.datos_cliente || {}) }), datosAndale(cfg, p.emisor)]); D.y -= 14; D.hline(D.y, X, W - X, COL.line); D.y -= 8; }
-  else if (cliente) { D.y -= 16; D.text('Para ' + cliente + (p.contacto ? ' · ' + p.contacto : ''), X, D.y, F.r, 10.5, COL.muted); }
+  const meta2 = fecha(p.fecha) + (p.fecha ? (pre ? ' · válido hasta ' : ' · válida hasta ') + fecha(venceEl(p)) : '');
+  cabecera(D, PAL, p.numero ? 'N.º ' + p.numero : '', meta2); D.y -= 56;
+  D.text([PAL, p.tipo].filter(Boolean).join(' · '), X, D.y, F.s, 10, COL.coral);
+  D.y -= 4; for (const l of D.wrap(p.titulo || PAL, F.d, 30, CW)) { D.y -= 33; D.text(l, X, D.y, F.d, 30, COL.ink); }
+  D.y -= 24; D.hline(D.y, X, W - X, COL.line);
+  partes(D, [datosCliente({ nombre: cliente, contacto: p.contacto, email: p.email, ...(p.datos_cliente || {}) }), datosAndale(cfg, p.emisor)]);
+  D.y -= 14; D.hline(D.y, X, W - X, COL.line); D.y -= 8;
   if (c.intro) { D.y -= 14; for (const par of lineasDe(c.intro)) { D.para(par, X, F.r, 12, CW * 0.86, COL.ink, 1.5); D.y -= 6; } }
-  const seccion = (t) => { D.need(60); D.y -= 24; D.hline(D.y, X, W - X, COL.line); D.y -= 24; D.text(t, X, D.y, F.d, 15, tema === 'banda' ? COL.coralInk : COL.ink); D.y -= 6; };
+  const seccion = t => { D.need(60); D.y -= 24; D.hline(D.y, X, W - X, COL.line); D.y -= 24; D.text(t, X, D.y, F.d, 15, COL.ink); D.y -= 6; };
   const parrafos = v => { for (const par of lineasDe(v)) { D.para(par, X, F.r, 10.5, CW, COL.soft, 1.5); D.y -= 4; } };
   const vinetas = (v, color = COL.soft) => { for (const it of lineasDe(v)) { const ls = D.wrap(it, F.r, 10.5, CW - 14); D.need(ls.length * 15 + 4); ls.forEach((l, i) => { D.y -= 15.5; if (!i) D.page.drawCircle({ x: X + 3, y: D.y + 3.4, size: 2, color: COL.coral }); D.text(l, X + 14, D.y, F.r, 10.5, color); }); D.y -= 2; } };
   if (lineasDe(c.objetivo).length) { seccion('Objetivo'); parrafos(c.objetivo); }
@@ -358,7 +259,6 @@ export async function propuestaDoc(p, cfg = {}, estilo) {
   }
   if (lineasDe(c.entregables).length) { seccion('Entregables'); vinetas(c.entregables); }
   if (lineasDe(c.no_incluye).length) { seccion('No incluye'); vinetas(c.no_incluye, COL.muted); }
-  // Inversión
   const items = (p.items || []).filter(i => i.concepto || i.monto);
   seccion(pre ? 'Detalle' : 'Inversión'); D.y -= 4;
   for (const it of items) {
@@ -370,56 +270,46 @@ export async function propuestaDoc(p, cfg = {}, estilo) {
   }
   if (Number(p.descuento)) { D.y -= 18; D.text('Descuento', X, D.y, F.r, 10.5, COL.muted); D.right('− ' + plata(p.descuento, cur), W - X, D.y, F.s, 10.5, COL.muted); D.y -= 9; D.hline(D.y, X, W - X, COL.line); }
   D.need(70);
-  if (tema === 'banda') { D.y -= 16; D.rect(X - 8, D.y - 54, CW + 16, 54, COL.ink, 8); D.text('Total', X + 10, D.y - 32, F.s, 11, COL.white); D.right(plata(totalDe(p), cur), W - X - 10, D.y - 36, F.d, 26, COL.white); D.y -= 62; }
-  else { D.y -= 34; D.text('Total', X, D.y, F.s, 11, COL.ink); D.right(plata(totalDe(p), cur), W - X, D.y - 1, F.d, 20, COL.ink); if (tema === 'grilla') D.page.drawRectangle({ x: W - X - 60, y: D.y - 14, width: 60, height: 3, color: COL.coral }); D.y -= 18; }
+  D.y -= 34; D.text('Total', X, D.y, F.s, 11, COL.ink); D.right(plata(totalDe(p), cur), W - X, D.y - 1, F.d, 20, COL.ink); D.y -= 18;
   const plan = planTexto(p); if (plan) { D.y -= 6; D.para('Forma de pago: ' + plan, X, F.r, 10, CW, COL.soft); }
   if (lineasDe(c.condiciones).length) { seccion('Condiciones'); parrafos(c.condiciones); }
+  pieFinal(D, cfg);
   return D.save();
 }
 
 /* ---------------- comprobante de pago (sueldos, honorarios y proveedores) ---------------- */
 /**
- * @param {{cfg?:object, estilo?:string, periodo:string, emitido?:string, nombre:string, detalle?:string, cuit?:string,
+ * @param {{cfg?:object, numero?:string, periodo:string, emitido?:string, nombre:string, detalle?:string, cuit?:string, email?:string,
  *   items:{tipo?:string,concepto:string,monto:number,moneda:string,pagado?:boolean}[], pagos?:{fecha:string,caja?:string,monto:number,moneda:string}[],
  *   destino?:[string,string][]}} r
  */
 export async function reciboDoc(r) {
-  const cfg = r.cfg || {}, tema = TEMAS.includes(r.estilo) ? r.estilo : (TEMAS.includes(cfg.estilo) ? cfg.estilo : 'editorial');
-  const D = await nuevoDoc('Comprobante-' + r.nombre + '-' + r.periodo, { margen: 50, footH: tema === 'editorial' ? 64 : 54, alPie: (D, n, t) => (tema === 'banda' ? pieBanda : tema === 'grilla' ? (d, c, a, b) => pieGrilla(d, c, a, b, 0) : pieEmail)(D, cfg, n, t) });
+  const cfg = r.cfg || {};
+  const D = await nuevo('Comprobante-' + (r.numero ? r.numero + '-' : '') + r.nombre + '-' + r.periodo);
   const { F } = D, X = D.M, CW = D.cw;
   D.addPage();
   const totales = {}; r.items.forEach(i => { totales[i.moneda] = (totales[i.moneda] || 0) + (Number(i.monto) || 0); });
   const totTxt = Object.entries(totales).map(([m, v]) => plata(v, m)).join('  +  ');
   const pagado = r.items.length && r.items.every(i => i.pagado);
-  if (tema === 'banda') {
-    const bh = 160; D.rect(0, H - bh, W, bh, COL.coral);
-    D.logo(X, H - 40, 70, COL.white); D.right(r.emitido ? 'Emitido ' + r.emitido : '', W - X, H - 50, F.r, 8.5, COL.white);
-    D.text('Comprobante de pago', X, H - 106, F.d, 28, COL.white); D.text(r.periodo, X, H - 128, F.s, 12, COL.white);
-    D.y = H - bh - 34; D.text(r.nombre, X, D.y, F.d, 22, COL.ink);
-  } else {
-    if (tema === 'grilla') { D.iso(X, D.y + 4, 52, COL.ink); D.right('Comprobante de pago', W - X, D.y - 8, F.s, 9, COL.ink); D.right(r.emitido ? 'Emitido ' + r.emitido : '', W - X, D.y - 20, F.r, 8.5, COL.muted); D.y -= 96; }
-    else { cabeceraEditorial(D, 'Comprobante de pago', r.numero ? 'N.º ' + r.numero : '', r.emitido ? 'Emitido ' + r.emitido : ''); D.y -= 46; }
-    D.text('Comprobante de pago · ' + r.periodo, X, D.y, F.s, 10, COL.coral);
-    D.y -= 30; D.text(r.nombre, X, D.y, F.d, 26, COL.ink);
-  }
-  D.y -= 22; D.hline(D.y, X, W - X, COL.line);
+  cabecera(D, 'Comprobante de pago', r.numero ? 'N.º ' + r.numero : '', r.emitido ? 'Emitido ' + r.emitido : ''); D.y -= 30;
+  D.text('Comprobante de pago · ' + r.periodo, X, D.y, F.s, 10, COL.coral);
+  D.y -= 30; D.text(r.nombre, X, D.y, F.d, 26, COL.ink);
+  D.y -= 20; D.hline(D.y, X, W - X, COL.line);
   partes(D, [datosCliente({ titulo: 'A favor de', alias: false, nombre: r.nombre, cuit: r.cuit, condicion_iva: r.detalle, email: r.email }), datosAndale(cfg, null)]);
-  D.y -= 18; D.hline(D.y, X, W - X, COL.line);
-  D.y -= 30; D.text(pagado ? 'Total pagado' : 'Total a pagar', X, D.y + 2, F.s, 10, COL.ink);
-  D.right(totTxt, W - X, D.y, F.d, 22, COL.ink);
-  if (pagado && r.pagos && r.pagos.length) { D.y -= 16; D.right('Pagado el ' + r.pagos.map(p => p.fecha).join(', '), W - X, D.y, F.s, 9, COL.coralInk); }
-  D.y -= 28;
+  D.y -= 10; D.hline(D.y, X, W - X, COL.line);
+  filaTotal(D, pagado ? 'Total pagado' : 'Total a pagar', totTxt, pagado && r.pagos && r.pagos.length ? 'Pagado el ' + r.pagos.map(p => p.fecha).join(', ') : '');
+  D.y -= 4;
   D.hline(D.y, X, W - X, COL.ink, 0.8); D.y -= 15;
-  D.text('Concepto', X, D.y, F.s, 8.5, COL.muted); D.right('Importe', W - X, D.y, F.s, 8.5, COL.muted); D.y -= 8;
+  D.text('Concepto', X, D.y, F.s, 8.5, COL.muted); D.right('Importe', W - X, D.y, F.s, 8.5, COL.muted); D.y -= 7;
   for (const it of r.items) {
-    const ls = D.wrap(it.concepto, F.r, 10.5, CW - 190); D.need(ls.length * 14 + 14);
-    D.hline(D.y, X, W - X, COL.line); D.y -= 18;
+    const ls = D.wrap(it.concepto, F.r, 10.5, CW - 190); D.need(ls.length * 14 + 12);
+    D.hline(D.y, X, W - X, COL.line); D.y -= 17;
     if (it.tipo) D.text(it.tipo, X, D.y, F.s, 8.5, COL.muted);
     ls.forEach((l, i) => D.text(l, X + 80, D.y - i * 14, F.r, 10.5, COL.ink));
     D.right(plata(it.monto, it.moneda), W - X, D.y, F.s, 10.5, COL.ink);
     D.y -= (ls.length - 1) * 14 + 8;
   }
-  D.hline(D.y, X, W - X, COL.ink, 0.8); D.y -= 18;
+  D.hline(D.y, X, W - X, COL.ink, 0.8); D.y -= 17;
   D.text('Total', X, D.y, F.b, 11, COL.ink); D.right(totTxt, W - X, D.y, F.b, 11, COL.ink);
   if (r.pagos && r.pagos.length) {
     D.need(40 + r.pagos.length * 16); D.y -= 30; D.text('Pagos', X, D.y, F.d, 13, COL.ink); D.y -= 4;
@@ -430,8 +320,9 @@ export async function reciboDoc(r) {
     D.need(40 + dest.length * 22); D.y -= 30; D.text('Cuenta de destino', X, D.y, F.d, 13, COL.ink); D.y -= 4;
     dest.forEach(([k, v]) => { D.y -= 12; D.text(k, X, D.y, F.r, 7.5, COL.muted); D.y -= 11; D.text(v, X, D.y, F.s, 9, COL.ink); });
   }
-  D.y -= 30; D.need(16);
+  D.y -= 26; D.need(16);
   D.para('Comprobante interno de àndale. No reemplaza la factura del proveedor ni el recibo de sueldo legal.', X, F.r, 8.5, CW, COL.muted);
+  pieFinal(D, cfg);
   return D.save();
 }
 
