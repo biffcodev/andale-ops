@@ -4,8 +4,10 @@ import { LOGO } from './marca.js';
 import { ICON } from './iconos.js';
 import * as data from './data.js';
 import { initAdmin } from './admin.js';
+import { initIA } from './ia.js';
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
 let ADM = null, ADM_FN = {};
+let IA = null;
 
 /* ---------- Constantes ---------- */
 const DEF = {
@@ -231,6 +233,7 @@ function vInicio() {
 
   const hora = new Date().getHours(), saludo = hora < 13 ? 'Buen día' : hora < 20 ? 'Buenas tardes' : 'Buenas noches';
   let h = '<div class="head"><div><h1>' + saludo + ', ' + esc(S.me.alias) + '</h1><p>' + esc(cap1(new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }))) + (late.length ? ' · <b style="color:var(--crit)">' + late.length + ' entregas atrasadas</b>' : '') + '</p></div></div>' +
+    (IA ? IA.inicioHtml() : '') +
     '<section class="kpis">' +
     kpiBtn(ab.length, 'Abonos activos', abR + ' de redes · ' + abA + ' de Ads', 'data-act="go" data-view="abonos"') +
     kpiBtn(open.length, 'Proyectos abiertos', S.P.filter(p => p.estado === 'En curso').length + ' en curso', 'data-act="goProy"') +
@@ -503,6 +506,7 @@ function vFicha() {
   return back +
     '<div class="head"><div class="head-av">' + (isStaff() ? avEditable('cliente', c._id, c.nombre, c.avatar, 'xl sq') : av(c.nombre, c.avatar, 'xl sq')) + '<div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + abonoTags(c.nombre) + '<span>' + esc(c.servicio || '') + '</span></p></div></div>' +
     '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Seguimiento</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Comunicación', { cliente: c.nombre })) + '</div></div>' +
+    (IA ? IA.fichaHtml(c.nombre) : '') +
     '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
     '<dt>Contacto</dt><dd>' + (c.contacto ? esc(c.contacto) : '<span class="muted">—</span>') + '</dd>' +
@@ -703,7 +707,7 @@ function openForm(kind, id, preset) {
   const extra = adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
   const p = $('#panel');
   p.innerHTML = '<form id="form" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + (rec ? (ro ? 'Ver ' : 'Editar ') + def.title : 'Alta') + '</span><h2 id="panel-title">' + (rec ? esc(def.label(rec) || def.title) : def.nuevo) + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
-    '<div class="panel-b">' + def.fields.map(f => fieldHtml(f, vals[f.k], ro)).join('') + extra + '</div><div class="panel-f">' + foot + '</div></form>';
+    '<div class="panel-b">' + (IA && kind === 'comunicacion' && !rec ? IA.charlaHtml() : '') + def.fields.map(f => fieldHtml(f, vals[f.k], ro)).join('') + extra + '</div><div class="panel-f">' + foot + '</div></form>';
   p.hidden = false; $('#scrim').hidden = false;
   if (kind === 'proyecto') { S.form.etapas = JSON.parse(JSON.stringify(vals.etapas || [])); if (!S.form.etapas.length && plantilla(vals.tipo).length && !rec) S.form.etapas = plantilla(vals.tipo).map(n => ({ n, ok: false })); renderEtapasField(); }
   if (!rec) { const first = p.querySelector('.panel-b input:not([type=checkbox]):not([disabled]),.panel-b select:not([disabled]),.panel-b textarea:not([disabled])'); if (first) first.focus(); }
@@ -947,6 +951,11 @@ async function start(sess) {
     ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
     Object.assign(ACT, ADM.actions);
   }
+  if (isStaff() && !IA) {
+    IA = initIA({ S, esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM });
+    Object.assign(ACT, IA.actions);
+  }
+  $('#askbtn').hidden = !IA; document.querySelectorAll('.askmini').forEach(b => { b.hidden = !IA; });
   $('#top').hidden = false;
   $('#hoy').textContent = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   if (isExt()) S.yo = me.alias; else if (!S.yo) S.yo = me.alias;

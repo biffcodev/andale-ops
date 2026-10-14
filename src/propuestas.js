@@ -53,8 +53,8 @@ export function initPropuestas(ctx, k) {
 
   /* ---------- editor ---------- */
   function nueva(preset = {}) {
-    return { id: null, numero: '', clase: preset.clase || 'Propuesta', cliente: preset.cliente || '', prospecto: '', contacto: '', email: '', titulo: '', tipo: preset.tipo || '', estado: 'Borrador', fecha: today(), validez_dias: 15, moneda: 'ARS',
-      items: [{ concepto: '', detalle: '', monto: '' }], descuento: 0, plan_pago: '50/50', contenido: { intro: '', objetivo: '', alcance: '', etapas: [], entregables: '', no_incluye: '', condiciones: '' }, brief: '', notas: '', token: null, respuesta: null, proyecto_id: null };
+    return { id: null, numero: '', clase: preset.clase || 'Propuesta', cliente: preset.cliente || '', prospecto: '', contacto: '', email: '', titulo: preset.titulo || '', tipo: preset.tipo || '', estado: 'Borrador', fecha: today(), validez_dias: 15, moneda: 'ARS',
+      items: [{ concepto: '', detalle: '', monto: '' }], descuento: 0, plan_pago: '50/50', contenido: { intro: '', objetivo: '', alcance: '', etapas: [], entregables: '', no_incluye: '', condiciones: '' }, brief: preset.brief || '', notas: '', token: null, respuesta: null, proyecto_id: null };
   }
   function desdeFila(p) {
     const c = p.contenido || {};
@@ -170,7 +170,7 @@ export function initPropuestas(ctx, k) {
   let prevT;
 
   const actions = {
-    pzNueva: t => { AD.pz.d = nueva({ clase: (t && t.dataset.clase) || 'Propuesta' }); AD.pz.sel = 'nuevo'; AD.pz.ia = null; AD.pz.dirty = true; ctx.render(); window.scrollTo(0, 0); },
+    pzNueva: t => { AD.pz.d = nueva({ clase: (t && t.dataset.clase) || 'Propuesta', ...(t && t.dataset.preset ? JSON.parse(t.dataset.preset) : {}) }); AD.pz.sel = 'nuevo'; AD.pz.ia = null; AD.pz.dirty = true; ctx.render(); window.scrollTo(0, 0); },
     pzAbrir: t => { const p = (AD.PROP || []).find(x => x.id === t.dataset.id); if (!p) return; AD.pz.d = desdeFila(p); AD.pz.sel = p.id; AD.pz.ia = null; AD.pz.dirty = false; ctx.render(); window.scrollTo(0, 0); },
     pzVolver: () => { if (AD.pz.dirty && !confirm('Hay cambios sin guardar. ¿Salir igual?')) return; AD.pz.sel = null; AD.pz.d = null; ctx.render(); },
     pzF: t => { AD.pz.f = t.dataset.v; ctx.render(); },

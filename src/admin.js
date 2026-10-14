@@ -694,13 +694,15 @@ export function initAdmin(ctx) {
     if (f.type === 'select') ctl = '<select id="' + id + '">' + (f.html ? f.html(v || '') : optsFrom(f.opts, v || '', f.blank)) + '</select>';
     else if (f.type === 'textarea') ctl = '<textarea id="' + id + '" rows="' + (f.rows || 3) + '">' + esc(v || '') + '</textarea>';
     else ctl = '<input id="' + id + '" type="' + (f.type || 'text') + '" value="' + esc(v ?? '') + '"' + (f.ph ? ' placeholder="' + esc(f.ph) + '"' : '') + (f.num ? ' inputmode="decimal"' : '') + '>';
-    return '<div class="field' + (f.full ? ' full' : '') + '"><label for="' + id + '">' + esc(f.label) + (f.req ? ' <b>*</b>' : '') + '</label>' + ctl + (f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '') + '<span class="err" id="ae-' + f.k + '" hidden></span></div>';
+    return '<div class="field' + (f.full ? ' full' : '') + '"><label for="' + id + '">' + esc(f.label) + (f.req ? ' <b>*</b>' : '') + '</label>' + ctl + (f.hint ? '<span class="hint" id="ah-' + f.k + '">' + esc(f.hint) + '</span>' : '') + '<span class="err" id="ae-' + f.k + '" hidden></span></div>';
   }
   function openPanel(cfg) {
     AD.form = cfg;
     const p = $('#panel');
     p.innerHTML = '<form id="aform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(cfg.eyebrow || 'Administración') + '</span><h2 id="panel-title">' + esc(cfg.title) + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
-      '<div class="panel-b">' + (cfg.intro ? '<p class="formnote">' + cfg.intro + '</p>' : '') + (cfg.fields || []).map(f => field(f, cfg.values[f.k])).join('') + (cfg.extra || '') + '</div>' +
+      '<div class="panel-b">' + (cfg.intro ? '<p class="formnote">' + cfg.intro + '</p>' : '') + (cfg.top || '') + (cfg.fields || []).filter(f => !f.adv).map(f => field(f, cfg.values[f.k])).join('') +
+      ((cfg.fields || []).some(f => f.adv) ? '<details class="mas full" id="af-mas"' + (cfg.masAbierto ? ' open' : '') + '><summary>' + esc(cfg.masLabel || 'Más opciones') + '</summary><div class="mas-b">' + (cfg.fields || []).filter(f => f.adv).map(f => field(f, cfg.values[f.k])).join('') + '</div></details>' : '') +
+      (cfg.extra || '') + '</div>' +
       '<div class="panel-f"><span id="adel">' + (cfg.onDelete ? '<button type="button" class="btn ghost danger" data-act="aDel">' + esc(cfg.deleteLabel || 'Eliminar') + '</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button>' + (cfg.onSave ? '<button type="submit" class="btn primary" id="asave">' + esc(cfg.saveLabel || 'Guardar') + '</button>' : '') + '</span></div></form>';
     p.hidden = false; $('#scrim').hidden = false;
   }
@@ -711,7 +713,7 @@ export function initAdmin(ctx) {
       let v = f.type === 'check' ? el.checked : el.value.trim();
       if (f.num) { v = v === '' ? null : parseMonto(v); if (v === null && f.req) bad = true; }
       if (f.month && v && !/^\d{4}-\d{2}$/.test(v)) { const e = $('#ae-' + f.k); e.textContent = 'Formato AAAA-MM'; e.hidden = false; bad = true; }
-      if (f.req && (v === '' || v === null)) { const e = $('#ae-' + f.k); e.textContent = 'Completá este campo'; e.hidden = false; bad = true; }
+      if (f.req && (v === '' || v === null)) { const e = $('#ae-' + f.k); e.textContent = 'Completá este campo'; e.hidden = false; bad = true; if (f.adv && $('#af-mas')) $('#af-mas').open = true; }
       out[f.k] = v;
     }
     return bad ? null : out;
@@ -726,8 +728,8 @@ export function initAdmin(ctx) {
   function formFactura(id, preset, opts = {}) {
     const f = id ? AD.F.find(x => x.id === id) : null;
     const driveLibres = AD.DA.filter(d => !d.factura_id && d.estado !== 'Ignorado');
-    const iaBox = '<div class="field full"><span class="lbl">Completar desde el PDF</span><div class="toolbar">' +
-      '<label class="btn sm" style="cursor:pointer"><span id="ff-ia-lbl">✨ Leer PDF</span><input type="file" id="ff-ia" accept="application/pdf,image/*" hidden></label>' +
+    const iaBox = '<div class="field full iabox"><span class="lbl">✨ ¿Tenés el PDF? La IA completa todo</span><div class="toolbar">' +
+      '<label class="btn sm primary" style="cursor:pointer"><span id="ff-ia-lbl">Subir el PDF</span><input type="file" id="ff-ia" accept="application/pdf,image/*" hidden></label>' +
       (driveLibres.length ? '<select class="in" id="ff-drive" aria-label="Archivo de Drive">' + opt('', 'O elegí uno de Drive (' + driveLibres.length + ')', '') + driveLibres.slice(0, 200).map(d => opt(d.id, d.nombre + (d.datos && d.datos.total != null ? ' · ' + money(d.datos.total, d.datos.moneda) : ''), '')).join('') + '</select>' : '') +
       '</div><span class="hint">La IA lee la factura y completa los campos. Revisalos antes de guardar.</span></div>';
     const cliente = f ? f.cliente : (preset && preset.cliente) || (AD.rd && AD.rd.cliente) || '';
@@ -739,19 +741,21 @@ export function initAdmin(ctx) {
       values: Object.assign({}, base, { cliente }),
       fields: [
         { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, full: 1 },
-        { k: 'tipo', label: 'Tipo', type: 'select', html: v => TIPOS_COMP.map(t => opt(t, verTipo(t), v)).join('') },
-        { k: 'emisor', label: '¿Quién factura?', type: 'select', opts: EMISORES, blank: '—' },
-        { k: 'numero', label: 'Número', ph: '00002-00000210' },
-        { k: 'periodo', label: '¿De qué mes es?', type: 'month', month: 1 },
-        { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
-        { k: 'vencimiento', label: 'Vencimiento', type: 'date' },
-        { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
         { k: 'monto', label: 'Monto', num: 1, req: 1 },
-        { k: 'concepto', label: 'Concepto', full: 1 },
-        { k: 'link_pdf', label: 'Link al PDF (carpeta de administración)', type: 'url', full: 1, ph: 'https://drive.google.com/...' },
-        { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2 },
+        { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
+        { k: 'numero', label: 'Número', ph: '00002-00000210' },
+        { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
+        { k: 'emisor', label: '¿Quién factura?', type: 'select', opts: EMISORES, blank: '—' },
+        { k: 'periodo', label: '¿De qué mes es?', type: 'month', month: 1 },
+        { k: 'tipo', label: 'Tipo', type: 'select', html: v => TIPOS_COMP.map(t => opt(t, verTipo(t), v)).join(''), adv: 1 },
+        { k: 'vencimiento', label: 'Vencimiento', type: 'date', adv: 1 },
+        { k: 'concepto', label: 'Concepto', full: 1, adv: 1 },
+        { k: 'link_pdf', label: 'Link al PDF (carpeta de administración)', type: 'url', full: 1, ph: 'https://drive.google.com/...', adv: 1 },
+        { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2, adv: 1 },
       ],
-      extra: (f ? '' : iaBox) + (f && f.cobrado > 0 ? '<p class="formnote">Cobrado: ' + money(f.cobrado, f.moneda) + '. Los cobros están en Gastos e ingresos.</p>' : '') + (opts.archivo ? '<p class="formnote">Desde Drive: <a href="' + esc(opts.archivo.link) + '" target="_blank" rel="noopener">' + esc(opts.archivo.nombre) + '</a>. Al guardar queda unido a esta factura.</p>' : ''),
+      masAbierto: !!f,
+      top: f ? '' : iaBox,
+      extra: (f && f.cobrado > 0 ? '<p class="formnote">Cobrado: ' + money(f.cobrado, f.moneda) + '. Los cobros están en Gastos e ingresos.</p>' : '') + (opts.archivo ? '<p class="formnote">Desde Drive: <a href="' + esc(opts.archivo.link) + '" target="_blank" rel="noopener">' + esc(opts.archivo.nombre) + '</a>. Al guardar queda unido a esta factura.</p>' : ''),
       onSave: async v => {
         const row = { cliente_id: data.ids.cliente(v.cliente), tipo: v.tipo, emisor: v.emisor || '', numero: v.numero, periodo: v.periodo ? v.periodo + '-01' : null, fecha: v.fecha, vencimiento: v.vencimiento || null, moneda: v.moneda, monto: v.monto, concepto: v.concepto, link_pdf: v.link_pdf, notas: v.notas };
         const archivo = opts.archivo || (AD.form && AD.form.archivo) || null;
@@ -901,28 +905,35 @@ export function initAdmin(ctx) {
       '<div class="count num">' + list.length + ' de ' + delMes.length + ' gastos e ingresos del mes</div></section>';
     return h;
   }
-  function formMovimiento(id) {
+  // Cómo se cargó la última vez a esa persona o empresa (para completar categoría y cuenta solas).
+  function ultimoDe(quien, salvo) {
+    const n = norm((quien || '').trim()); if (!n) return null;
+    return AD.MV.filter(v => v.id !== salvo && norm(v.contraparte || '') === n).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0] || null;
+  }
+  function formMovimiento(id, preset) {
     const x = id ? AD.MV.find(v => v.id === id) : null;
     const cuentas = [...new Set(AD.PC.map(p => p.cuenta))].sort(cmp);
     const subs = [...new Set(AD.PC.map(p => p.subcuenta).filter(Boolean))].sort(cmp);
     const partes = [...new Set([...S.C.map(c => c.nombre), ...S.E.map(e => e.persona), ...AD.MV.map(v => v.contraparte).filter(Boolean)])].sort(cmp);
     const vals = x ? { fecha: x.fecha, tipo: x.ingreso > 0 ? 'Ingreso' : 'Egreso', monto: x.ingreso || x.egreso, moneda: x.moneda, cuenta: x.cuenta, subcuenta: x.subcuenta, contraparte: x.contraparte, detalle: x.detalle, caja: x.caja_id || '', reintegro_a: x.reintegro_a, reintegrado: x.reintegrado }
-      : { fecha: today(), tipo: 'Egreso', moneda: 'ARS', cuenta: 'Gastos Fijos', reintegro_a: '' };
+      : Object.assign({ fecha: today(), tipo: 'Egreso', moneda: 'ARS', cuenta: 'Gastos Fijos', reintegro_a: '' }, preset || {});
+    if (!x && preset && preset.contraparte && !preset.cuenta) { const u = ultimoDe(preset.contraparte); if (u) Object.assign(vals, { cuenta: u.cuenta, subcuenta: u.subcuenta, caja: vals.caja || u.caja_id || '' }); }
     openPanel({
       title: x ? (x.contraparte || x.cuenta) : 'Nuevo gasto o ingreso', eyebrow: x ? 'Editar gasto o ingreso' : 'Gastos e ingresos',
       values: vals,
+      masLabel: 'Categoría, cuenta y más', masAbierto: !!x,
       fields: [
+        { k: 'tipo', label: '¿Es un gasto o un ingreso?', type: 'select', html: v => opt('Egreso', 'Gasto (sale plata)', v) + opt('Ingreso', 'Ingreso (entra plata)', v) },
         { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
-        { k: 'tipo', label: 'Tipo', type: 'select', html: v => opt('Ingreso', 'Ingreso', v) + opt('Egreso', 'Gasto', v) },
         { k: 'monto', label: 'Monto', num: 1, req: 1 },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
-        { k: 'cuenta', label: 'Categoría', type: 'select', opts: cuentas, req: 1 },
-        { k: 'subcuenta', label: 'Detalle de la categoría', ph: 'Elegí o escribí', hint: '' },
-        { k: 'contraparte', label: 'Cliente / proveedor', full: 1 },
-        { k: 'detalle', label: 'Detalle', full: 1 },
-        { k: 'caja', label: 'Cuenta de banco o efectivo (opcional)', type: 'select', html: v => opt('', '—', v) + AD.CJ.map(c => opt(c.id, c.nombre + ' (' + c.moneda + ')', v)).join('') },
-        { k: 'reintegro_a', label: 'Lo pagó un socio (se le debe)', type: 'select', opts: EMISORES, blank: 'No' },
-        { k: 'reintegrado', label: 'Ya se le devolvió', type: 'check' },
+        { k: 'contraparte', label: '¿A quién / de quién?', full: 1, ph: 'Meta, Adobe, Cata, Apromax…', hint: 'Si ya le pagaste antes, la categoría y la cuenta se completan solas.' },
+        { k: 'detalle', label: 'Detalle', full: 1, ph: 'Ej.: Ads octubre P4 y Cultu' },
+        { k: 'cuenta', label: 'Categoría', type: 'select', opts: cuentas, req: 1, adv: 1 },
+        { k: 'subcuenta', label: 'Detalle de la categoría', ph: 'Elegí o escribí', hint: '', adv: 1 },
+        { k: 'caja', label: 'Cuenta de banco o efectivo', type: 'select', html: v => opt('', '—', v) + AD.CJ.map(c => opt(c.id, c.nombre + ' (' + c.moneda + ')', v)).join(''), adv: 1 },
+        { k: 'reintegro_a', label: 'Lo pagó un socio de su bolsillo', type: 'select', opts: EMISORES, blank: 'No', adv: 1 },
+        { k: 'reintegrado', label: 'Ya se le devolvió', type: 'check', adv: 1 },
       ],
       extra: '<div class="field full"><span class="lbl">Asignar a un cliente (para ver cuánto deja)</span><div id="imp-box" class="impbox"></div></div><datalist id="dl-sub">' + subs.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist><datalist id="dl-partes">' + partes.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist>' + (x && x.factura_id ? '<p class="formnote">Es el cobro de una factura: si lo borrás, la factura vuelve a quedar sin cobrar.</p>' : ''),
       onSave: async v => {
@@ -941,7 +952,22 @@ export function initAdmin(ctx) {
     AD.impDraft = (x ? AD.IMP.filter(i => i.movimiento_id === x.id) : []).map(i => ({ dest: i.abono_id ? 'a:' + i.abono_id : 'p:' + i.proyecto_id, monto: String(i.monto) }));
     const prevMov = (contraparte) => AD.MV.filter(v => v.contraparte === contraparte && (!x || v.id !== x.id) && AD.IMP.some(i => i.movimiento_id === v.id)).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0];
     const setCopy = () => { const cp = ($('#af-contraparte') || {}).value; const pm = cp && prevMov(cp); AD.impCopy = pm ? { contraparte: cp, mov: pm } : null; };
-    setCopy(); AD.form.onInput = () => { const had = !!AD.impCopy; setCopy(); if (had !== !!AD.impCopy) renderImp(); else updateImpSum(); };
+    const tocados = new Set(Object.keys(preset || {}));
+    ['cuenta', 'subcuenta', 'caja', 'tipo'].forEach(k => { const el = $('#af-' + k); if (el) el.addEventListener('change', () => tocados.add(k)); });
+    let ultimoQuien = '';
+    const autocompletar = () => {
+      const q = ($('#af-contraparte') || {}).value || ''; if (x || q === ultimoQuien) return; ultimoQuien = q;
+      const u = ultimoDe(q); const h = $('#ah-contraparte');
+      if (!u) { if (h) h.textContent = 'Si ya le pagaste antes, la categoría y la cuenta se completan solas.'; return; }
+      const set = (k, v) => { const el = $('#af-' + k); if (el && !tocados.has(k) && v != null && v !== '') el.value = v; };
+      set('tipo', u.ingreso > 0 ? 'Ingreso' : 'Egreso'); set('cuenta', u.cuenta); set('subcuenta', u.subcuenta); set('caja', u.caja_id || ''); set('moneda', u.moneda);
+      const cj = AD.CJ.find(c => c.id === u.caja_id);
+      if (h) h.textContent = '✓ Como la última vez (' + fmt(u.fecha) + '): ' + [u.cuenta, u.subcuenta, cj && cj.nombre].filter(Boolean).join(' · ');
+    };
+    setCopy(); AD.form.onInput = () => { autocompletar(); const had = !!AD.impCopy; setCopy(); if (had !== !!AD.impCopy) renderImp(); else updateImpSum(); };
+    const cpEl = $('#af-contraparte'); if (cpEl) { cpEl.addEventListener('input', () => AD.form && AD.form.onInput && AD.form.onInput()); cpEl.addEventListener('change', () => AD.form && AD.form.onInput && AD.form.onInput()); }
+    if (preset && preset.contraparte) autocompletar();
+    if (preset && preset.imp) AD.impDraft = preset.imp;
     renderImp();
   }
 
@@ -1049,6 +1075,21 @@ export function initAdmin(ctx) {
   });
   document.addEventListener('submit', e => { if (e.target.id === 'aform') { e.preventDefault(); submitPanel(); } });
 
+  /* ---------- contexto de plata para la IA (solo admins) ---------- */
+  function contextoIA() {
+    const m = thisMonth(), r = n => Math.round(Number(n) || 0);
+    const cajaN = id => ((AD.CJ.find(c => c.id === id) || {}).nombre || '');
+    const pend = AD.F.filter(f => !f.anulada && f.saldo > 0.009).map(f => ({ cliente: f.cliente, factura: verTipo(f.tipo) + ' ' + (f.numero || 'sin número'), de_que_mes: f.periodo || '', monto: r(f.monto), falta_cobrar: r(f.saldo), moneda: f.moneda, vence: f.vencimiento || '', estado: estadoFactura(f) === 'Vencida' ? 'vencida' : 'a cobrar' }));
+    const mes = clientesDelMes(m).map(c => cuenta(c, m)).map(x => ({ cliente: x.cliente, a_cobrar_este_mes: r(x.total), moneda: x.moneda, resumen: x.res ? (x.res.estado === 'Enviado' ? 'enviado' : 'preparado sin enviar') : 'sin preparar', facturado: x.facs.length > 0, falta_cobrar: r(x.saldo) }));
+    const precios = S.A.filter(a => a.estado === 'Activo').map(a => { const p = precioEn(a._id, m); return { cliente: a.cliente, abono: a.tipo + (a.plan ? ' ' + a.plan : ''), precio: p ? r(p.monto) : null, moneda: p ? p.moneda : '' }; });
+    const movs = [...AD.MV].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 80).map(v => ({ fecha: v.fecha, tipo: v.ingreso > 0 ? 'ingreso' : 'gasto', monto: r(v.ingreso || v.egreso), moneda: v.moneda, quien: v.contraparte, categoria: v.cuenta, detalle_categoria: v.subcuenta, detalle: v.detalle, cuenta: cajaN(v.caja_id) }));
+    const pat = new Map(); [...AD.MV].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).forEach(v => { const k = (v.contraparte || '').trim(); if (!k) return; const p = pat.get(k); if (p) p.veces++; else pat.set(k, { quien: k, categoria: v.cuenta, detalle_categoria: v.subcuenta, cuenta_id: v.caja_id || '', veces: 1 }); });
+    const cats = {}; AD.PC.forEach(p => { (cats[p.cuenta] = cats[p.cuenta] || []).push(p.subcuenta); });
+    const tot = { ingresos: {}, gastos: {} }; AD.MV.filter(v => (v.fecha || '').startsWith(m)).forEach(v => { if (v.ingreso > 0) add(tot.ingresos, v.moneda, v.ingreso); else add(tot.gastos, v.moneda, v.egreso); });
+    return { mes_actual: m, facturas_sin_cobrar: pend, cobros_del_mes: mes, precios_de_abonos: precios, gastos_e_ingresos_recientes: movs, totales_del_mes: tot,
+      como_se_cargo_antes: [...pat.values()].sort((a, b) => b.veces - a.veces).slice(0, 80), categorias: cats, cuentas: AD.CJ.filter(c => c.activa !== false).map(c => ({ id: c.id, nombre: c.nombre, moneda: c.moneda })) };
+  }
+
   /* ---------- pantallas con pestañas ---------- */
   function vCobros() {
     const venc = AD.F.filter(f => estadoFactura(f) === 'Vencida').length, drv = AS.driveCount();
@@ -1070,6 +1111,13 @@ export function initAdmin(ctx) {
   Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions);
   return {
     load, actions, fichaSection, proyectoSection, AD,
+    // Para la IA: abrir formularios ya completos (nada se guarda sin confirmar).
+    abrir: {
+      movimiento: preset => formMovimiento(null, preset),
+      cuenta: cliente => { S.tab.cobros = 'mes'; actions.aCuenta({ dataset: { cliente } }); },
+      propuesta: preset => actions.pzNueva({ dataset: { clase: preset.clase || 'Presupuesto', preset: JSON.stringify(preset) } }),
+    },
+    contexto: () => contextoIA(),
     views: [['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Números', vNumeros], ['ajustes', 'Ajustes', AS.ajustes],
       ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
     counts: () => (AD.ok ? { cobros: AD.F.filter(f => estadoFactura(f) === 'Vencida').length + AS.count() } : {}),

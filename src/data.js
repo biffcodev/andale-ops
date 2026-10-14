@@ -177,6 +177,17 @@ export async function sendEmail(payload) {
   return data;
 }
 /** Llama a la Edge Function `asistente` (Drive + IA). Solo admins. */
+export async function ia(payload) {
+  const { data, error } = await sb.functions.invoke('ia', { body: payload });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { }
+    if (/Failed to send a request|fetch/i.test(msg)) msg = 'No me pude conectar con la IA. Revisá tu conexión y probá de nuevo.';
+    throw new Error(msg);
+  }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
 export async function asistente(payload) {
   const { data, error } = await sb.functions.invoke('asistente', { body: payload });
   if (error) {
