@@ -32,6 +32,7 @@ main{padding:28px 16px}
 document.head.appendChild(css);
 $('#logo').innerHTML = LOGO;
 
+window.addEventListener('vite:preloadError', e => { let t = 0; try { t = +sessionStorage.getItem('andale-recarga') || 0; } catch (x) { /* */ } if (Date.now() - t < 30000) return; try { sessionStorage.setItem('andale-recarga', String(Date.now())); } catch (x) { /* */ } e.preventDefault(); location.reload(); });
 let P = null, PAL = 'propuesta', LA = 'la propuesta';
 async function cargar() {
   if (!token) { $('#doc').innerHTML = '<p class="pub-msg">El link está incompleto. Pedile a àndale que te lo reenvíe.</p>'; return; }

@@ -572,7 +572,19 @@ function render() {
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { } } }
 }
 function banner(msg, err) { const b = $('#banner'); if (!msg) { b.hidden = true; return; } b.innerHTML = msg; b.className = 'banner' + (err ? ' err' : ''); b.hidden = false; }
-let toastT; function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
+// Después de publicar una versión nueva, una pestaña abierta de antes pide archivos que ya no existen.
+// En ese caso se recarga sola (una vez cada 30 s como máximo) en vez de mostrar el error.
+const esVersionVieja = m => /dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS/i.test(String(m || ''));
+function recargarVersion() {
+  let t = 0; try { t = +sessionStorage.getItem('andale-recarga') || 0; } catch (e) { /* sin storage */ }
+  if (Date.now() - t < 30000) return false;
+  try { sessionStorage.setItem('andale-recarga', String(Date.now())); } catch (e) { /* sin storage */ }
+  const el = $('#toast'); if (el) { el.textContent = 'Hay una versión nueva de la app. Recargando…'; el.hidden = false; }
+  setTimeout(() => location.reload(), 600); return true;
+}
+window.addEventListener('vite:preloadError', e => { if (recargarVersion()) e.preventDefault(); });
+window.addEventListener('unhandledrejection', e => { if (esVersionVieja(e.reason && e.reason.message)) recargarVersion(); });
+let toastT; function toast(msg) { if (esVersionVieja(msg) && recargarVersion()) return; const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 
 /* ---------- Formularios ---------- */
 const FORMS = {
