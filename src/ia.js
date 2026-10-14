@@ -1,7 +1,9 @@
-// "Decile a àndale": una caja donde se escribe como en un chat. La IA contesta preguntas con los datos de la app
+// Mr. Piggy (el chanchito del isologo) es la IA de àndale: una caja donde se escribe como en un chat. La IA contesta preguntas con los datos de la app
 // o deja listo el formulario que corresponde (gasto, charla, proyecto, presupuesto…) para revisar y guardar.
 // También: resumen de un cliente y cargar una charla pegando el WhatsApp. Nada se guarda sin confirmar.
 import * as data from './data.js';
+import { ISO } from './marca.js';
+const PIG = '<span class="pig" aria-hidden="true">' + ISO + '</span>';
 
 export function initIA(ctx) {
   const { S, esc, toast, $, openForm, go, render, isAdmin, isStaff, getADM, today } = ctx;
@@ -19,7 +21,7 @@ export function initIA(ctx) {
       abonos: S.A.filter(a => a.estado !== 'Baja').map(a => ({ cliente: a.cliente, tipo: a.tipo, plan: a.plan || '', estado: a.estado, responsables: a.responsables || [] })),
       proyectos_abiertos: abiertos.map(p => ({ cliente: p.cliente, nombre: p.proyecto, tipo: p.tipo || '', estado: p.estado, entrega: p.entrega || '', responsables: p.responsables || [] })),
       proximos_pasos_con_clientes: S.M.filter(m => m.proximo && !m.hecho).map(m => ({ cliente: m.cliente, paso: m.proximo, fecha: m.fechaProximo || '', responsable: m.responsable || '' })),
-      ultimas_charlas: [...S.M].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 25).map(m => ({ fecha: m.fecha, cliente: m.cliente, canal: m.canal || '', resumen: m.resumen || '', acuerdo: m.acuerdo || '' })),
+      ultimas_charlas: [...S.M].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 12).map(m => ({ fecha: m.fecha, cliente: m.cliente, canal: m.canal || '', resumen: (m.resumen || '').slice(0, 220), acuerdo: (m.acuerdo || '').slice(0, 160) })),
       listas: { tipos_de_proyecto: S.L.tipos || [], canales: S.L.canales || [] },
     };
     const ADM = getADM();
@@ -84,20 +86,20 @@ export function initIA(ctx) {
   function pintar() {
     const box = $('#ia .ia-box'); if (!box) return;
     const sug = SUG();
-    box.innerHTML = '<div class="ia-h"><h2 id="ia-t">✨ Decile a àndale</h2><button class="btn ghost sm" data-act="iaCerrar" aria-label="Cerrar">✕</button></div>' +
-      '<form class="ia-f" id="ia-form"><textarea id="ia-in" rows="2" placeholder="Preguntá o pedí lo que necesites. Ej.: cargá un gasto de 50 mil de Meta para Apromax">' + esc(st.txt) + '</textarea>' +
-      '<button class="btn primary" type="submit"' + (st.busy ? ' disabled' : '') + '>' + (st.busy ? 'Pensando…' : 'Enviar') + '</button></form>' +
-      '<div class="ia-hist">' + (st.hist.length ? st.hist.map((h, i) => '<div class="ia-q">' + esc(h.q) + '</div>' + (h.err ? '<div class="ia-a err">' + esc(h.err) + '</div>' :
-        '<div class="ia-a">' + md(h.r.texto) + (h.r.tipo === 'accion' && h.r.accion ? '<div class="ia-acc"><span>' + esc((QUE[h.r.accion.tipo] || (() => ''))(h.r.accion)) + '</span><button class="btn primary sm" data-act="iaAccion" data-i="' + i + '">' + esc(BOTON[h.r.accion.tipo] || 'Abrir') + ' →</button></div>' : '') + '</div>')).join('') :
+    box.innerHTML = '<div class="ia-h"><h2 id="ia-t">' + PIG + 'Mr. Piggy</h2><button class="btn ghost sm" data-act="iaCerrar" aria-label="Cerrar">✕</button></div>' +
+      '<form class="ia-f" id="ia-form"><textarea id="ia-in" rows="2" placeholder="Preguntale o pedile lo que necesites. Ej.: cargá un gasto de 50 mil de Meta para Apromax">' + esc(st.txt) + '</textarea>' +
+      '<button class="btn primary" type="submit"' + (st.busy ? ' disabled' : '') + '>Enviar</button></form>' +
+      '<div class="ia-hist">' + (st.hist.length ? st.hist.map((h, i) => '<div class="ia-q">' + esc(h.q) + '</div>' + (h.err ? '<div class="ia-a err">' + PIG + '<div class="ia-a-b">' + esc(h.err) + '</div></div>' :
+        '<div class="ia-a">' + PIG + '<div class="ia-a-b">' + (h.r.pensando ? '<span class="ia-dots" aria-label="Pensando"><i></i><i></i><i></i></span>' : md(h.r.texto)) + (h.r.tipo === 'accion' && h.r.accion ? '<div class="ia-acc"><span>' + esc((QUE[h.r.accion.tipo] || (() => ''))(h.r.accion)) + '</span><button class="btn primary sm" data-act="iaAccion" data-i="' + i + '">' + esc(BOTON[h.r.accion.tipo] || 'Abrir') + ' →</button></div>' : '') + '</div></div>')).join('') :
         '<div class="ia-sug"><span class="muted">Probá con:</span>' + sug.map(x => '<button class="chip" data-act="iaChip" data-t="' + esc(x) + '">' + esc(x) + '</button>').join('') + '</div>') + '</div>' +
-      '<p class="ia-pie">La IA usa los datos de la app. Lo que te deja listo lo revisás y lo guardás vos.</p>';
+      '<p class="ia-pie">Mr. Piggy usa los datos de la app. Lo que te deja listo lo revisás y lo guardás vos.</p>';
     const ta = $('#ia-in'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   }
   function abrir(texto) { st.abierto = true; if (texto != null) st.txt = texto; $('#ia').hidden = false; document.body.classList.add('ia-on'); pintar(); }
   function cerrar() { st.abierto = false; $('#ia').hidden = true; document.body.classList.remove('ia-on'); }
   async function enviar() {
     const t = (($('#ia-in') || {}).value || '').trim(); if (!t || st.busy) return;
-    st.busy = true; st.txt = ''; st.hist.push({ q: t, r: { tipo: 'respuesta', texto: '…' } }); pintar();
+    st.busy = true; st.txt = ''; st.hist.push({ q: t, r: { tipo: 'respuesta', texto: '', pensando: true } }); pintar();
     const h = st.hist[st.hist.length - 1];
     try { h.r = await data.ia({ modo: 'comando', texto: t, contexto: contexto() }); }
     catch (e) { h.err = e.message; }
@@ -123,7 +125,7 @@ export function initIA(ctx) {
   function fichaHtml(nombre) {
     const r = resumenes[nombre];
     const COL = { bien: '--s-entregado', atencion: '--warn', problema: '--crit' }, TXT = { bien: 'Todo bien', atencion: 'Atención', problema: 'Ojo' };
-    let h = '<section class="sheet iacard"><div class="sheet-h"><h2>✨ Cómo está ' + esc(nombre) + '</h2><span class="toolbar"><button class="btn sm" data-act="iaCliente" data-cliente="' + esc(nombre) + '"' + (r && r.busy ? ' disabled' : '') + '>' + (r && r.busy ? 'Leyendo todo…' : r && r.ok ? 'Actualizar' : 'Resumir con IA') + '</button></span></div>';
+    let h = '<section class="sheet iacard"><div class="sheet-h"><h2>' + PIG + 'Cómo está ' + esc(nombre) + '</h2><span class="toolbar"><button class="btn sm" data-act="iaCliente" data-cliente="' + esc(nombre) + '"' + (r && r.busy ? ' disabled' : '') + '>' + (r && r.busy ? 'Mr. Piggy está leyendo…' : r && r.ok ? 'Actualizar' : 'Preguntarle a Mr. Piggy') + '</button></span></div>';
     if (r && r.ok) h += '<div class="sheet-b"><p class="ia-tit"><span class="pill" style="--c:var(' + (COL[r.ok.estado] || '--muted') + ')">' + esc(TXT[r.ok.estado] || '') + '</span> <b>' + esc(r.ok.titular) + '</b></p><ul class="ia-ul">' + (r.ok.puntos || []).map(p => '<li>' + esc(p) + '</li>').join('') + '</ul>' + ((r.ok.proximos || []).length ? '<p class="muted" style="margin:10px 0 4px">Próximos pasos sugeridos</p><ul class="ia-ul">' + r.ok.proximos.map(p => '<li>' + esc(p) + '</li>').join('') + '</ul>' : '') + '</div>';
     else if (r && r.err) h += '<div class="sheet-b"><p class="muted" style="margin:0">' + esc(r.err) + '</p></div>';
     else h += '<div class="sheet-b"><p class="muted" style="margin:0">Trabajos, plata, última charla y lo que falta, en un párrafo.</p></div>';
@@ -133,14 +135,14 @@ export function initIA(ctx) {
   /* ---------- charla desde WhatsApp (en el formulario de Seguimiento) ---------- */
   async function charlaDesdeTexto() {
     const ta = $('#ia-chat'), btn = $('#ia-chat-btn'); const t = ta && ta.value.trim(); if (!t) { toast('Pegá el chat o tus notas'); return; }
-    if (btn) { btn.disabled = true; btn.textContent = 'Leyendo…'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Mr. Piggy está leyendo…'; }
     try {
       const r = await data.ia({ modo: 'charla', texto: t, contexto: { clientes: S.C.map(c => c.nombre), equipo: S.E.map(e => e.persona), canales: S.L.canales || [], cliente_elegido: ($('#f-cliente') || {}).value || '' } });
       const set = (id, v) => { const el = $('#f-' + id); if (el && v) el.value = v; };
       set('cliente', clienteExacto(r.cliente)); set('fecha', r.fecha); set('canal', r.canal); set('conQuien', r.con_quien); set('resumen', r.resumen); set('acuerdo', r.acuerdo); set('proximo', r.proximo); set('fechaProximo', r.fecha_proximo); set('responsable', personaExacta(r.responsable));
       toast('Listo: revisalo y guardá.');
     } catch (e) { toast(e.message); }
-    if (btn) { btn.disabled = false; btn.textContent = '✨ Completar con IA'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Que lo complete Mr. Piggy'; }
   }
 
   const actions = {
@@ -166,9 +168,9 @@ export function initIA(ctx) {
   document.addEventListener('click', e => { if (e.target && e.target.id === 'ia') cerrar(); });
 
   // Caja grande en Inicio
-  const inicioHtml = () => '<section class="iahome"><span class="iahome-i" aria-hidden="true">✨</span><input id="ia-home" placeholder="¿Qué necesitás? Ej.: ¿quién nos debe?, anotá una charla con Lomo Loco, cargá un gasto…" aria-label="Decile a àndale"><button class="btn primary" data-act="iaInicio">Preguntar</button></section>';
+  const inicioHtml = () => '<section class="iahome"><span class="iahome-i">' + PIG + '</span><input id="ia-home" placeholder="Preguntale a Mr. Piggy: ¿quién nos debe?, anotá una charla, cargá un gasto…" aria-label="Preguntale a Mr. Piggy"><button class="btn primary" data-act="iaInicio">Preguntar</button></section>';
   // Caja para pegar el chat dentro del formulario de Seguimiento
-  const charlaHtml = () => '<div class="field full iabox"><span class="lbl">✨ ¿Lo hablaron por WhatsApp o tenés notas? Pegalo y la IA completa</span><textarea id="ia-chat" rows="3" placeholder="Pegá acá el chat o tus notas de la reunión"></textarea><div class="toolbar"><button type="button" class="btn sm primary" id="ia-chat-btn" data-act="iaChat">✨ Completar con IA</button></div></div>';
+  const charlaHtml = () => '<div class="field full iabox"><span class="lbl">¿Lo hablaron por WhatsApp o tenés notas? Pegalo y Mr. Piggy completa todo</span><textarea id="ia-chat" rows="3" placeholder="Pegá acá el chat o tus notas de la reunión"></textarea><div class="toolbar"><button type="button" class="btn sm primary" id="ia-chat-btn" data-act="iaChat">Que lo complete Mr. Piggy</button></div></div>';
 
   return { actions, fichaHtml, inicioHtml, charlaHtml, abrir };
 }

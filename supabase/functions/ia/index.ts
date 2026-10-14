@@ -1,8 +1,8 @@
-// IA de àndale para el día a día: la barra "Decile a àndale", el resumen de un cliente y cargar una charla desde un texto.
+// Mr. Piggy, la IA de àndale para el día a día: la barra "Decile a àndale", el resumen de un cliente y cargar una charla desde un texto.
 // La app manda el contexto que ya tiene cargado (lo que ese usuario puede ver) y acá solo se arma el pedido a Claude.
 // Equipo y admins. verify_jwt apagado: se valida el usuario con rpc('yo').
 //
-// Secretos: ANTHROPIC_API_KEY (el mismo del asistente) · IA_MODEL opcional (default claude-sonnet-5-5)
+// Secretos: ANTHROPIC_API_KEY (el mismo del asistente) · IA_MODEL_RAPIDO opcional (default claude-haiku-5-5, el más rápido)
 // POST { modo: 'comando' | 'cliente' | 'charla', texto?, contexto }
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
@@ -13,7 +13,7 @@ const CORS = {
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 class Aviso extends Error { status: number; constructor(m: string, s = 400) { super(m); this.status = s; } }
-const MODEL = () => Deno.env.get('IA_MODEL') || 'claude-sonnet-5-5';
+const MODEL = () => Deno.env.get('IA_MODEL_RAPIDO') || 'claude-haiku-5-5';
 const hoyAR = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Cordoba' });
 const diaAR = () => new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Cordoba', weekday: 'long' });
 
@@ -32,7 +32,9 @@ async function claude(sb: SupabaseClient, personaId: string | null, accion: stri
   });
   const out = await res.json().catch(() => ({}));
   const err = res.ok ? null : (out?.error?.message || 'La API respondió ' + res.status);
-  await sb.from('ia_log').insert({ persona_id: personaId, accion, modelo: MODEL(), tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err });
+  // El registro de uso no demora la respuesta.
+  const log = sb.from('ia_log').insert({ persona_id: personaId, accion, modelo: MODEL(), tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err }).then(() => {}, () => {});
+  const er = (globalThis as any).EdgeRuntime; if (er && er.waitUntil) er.waitUntil(log); else await log;
   if (err) throw new Aviso('IA: ' + err, 502);
   const tu = (out.content || []).find((c: any) => c.type === 'tool_use' && c.name === o.tool.name);
   let input: any = tu ? tu.input : null;
@@ -45,7 +47,7 @@ async function claude(sb: SupabaseClient, personaId: string | null, accion: stri
   return input;
 }
 
-const QUIENES = 'àndale es una agencia de branding y redes de Córdoba, Argentina. Las socias son Fer y Jime. Hablás en español rioplatense, con vos, directo, cálido y sin jerga contable ni técnica.';
+const QUIENES = 'Sos Mr. Piggy, el chanchito con alas del isologo de àndale y su asistente. àndale es una agencia de branding y redes de Córdoba, Argentina. Las socias son Fer y Jime. Hablás en español rioplatense, con vos, directo, cálido y sin jerga contable ni técnica.';
 const ctxTxt = (c: unknown) => JSON.stringify(c ?? {}).slice(0, 90_000);
 
 /* ---------- Barra "Decile a àndale" ---------- */
@@ -57,7 +59,7 @@ const TOOL_COMANDO = {
     type: 'object', required: ['tipo', 'texto'],
     properties: {
       tipo: { type: 'string', enum: ['respuesta', 'accion'], description: 'respuesta: solo contestar. accion: dejar un formulario listo para confirmar.' },
-      texto: { type: 'string', description: 'Lo que ve la persona. Si es respuesta: la respuesta, corta, con números concretos y en viñetas si son varios. Si es acción: una línea con lo que vas a dejar listo.' },
+      texto: { type: 'string', description: 'Lo que ve la persona. Si es respuesta: corta (máximo 5 líneas), con números concretos y en viñetas si son varios. Si es acción: una línea con lo que vas a dejar listo.' },
       accion: {
         type: 'object', description: 'Solo si tipo = accion.',
         properties: {
@@ -90,7 +92,7 @@ const TOOL_COMANDO = {
     },
   },
 };
-const SYS_COMANDO = QUIENES + ' Sos el asistente de la app interna de operaciones. Te escriben pedidos cortos. Tenés el contexto (JSON) con clientes, abonos, proyectos, facturas pendientes, gastos recientes, personas y listas. ' +
+const SYS_COMANDO = QUIENES + ' Vivís en la app interna de operaciones. Te escriben pedidos cortos. Tenés el contexto (JSON) con clientes, abonos, proyectos, facturas pendientes, gastos recientes, personas y listas. ' +
   'Si es una pregunta, contestala SOLO con datos del contexto (sumá y compará vos; si algo no está, decilo). Si pide cargar, anotar, crear, armar o mandar algo, devolvé una acción con los datos que puedas completar; la persona la revisa antes de guardar, nunca se guarda sola. ' +
   'Acciones: gasto_ingreso (cargar un gasto o un ingreso de plata), charla (anotar una reunión, llamada o mensaje con un cliente y el próximo paso), proyecto (nuevo trabajo puntual), presupuesto (nuevo presupuesto o propuesta), recordatorio (recordarle a un cliente que pague), abrir (ir a una pantalla o a la ficha de un cliente). ' +
   'Para gasto_ingreso elegí categoría y detalle mirando cómo se cargó antes a esa misma persona o empresa (patrones); "50 mil" = 50000, "1,2 palo" = 1200000, "lucas" = miles; moneda ARS salvo que diga dólares/USD. Fechas relativas ("ayer", "el viernes") convertilas a AAAA-MM-DD. ' +
@@ -145,14 +147,14 @@ Deno.serve(async req => {
     switch (b.modo) {
       case 'comando': {
         if (!texto.trim()) throw new Aviso('Escribí qué necesitás.');
-        const r = await claude(sb, yo.id, 'comando', { system: SYS_COMANDO, tool: TOOL_COMANDO, maxTokens: 1500, texto: hoy + '\n\nCONTEXTO:\n' + ctxTxt(b.contexto) + '\n\nPEDIDO:\n' + texto });
+        const r = await claude(sb, yo.id, 'comando', { system: SYS_COMANDO, tool: TOOL_COMANDO, maxTokens: 900, texto: hoy + '\n\nCONTEXTO:\n' + ctxTxt(b.contexto) + '\n\nPEDIDO:\n' + texto });
         if (r.tipo === 'accion' && (!r.accion || !ACCIONES.includes(r.accion.tipo))) r.tipo = 'respuesta';
         return json(r);
       }
-      case 'cliente': return json(await claude(sb, yo.id, 'cliente', { system: SYS_CLIENTE, tool: TOOL_CLIENTE, maxTokens: 1200, texto: hoy + '\n\nCLIENTE:\n' + ctxTxt(b.contexto) }));
+      case 'cliente': return json(await claude(sb, yo.id, 'cliente', { system: SYS_CLIENTE, tool: TOOL_CLIENTE, maxTokens: 800, texto: hoy + '\n\nCLIENTE:\n' + ctxTxt(b.contexto) }));
       case 'charla': {
         if (!texto.trim()) throw new Aviso('Pegá el chat o las notas.');
-        return json(await claude(sb, yo.id, 'charla', { system: SYS_CHARLA, tool: TOOL_CHARLA, maxTokens: 1000, texto: hoy + '\n\nCONTEXTO:\n' + ctxTxt(b.contexto) + '\n\nTEXTO:\n' + texto }));
+        return json(await claude(sb, yo.id, 'charla', { system: SYS_CHARLA, tool: TOOL_CHARLA, maxTokens: 700, texto: hoy + '\n\nCONTEXTO:\n' + ctxTxt(b.contexto) + '\n\nTEXTO:\n' + texto }));
       }
       default: return json({ error: 'Modo desconocido' }, 400);
     }

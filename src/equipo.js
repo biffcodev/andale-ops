@@ -135,7 +135,7 @@ export function initEquipo(ctx, k) {
       fields: [
         { k: 'nombre', label: 'Nombre', req: 1, full: 1 },
         { k: 'tipo', label: 'Tipo', type: 'select', opts: TIPOS },
-        { k: 'rubro', label: 'Rubro', type: 'select', opts: RUBROS, blank: '—' },
+        { k: 'rubro', label: 'Rubro', type: 'select', html: v => opt('', '—', v) + [...new Set([...((S.L && S.L.rubros) || RUBROS), v].filter(Boolean))].map(r => opt(r, r, v)).join(''), hint: 'Los rubros se cambian en Configuración → Opciones.' },
         { k: 'cuit', label: 'CUIT / CUIL' },
         { k: 'alias_cbu', label: 'Alias para transferirle' },
         { k: 'cbu', label: 'CBU / CVU' },

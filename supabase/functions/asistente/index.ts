@@ -21,6 +21,9 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 class Aviso extends Error { status: number; constructor(m: string, s = 400) { super(m); this.status = s; } }
 
 const MODEL = () => Deno.env.get('IA_MODEL') || 'claude-sonnet-5-5';
+// Tareas cortas con el modelo rápido; leer facturas, el banco y redactar propuestas siguen con el más preciso.
+const RAPIDAS = ['cierre', 'imputar'];
+const modeloDe = (accion: string) => RAPIDAS.includes(accion) ? (Deno.env.get('IA_MODEL_RAPIDO') || 'claude-haiku-5-5') : MODEL();
 const APP_URL = 'https://andale-ops.vercel.app';
 const hoyAR = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Cordoba' });
 const mesAR = () => hoyAR().slice(0, 7);
@@ -42,7 +45,7 @@ async function claude(ctx: Ctx, accion: string, o: { system: string; content: un
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     // Sin tool_choice forzado: los modelos nuevos no lo aceptan. Se pide por instrucción y hay plan B con JSON en texto.
     body: JSON.stringify({
-      model: MODEL(), max_tokens: o.maxTokens || 4096,
+      model: modeloDe(accion), max_tokens: o.maxTokens || 4096,
       system: o.system + '\n\nRespondé únicamente llamando una vez a la herramienta ' + o.tool.name + ', sin texto antes ni después.',
       messages: [{ role: 'user', content: o.content }],
       tools: [o.tool],
@@ -50,7 +53,7 @@ async function claude(ctx: Ctx, accion: string, o: { system: string; content: un
   });
   const out = await res.json().catch(() => ({}));
   const err = res.ok ? null : (out?.error?.message || 'La API respondió ' + res.status);
-  await ctx.sb.from('ia_log').insert({ persona_id: ctx.personaId, accion, modelo: MODEL(), tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err });
+  await ctx.sb.from('ia_log').insert({ persona_id: ctx.personaId, accion, modelo: modeloDe(accion), tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err });
   if (err) throw new Aviso('IA: ' + err, 502);
   const tu = (out.content || []).find((c: any) => c.type === 'tool_use' && c.name === o.tool.name);
   let input: any = tu ? tu.input : null;

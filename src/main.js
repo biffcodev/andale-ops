@@ -1,10 +1,12 @@
 import './fonts.css';
 import './style.css';
-import { LOGO } from './marca.js';
+import { LOGO, ISO } from './marca.js';
 import { ICON } from './iconos.js';
 import * as data from './data.js';
 import { initAdmin } from './admin.js';
 import { initIA } from './ia.js';
+import { initCombo } from './combo.js';
+initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
 let ADM = null, ADM_FN = {};
 let IA = null;
@@ -18,8 +20,9 @@ const DEF = {
   canales: ['Reunión', 'Videollamada', 'WhatsApp', 'Email', 'Llamada', 'Instagram', 'Otro'],
   servicios: ['Redes sociales', 'Ads', 'Redes sociales + Ads', 'Branding', 'Web', 'Diseño', 'Audiovisual', 'Comunicación integral', 'Asesoramiento', 'Otro'],
   planes: ['SMALL', 'MEDIUM', 'PREMIUM', 'LARGE', 'SMALL+ADS', 'PACK RRSS', 'ESPECIAL'],
+  rubros: ['Ads', 'Programación', 'Fotografía', 'Audiovisual', 'Contenido', 'Diseño', 'Contable', 'Otro'],
 };
-const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes' };
+const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores' };
 const ESTADOS_ABONO = ['Activo', 'Pausado', 'Baja'];
 const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
 const CERRADOS = new Set(['Entregado', 'Cancelado']);
@@ -588,6 +591,34 @@ function render() {
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { } } }
 }
 function banner(msg, err) { const b = $('#banner'); if (!msg) { b.hidden = true; return; } b.innerHTML = msg; b.className = 'banner' + (err ? ' err' : ''); b.hidden = false; }
+// Impresión con la estética de los documentos: encabezado (Mr. Piggy + logotipo, qué es y fecha) y pie (sitio y contacto)
+// que se repiten en cada hoja. La pantalla se mueve adentro de una tabla solo mientras se imprime.
+function marcoImpresion() {
+  const vista = (views().find(v => v[0] === S.view) || [])[1] || '';
+  const pest = document.querySelector('#view .subnav [aria-current="page"]');
+  const que = [vista, pest ? pest.childNodes[0].textContent : ''].filter(Boolean).join(' · ');
+  const cfg = (ADM && ADM.AD && ADM.AD.AJ && ADM.AD.AJ.resumen_pdf) || {};
+  const contacto = (cfg.contacto || [['+54 9 351 705 3527'], ['hello@weareandale.com']]).map(c => c[0]).filter(t => !t.startsWith('@') && !/^weareandale\.com$/.test(t));
+  const fecha = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const cab = '<div class="pr-h"><span class="pr-marca"><span class="pr-iso">' + ISO + '</span><span class="pr-logo">' + LOGO + '</span></span><span class="pr-meta"><b>' + esc(que) + '</b><span>Impreso el ' + fecha + (S.me ? ' · ' + esc(S.me.alias) : '') + '</span></span></div>';
+  const pie = '<div class="pr-f"><b>weareandale.com</b><span>' + esc(contacto.join('  ·  ')) + '</span><span class="pr-ley">' + esc(cfg.pie || 'with ❤ from cordoba | © àndale Strictly Confidential').replace(/❤️?|♥/g, '<i>♥</i>') + '</span></div>';
+  return { cab, pie };
+}
+window.addEventListener('beforeprint', () => {
+  const v = $('#view'); if (!v || !S.me || $('#printwrap')) return;
+  const { cab, pie } = marcoImpresion();
+  const t = document.createElement('table'); t.id = 'printwrap';
+  // El encabezado se repite como cabecera de la tabla; el pie va fijo abajo en cada hoja (y la tfoot le reserva el lugar).
+  t.innerHTML = '<thead><tr><td>' + cab + pie.replace('class="pr-f"', 'class="pr-f pr-fijo"') + '</td></tr></thead><tfoot><tr><td><div class="pr-esp"></div></td></tr></tfoot><tbody><tr><td id="pw-body"></td></tr></tbody>';
+  const marca = document.createComment('view'); v.parentNode.insertBefore(marca, v);
+  t.querySelector('#pw-body').appendChild(v); document.body.appendChild(t); document.body.classList.add('imprimiendo');
+  window.__pwMarca = marca;
+});
+window.addEventListener('afterprint', () => {
+  const t = $('#printwrap'), m = window.__pwMarca, v = $('#view'); if (!t) return;
+  if (m && v) { m.parentNode.insertBefore(v, m); m.remove(); }
+  t.remove(); document.body.classList.remove('imprimiendo'); window.__pwMarca = null;
+});
 // Después de publicar una versión nueva, una pestaña abierta de antes pide archivos que ya no existen.
 // En ese caso se recarga sola (una vez cada 30 s como máximo) en vez de mostrar el error.
 const esVersionVieja = m => /dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS/i.test(String(m || ''));
@@ -956,7 +987,7 @@ async function start(sess) {
     IA = initIA({ S, esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM });
     Object.assign(ACT, IA.actions);
   }
-  $('#askbtn').hidden = !IA; document.querySelectorAll('.askmini').forEach(b => { b.hidden = !IA; });
+  $('#askbtn').hidden = !IA; $('#askbtn .askbtn-i').innerHTML = ISO; document.querySelectorAll('.askmini').forEach(b => { b.hidden = !IA; b.innerHTML = ISO; });
   $('#top').hidden = false;
   $('#hoy').textContent = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   if (isExt()) S.yo = me.alias; else if (!S.yo) S.yo = me.alias;
