@@ -26,7 +26,9 @@ const CL_COLOR = { 'Activo': '--s-entregado', 'A confirmar': '--s-confirmar', 'P
 const TIPO_COLOR = { Branding: '--accent', Packaging: '--s-revision', Web: '--s-curso', Diseño: '--s-confirmar', Audiovisual: '--s-presup', Redes: '--accent', Ads: '--s-curso', Otro: '--s-empezar' };
 const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': '--s-empezar' };
 const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
-const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Comunicaciones'], ['listas', 'Listas']];
+const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Seguimiento'], ['listas', 'Listas']];
+// Menú lateral: grupos por tipo de tarea. Las vistas de administración las aporta admin.js.
+const GRUPOS = [['Trabajo', ['inicio', 'proyectos', 'abonos', 'mis']], ['Clientes', ['clientes', 'propuestas', 'comunicaciones']], ['Administración', ['asistente', 'cierre', 'facturas', 'precios', 'caja', 'pagos']], ['Análisis', ['estadisticas', 'rentabilidad']], ['Configuración', ['equipo', 'listas', 'ajustes']]];
 const EXT_VIEWS = ['mis', 'proyectos', 'abonos', 'clientes', 'comunicaciones'];
 
 /* ---------- Utilidades ---------- */
@@ -80,7 +82,14 @@ const views = () => {
   return [...ALL_VIEWS.slice(0, i), ...ADM.views.map(([k, l]) => [k, l]), ...ALL_VIEWS.slice(i)];
 };
 const viewFn = k => VIEW_FN[k] || (isAdmin() && ADM_FN[k]);
-{ const h = location.hash.slice(1); if (h) S.view = h; }
+function leerHash() {
+  const h = decodeURIComponent(location.hash.slice(1)); if (!h) return;
+  const [v, ...rest] = h.split('/'); const arg = rest.join('/');
+  S.view = v; S.ficha = null; S.pficha = null;
+  if (v === 'proyectos' && arg) S.pficha = arg;
+  if (v === 'clientes' && arg) S.ficha = arg;
+}
+leerHash();
 
 /* ---------- Selects ---------- */
 const opt = (v, label, cur) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label ?? v) + '</option>';
@@ -233,18 +242,19 @@ function vInicio() {
     '</div>';
 
   const prox = open.filter(p => p.entrega).sort(sortByEntrega).slice(0, 12);
-  const proxHtml = prox.length ? '<div class="rows">' + prox.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + fmt(p.entrega) + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc(p.cliente) + ' · ' + (resp(p).length ? esc(resp(p).join(', ')) : 'sin responsable') + '</span></span>' + daysBadge(p) + '</button>').join('') + '</div>'
+  const proxHtml = prox.length ? '<div class="rows">' + prox.map(p => '<button class="row" data-act="pver" data-id="' + esc(p._id) + '"><span class="d">' + fmt(p.entrega) + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc(p.cliente) + ' · ' + (resp(p).length ? esc(resp(p).join(', ')) : 'sin responsable') + '</span></span>' + daysBadge(p) + '</button>').join('') + '</div>'
     : emptyBox('Todavía no hay fechas de entrega cargadas', 'Cargá la entrega pactada en cada proyecto y acá aparece lo que viene.');
   const pasosHtml = pend.length ? '<div class="rows">' + pend.slice(0, 12).map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : 'sin fecha') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + (m.responsable ? ' · ' + esc(m.responsable) : '') + '</span></span>' + (m.fechaProximo && diff(m.fechaProximo) < 0 ? '<span class="days late">Vencido</span>' : '') + '</button>').join('') + '</div>'
-    : emptyBox('No hay pasos pendientes', 'Registrá reuniones y acuerdos en Comunicaciones con un próximo paso.');
+    : emptyBox('No hay pasos pendientes', 'Registrá reuniones y acuerdos en Seguimiento con un próximo paso.');
   h += '<div class="grid2">' +
     '<section class="sheet"><div class="sheet-h"><h2>Próximas entregas</h2><button class="btn ghost sm" data-act="calendar">Ver calendario</button></div>' + proxHtml + '</section>' +
-    '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos con clientes</h2>' + addBtn('comunicacion', 'Comunicación') + '</div>' + pasosHtml + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos con clientes</h2>' + addBtn('comunicacion', 'Seguimiento') + '</div>' + pasosHtml + '</section>' +
     '</div>';
   return h;
 }
 
 function vProyectos() {
+  if (S.pficha) return vProyectoFicha();
   const f = S.f;
   const modes = [['lista', 'Lista'], ['tablero', 'Tablero'], ['calendario', 'Calendario']];
   let h = '<div class="head"><div><h1>Proyectos</h1><p>' + (isExt() ? 'Los proyectos donde figurás como responsable.' : 'Trabajos puntuales con entrega: branding, web, packaging.') + '</p></div>' +
@@ -269,18 +279,82 @@ function vLista() {
   if (!list.length) return '<section class="sheet">' + emptyBox(S.P.length ? 'Ningún proyecto coincide con los filtros' : 'Todavía no hay proyectos', S.P.length ? 'Probá limpiar los filtros.' : (isStaff() ? 'Cargá el primero con “+ Proyecto”.' : '')) + '</section>';
   const rows = list.map(p => {
     const dis = canEditProj(p) ? '' : ' disabled';
-    return '<tr>' +
+    return '<tr class="click" data-act="pver" data-id="' + esc(p._id) + '">' +
       '<td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente || '—') + '</button></td>' +
-      '<td><button class="btn link" style="font-weight:500" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">' + esc(p.proyecto) + '</button>' + (p.tipo ? '<span class="sub"><span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span></span>' : '') + '</td>' +
+      '<td><button class="btn link" style="font-weight:500" data-act="pver" data-id="' + esc(p._id) + '">' + esc(p.proyecto) + '</button>' + (p.tipo ? '<span class="sub"><span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span></span>' : '') + '</td>' +
       '<td>' + picker('proyecto', p) + '</td>' +
       '<td>' + etapaCell(p) + '</td>' +
       '<td class="n">' + (p.entrega ? '<span class="mono">' + fmt(p.entrega) + '</span><span class="sub">' + daysBadge(p) + '</span>' : '<span class="muted">—</span>') + '</td>' +
       '<td><select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado"' + dis + '>' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select></td>' +
       '<td>' + links(p) + '</td>' +
-      '<td class="r"><button class="btn ghost sm" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">' + (canEditProj(p) ? 'Editar' : 'Ver') + '</button></td>' +
       '</tr>';
   }).join('');
-  return '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Responsables</th><th>Etapa</th><th>Entrega</th><th>Estado</th><th>Links</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' de ' + S.P.length + ' proyectos</div></section>';
+  return '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Responsables</th><th>Etapa</th><th>Entrega</th><th>Estado</th><th>Links</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' de ' + S.P.length + ' proyectos</div></section>';
+}
+
+function vProyectoFicha() {
+  const p = S.P.find(x => x._id === S.pficha);
+  const back = '<button class="btn ghost sm" data-act="pback" style="justify-self:start">← Proyectos</button>';
+  if (!p) return back + '<section class="sheet">' + emptyBox('Ese proyecto no existe o no tenés acceso', '') + '</section>';
+  const can = canEditProj(p), { e, done, total } = etapaInfo(p);
+  const ms = S.M.filter(m => m.cliente === p.cliente).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 6);
+  const fila = (k, v) => '<dt>' + k + '</dt><dd>' + (v || '<span class="muted">—</span>') + '</dd>';
+  const lk = links(p);
+  const estado = can ? '<select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado">' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select>' : stPill(p.estado);
+  const etapas = total ? '<div class="checklist">' + e.map((x, i) => '<label class="chk' + (x.ok ? ' done' : '') + '"><input type="checkbox" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"' + (x.ok ? ' checked' : '') + (can ? '' : ' disabled') + '> <span>' + esc(x.n) + '</span></label>').join('') + '</div>' :
+    emptyBox('Sin etapas', plantilla(p.tipo).length && can ? '' : 'Cargalas desde Editar.') + (plantilla(p.tipo).length && can ? '<div class="sheet-b"><button class="btn sm" data-act="etCargar" data-id="' + esc(p._id) + '">+ Cargar etapas de ' + esc(p.tipo) + '</button></div>' : '');
+  return back +
+    '<div class="head"><div><button class="btn link eyebrow" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente) + '</button><h1 style="margin-top:4px">' + esc(p.proyecto) + '</h1>' +
+    '<p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">' + estado + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + daysBadge(p) + '</p></div>' +
+    '<div class="toolbar">' + (can ? '<button class="btn primary" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar proyecto</button>' : '') + '</div></div>' +
+    '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
+    fila('Responsables', picker('proyecto', p)) + fila('Inicio', p.fechaInicio ? fmt(p.fechaInicio) : '') + fila('Entrega pactada', p.entrega ? fmt(p.entrega) : '') + fila('Entregado', p.entregaReal ? fmt(p.entregaReal) : '') +
+    fila('Entregables', p.entregables ? '<span style="white-space:pre-wrap">' + esc(p.entregables) + '</span>' : '') + fila('Links', lk && lk.indexOf('href') > -1 ? lk : '') + fila('Notas', p.notas ? '<span style="white-space:pre-wrap">' + esc(p.notas) + '</span>' : '') +
+    '</dl></div></section>' + (isAdmin() && ADM && ADM.proyectoSection ? ADM.proyectoSection(p) : '') + '</div>' +
+    '<div class="stack"><section class="sheet"><div class="sheet-h"><h2>Etapas</h2>' + (total ? '<span class="etp">' + segs(e) + '<span class="muted num">' + done + ' de ' + total + '</span></span>' : '') + '</div>' + (total ? '<div class="sheet-b">' + etapas + '</div>' : etapas) + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Seguimiento con ' + esc(p.cliente) + '</h2>' + addBtn('comunicacion', 'Registrar', { cliente: p.cliente }) + '</div>' + (ms.length ? '<div class="timeline">' + ms.map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Sin reuniones ni acuerdos registrados', 'Registrá lo que se habló con el cliente y el próximo paso.')) + '</section>' +
+    '</div></div>';
+}
+
+/* ---------- Imprimir, exportar y compartir (en todas las vistas) ---------- */
+function tituloVista() { const h = document.querySelector('#view h1'); return h ? h.textContent.trim() : 'àndale'; }
+function cerrarShare() { document.querySelectorAll('details.share[open]').forEach(d => { d.open = false; }); }
+function herramientas() {
+  const ico = {
+    print: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/></svg>',
+    exp: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>',
+    share: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 10.8 7.6-4M8.2 13.2l7.6 4"/></svg>',
+  };
+  const hayTabla = !!document.querySelector('#view table');
+  return '<div class="pagetools" role="group" aria-label="Imprimir, exportar y compartir">' +
+    '<button class="btn ghost sm" data-act="print" title="Imprimir o guardar como PDF">' + ico.print + '<span>Imprimir</span></button>' +
+    (hayTabla ? '<button class="btn ghost sm" data-act="exportar" title="Descargar en Excel">' + ico.exp + '<span>Excel</span></button>' : '') +
+    '<details class="share"><summary class="btn ghost sm" title="Compartir">' + ico.share + '<span>Compartir</span></summary><div class="menu-pop">' +
+    '<button class="btn ghost sm" data-act="shareCopy">Copiar link</button><button class="btn ghost sm" data-act="shareWa">Enviar por WhatsApp</button><button class="btn ghost sm" data-act="shareMail">Enviar por email</button></div></details></div>';
+}
+function ponerHerramientas() {
+  const head = document.querySelector('#view .head'); if (!head || head.querySelector('.pagetools')) return;
+  head.insertAdjacentHTML('beforeend', herramientas());
+}
+async function exportarVista() {
+  const tablas = [...document.querySelectorAll('#view table')];
+  if (!tablas.length) { toast('Esta vista no tiene tablas para exportar'); return; }
+  try {
+    const XLSX = await import('xlsx'); const wb = XLSX.utils.book_new(); const usados = new Set();
+    tablas.forEach((t, i) => {
+      const c = t.cloneNode(true);
+      c.querySelectorAll('select').forEach(sel => { const o = sel.options[sel.selectedIndex]; sel.replaceWith(document.createTextNode(o ? o.textContent : '')); });
+      c.querySelectorAll('input[type=checkbox], th.sel, td.sel').forEach(x => x.remove());
+      c.querySelectorAll('details.pick').forEach(d => { const sm = d.querySelector('summary'); d.replaceWith(document.createTextNode(sm ? sm.textContent : '')); });
+      c.querySelectorAll('button:not(.link)').forEach(b => b.remove());
+      const sh = t.closest('.sheet'), h2 = sh && sh.querySelector('.sheet-h h2');
+      let nombre = (h2 ? h2.textContent : tituloVista()).replace(/[\\/?*\[\]:]/g, ' ').slice(0, 28).trim() || 'Hoja ' + (i + 1);
+      while (usados.has(nombre)) nombre = nombre.slice(0, 25) + ' ' + (i + 1); usados.add(nombre);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.table_to_sheet(c, { raw: false }), nombre);
+    });
+    XLSX.writeFile(wb, tituloVista().replace(/[^\wáéíóúñÁÉÍÓÚÑ -]/g, '').trim() + ' · àndale.xlsx');
+    toast('Excel descargado');
+  } catch (err) { toast('No se pudo exportar: ' + err.message); }
 }
 
 function vTablero() {
@@ -290,7 +364,7 @@ function vTablero() {
     return '<div class="col" data-drop="' + esc(e) + '"><div class="col-h">' + stPill(e) + '<span class="n">' + items.length + '</span></div>' +
       items.map(p => {
         const late = p.entrega && isOpen(p) && diff(p.entrega) < 0;
-        return '<button class="card' + (late ? ' late' : '') + '" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '" data-drag="' + esc(p._id) + '"' + (canEditProj(p) ? ' draggable="true"' : '') + '><span class="cl">' + esc(p.cliente) + '</span><span class="pj">' + esc(p.proyecto) + '</span>' + (etapasDe(p).length ? '<span class="et">' + segs(etapasDe(p)) + esc(etapaInfo(p).cur) + '</span>' : '') + '<span class="ft">' + (resp(p).length ? whos(resp(p)) : '<span class="tag">Sin responsable</span>') + (p.entrega ? '<span class="mono">' + fmtShort(p.entrega) + '</span>' : '') + '</span></button>';
+        return '<button class="card' + (late ? ' late' : '') + '" data-act="pver" data-id="' + esc(p._id) + '" data-drag="' + esc(p._id) + '"' + (canEditProj(p) ? ' draggable="true"' : '') + '><span class="cl">' + esc(p.cliente) + '</span><span class="pj">' + esc(p.proyecto) + '</span>' + (etapasDe(p).length ? '<span class="et">' + segs(etapasDe(p)) + esc(etapaInfo(p).cur) + '</span>' : '') + '<span class="ft">' + (resp(p).length ? whos(resp(p)) : '<span class="tag">Sin responsable</span>') + (p.entrega ? '<span class="mono">' + fmtShort(p.entrega) + '</span>' : '') + '</span></button>';
       }).join('') + '</div>';
   }).join('');
   return '<p class="muted" style="margin:0">Arrastrá una tarjeta a otra columna para cambiarle el estado. En el celular, tocala y cambiá el estado en el formulario.</p><div class="kb">' + cols + '</div>';
@@ -369,7 +443,7 @@ function vMis() {
   const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Cuentas mensuales</h2><span class="muted num">' + cuentas.length + '</span></div>' + (cuentas.length ? '<div class="rows">' + cuentas.map(a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(a.cliente) + '</b><span>' + esc(a.plan ? 'Plan ' + a.plan : '') + others(a) + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin cuentas mensuales a cargo', '')) + '</section>';
   h += '<div class="grid2"><div class="stack">' + cuentasHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
     '<div class="stack">' +
-    '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos</h2>' + addBtn('comunicacion', 'Comunicación', null, 'sm') + '</div>' + (steps.length ? '<div class="rows">' + steps.map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin pasos pendientes', '')) + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos</h2>' + addBtn('comunicacion', 'Seguimiento', null, 'sm') + '</div>' + (steps.length ? '<div class="rows">' + steps.map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin pasos pendientes', '')) + '</section>' +
     (myCl.length ? '<section class="sheet"><div class="sheet-h"><h2>Clientes a cargo</h2><span class="muted num">' + myCl.length + '</span></div><div class="rows">' + myCl.map(c => '<button class="row" data-act="ficha" data-cliente="' + esc(c.nombre) + '"><span class="d">' + esc(c.plan || '') + '</span><span class="t"><b>' + esc(c.nombre) + '</b><span>' + esc(c.servicio || '') + '</span></span>' + clPill(c.estado) + '</button>').join('') + '</div></section>' : '') +
     '</div></div>';
   return h;
@@ -407,12 +481,12 @@ function vFicha() {
   const ms = S.M.filter(m => m.cliente === c.nombre).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   const copy = v => v ? '<span>' + esc(v) + '</span><button class="btn ghost sm" data-act="copy" data-v="' + esc(v) + '">Copiar</button>' : '<span class="muted">—</span>';
   const link = v => v ? (isUrl(v) ? '<a href="' + esc(v) + '" target="_blank" rel="noopener">' + esc(v.replace(/^https?:\/\/(www\.)?/, '')) + '</a>' : '<span>' + esc(v) + '</span>') : '<span class="muted">—</span>';
-  const projRow = p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.tipo, etapaTxt(p), resp(p).join(', ')].filter(Boolean).join(' · ')) + '</span></span>' + stPill(p.estado) + '</button>';
+  const projRow = p => '<button class="row" data-act="pver" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.tipo, etapaTxt(p), resp(p).join(', ')].filter(Boolean).join(' · ')) + '</span></span>' + stPill(p.estado) + '</button>';
   const abRow = a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(abonoLabel(a)) + '</b><span>' + (resp(a).length ? esc(resp(a).join(', ')) : 'sin responsable') + (a.desde ? ' · desde ' + esc(fmt(a.desde)) : '') + '</span></span>' + abPill(a.estado) + '</button>';
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   return back +
     '<div class="head"><div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + abonoTags(c.nombre) + '<span>' + esc(c.servicio || '') + '</span></p></div>' +
-    '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Comunicación</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Comunicación', { cliente: c.nombre })) + '</div></div>' +
+    '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Seguimiento</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Comunicación', { cliente: c.nombre })) + '</div></div>' +
     '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
     '<dt>Contacto</dt><dd>' + (c.contacto ? esc(c.contacto) : '<span class="muted">—</span>') + '</dd>' +
@@ -425,7 +499,7 @@ function vFicha() {
     '<div class="stack">' +
     '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + as.filter(a => a.estado === 'Activo').length + ' activos</span></div>' + (as.length ? '<div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('Sin abonos', '')) + '</section>' +
     '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' +
-    '<section class="sheet"><div class="sheet-h"><h2>Comunicaciones</h2><span class="muted num">' + ms.length + '</span></div>' + (ms.length ? '<div class="timeline">' + ms.map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Sin comunicaciones registradas', 'Registrá reuniones, llamadas y acuerdos con este cliente.')) + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Seguimiento</h2><span class="muted num">' + ms.length + '</span></div>' + (ms.length ? '<div class="timeline">' + ms.map(m => comItem(m, true)).join('') + '</div>' : emptyBox('Sin comunicaciones registradas', 'Registrá reuniones, llamadas y acuerdos con este cliente.')) + '</section>' +
     '</div></div>';
 }
 
@@ -451,9 +525,9 @@ function vComs() {
   const mf = S.mf, q = norm(mf.q);
   const list = S.M.filter(m => (!mf.cliente || m.cliente === mf.cliente) && (!mf.pend || (!m.hecho && m.proximo)) && (!q || norm([m.cliente, m.resumen, m.acuerdo, m.proximo, m.conQuien].join(' ')).includes(q)))
     .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.creado || '').localeCompare(a.creado || ''));
-  let h = '<div class="head"><div><h1>Comunicaciones</h1><p>Reuniones y acuerdos con clientes. Lo pendiente aparece en Inicio.</p></div><div class="toolbar">' + addBtn('comunicacion', 'Comunicación') + '</div></div>' +
+  let h = '<div class="head"><div><h1>Seguimiento</h1><p>Lo que se habló con cada cliente (reunión, llamada, WhatsApp), qué se acordó y el próximo paso. Lo pendiente aparece en Inicio.</p></div><div class="toolbar">' + addBtn('comunicacion', 'Seguimiento') + '</div></div>' +
     '<div class="toolbar"><input class="in" type="search" id="mq" data-bind="mf.q" placeholder="Buscar en resúmenes y acuerdos" value="' + esc(mf.q) + '"><select class="in" id="mc" data-bind="mf.cliente" aria-label="Cliente">' + clienteOpts(mf.cliente, 'Todos los clientes') + '</select><label class="chk"><input type="checkbox" id="mp" data-bind="mf.pend"' + (mf.pend ? ' checked' : '') + '> Solo con paso pendiente</label></div>';
-  if (!list.length) return h + '<section class="sheet">' + emptyBox(S.M.length ? 'Ninguna comunicación coincide' : 'Todavía no hay comunicaciones', S.M.length ? '' : 'Registrá la primera reunión o llamada con un cliente.') + '</section>';
+  if (!list.length) return h + '<section class="sheet">' + emptyBox(S.M.length ? 'Ningún registro coincide' : 'Todavía no hay seguimiento registrado', S.M.length ? '' : 'Registrá la primera reunión o llamada con un cliente.') + '</section>';
   return h + '<section class="sheet"><div class="timeline">' + list.map(m => comItem(m, false)).join('') + '</div><div class="count num">' + list.length + ' registros</div></section>';
 }
 
@@ -480,17 +554,16 @@ function render() {
   if (!views().some(v => v[0] === S.view)) S.view = isExt() ? 'mis' : 'inicio';
   const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length };
   const item = ([k, l]) => '<button class="snav-i" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + (ICON[k] || '') + '<span class="snav-l">' + l + '</span>' + (counts[k] ? '<span class="snav-n' + (k === 'asistente' || k === 'facturas' ? ' hot' : '') + '">' + counts[k] + '</span>' : '') + '</button>';
-  const admKeys = isAdmin() && ADM ? ADM.views.map(v => v[0]) : [], conf = ['equipo', 'listas'];
-  const trabajo = views().filter(v => !admKeys.includes(v[0]) && !conf.includes(v[0])), ajustes = views().filter(v => conf.includes(v[0]));
-  $('#nav').innerHTML = '<span class="snav-g">Trabajo</span>' + trabajo.map(item).join('') + (ajustes.length ? '<span class="snav-g">Equipo y ajustes</span>' + ajustes.map(item).join('') : '');
-  const nav2 = $('#nav2'), adm = views().filter(v => admKeys.includes(v[0]));
-  nav2.hidden = !adm.length; nav2.innerHTML = adm.length ? '<span class="snav-g">Administración</span>' + adm.map(item).join('') : '';
+  const vs = new Map(views().map(v => [v[0], v[1]]));
+  $('#nav').innerHTML = GRUPOS.map(([g, ks]) => { const its = ks.filter(k => vs.has(k)); return its.length ? '<span class="snav-g">' + g + '</span>' + its.map(k => item([k, vs.get(k)])).join('') : ''; }).join('');
+  $('#nav2').hidden = true;
   const sync = $('#sync');
   sync.className = 'sync ' + (S.status === 'ok' ? 'ok' : S.status === 'offline' ? 'err' : '');
   sync.lastElementChild.textContent = S.status === 'ok' ? 'En vivo' : S.status === 'offline' ? 'Sin conexión' : 'Conectando';
   $('#me').innerHTML = '<span class="av" style="' + avStyle(S.me.alias) + '">' + esc(initials(S.me.alias)) + '</span><span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>';
   if (S.status === 'loading') { $('#view').innerHTML = '<section class="sheet">' + emptyBox('Cargando datos del equipo…', '') + '</section>'; return; }
   $('#view').innerHTML = viewFn(S.view)();
+  ponerHerramientas();
   const kb2 = document.querySelector('.kb'); if (kb2) kb2.scrollLeft = kbLeft;
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { } } }
 }
@@ -548,7 +621,7 @@ const FORMS = {
     { k: 'activo', label: 'Activa/o (si no, pierde el acceso)', type: 'check', full: 1 },
     { k: 'notas', label: 'Notas', type: 'textarea', full: 1 },
   ], defaults: () => ({ activo: true, rol: 'equipo' }), can: () => isAdmin() },
-  comunicacion: { arr: 'M', title: 'comunicación', nuevo: 'Nueva comunicación', label: m => m.cliente, fields: [
+  comunicacion: { arr: 'M', title: 'seguimiento', nuevo: 'Registrar seguimiento', label: m => m.cliente, fields: [
     { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
     { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1 },
     { k: 'canal', label: 'Canal', type: 'select', opts: () => S.L.canales, blank: '—' },
@@ -662,7 +735,7 @@ function setBind(path, v) {
   if (path === 'yo') lsSet('yo', v);
 }
 function menu(open) { const o = open === undefined ? !document.body.classList.contains('menu-open') : open; document.body.classList.toggle('menu-open', o); $('#sidescrim').hidden = !o; }
-function go(view) { menu(false); S.view = view; S.ficha = null; if (ADM) ADM.resetView(); try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
+function go(view) { menu(false); S.view = view; S.ficha = null; S.pficha = null; if (ADM) ADM.resetView(); try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
 async function saveListas(k, arr) {
   const prev = S.L[k]; S.L[k] = arr; render();
   try { await data.saveLista(k, arr); toast('Lista actualizada'); }
@@ -677,8 +750,15 @@ const ACT = {
   clearF: () => { S.f = { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true }; render(); },
   cfEstado: t => { S.cf.estado = t.dataset.estado; render(); },
   afTipo: t => { S.af.tipo = t.dataset.tipo; render(); },
-  ficha: t => { S.ficha = t.dataset.cliente; S.view = 'clientes'; try { history.replaceState(null, '', '#clientes'); } catch (e) { } render(); window.scrollTo(0, 0); },
-  back: () => { S.ficha = null; render(); },
+  ficha: t => { S.ficha = t.dataset.cliente; S.pficha = null; S.view = 'clientes'; try { history.replaceState(null, '', '#clientes/' + encodeURIComponent(S.ficha)); } catch (e) { } render(); window.scrollTo(0, 0); },
+  back: () => { S.ficha = null; try { history.replaceState(null, '', '#clientes'); } catch (e) { } render(); },
+  pver: t => { const id = t.dataset.id; S.pficha = id; S.ficha = null; S.view = 'proyectos'; closeForm(); try { history.replaceState(null, '', '#proyectos/' + id); } catch (e) { } render(); window.scrollTo(0, 0); },
+  pback: () => { S.pficha = null; try { history.replaceState(null, '', '#proyectos'); } catch (e) { } render(); },
+  print: () => window.print(),
+  exportar: () => exportarVista(),
+  shareCopy: () => { copyText(location.href); cerrarShare(); },
+  shareWa: () => { window.open('https://wa.me/?text=' + encodeURIComponent(tituloVista() + '\n' + location.href), '_blank', 'noopener'); cerrarShare(); },
+  shareMail: () => { location.href = 'mailto:?subject=' + encodeURIComponent(tituloVista() + ' · àndale') + '&body=' + encodeURIComponent(tituloVista() + '\n' + location.href); cerrarShare(); },
   new: t => openForm(t.dataset.kind, null, t.dataset.preset ? JSON.parse(t.dataset.preset) : null),
   edit: t => openForm(t.dataset.kind, t.dataset.id),
   close: () => closeForm(),
@@ -780,7 +860,7 @@ document.addEventListener('submit', async e => {
   }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && (S.form || !$('#panel').hidden)) closeForm(); });
-window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (viewFn(v) && v !== S.view) { S.view = v; S.ficha = null; render(); } });
+window.addEventListener('hashchange', () => { const prev = [S.view, S.ficha, S.pficha].join('|'); leerHash(); if (!viewFn(S.view)) S.view = 'inicio'; if ([S.view, S.ficha, S.pficha].join('|') !== prev) { render(); window.scrollTo(0, 0); } });
 
 /* Arrastrar en el tablero */
 let dragId = null;

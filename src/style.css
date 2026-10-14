@@ -1,11 +1,11 @@
 /* àndale · Operaciones — herramienta interna. Barra fija con pestañas, hojas de trabajo y panel lateral para cargar y editar. */
 :root{
   /* Base neutra fría; el color lo ponen la marca (coral) y los estados */
-  --bg:#F4F5F8; --surface:#FFFFFF; --surface-2:#EEF0F4; --line:#E4E7ED; --line-2:#D5D9E2; --fg:#17181F; --muted:#636979;
+  --bg:#F5F5F6; --surface:#FFFFFF; --surface-2:#EEF0F4; --line:#E4E7ED; --line-2:#D5D9E2; --fg:#17181F; --muted:#636979;
   --accent:#FC4855; --accent-ink:#FFFFFF; --accent-soft:#FFE8EA; --accent-text:#D12A39;
   --ok:#0F8558; --warn:#B26A00; --crit:#D0313D; --money:#0E7A5A;
   /* Estados: cada uno con su color; las píldoras usan el tono suave de fondo */
-  --s-empezar:#5B6478; --s-curso:#3354E0; --s-revision:#B26A00; --s-entregado:#0F8558; --s-pausado:#7A6FA0; --s-cancelado:#D0313D; --s-confirmar:#7C4DDB; --s-presup:#0B8A8A;
+  --s-empezar:#6A7080; --s-curso:#3F5BC4; --s-revision:#A3660F; --s-entregado:#2B7A55; --s-pausado:#7D7896; --s-cancelado:#B9404A; --s-confirmar:#7354B5; --s-presup:#2A7C82;
   --f-display:"Delight", "Inter", ui-sans-serif, system-ui, sans-serif;
   --f-body:"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -347,19 +347,19 @@ h2{font-size:17px}
 .kpi .eyebrow{font-size:13px;color:var(--muted)}
 .kpi b{font-size:34px;letter-spacing:-.02em}
 .kpi.alert{--k:var(--crit)} .kpi.warn{--k:var(--warn)}
-.kpi:nth-child(1){--k:var(--accent)} .kpi:nth-child(2){--k:var(--s-curso)} .kpi:nth-child(3){--k:var(--s-presup)} .kpi:nth-child(4){--k:var(--s-confirmar)}
 .kpi.alert,.kpi.warn{--k:var(--crit)}
 .kpi.warn{--k:var(--warn)}
 .callout{border-style:solid;border-color:color-mix(in srgb,var(--s-confirmar) 30%,var(--line));background:color-mix(in srgb,var(--s-confirmar) 6%,var(--surface));border-left:4px solid var(--s-confirmar)}
 
 /* Píldoras */
-.pill{padding:3px 10px 3px 8px;font-size:12.5px;background:color-mix(in srgb,var(--c,var(--muted)) 13%,var(--surface));color:var(--c,var(--muted))}
+.pill{padding:3px 10px 3px 8px;font-size:12.5px;background:color-mix(in srgb,var(--c,var(--muted)) 10%,var(--surface));color:var(--c,var(--muted))}
 .days{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:12px}
 .days.late{color:var(--crit);background:color-mix(in srgb,var(--crit) 12%,var(--surface))}
 .days.soon{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,var(--surface))}
 .days.far{padding-left:0;padding-right:0}
 .tag{border-radius:6px;padding:2px 7px;font-size:12px}
-.tag.svc{color:var(--c);background:color-mix(in srgb,var(--c) 12%,var(--surface))}
+.tag.svc{color:var(--soft,var(--fg));background:var(--surface-2);display:inline-flex;align-items:center;gap:5px;font-weight:500}
+.tag.svc::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--c)}
 .av{background:color-mix(in srgb,var(--c,var(--accent)) 16%,var(--surface));color:var(--c,var(--accent))}
 .snav-n,.tab-n{font-variant-numeric:tabular-nums}
 
@@ -422,3 +422,36 @@ td .sub .tag{margin-top:3px;display:inline-block}
 .cal-h h2::first-letter{text-transform:uppercase}
 .mbar #hoy{display:none}
 .row label,.row .pill{white-space:nowrap}
+
+/* Herramientas de página: imprimir, exportar, compartir */
+.head{position:relative}
+.pagetools{display:flex;gap:2px;align-items:center;position:absolute;right:0;top:-30px}
+@media (max-width:960px){.pagetools{position:static;order:-1;width:100%;justify-content:flex-end;margin:-14px 0 -6px}.pagetools .btn span{display:none}}
+.pagetools .btn{color:var(--muted);gap:6px}
+.pagetools .btn:hover{color:var(--fg)}
+details.share{position:relative}
+details.share>summary{list-style:none}
+details.share>summary::-webkit-details-marker{display:none}
+.menu-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:25;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;display:grid;gap:2px;min-width:200px}
+.menu-pop .btn{justify-content:flex-start;color:var(--fg)}
+.checklist{display:grid;gap:2px}
+.checklist .chk{padding:7px 8px;border-radius:8px;font-size:14.5px}
+.checklist .chk:hover{background:var(--surface-2)}
+.checklist .chk.done span{color:var(--muted);text-decoration:line-through}
+.btn.link.eyebrow{font-weight:500;color:var(--muted)}
+
+/* Impresión: solo el contenido */
+@media print{
+  @page{margin:14mm}
+  body{background:#fff;font-size:11pt}
+  .side,.mbar,.pagetools,.toolbar .btn,.toolbar .seg,.toolbar select,.toolbar input,.bulkbar,.scrim,.panel,.toast,.banner,details.share,button[data-act="back"],button[data-act="pback"],.btn.ghost{display:none!important}
+  .app{display:block}
+  .wrap{max-width:none;padding:0}
+  main{padding:0;gap:14px}
+  .sheet,.kpi{break-inside:avoid;border-color:#ccc;box-shadow:none}
+  .grid2,.ficha,.stats{display:block}
+  .grid2>*,.ficha>*,.stats>*{margin-bottom:14px}
+  a{color:inherit;text-decoration:none}
+  tbody tr:hover td{background:none}
+  select.cellsel.st{background-image:none;padding-right:10px}
+}

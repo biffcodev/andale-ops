@@ -660,6 +660,19 @@ export function initAdmin(ctx) {
       emailsDe(c.nombre) + '</section>';
   }
 
+  /* ---------- Sección en la ficha del proyecto ---------- */
+  function proyectoSection(p) {
+    const f = finProyecto(p), pend = r2((f.presupuesto || 0) - f.facturado);
+    const cuotas = f.cs.map(c => '<div class="row" style="cursor:default"><span class="d">' + fmt(c.periodo) + '</span><span class="t"><b class="money">' + money(c.monto, c.moneda) + '</b><span>' + esc(c.concepto || '') + '</span></span>' + (f.env.has('pf:' + c.id) ? pill('Facturada', '--s-entregado') : pill('Pendiente', '--s-empezar')) + '</div>').join('');
+    return '<section class="sheet"><div class="sheet-h"><h2>Presupuesto y cobro</h2><button class="btn sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">' + (f.presupuesto != null ? 'Editar' : 'Cargar presupuesto') + '</button></div>' +
+      (f.presupuesto != null || f.cs.length ? '<div class="sheet-b"><dl class="kv">' +
+        '<dt>Presupuesto</dt><dd><b class="money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</b>' + (f.fz.plan_pago ? ' <span class="muted">' + esc(f.fz.plan_pago) + '</span>' : '') + '</dd>' +
+        '<dt>Facturado</dt><dd class="money">' + money(f.facturado, f.moneda) + (f.presupuesto != null && pend > 0.009 ? ' <span class="muted">· falta ' + money(pend, f.moneda) + '</span>' : '') + '</dd>' +
+        '<dt>Costos</dt><dd class="money">' + esc(multi(f.cost)) + '</dd>' +
+        '<dt>Margen</dt><dd><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? ' ' + pill(f.pct + '%', f.pct >= 50 ? '--s-entregado' : f.pct >= 25 ? '--s-revision' : '--s-cancelado') : '') + '</dd></dl></div>' + (cuotas ? '<div class="rows" style="border-top:1px solid var(--line)">' + cuotas + '</div>' : '')
+        : emptyBox('Sin presupuesto cargado', 'Cargá el monto aprobado y la forma de pago: las cuotas aparecen solas en el resumen de cada mes.')) + '</section>';
+  }
+
   /* ---------- Formularios (panel lateral) ---------- */
   function field(f, v) {
     const id = 'af-' + f.k;
@@ -1021,7 +1034,7 @@ export function initAdmin(ctx) {
 
   Object.assign(actions, EQ.actions, AS.actions, ST.actions);
   return {
-    load, actions, fichaSection, AD,
+    load, actions, fichaSection, proyectoSection, AD,
     views: [['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cierre de mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Caja', vCaja], ['pagos', 'Pagos', EQ.view], ['rentabilidad', 'Rentabilidad', vRent]],
     counts: () => (AD.ok ? { facturas: AD.F.filter(f => estadoFactura(f) === 'Vencida').length, asistente: AS.count() } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; },
