@@ -4,6 +4,7 @@
 // No hay acceso directo a tablas: todo pasa por las funciones portal_* de la base (ver 0016).
 import './fonts.css';
 import './style.css';
+import { activarFormato } from './formato.js';
 import './portal.css';
 import { LOGO, ISO } from './marca.js';
 import { iconizar, ICON } from './iconos.js';
@@ -288,3 +289,6 @@ document.addEventListener('submit', async e => {
 
 // Abrir el PDF de una factura o un resumen desde Mi cuenta.
 document.addEventListener('click', e => { const a = e.target.closest && e.target.closest('a[data-seg]'); if (a && S.c) seg('pdf_abierto', a.dataset.seg, a.dataset.segd || ''); }, true);
+
+// Montos, teléfonos y CUIT se formatean solos al salir de cada campo.
+activarFormato();

@@ -1,5 +1,6 @@
 // Administración: precios y aumentos, cierre de mes (resumen → comprobante → cobro → recordatorio), facturas.
 // Solo para administradores. La base de datos además lo impide para otros roles.
+import { leerNumero, cuit as fmtCuit } from './formato.js';
 import { firmaDe } from './firma.js';
 import * as data from './data.js';
 import * as E from './emails.js';
@@ -26,14 +27,8 @@ export function initAdmin(ctx) {
 
   /* ---------- utilidades de plata ---------- */
   function money(n, cur) { if (n === null || n === undefined || n === '' || isNaN(n)) return '—'; try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: cur || 'ARS', maximumFractionDigits: 2, minimumFractionDigits: 0 }).format(n); } catch (e) { return (cur || '') + ' ' + n; } }
-  function parseMonto(s) {
-    if (typeof s === 'number') return s;
-    s = String(s || '').trim(); if (!s) return null;
-    s = s.replace(/[^\d,.\-]/g, '');
-    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
-    else if ((s.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(s)) s = s.replace(/\./g, '');
-    const n = Number(s); return isNaN(n) ? null : n;
-  }
+  // Punto o coma: el símbolo que se use es el decimal (ver formato.js).
+  const parseMonto = leerNumero;
   const r2 = n => Math.round(n * 100) / 100;
   const add = (acc, cur, n) => { if (n) acc[cur || 'ARS'] = (acc[cur || 'ARS'] || 0) + n; return acc; };
   const multi = acc => { const e = Object.entries(acc).filter(([, v]) => Math.abs(v) > 0.004); return e.length ? e.map(([c, v]) => money(v, c)).join(' + ') : money(0, 'ARS'); };
@@ -258,7 +253,7 @@ export function initAdmin(ctx) {
   const itemsDe = r => r.items.filter(i => i.inc && String(i.concepto || '').trim()).map(i => ({ concepto: String(i.concepto).trim(), monto: parseMonto(i.monto) || 0 }));
   const cfgDocs = () => ({ ...cfgMarca(), emisores: (AD.AJ && AD.AJ.emisores) || {} });
   const datosClienteDoc = cliente => { const c = S.C.find(x => x.nombre === cliente) || {}, a = cadm(cliente) || {};
-    return { razon_social: a.razon_social || '', cuit: a.cuit || '', condicion_iva: a.condicion_iva || '', domicilio: a.domicilio || '', email: mailsDe(cliente).split(', ')[0] || '' }; };
+    return { razon_social: a.razon_social || '', cuit: fmtCuit(a.cuit || ''), condicion_iva: a.condicion_iva || '', domicilio: a.domicilio || '', email: mailsDe(cliente).split(', ')[0] || '' }; };
   async function pdfResumen(r) { // r: { id?, numero?, cliente, m, moneda, items, nota }
     const { resumenDoc, bytesBase64 } = await pdfLib();
     // El número lo pone la base al guardar: si es el borrador abierto y todavía no se guardó, se guarda antes.
@@ -909,9 +904,9 @@ export function initAdmin(ctx) {
       '<div class="sx-panel">' + libroCuenta(ec) + '</div></section>';
     if (proys.length) h += '<section class="sheet"><div class="sheet-h"><h2>Proyectos: precio y cobro</h2></div><div class="rows">' + proys.map(p => { const f = finProyecto(p), pend = f.presupuesto != null ? Math.max(0, (f.presupuesto || 0) - f.facturado) : null;
       return '<button class="row" data-act="aProyAdm" data-id="' + esc(p._id) + '"><span class="d">' + esc(p.estado || '') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + (f.presupuesto != null ? 'Precio ' + money(f.presupuesto, f.moneda) + (f.fz.plan_pago ? ' · ' + esc(f.fz.plan_pago) : '') + ' · facturado ' + money(f.facturado, f.moneda) + (pend > 0.009 ? ' · falta facturar ' + money(pend, f.moneda) : '') : 'Sin precio cargado') + '</span></span><span class="muted">' + (f.presupuesto != null ? 'Editar' : 'Cargar precio') + '</span></button>'; }).join('') + '</div></section>';
-    h += '<details class="sheet ec-datos"><summary class="sheet-h"><h2>Datos de facturación</h2><span class="muted">' + esc([ca.razon_social, ca.cuit].filter(Boolean).join(' · ') || 'sin cargar') + '</span></summary><div class="sheet-b"><dl class="kv">' +
+    h += '<details class="sheet ec-datos"><summary class="sheet-h"><h2>Datos de facturación</h2><span class="muted">' + esc([ca.razon_social, fmtCuit(ca.cuit || '')].filter(Boolean).join(' · ') || 'sin cargar') + '</span></summary><div class="sheet-b"><dl class="kv">' +
       '<dt>Razón social</dt><dd>' + (ca.razon_social ? esc(ca.razon_social) : '<span class="muted">—</span>') + '</dd>' +
-      '<dt>CUIT</dt><dd>' + (ca.cuit ? esc(ca.cuit) + (ca.condicion_iva ? ' · ' + esc(ca.condicion_iva) : '') : '<span class="muted">—</span>') + '</dd>' +
+      '<dt>CUIT</dt><dd>' + (ca.cuit ? esc(fmtCuit(ca.cuit)) + (ca.condicion_iva ? ' · ' + esc(ca.condicion_iva) : '') : '<span class="muted">—</span>') + '</dd>' +
       '<dt>Domicilio</dt><dd>' + (ca.domicilio ? esc(ca.domicilio) : '<span class="muted">—</span>') + '</dd>' +
       '<dt>Cómo se factura</dt><dd>' + esc(verTipo(ca.comprobante_default || 'Factura ARCA')) + (ca.emisor_default ? ' · la hace ' + esc(ca.emisor_default) : '') + ' · ' + esc(ca.moneda || 'ARS') + '</dd>' +
       '<dt>Resúmenes y facturas a</dt><dd>' + (mailsDe(c.nombre) ? esc(mailsDe(c.nombre)) + (cobrosDe(c.nombre).length ? '' : ' <span class="muted">(email de facturación)</span>') : '<span class="muted">Nadie. Marcá en Contactos quién los recibe.</span>') + '</dd>' +

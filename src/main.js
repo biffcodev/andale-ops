@@ -1,5 +1,6 @@
 import './fonts.css';
 import './style.css';
+import { activarFormato } from './formato.js';
 import { LOGO, ISO } from './marca.js';
 import { ICON, iconizar } from './iconos.js';
 import { initExportar } from './exportar.js';
@@ -1894,3 +1895,6 @@ async function start(sess) {
   const s = await data.session();
   if (s) start(s); else showLogin();
 })();
+
+// Montos, teléfonos y CUIT se formatean solos al salir de cada campo.
+activarFormato();
