@@ -327,27 +327,27 @@ export function initEquipo(ctx, k) {
     const cur = remVig(cid, mesRef(c)).find(r => r.concepto === concepto);
     openPanel({
       title: c.nombre, eyebrow: cur ? (concepto === 'Sueldo' ? 'Aumento de sueldo' : 'Nuevo honorario') : (concepto === 'Sueldo' ? 'Sueldo' : 'Honorario fijo'), saveLabel: 'Guardar',
-      intro: cur ? 'Vigente: <b class="money">' + esc(money(cur.monto, cur.moneda)) + '</b> desde ' + esc(fmt(cur.desde)) + '. Se guarda como monto nuevo sin perder el anterior. Podés poner el porcentaje y se calcula solo.' : 'El monto que se paga cada mes desde el mes indicado.',
-      values: { concepto, desde: cur ? addMonth(cur.desde > thisMonth() ? cur.desde : thisMonth(), 1) : thisMonth(), monto: '', pct: '', moneda: cur ? cur.moneda : 'ARS', motivo: cur ? '' : 'Inicial' },
+      intro: cur ? 'Vigente: <b class="money">' + esc(money(cur.monto, cur.moneda)) + '</b> desde ' + esc(fmt(cur.desde)) + '. El aumento va sobre el básico (los extras no cambian) y queda en el historial. Poné el % o el monto en $ a sumar.' : 'El monto que se paga cada mes desde el mes indicado.',
+      values: { concepto, desde: cur ? addMonth(cur.desde > thisMonth() ? cur.desde : thisMonth(), 1) : thisMonth(), monto: '', pct: '', suma: '', moneda: cur ? cur.moneda : 'ARS', motivo: cur ? '' : 'Inicial' },
       fields: [
         { k: 'concepto', label: 'Concepto', type: 'select', opts: ['Sueldo', 'Honorario'] },
         { k: 'desde', label: 'Desde qué mes', type: 'month', month: 1, req: 1 },
-        ...(cur ? [{ k: 'pct', label: 'Aumento %', num: 1, ph: '5' }] : []),
-        { k: 'monto', label: 'Monto mensual', num: 1, hint: cur ? 'Si ponés el %, dejalo vacío.' : '' },
+        ...(cur ? [{ k: 'pct', label: 'Aumento en %', num: 1, ph: '5' }, { k: 'suma', label: 'o aumento en $', num: 1, ph: '50000', hint: 'Se suma al básico. Completá uno de los dos.' }] : [{ k: 'monto', label: 'Monto mensual (básico)', num: 1, req: 1 }]),
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
         { k: 'motivo', label: 'Motivo', ph: 'Paritaria, aumento semestral…', full: 1 },
       ],
       onSave: async v => {
         // El monto anterior: el último antes del mes elegido
         const prev = AD.RM.filter(x => x.colaborador_id === cid && x.concepto === v.concepto && x.desde < v.desde).sort((a, b) => b.desde.localeCompare(a.desde))[0];
-        let monto = v.monto; if (monto == null && v.pct && prev) monto = r2(prev.monto * (1 + v.pct / 100));
-        if (!monto) throw new Error('Poné el monto o el porcentaje');
+        let monto = cur ? null : v.monto;
+        if (cur && prev) { if (v.pct && v.suma) throw new Error('Poné el % o el monto en $, no los dos'); if (v.pct) monto = r2(prev.monto * (1 + v.pct / 100)); else if (v.suma) monto = r2(prev.monto + v.suma); }
+        if (!monto) throw new Error(cur ? 'Poné el % o el monto en $ del aumento' : 'Poné el monto');
         if (AD.RM.some(x => x.colaborador_id === cid && x.concepto === v.concepto && x.desde === v.desde)) throw new Error('Ya hay un monto cargado desde ' + fmt(v.desde) + '. Tocalo en la línea de tiempo para corregirlo.');
         if (prev && v.desde < thisMonth()) throw new Error('Un aumento rige desde este mes o uno que viene');
-        const motivo = v.motivo || (v.pct ? 'Aumento ' + String(v.pct).replace('.', ',') + '%' : '');
+        const motivo = v.motivo || (v.pct ? 'Aumento ' + String(v.pct).replace('.', ',') + '%' : v.suma ? 'Aumento de ' + money(v.suma, v.moneda) : '');
         let lote_id = null;
         // Con un monto anterior es un aumento: queda como lote de una persona (con su historial, editable hasta que empiece)
-        if (prev) lote_id = (await data.ins('lotes_aumento', { ambito: esProv(c) ? 'proveedores' : 'sueldos', desde: v.desde + '-01', modo: v.pct ? 'porcentaje' : 'monto', valor: v.pct || monto, redondeo: 0, motivo, creado_por: (S.me && S.me.id) || null })).id;
+        if (prev) lote_id = (await data.ins('lotes_aumento', { ambito: esProv(c) ? 'proveedores' : 'sueldos', desde: v.desde + '-01', modo: v.pct ? 'porcentaje' : 'suma', valor: v.pct || v.suma, redondeo: 0, motivo, creado_por: (S.me && S.me.id) || null })).id;
         await data.ins('remuneraciones', { colaborador_id: cid, concepto: v.concepto, desde: v.desde + '-01', monto, moneda: v.moneda, motivo, ...(prev ? { lote_id, monto_anterior: prev.monto, pct: prev.monto ? Math.round((monto / prev.monto - 1) * 10000) / 100 : null } : {}) });
         toast('Guardado: ' + money(monto, v.moneda) + ' desde ' + fmt(v.desde));
         if (desde !== 'aum') AD.postSave = () => formColaborador(cid);

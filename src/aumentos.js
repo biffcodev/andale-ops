@@ -1,5 +1,5 @@
 // Aumentos por lote, para sueldos (Equipo) y para honorarios fijos (Proveedores). Solo administradores.
-// Se elige a quiénes, cómo (porcentaje, sumar un monto o monto nuevo), desde qué mes y el redondeo; se ve la vista previa
+// Se elige a quiénes, el aumento (en % o en $, sobre el básico: los extras no cambian) y desde qué mes; se ve la vista previa
 // fila por fila (con el % de cada una editable) y al confirmar queda un "lote". Cada lote agrega un monto nuevo por persona
 // en remuneraciones (desde ese mes); el anterior queda cerrado solo. Se puede editar o deshacer hasta que empieza su mes.
 import * as data from './data.js';
@@ -9,11 +9,10 @@ export function initAumentos(ctx, k, h) {
   const { S, esc, fmt, monthLabel, thisMonth, addMonth, cmp, norm, emptyBox, toast } = ctx;
   const { AD, money, multi, add, r2, parseMonto, cap } = k;
   const { colab, esProv, pctTxt } = h;
-  const nuevoEstado = () => ({ sel: new Set(), modo: 'porcentaje', valor: '', desde: addMonth(thisMonth(), 1), redondeo: 0, motivo: '', pctPor: {}, q: '', edit: null });
+  const nuevoEstado = () => ({ sel: new Set(), modo: 'porcentaje', valor: '', desde: addMonth(thisMonth(), 1), motivo: '', pctPor: {}, q: '', edit: null });
   AD.au = AD.au || { sueldos: nuevoEstado(), proveedores: nuevoEstado() };
   const st = a => AD.au[a];
-  const MODOS = [['porcentaje', 'Porcentaje'], ['suma', 'Sumar monto'], ['monto', 'Monto nuevo']];
-  const REDONDEOS = [[0, 'Sin'], [100, 'a 100'], [1000, 'a 1.000']];
+  const MODOS = [['porcentaje', 'En %'], ['suma', 'En $']];
   const quien = id => ((S.E || []).find(e => e._id === id) || {}).persona || '';
   const loteDe = id => (AD.LA || []).find(l => l.id === id) || null;
   const filasLote = id => AD.RM.filter(r => r.lote_id === id);
@@ -51,7 +50,7 @@ export function initAumentos(ctx, k, h) {
     if (propio != null) nuevo = b.r.monto * (1 + propio / 100);
     else if (v != null) nuevo = s.modo === 'porcentaje' ? b.r.monto * (1 + v / 100) : s.modo === 'suma' ? b.r.monto + v : v;
     if (nuevo == null) return { b };
-    nuevo = s.redondeo ? Math.round(nuevo / s.redondeo) * s.redondeo : r2(nuevo);
+    nuevo = r2(nuevo); // siempre el valor exacto, sin redondeo
     const pct = b.r.monto ? Math.round((nuevo / b.r.monto - 1) * 10000) / 100 : null;
     return { b, nuevo, dif: r2(nuevo - b.r.monto), pct, propio: propio != null };
   }
@@ -93,11 +92,10 @@ export function initAumentos(ctx, k, h) {
       '<div class="lt-tot"><span>Elegidos: ' + sel.length + ' de ' + eligibles.length + ' · impacto mensual del lote' + (sel.length ? '<small>' + esc(multi(antes)) + ' → ' + esc(multi(despues)) + (tA ? ' · ' + pctTxt(Math.round((tD / tA - 1) * 1000) / 10) + ' promedio' : '') + '</small>' : '') + '</span><b>' + (sel.length ? '+' + esc(multi(dif)) + ' por mes' : '—') + '</b></div></section>' +
       '<aside class="sheet lt-form"><h3>El aumento</h3>' +
       '<div class="lt-f"><span class="lbl">Cómo</span><div class="seg" role="group" aria-label="Cómo">' + MODOS.map(([kk, l]) => '<button data-act="auSet" data-a="' + a + '" data-k="modo" data-v="' + kk + '" aria-pressed="' + (s.modo === kk) + '">' + l + '</button>').join('') + '</div></div>' +
-      '<div class="lt-f"><label class="lbl" for="au-valor-' + a + '">' + (s.modo === 'porcentaje' ? 'Porcentaje' : s.modo === 'suma' ? 'Monto a sumar' : 'Monto nuevo') + '</label><input class="in" id="au-valor-' + a + '" data-auk="valor" data-au-a="' + a + '" inputmode="decimal"' + (s.modo === 'porcentaje' ? ' data-nofmt' : '') + ' value="' + esc(s.valor) + '" placeholder="' + (s.modo === 'porcentaje' ? '10' : '50000') + '"></div>' +
+      '<div class="lt-f"><label class="lbl" for="au-valor-' + a + '">' + (s.modo === 'porcentaje' ? 'Aumento en %' : 'Aumento en $ (se suma al básico)') + '</label><input class="in" id="au-valor-' + a + '" data-auk="valor" data-au-a="' + a + '" inputmode="decimal"' + (s.modo === 'porcentaje' ? ' data-nofmt' : '') + ' value="' + esc(s.valor) + '" placeholder="' + (s.modo === 'porcentaje' ? '10' : '50000') + '"></div>' +
       '<div class="lt-f"><label class="lbl" for="au-desde-' + a + '">Desde qué mes rige</label><input class="in" type="month" id="au-desde-' + a + '" data-auk="desde" data-au-a="' + a + '" min="' + thisMonth() + '" value="' + esc(s.desde) + '"></div>' +
-      '<div class="lt-f"><span class="lbl">Redondeo</span><div class="seg" role="group" aria-label="Redondeo">' + REDONDEOS.map(([v, l]) => '<button data-act="auSet" data-a="' + a + '" data-k="redondeo" data-v="' + v + '" aria-pressed="' + (s.redondeo === v) + '">' + l + '</button>').join('') + '</div></div>' +
       '<div class="lt-f"><label class="lbl" for="au-mot-' + a + '">Motivo (opcional)</label><input class="in" id="au-mot-' + a + '" data-auk="motivo" data-au-a="' + a + '" value="' + esc(s.motivo) + '" placeholder="Paritaria diciembre"></div>' +
-      '<p class="hint">El % de cada fila se puede cambiar en la tabla (en naranja, el que es distinto al general).</p>' +
+      '<p class="hint">Se aplica sobre el básico; los extras no cambian. El % de cada fila se puede cambiar en la tabla (en naranja, el que es distinto al general).</p>' +
       '<button class="btn primary lt-ok" data-act="auOk" data-a="' + a + '"' + (sel.length ? '' : ' disabled') + '>' + (editando ? 'Guardar cambios del lote' : 'Confirmar lote · ' + (sel.length === 1 ? '1 persona' : sel.length + ' ' + (a === 'sueldos' ? 'personas' : 'proveedores'))) + '</button></aside></div>';
     // Lotes aplicados
     const lotes = (AD.LA || []).filter(l => l.ambito === a).sort((x, y) => y.desde.localeCompare(x.desde) || String(y.created_at).localeCompare(String(x.created_at)));
@@ -108,7 +106,7 @@ export function initAumentos(ctx, k, h) {
         const distintos = l.modo === 'porcentaje' ? rs.filter(r => r.pct != null && Math.abs(r.pct - l.valor) > 0.01).map(r => ((colab(r.colaborador_id) || {}).nombre || '').split(' ')[0] + ' ' + pctTxt(r.pct)) : [];
         const como = l.modo === 'porcentaje' ? pctTxt(l.valor) : l.modo === 'suma' ? '+' + money(l.valor, (rs[0] || {}).moneda || 'ARS') : 'monto nuevo ' + money(l.valor, (rs[0] || {}).moneda || 'ARS');
         return '<div class="lt-lote"><span><b>Desde ' + esc(fmt(l.desde)) + '</b><small>aplicado ' + esc(fmt(String(l.created_at).slice(0, 10))) + '</small></span>' +
-          '<span>' + esc(l.motivo || 'Sin motivo') + ' · <b>' + (rs.length === 1 ? '1 persona' : rs.length + ' personas') + '</b> · ' + esc(como) + (distintos.length ? ' (' + esc(distintos.join(', ')) + ')' : '') + (l.redondeo ? ' · redondeo a ' + (l.redondeo === 1000 ? '1.000' : '100') : '') + ' · <b>+' + esc(multi(d)) + ' por mes</b>' +
+          '<span>' + esc(l.motivo || 'Sin motivo') + ' · <b>' + (rs.length === 1 ? '1 persona' : rs.length + ' personas') + '</b> · ' + esc(como) + (distintos.length ? ' (' + esc(distintos.join(', ')) + ')' : '') + ' · <b>+' + esc(multi(d)) + ' por mes</b>' +
           '<small>' + esc([quien(l.creado_por) ? 'por ' + quien(l.creado_por) : '', nombres.join(', ')].filter(Boolean).join(' · ')) + '</small></span>' +
           '<span class="lt-acc">' + (fijo(l) ? '<span class="lt-b fijo">Fijo · ya rige</span>' : '<span class="lt-b prog">Programado</span><button class="btn sm" data-act="auEdit" data-a="' + a + '" data-id="' + esc(l.id) + '">Editar</button><button class="btn sm ghost" data-act="auDel" data-id="' + esc(l.id) + '">Deshacer</button>') + '</span></div>';
       }).join('') + '</div>' : '<div class="sheet-b"><span class="muted">Todavía no se aplicó ningún lote.</span></div>') + '</section>';
@@ -124,7 +122,7 @@ export function initAumentos(ctx, k, h) {
     const ok = await confirmar((s.edit ? 'Se reemplaza el lote por estos montos: ' : '') + filas.length + (filas.length === 1 ? ' persona' : ' personas') + ' desde ' + monthLabel(s.desde) + ', +' + multi(dif) + ' por mes.' + (s.desde === thisMonth() ? '\n\nRige desde este mes: después no se va a poder editar ni deshacer.' : '\n\nSe puede editar o deshacer hasta que empiece ' + monthLabel(s.desde) + '.'),
       { titulo: s.edit ? '¿Guardar los cambios del lote?' : '¿Aplicar el aumento?', ok: s.edit ? 'Guardar' : 'Aplicar' });
     if (!ok) return;
-    const loteRow = { ambito: a, desde: s.desde + '-01', modo: s.modo, valor, redondeo: s.redondeo, motivo: s.motivo.trim() };
+    const loteRow = { ambito: a, desde: s.desde + '-01', modo: s.modo, valor, redondeo: 0, motivo: s.motivo.trim() };
     let lid = s.edit;
     try {
       if (lid) { await data.upd('lotes_aumento', lid, loteRow); for (const r of filasLote(lid)) await data.del('remuneraciones', r.id); }
@@ -139,7 +137,7 @@ export function initAumentos(ctx, k, h) {
   }
   function editar(a, id) {
     const l = loteDe(id); if (!l || fijo(l)) { toast('Ese lote ya rige: corregilo con otro lote'); return; }
-    const rs = filasLote(id), s = { ...nuevoEstado(), modo: l.modo, valor: l.modo === 'porcentaje' ? pctN(l.valor) : String(l.valor).replace('.', ','), desde: l.desde, redondeo: l.redondeo || 0, motivo: l.motivo || '', edit: id };
+    const rs = filasLote(id), s = { ...nuevoEstado(), modo: l.modo, valor: l.modo === 'porcentaje' ? pctN(l.valor) : String(l.valor).replace('.', ','), desde: l.desde, motivo: l.motivo || '', edit: id };
     rs.forEach(r => { s.sel.add(r.colaborador_id); });
     AD.au[a] = s;
     rs.forEach(r => { const c = colab(r.colaborador_id); if (!c) return; const x = calc(c, s); if (x.nuevo != null && Math.abs(x.nuevo - r.monto) > 0.01 && r.pct != null) s.pctPor[c.id] = pctN(r.pct); });
@@ -172,7 +170,7 @@ export function initAumentos(ctx, k, h) {
     auSel: t => { const a = t.dataset.a, s = st(a), g = t.dataset.g; const el = candidatos(a).filter(c => { const b = base(c, s); return b.r && !b.choque; });
       if (g === '*') el.forEach(c => s.sel.add(c.id)); else if (g === '') s.sel.clear(); else { const del = el.filter(c => grupoDe(a, c) === g); const todos = del.every(c => s.sel.has(c.id)); del.forEach(c => todos ? s.sel.delete(c.id) : s.sel.add(c.id)); }
       ctx.render(); },
-    auSet: t => { const s = st(t.dataset.a); s[t.dataset.k] = t.dataset.k === 'redondeo' ? +t.dataset.v : t.dataset.v; if (t.dataset.k === 'modo') s.valor = ''; ctx.render(); },
+    auSet: t => { const s = st(t.dataset.a); s[t.dataset.k] = t.dataset.v; if (t.dataset.k === 'modo') s.valor = ''; ctx.render(); },
     auOk: t => aplicar(t.dataset.a),
     auEdit: t => editar(t.dataset.a, t.dataset.id),
     auCancelar: t => { AD.au[t.dataset.a] = nuevoEstado(); ctx.render(); },
