@@ -905,7 +905,7 @@ function vCalendario() {
 // Redes › Clientes y planes: un renglón por cliente con su plan, si tiene Ads y (para admin) cuánto paga por mes.
 function vPlanes() {
   const af = S.af, q = norm(af.q);
-  const nombres = [...new Set(S.A.map(a => a.cliente))].filter(c => S.C.some(x => x.nombre === c));
+  const nombres = [...new Set(S.A.filter(a => a.tipo === 'Redes' || a.tipo === 'Ads').map(a => a.cliente))].filter(c => S.C.some(x => x.nombre === c));
   const todas = nombres.map(c => ({ c, ...servicioRedes(c) })).map(f => ({ ...f, base: f.redes || f.ads, est: vivo(f.redes) ? f.redes.estado : vivo(f.ads) ? f.ads.estado : 'Baja' }));
   const base = todas.filter(f => !af.estado || f.est === af.estado);
   const conAds = f => vivo(f.ads);
@@ -962,7 +962,7 @@ function vMis() {
   const yo = S.yo, mine = S.P.filter(p => hasResp(p, yo) && isOpen(p)).sort(sortByEntrega);
   const late = mine.filter(p => plazoOk(p, 'atrasados')), week = mine.filter(p => plazoOk(p, '7dias'));
   const later = mine.filter(p => p.entrega && diff(p.entrega) > 7), nodate = mine.filter(p => !p.entrega);
-  const cuentas = S.A.filter(a => a.estado === 'Activo' && hasResp(a, yo)).sort((a, b) => cmp(a.cliente, b.cliente));
+  const cuentas = S.A.filter(a => a.estado === 'Activo' && (a.tipo === 'Redes' || a.tipo === 'Ads') && hasResp(a, yo)).sort((a, b) => cmp(a.cliente, b.cliente));
   const myCl = S.C.filter(c => hasResp(c, yo)).sort((a, b) => cmp(a.nombre, b.nombre));
   const steps = pendientes().filter(m => m.responsable === yo);
   const tks = tareasDe(yo), tkLate = tks.filter(t => t.x.fecha && diff(t.x.fecha) < 0).length;
@@ -1106,7 +1106,7 @@ function vFicha() {
     '<dt>Carpeta</dt><dd>' + link(c.carpeta) + '</dd>' +
     '<dt>Notas</dt><dd>' + (c.notas ? '<span style="white-space:pre-wrap">' + esc(c.notas) + '</span>' : '<span class="muted">—</span>') + '</dd>' +
     '</dl></div></section>' + '</div><div class="stack">' +
-    '<section class="sheet"><div class="sheet-h"><h2>Redes</h2>' + (isStaff() && !vivo(servicioRedes(c.nombre).redes) ? '<button class="btn ghost sm" data-act="new" data-kind="abono" data-preset="' + esc(JSON.stringify({ cliente: c.nombre, tipo: 'Redes' })) + '">Sumar a Redes</button>' : isStaff() && !vivo(servicioRedes(c.nombre).ads) ? '<button class="btn ghost sm" data-act="sumarAds" data-c="' + esc(c.nombre) + '">Sumar Ads</button>' : '') + '</div>' + (as.length ? '<div class="sheet-b">' + servChips(c.nombre, { precio: true, todo: true }) + '</div><div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('No tiene Redes', '')) + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>' + (as.some(a => a.tipo !== 'Redes' && a.tipo !== 'Ads') ? 'Servicios mensuales' : 'Redes') + '</h2>' + (isStaff() && !vivo(servicioRedes(c.nombre).redes) ? '<button class="btn ghost sm" data-act="new" data-kind="abono" data-preset="' + esc(JSON.stringify({ cliente: c.nombre, tipo: 'Redes' })) + '">Sumar a Redes</button>' : isStaff() && !vivo(servicioRedes(c.nombre).ads) ? '<button class="btn ghost sm" data-act="sumarAds" data-c="' + esc(c.nombre) + '">Sumar Ads</button>' : '') + '</div>' + (as.length ? '<div class="sheet-b">' + servChips(c.nombre, { precio: true, todo: true }) + '</div><div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('No tiene Redes', '')) + '</section>' +
     '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' + '</div></div>';
   else if (tab === 'marca') body = fm().html(c);
   else if (tab === 'trabajos') body = '<div class="stack">' + (S.T && isStaff() ? tk().fichaHtml(c.nombre) : '') + redesFicha(c) +
@@ -1231,7 +1231,9 @@ const VIEW_FN = { inicio: vInicio, redes: () => vRedes(), tickets: () => vTicket
 document.addEventListener('change', e => { if (e.target.id === 'k-portal') { const b = document.querySelector('.k-inv'); if (b) b.hidden = !e.target.checked; } });
 // Alta de cliente: Ads arrastra Redes (no hay Ads sin Redes) y sacar Redes saca Ads.
 document.addEventListener('change', e => {
-  const t = e.target; if (!t.matches || !t.matches('[data-srvab]')) return;
+  const t = e.target;
+  if (t.matches && t.matches('[data-srvpr]')) { const sel = document.querySelector('[data-srvmodo="' + t.dataset.srvpr + '"]'); if (sel) sel.hidden = !t.checked; return; }
+  if (!t.matches || !t.matches('[data-srvab]')) return;
   const r = document.querySelector('[data-srvab="Redes"]'), a = document.querySelector('[data-srvab="Ads"]');
   if (t === a && a.checked && r) r.checked = true;
   if (t === r && !r.checked && a) a.checked = false;
@@ -1369,9 +1371,9 @@ const FORMS = {
     { k: 'canva', label: 'Canva', type: 'url', ph: 'https://', adv: 1 },
     { k: 'notas', label: 'Notas', type: 'textarea', full: 1, adv: 1 },
   ], masLabel: 'Links, entregables y notas', defaults: () => ({ estado: 'Por empezar', fechaInicio: today(), responsables: [] }), can: rec => rec ? canEditProj(rec) : isStaff() },
-  abono: { arr: 'A', title: 'servicio de Redes', nuevo: 'Cliente en Redes', label: a => a.cliente + ' · ' + abonoLabel(a), fields: [
+  abono: { arr: 'A', title: 'servicio mensual', nuevo: 'Servicio mensual', label: a => a.cliente + ' · ' + abonoLabel(a), fields: [
     { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, full: 1 },
-    { k: 'tipo', label: 'Servicio', type: 'select', opts: () => S.L.tiposAbono, req: 1, hint: 'Ads va siempre junto con Redes: el cliente tiene que tener Redes.' },
+    { k: 'tipo', label: 'Servicio', type: 'select', opts: () => [...new Set([...(S.L.tiposAbono || ['Redes', 'Ads']), ...(S.L.tipos || [])])], req: 1, hint: 'Lo que se cobra todos los meses con precio fijo: Redes, Ads o, si va mes a mes, Audiovisual, Diseño… Ads va siempre junto con Redes.' },
     { k: 'plan', label: 'Plan', type: 'select', opts: () => S.L.planes, blank: 'Sin plan' },
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
     { k: 'desde', label: 'Desde (mes)', type: 'month' },
@@ -1455,12 +1457,12 @@ function openForm(kind, id, preset) {
   if (kind === 'cliente' && !ro) {
     const tAb = S.L.tiposAbono || ['Redes', 'Ads'], tPr = (S.L.tipos || []).filter(t => !tAb.includes(t));
     servBox = rec
-      ? '<div class="field full"><span class="lbl">Servicios</span><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (servPills(rec.nombre).replace('<span class="srvs"></span>', '<span class="muted">Todavía ninguno</span>')) + '</div><div class="toolbar" style="margin-top:8px"><button type="button" class="btn sm" data-act="new" data-kind="abono" data-preset="' + esc(JSON.stringify({ cliente: rec.nombre })) + '">+ Abono (redes, ads)</button><button type="button" class="btn sm" data-act="new" data-kind="proyecto" data-preset="' + esc(JSON.stringify({ cliente: rec.nombre })) + '">+ Proyecto (branding, web…)</button></div><span class="hint">Los servicios salen solos de sus abonos y proyectos.</span></div>'
+      ? '<div class="field full"><span class="lbl">Servicios</span><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (servPills(rec.nombre).replace('<span class="srvs"></span>', '<span class="muted">Todavía ninguno</span>')) + '</div><div class="toolbar" style="margin-top:8px"><button type="button" class="btn sm" data-act="new" data-kind="abono" data-preset="' + esc(JSON.stringify({ cliente: rec.nombre })) + '">+ Servicio mensual</button><button type="button" class="btn sm" data-act="new" data-kind="proyecto" data-preset="' + esc(JSON.stringify({ cliente: rec.nombre })) + '">+ Proyecto (branding, web…)</button></div><span class="hint">Mensual: Redes, Ads o lo que se cobre todos los meses con precio fijo. Proyecto: un trabajo puntual con su presupuesto (por ejemplo, un audiovisual de vez en cuando).</span></div>'
       : '<div class="field full srvpick"><span class="lbl">¿Qué le vamos a hacer?</span><div class="multi">' +
         tAb.map(t => '<label><input type="checkbox" data-srvab="' + esc(t) + '"> ' + esc(t) + ' <small class="muted">· mensual</small></label>').join('') +
-        tPr.map(t => '<label><input type="checkbox" data-srvpr="' + esc(t) + '"> ' + esc(t) + '</label>').join('') + '</div>' +
+        tPr.map(t => '<label class="srv-pr"><input type="checkbox" data-srvpr="' + esc(t) + '"> ' + esc(t) + '<select class="in sm" data-srvmodo="' + esc(t) + '" aria-label="Cómo se cobra ' + esc(t) + '" hidden><option value="puntual">puntual (un proyecto)</option><option value="mensual">mes a mes (precio fijo)</option></select></label>').join('') + '</div>' +
         '<div id="srvplan" hidden style="margin-top:10px;max-width:260px"><label class="lbl" for="f-srvplan">Plan de redes</label><select id="f-srvplan">' + optsFrom(S.L.planes, '', '—') + '</select></div>' +
-        '<span class="hint">Se crea un abono por cada servicio mensual (desde este mes) y un proyecto “Por empezar” por cada trabajo puntual. Después los ajustás.</span></div>';
+        '<span class="hint">Lo mensual (Redes, Ads o lo que elijas “mes a mes”) se cobra todos los meses con su precio. Lo puntual se crea como proyecto “Por empezar” y se cobra por presupuesto cada vez.</span></div>';
   }
   const extra = servBox + adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
   const p = $('#panel');
@@ -1509,7 +1511,10 @@ async function saveForm() {
   const btn = $('#savebtn'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
     const srvAb = kind === 'cliente' && !prev ? [...document.querySelectorAll('[data-srvab]:checked')].map(x => x.dataset.srvab) : [];
-    const srvPr = kind === 'cliente' && !prev ? [...document.querySelectorAll('[data-srvpr]:checked')].map(x => x.dataset.srvpr) : [];
+    const srvChk = kind === 'cliente' && !prev ? [...document.querySelectorAll('[data-srvpr]:checked')].map(x => x.dataset.srvpr) : [];
+    const modoDe = t => ((document.querySelector('[data-srvmodo="' + t + '"]') || {}).value || 'puntual');
+    const srvPr = srvChk.filter(t => modoDe(t) !== 'mensual');
+    srvAb.push(...srvChk.filter(t => modoDe(t) === 'mensual'));
     const plan = ($('#f-srvplan') || {}).value || '';
     let tks = null;
     if (kind === 'proyecto' && S.T && Array.isArray(out.etapas)) { tks = out.etapas; delete out.etapas; }

@@ -2138,3 +2138,4 @@ svg line,svg path[fill="none"],svg polyline{vector-effect:non-scaling-stroke}
 .kqs-in>.kq:is(:first-child,:last-child:nth-child(n+3)) .kq-s{color:rgba(255,255,255,.82)}
 .kqs-in>.kq:is(:first-child,:last-child:nth-child(n+3)) :is(.kq-c,.pill-n,.pill-s){background:rgba(255,255,255,.18);color:#fff}
 .kqs-in{padding-bottom:14px!important}
+.srv-pr{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}.srv-pr select{width:auto;padding:3px 8px;font-size:13px}
