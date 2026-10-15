@@ -94,6 +94,7 @@ const BTN_IC = [
 ];
 const BTN_NO = '.link,.seg button,.subnav button,.ic-only,[data-noic],.dlg-b button';
 function iconoBoton(b) {
+  if (!b.classList.contains('is-ia') && /✨|con ia\b|mr\.? piggy|^armar|cierre en un clic|^volver a armar/i.test(b.textContent || '') && !b.closest('td,.mas-m')) b.classList.add('is-ia');
   if (b.dataset.ic === '1' || b.querySelector('svg,img,.ici') || b.matches(BTN_NO) || b.closest('td,.rows,.tbl,.mas-m,.fmenu')) return;
   const t = (b.textContent || '').trim(); if (!t || t.length > 42 || /^[+←→✕×]/.test(t)) return;
   const hit = BTN_IC.find(([rx]) => rx.test(t)); if (!hit || !ICON[hit[1]]) return;

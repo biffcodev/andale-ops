@@ -1264,10 +1264,12 @@ export function initAdmin(ctx) {
       (mons.length > 1 ? '<div class="seg" role="group" aria-label="Moneda">' + mons.map(mo => '<button data-act="plMon" data-v="' + mo + '" aria-pressed="' + (mo === mon) + '">' + (mo === 'ARS' ? 'Pesos' : mo === 'USD' ? 'Dólares' : mo) + '</button>').join('') + '</div>' : '') +
       '<div class="seg" role="group" aria-label="Meses">' + [3, 6].map(k => '<button data-act="plN" data-v="' + k + '" aria-pressed="' + (k === P.n) + '">' + k + ' meses</button>').join('') + '</div></div></div>';
     // Hoy
-    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.banco + '</span><h2>Hoy</h2></div><div class="sx-ns n3">' +
-      n(M(fl.hay), 'Hay en las cuentas', 'en ' + (mon === 'ARS' ? 'pesos' : mon) + ' · <button class="btn link" data-act="go" data-view="ajustes" data-tab="bancos">ver cuentas</button>', fl.hay < 0 ? 'neg' : '') +
-      n(M(debeTot), 'Nos deben', vencTot > 0.009 ? '<span class="t-crit">' + esc(M(vencTot)) + ' vencido</span> · <button class="btn link" data-act="go" data-view="cuentas">ver quién</button>' : 'nada vencido') +
-      n(M(x0.sal.sueldos), 'Falta pagar este mes', 'sueldos, honorarios y extras · <button class="btn link" data-act="go" data-view="pagos">ver</button>') + '</div></section>';
+    // Hoy: tres bloques con jerarquía (azul = lo que hay, blanco = lo que nos deben, tinta = lo que hay que pagar)
+    const stc = (cls, big, lab, sub, neg) => '<div class="stc ' + cls + (neg ? ' neg' : '') + '"><span class="stc-l">' + lab + '</span><b>' + esc(big) + '</b><small>' + sub + '</small></div>';
+    h += '<section class="stc3" aria-label="Hoy">' +
+      stc('azul', M(fl.hay), 'Hay en las cuentas', 'en ' + (mon === 'ARS' ? 'pesos' : mon) + ' · <button class="btn link" data-act="go" data-view="ajustes" data-tab="bancos">ver cuentas</button>', fl.hay < 0) +
+      stc('', M(debeTot), 'Nos deben', vencTot > 0.009 ? '<span class="t-crit">' + esc(M(vencTot)) + ' vencido</span> · <button class="btn link" data-act="go" data-view="cuentas">ver quién</button>' : 'nada vencido') +
+      stc('tinta', M(x0.sal.sueldos), 'Falta pagar este mes', 'sueldos, honorarios y extras · <button class="btn link" data-act="go" data-view="pagos">ver</button>') + '</section>';
     // Lo que viene
     const max = Math.max(1, ...fl.F.map(x => Math.max(x.entra, x.sale)), ...fl.F.map(x => Math.abs(x.saldo)), Math.abs(fl.hay));
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.calendario + '</span><h2>Lo que viene</h2><div class="sx-der">' + leyenda([['Entra', 'var(--g-in)'], ['Sale', 'var(--g-out)'], ['Queda en las cuentas', 'var(--g-line)']]) + '</div></div>' +

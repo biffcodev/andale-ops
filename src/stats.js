@@ -116,7 +116,7 @@ export function initStats(ctx, k) {
 
   /* ---------- vista ---------- */
   function vStats() {
-    const st = AD.st, r = rango(AD.per, hoy()), b = base(r), prev = base(r.prev, r.prev.grupos.length === r.grupos.length ? r.prev.grupos : null), C1 = 'var(--g-in)', C2 = 'var(--g-out)', C3 = 'var(--c4)';
+    const st = AD.st, r = rango(AD.per, hoy()), b = base(r), prev = base(r.prev, r.prev.grupos.length === r.grupos.length ? r.prev.grupos : null), C1 = 'var(--g-in)', C2 = 'var(--g-out-ink)', C3 = 'var(--c4)';
     const anios = [...new Set(AD.MV.map(v => (v.fecha || '').slice(0, 4)))].filter(Boolean).sort().reverse();
     const ti = sum(b.ingMes), te = sum(b.egMes), res = ti - te, lab = sum(b.labMes), meses = r.meses;
     const pi = sum(prev.ingMes), pe = sum(prev.egMes), pl = sum(prev.labMes);

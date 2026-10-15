@@ -1884,16 +1884,16 @@ tr.pp-sub td.name{padding-left:14px}
 .ir h3{margin:0 0 12px;font-size:15px;font-weight:750;letter-spacing:-.01em}
 .ir h3 span{font-weight:600;color:var(--muted);font-size:13px;margin-left:6px}
 .ir-hero{position:relative;overflow:hidden;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:30px 30px 26px;border-radius:24px;color:#fff;
-  background:radial-gradient(90% 130% at 100% 0%,rgba(255,202,58,.55) 0%,transparent 55%),linear-gradient(125deg,#006699 0%,#3399CC 62%,#5BB6D9 100%)}
-.ir-hero::after{content:"";position:absolute;right:-60px;bottom:-90px;width:260px;height:260px;border-radius:50%;background:rgba(255,255,255,.12)}
+  background:#1CB0F6}
+.ir-hero::after{content:"";position:absolute;right:-50px;bottom:-110px;width:280px;height:280px;border-radius:50%;background:#1899D6}
 .ir-hero-t{position:relative;z-index:1;display:grid;gap:4px}
 .ir-eb{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.9}
 .ir .ir-hero h2,.po-sec .ir .ir-hero h2{margin:0;font-size:clamp(30px,4vw,44px);line-height:1.02;font-weight:800;letter-spacing:-.03em;color:#fff}
 .ir-hero p{margin:0;font-size:16px;font-weight:600;opacity:.95}
 .ir-hero-pill{justify-self:start;margin-top:10px;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.22);font-size:13px;font-weight:650}
 .ir-hero-a{position:relative;z-index:1}
-.ir-hero-a .btn{background:#fff;color:#17171C;border:0;box-shadow:0 6px 18px -6px rgba(0,0,0,.25)}
-.ir-hero-a .btn:hover{background:#fff;filter:brightness(.97)}
+.ir-hero-a .btn{background:#1E1E1E;color:#fff;border:0;box-shadow:none}
+.ir-hero-a .btn:hover{background:#000;filter:none}
 .ir-hero-a .btn svg{width:16px;height:16px}
 .ir-kpis{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:12px}
 .ir-kpi{display:grid;gap:4px;align-content:start;padding:16px 18px 15px;border-radius:18px;background:color-mix(in srgb,var(--c) 13%,var(--surface))}
@@ -1902,7 +1902,7 @@ tr.pp-sub td.name{padding-left:14px}
 .ir-kpi b{font-size:clamp(26px,2.6vw,34px);line-height:1.05;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .ir-d{justify-self:start;font-size:12.5px;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--surface)}
 .ir-d small{font-weight:500;color:var(--muted)}
-.ir-d.up{color:#00557F}.ir-d.down{color:#B4570F}.ir-d.eq{color:var(--muted)}
+.ir-d.up{color:var(--pos)}.ir-d.down{color:var(--neg)}.ir-d.eq{color:var(--muted)}
 .ir-d.nada{font-weight:500;color:var(--muted);background:transparent;padding-left:0}
 .ir-vacio{margin:0;color:var(--muted)}
 .ir-graf{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px;align-items:start}
@@ -1915,8 +1915,8 @@ tr.pp-sub td.name{padding-left:14px}
 .ir-cb-h{display:flex;justify-content:space-between;gap:8px;font-size:13.5px;font-weight:650}
 .ir-cb-h i{font-style:normal;color:var(--muted);font-weight:500}
 .ir-cb-h b{font-size:12.5px;padding:1px 8px;border-radius:999px}
-.ir-cb-h b.up{color:#00557F;background:color-mix(in srgb,#3399CC 16%,var(--surface))}
-.ir-cb-h b.down{color:#B4570F;background:color-mix(in srgb,#FF924C 18%,var(--surface))}
+.ir-cb-h b.up{color:var(--pos);background:var(--pos-soft)}
+.ir-cb-h b.down{color:var(--neg);background:var(--neg-soft)}
 .ir-bar{display:flex;align-items:center;gap:8px;height:14px}
 .ir-bar i{display:block;height:100%;border-radius:999px;min-width:6px;transition:width .4s ease}
 .ir-bar.prev i{background:var(--ir-prev);height:9px}
@@ -1945,23 +1945,71 @@ tr.pp-sub td.name{padding-left:14px}
 @media (max-width:860px){.ir-graf{grid-template-columns:1fr}.ir-hero{padding:24px 20px 20px;border-radius:20px}.ir-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media print{.ir-hero-a{display:none}}
 
-/* ---------- Paleta de la app (v3): calma y sin atarse al coral de la marca ----------
-   Acento azul petróleo; montos en tinta (no en verde); entra = azul, sale = naranja suave; rojo solo para vencido o error. */
+/* ---------- Sistema visual v4: serio y llamativo ----------
+   90 / 9 / 1: casi todo neutro (fondo gris claro, superficies blancas elevadas, tinta), un azul vivo como único color de marca y acción,
+   y los colores funcionales solo para estados, siempre con su versión suave de fondo. Violeta = lo que propone la IA. Sin degradés. */
 :root{
-  --accent:#1F6F99; --accent-ink:#FFFFFF; --accent-soft:#E4F0F6; --accent-text:#165A7E;
-  --ok:#3F7D5C; --warn:#B7791F; --crit:#C8483F; --money:var(--fg);
-  --s-entregado:#5E9A3A; --s-cancelado:#A3A9B6; --p-urgente:#E0662E;
-  --g-in:#3399CC; --g-in-ink:#1F6F99; --g-out:#FFA45C; --g-out-ink:#B4570F; --g-line:#3C4150;
-  --pos:#1F6F99; --pos-soft:#E4F0F6; --neg:#B4570F; --neg-soft:#FFF0E3; --hot:#FF9900;
+  --bg:#F6F7F9; --surface:#FFFFFF; --surface-2:#F1F3F6; --line:#E2E5EA; --line-2:#D3D8DF; --fg:#1E1E1E; --muted:#6B7280;
+  --accent:#1CB0F6; --accent-dark:#1899D6; --accent-ink:#FFFFFF; --accent-soft:#DDF4FF; --accent-text:#0B86C4;
+  --ink:#1E1E1E; --ai:#CE82FF; --ai-text:#9443D6; --ai-soft:#F6E8FF;
+  --ok:#3E9A00; --ok-c:#56CB01; --warn:#B98A00; --warn-c:#FFC800; --att:#D97A00; --att-c:#FF9600; --crit:#E53B3B; --crit-c:#FF4B4B;
+  --money:var(--fg);
+  --s-empezar:#8A93A3; --s-curso:#1CB0F6; --s-revision:#FFC800; --s-entregado:#56CB01; --s-pausado:#A3AAB7; --s-cancelado:#A3AAB7; --s-confirmar:#FF9600; --s-presup:#1899D6;
+  --t-naranja:#FF9600; --t-rosa:#CE82FF; --t-ambar:#FFC800;
+  --p-urgente:#FF4B4B; --p-alta:#FF9600; --p-media:#1CB0F6; --p-baja:#A3AAB7;
+  --c1:#1CB0F6; --c2:#FF9600; --c3:#56CB01; --c4:#CE82FF; --c5:#FFC800; --c6:#1E1E1E; --c7:#FF4B4B; --c8:#1899D6; --c9:#8A93A3; --c10:#9BE0FF;
+  --g-in:#1CB0F6; --g-in-ink:#0B86C4; --g-out:#C3CBD6; --g-out-ink:#5B6474; --g-line:#1E1E1E;
+  --pos:#0B86C4; --pos-soft:#DDF4FF; --neg:#D97A00; --neg-soft:#FFF1DE; --hot:#FF9600;
+  --r-sm:10px; --r-md:14px; --r-lg:22px; --r-xl:28px;
+  --shadow-sm:0 1px 2px rgba(17,24,39,.05); --shadow-md:0 1px 2px rgba(17,24,39,.04),0 8px 24px -10px rgba(17,24,39,.12);
+  --shadow:0 24px 56px -20px rgba(17,24,39,.28);
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --accent:#3399CC; --accent-soft:#12303F; --accent-text:#7CC2E6; --ok:#6FB58C; --crit:#F07A70; --money:var(--fg);
-  --g-in:#3399CC; --g-in-ink:#7CC2E6; --g-out:#FF924C; --g-out-ink:#FFB27A; --g-line:#C9CCD6;
-  --pos:#7CC2E6; --pos-soft:#12303F; --neg:#FFB27A; --neg-soft:#3A2614; } }
+  --bg:#111215; --surface:#1A1C21; --surface-2:#22252C; --line:#2C3038; --line-2:#3A3F49; --fg:#F2F3F5; --muted:#9AA1AE;
+  --accent:#1CB0F6; --accent-dark:#1899D6; --accent-soft:#0D3346; --accent-text:#6CCBFA; --ink:#F2F3F5; --ai-text:#D9A6FF; --ai-soft:#2D1D3D;
+  --ok:#7ED957; --warn:#FFD54A; --att:#FFB04D; --crit:#FF7676; --money:var(--fg);
+  --g-out:#4A5260; --g-out-ink:#AEB6C2; --g-line:#F2F3F5; --pos:#6CCBFA; --pos-soft:#0D3346; --neg:#FFB04D; --neg-soft:#3A2810;
+  --shadow-md:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5); } }
 :root[data-theme="dark"]{
-  --accent:#3399CC; --accent-soft:#12303F; --accent-text:#7CC2E6; --ok:#6FB58C; --crit:#F07A70; --money:var(--fg);
-  --g-in:#3399CC; --g-in-ink:#7CC2E6; --g-out:#FF924C; --g-out-ink:#FFB27A; --g-line:#C9CCD6;
-  --pos:#7CC2E6; --pos-soft:#12303F; --neg:#FFB27A; --neg-soft:#3A2614; }
+  --bg:#111215; --surface:#1A1C21; --surface-2:#22252C; --line:#2C3038; --line-2:#3A3F49; --fg:#F2F3F5; --muted:#9AA1AE;
+  --accent:#1CB0F6; --accent-dark:#1899D6; --accent-soft:#0D3346; --accent-text:#6CCBFA; --ink:#F2F3F5; --ai-text:#D9A6FF; --ai-soft:#2D1D3D;
+  --ok:#7ED957; --warn:#FFD54A; --att:#FFB04D; --crit:#FF7676; --money:var(--fg);
+  --g-out:#4A5260; --g-out-ink:#AEB6C2; --g-line:#F2F3F5; --pos:#6CCBFA; --pos-soft:#0D3346; --neg:#FFB04D; --neg-soft:#3A2810;
+  --shadow-md:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5); }
+body{background:var(--bg);color:var(--fg)}
+/* Superficies: blancas, elevadas con sombra suave y sin borde duro */
+.sheet,.kpis,.hks,.sheet.kqs{border:0!important;border-radius:var(--r-lg);box-shadow:var(--shadow-md)}
+.kpis>.kpi{box-shadow:none!important;border:0!important;background:transparent}
+/* Portada: bloque azul plano (sin degradé), el texto en blanco */
+.hero{background:var(--accent)!important}
+.hero::after{display:none}
+.sheet-h{border-bottom-color:color-mix(in srgb,var(--line) 75%,transparent)}
+.side{background:var(--surface);border-right:0;box-shadow:1px 0 0 var(--line)}
+/* Botones: siempre pill. Un primario azul por vista; la tinta como alternativa de peso */
+.btn{border-radius:999px;padding:7px 15px;border-color:var(--line-2);font-weight:600}
+.btn.sm{padding:5px 12px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:650}
+.btn.primary:hover{background:var(--accent-dark);border-color:var(--accent-dark);filter:none}
+.btn.dark,.btn.ink{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.btn.ghost{border-color:transparent}
+.btn.ghost:hover{background:var(--surface-2)}
+.btn.danger:not(.ghost),.btn.primary.danger{background:var(--crit-c);border-color:var(--crit-c);color:#fff}
+.btn.is-ia{color:var(--ai-text)}
+.btn.is-ia .ici-b{color:var(--ai)}
+.btn.primary.is-ia{background:var(--ai);border-color:var(--ai);color:#fff}
+.btn.primary.is-ia .ici-b{color:#fff}
+/* Campos */
+.in,.field input,.field select,.field textarea{border-radius:12px;border-color:var(--line-2)}
+.in:focus,.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+/* Menú: el activo en azul suave con texto azul */
+.snav-i[aria-current="page"],.snav-sub button[aria-current="page"],.snav-sub a[aria-current="page"]{background:var(--accent-soft);color:var(--accent-text)}
+/* Mr. Piggy (IA): bloque de tinta, la presencia del asistente */
+.askbtn{background:var(--ink)!important;color:var(--surface)!important;border-color:var(--ink)!important}
+/* Píldoras: fondo suave del color, texto del mismo color oscurecido */
+:root{--pill-k:62%;--pill-mix:#000}
+.days.pend{color:var(--att);background:var(--neg-soft)}
+.seg-p.clic{background:var(--ai-soft);color:var(--ai-text)}
+.seg-ev.prop .seg-ic{background:var(--ai-soft);color:var(--ai-text)}
 .money,.r.money,b.money{color:inherit}
 .pill-n.pos{background:var(--pos-soft);color:var(--pos)}
 .pill-n.neg{background:var(--neg-soft);color:var(--neg)}
@@ -2010,3 +2058,17 @@ svg line,svg path[fill="none"],svg polyline{vector-effect:non-scaling-stroke}
 @media (max-width:600px){.seg-dia{grid-template-columns:1fr;gap:6px}}
 .pill-n.cero{background:var(--surface-2);color:var(--muted)}
 .sx-n.neg b{color:var(--neg)}
+/* Bloques de dato con acento (azul / blanco / tinta) */
+.stc3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.stc{display:grid;gap:6px;align-content:start;padding:22px 24px 20px;border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow-md);min-width:0}
+.stc-l{font-size:14px;font-weight:650}
+.stc b{font-size:clamp(26px,2.8vw,38px);line-height:1.05;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.stc small{font-size:13px;color:var(--muted)}
+.stc .btn.link{font-size:13px}
+.stc.azul{background:var(--accent);color:#fff}
+.stc.tinta{background:#1E1E1E;color:#fff}
+.stc.azul small,.stc.tinta small,.stc.azul .btn.link,.stc.tinta .btn.link{color:rgba(255,255,255,.82)}
+.stc.azul .btn.link:hover,.stc.tinta .btn.link:hover{color:#fff}
+.stc.tinta .t-crit{color:#FF8A8A}
+.stc.neg b{text-decoration:underline wavy rgba(255,255,255,.5)}
+@media (max-width:860px){.stc3{grid-template-columns:1fr}}

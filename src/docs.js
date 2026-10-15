@@ -412,16 +412,16 @@ export async function informeDoc(i) {
   const { F } = D, M = D.M, CW = D.cw, WHITE = rgb(1, 1, 1);
   const mix = (h, k) => { const c = [1, 3, 5].map(j => parseInt(h.slice(j, j + 2), 16) / 255); return rgb(...c.map(v => v * k + (1 - k))); };
   const dark = (h, k) => { const c = [1, 3, 5].map(j => parseInt(h.slice(j, j + 2), 16) / 255); return rgb(...c.map(v => v * k)); };
-  const UP = hex('#1F6F99'), DOWN = hex('#B4570F'), PREV = hex('#E4E6EC');
+  const UP = hex('#0B86C4'), DOWN = hex('#D97A00'), PREV = hex('#E4E6EC');
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
   D.addPage();
   // Encabezado y pie de todos los documentos de àndale; el color va en el contenido.
   cabecera(D, 'Informe de redes', cap(i.mesLabel), i.emitido ? 'Emitido ' + i.emitido : '');
   D.y -= 30;
-  D.text('Informe de redes · ' + cap(i.mesLabel), M, D.y, F.s, 10, hex('#1F6F99'));
+  D.text('Informe de redes · ' + cap(i.mesLabel), M, D.y, F.s, 10, hex('#0B86C4'));
   D.y -= 30; D.text(i.cliente || '', M, D.y, F.d, 26, COL.ink);
   const conAnt = met.filter(x => variacion(x) != null), sub = conAnt.filter(x => variacion(x) > 0).length;
-  if (conAnt.length) { D.y -= 24; const t = sub + ' de ' + conAnt.length + ' métricas crecieron contra el mes anterior', w = D.wid(t, F.s, 9) + 20; D.rect(M, D.y - 5, w, 18, mix('#3399CC', 0.14), 9); D.text(t, M + 10, D.y + 1, F.s, 9, hex('#1F6F99')); }
+  if (conAnt.length) { D.y -= 24; const t = sub + ' de ' + conAnt.length + ' métricas crecieron contra el mes anterior', w = D.wid(t, F.s, 9) + 20; D.rect(M, D.y - 5, w, 18, mix('#1CB0F6', 0.15), 9); D.text(t, M + 10, D.y + 1, F.s, 9, hex('#0B86C4')); }
   D.y -= 18; D.hline(D.y, M, W - M, COL.line); D.y -= 18;
   const titulo = (t, extra) => { D.need(40); D.y -= 18; D.text(t, M, D.y, F.b, 12.5, COL.ink); if (extra) D.text(extra, M + D.wid(t, F.b, 12.5) + 8, D.y, F.s, 9.5, COL.muted); D.y -= 12; };
   // Números

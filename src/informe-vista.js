@@ -1,7 +1,7 @@
 // Informe mensual de redes tal como lo ve el cliente: la misma vista en la app (vista previa) y en el portal.
 // Encabezado de color, números grandes en tarjetas de color suave, gráfico de "este mes vs. el anterior",
 // reparto por red, lo que se publicó por formato, el texto, lo que mejor funcionó y lo que viene. Sin bordes.
-export const PALETA = ['#3399CC', '#FF924C', '#8AC926', '#CC3399', '#FFCA3A', '#006699', '#990066', '#C5CA30', '#FF6600', '#99CC33'];
+export const PALETA = ['#1CB0F6', '#FF9600', '#56CB01', '#CE82FF', '#FFC800', '#1899D6', '#9BE0FF', '#8A93A3'];
 export const PUBLICADA = ['Programada', 'Publicada', 'Aprobada'];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const fmtN = v => v == null || v === '' || isNaN(+v) ? '—' : Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 });
@@ -63,7 +63,7 @@ export function informeVista(o) {
   if (comp.length || red || fmts.length) {
     h += '<section class="ir-graf">';
     if (comp.length) {
-      h += '<div class="ir-card ir-comp"><h3>Este mes vs. el anterior</h3><div class="ir-ley"><span><i style="background:var(--ir-prev)"></i>Mes anterior</span><span><i style="background:linear-gradient(90deg,#3399CC 0 33%,#FF924C 33% 66%,#8AC926 66%)"></i>Este mes</span></div>' +
+      h += '<div class="ir-card ir-comp"><h3>Este mes vs. el anterior</h3><div class="ir-ley"><span><i style="background:var(--ir-prev)"></i>Mes anterior</span><span><i style="background:linear-gradient(90deg,#1CB0F6 0 33%,#FF9600 33% 66%,#56CB01 66%)"></i>Este mes</span></div>' +
         comp.map((x, i) => {
           const mx = Math.max(+x.valor, +x.anterior) || 1, v = variacion(x), c = PALETA[met.indexOf(x) % PALETA.length];
           return '<div class="ir-cb"><div class="ir-cb-h"><span>' + esc(x.nombre) + (x.red ? ' <i>· ' + esc(x.red) + '</i>' : '') + '</span>' + (v != null ? '<b class="' + (v >= 0 ? 'up' : 'down') + '">' + (v > 0 ? '+' : '') + v + '%</b>' : '') + '</div>' +
