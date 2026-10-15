@@ -1029,6 +1029,10 @@ export function initAdmin(ctx) {
       top: f ? '' : iaBox,
       extra: (f && f.cobrado > 0 ? '<p class="formnote">Cobrado: ' + money(f.cobrado, f.moneda) + '. Los cobros están en Gastos e ingresos.</p>' : '') + (opts.archivo ? '<p class="formnote">Desde Drive: <a href="' + esc(opts.archivo.link) + '" target="_blank" rel="noopener">' + esc(opts.archivo.nombre) + '</a>. Al guardar queda unido a esta factura.</p>' : ''),
       onSave: async v => {
+        // La misma factura cargada dos veces deja una deuda que no existe (una queda cobrada y la otra "vencida").
+        const nNum = x => String(x || '').split(/\D+/).filter(Boolean).map(t => t.replace(/^0+/, '') || '0').join('-');
+        const dup = v.numero && nNum(v.numero) ? AD.F.find(x => !x.anulada && (!f || x.id !== f.id) && x.tipo === v.tipo && (x.emisor || '') === (v.emisor || '') && nNum(x.numero) === nNum(v.numero)) : null;
+        if (dup) throw new Error('La factura N° ' + dup.numero + ' ya está cargada (' + dup.cliente + (dup.periodo ? ', ' + monthLabel(dup.periodo) : '') + '). Si es la misma, abrí esa y editala en vez de cargarla de nuevo.');
         const row = { cliente_id: data.ids.cliente(v.cliente), tipo: v.tipo, emisor: v.emisor || '', numero: v.numero, periodo: v.periodo ? v.periodo + '-01' : null, fecha: v.fecha, vencimiento: v.vencimiento || null, moneda: v.moneda, monto: v.monto, concepto: v.concepto, link_pdf: v.link_pdf, notas: v.notas };
         const archivo = opts.archivo || (AD.form && AD.form.archivo) || null;
         let fid = f && f.id;
