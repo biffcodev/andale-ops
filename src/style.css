@@ -9,7 +9,9 @@
   --s-empezar:#7C8496; --s-curso:#2F6BF0; --s-revision:#F2A100; --s-entregado:#0A9B62; --s-pausado:#8B7FC7; --s-cancelado:#E2445C; --s-confirmar:#A25DDC; --s-presup:#0B97A6;
   --t-naranja:#FF7A1A; --t-rosa:#E8489A; --t-ambar:#F2A100;
   --p-urgente:#E2445C; --p-alta:#FF7A1A; --p-media:#2F6BF0; --p-baja:#9AA1B0;
-  --f-display:"Delight", "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* La app usa Inter en todo; Delight queda solo para lo que imita a los documentos (PDF, impresión, propuestas). */
+  --f-display:"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-doc:"Delight", "Inter", ui-sans-serif, system-ui, sans-serif;
   --f-body:"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --r:10px; --shadow:0 18px 40px -18px rgba(23,24,31,.35); --side:236px;
@@ -484,7 +486,7 @@ details.share>summary::-webkit-details-marker{display:none}
   .pr-meta{display:grid;text-align:right;font-size:8.5pt;line-height:1.35;color:#7A7C86}
   .pr-meta b{color:#17171C;font-size:9.5pt}
   .pr-f{display:flex;align-items:baseline;gap:12px;padding:2.5mm 0 0;margin-top:5mm;border-top:.6pt solid #d9d9de;font-size:7.5pt;color:#6B6B6B}
-  .pr-f b{font-family:var(--f-display);font-size:9pt;color:#17171C}
+  .pr-f b{font-family:var(--f-doc);font-size:9pt;color:#17171C}
   .pr-ley{margin-left:auto;color:#A3A3A3}.pr-ley i{font-style:normal;color:#E8322F}
   .subnav,.askbtn,.iahome,.ia-ov,.iacard .toolbar{display:none!important}
   .pr-fijo{position:fixed;left:14mm;right:14mm;bottom:7mm;margin:0;background:#fff}
@@ -905,3 +907,8 @@ select.tk-prio option{color:var(--fg);background:var(--surface)}
 .ig-cred textarea{font-family:var(--f-mono);font-size:12px}
 .panel-b>.full,.panel-b .ig-cred{grid-column:1/-1;min-width:0}
 .ig-cred .mas-b>*{min-width:0}
+
+/* Títulos en Inter: un poco más apretados para que no se vean planos */
+h1,h2,h3{letter-spacing:-.02em}
+h1{font-weight:700}
+h2,h3{font-weight:650}
