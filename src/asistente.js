@@ -100,9 +100,20 @@ export function initAsistente(ctx, k) {
       if (v.cliente && d.receptor_cuit && !soloDig(ca.cuit)) await data.upsert('clientes_admin', { cliente_id: data.ids.cliente(v.cliente), cuit: soloDig(d.receptor_cuit), razon_social: ca.razon_social || d.receptor_nombre || '', updated_at: new Date().toISOString() }, 'cliente_id');
     } catch (e) { /* aprender es opcional */ }
   }
+  // Después de cargar una factura de Drive, se le manda al cliente (si está activado en Ajustes → Drive).
+  async function mandarAlCliente(fid, cliente, periodo, da, f0) {
+    if (!k.cierre.envioAutoDrive()) return null;
+    const f = f0 || { id: fid };
+    try { const r = await k.cierre.enviarFacturaDrive({ f, cliente, periodo, da }); return r; }
+    catch (e) { return { ok: false, motivo: cliente + ': ' + e.message }; }
+  }
   function crearDesdeDrive(id) {
     const da = AD.DA.find(x => x.id === id); if (!da) return;
-    k.formFactura(null, presetDesde(da), { archivo: da, onSaved: async (fid, v) => { await data.upd('drive_archivos', da.id, { factura_id: fid }); await aprender(da, v); } });
+    k.formFactura(null, presetDesde(da), { archivo: da, onSaved: async (fid, v) => {
+      await data.upd('drive_archivos', da.id, { factura_id: fid }); await aprender(da, v);
+      const r = await mandarAlCliente(fid, v.cliente, v.periodo, da, { id: fid, tipo: v.tipo, numero: v.numero, fecha: v.fecha, vencimiento: v.vencimiento, monto: v.monto, moneda: v.moneda, link_pdf: v.link_pdf });
+      if (r) setTimeout(() => toast(r.ok ? 'Factura enviada a ' + r.para : 'No se mandó: ' + r.motivo), 900);
+    } });
   }
   function vincularDrive(id) {
     const da = AD.DA.find(x => x.id === id); if (!da) return;
@@ -137,22 +148,23 @@ export function initAsistente(ctx, k) {
   async function cargarDeDrive(x) {
     const p = x.p, f = await data.ins('facturas', { cliente_id: data.ids.cliente(p.cliente), tipo: p.tipo, emisor: p.emisor || '', numero: p.numero, periodo: p.periodo ? p.periodo + '-01' : null, fecha: p.fecha, vencimiento: p.vencimiento || null, moneda: p.moneda, monto: p.monto, concepto: p.concepto, link_pdf: p.link_pdf, notas: p.notas });
     await data.upd('drive_archivos', x.d.id, { factura_id: f.id }); await aprender(x.d, p);
+    return mandarAlCliente(f.id, p.cliente, p.periodo, x.d, f);
   }
   async function crearTodos() {
     const listos = listosDrive();
     if (!listos.length) { toast('No hay facturas con cliente reconocido para cargar solas'); return; }
     openPanel({
       title: 'Cargar ' + listos.length + ' facturas', eyebrow: 'Desde Drive', saveLabel: 'Cargar', busyLabel: 'Cargando…',
-      intro: 'Facturas leídas, con cliente reconocido y que todavía no están cargadas. Revisá y destildá lo que no corresponda.',
+      intro: 'Facturas leídas, con cliente reconocido y que todavía no están cargadas. Revisá y destildá lo que no corresponda.' + (k.cierre.envioAutoDrive() ? '<br><b>Al cargarlas, a cada cliente le llega su factura por email con el PDF.</b> (Se cambia en Ajustes → Drive.)' : ''),
       values: {}, fields: [],
       extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + listos.map((x, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-asct="' + i + '" checked><span class="t"><b>' + esc(x.p.cliente) + ' · ' + esc(verTipo(x.p.tipo) + ' ' + (x.p.numero || 'sin número')) + '</b><span>' + esc([fmt(x.p.fecha), x.p.emisor ? 'factura ' + x.p.emisor : 'no se sabe quién factura', x.p.periodo ? 'mes ' + fmt(x.p.periodo) : ''].join(' · ')) + '</span></span><span class="money">' + money(x.p.monto, x.p.moneda) + '</span></label>').join('') + '</div></div>',
       onSave: async () => {
-        let n = 0;
+        let n = 0, env = 0; const mal = [];
         for (const [i, x] of listos.entries()) {
           if (!($('[data-asct="' + i + '"]') || {}).checked) continue;
-          await cargarDeDrive(x); n++;
+          const r = await cargarDeDrive(x); n++; if (r && r.ok) env++; else if (r) mal.push(r.motivo);
         }
-        toast(n + ' facturas cargadas');
+        toast(n + ' facturas cargadas' + (env ? ' · ' + env + ' enviadas a los clientes' : '') + (mal.length ? ' · sin enviar: ' + mal.join('; ') : ''));
       },
     });
   }
@@ -315,7 +327,7 @@ export function initAsistente(ctx, k) {
     const sinMail = it => it.filter(x => !x.para).map(x => x.label);
     const resAhora = (bRes() || { items: [] }).items, conRes = resAhora.filter(x => x.para).length + c.sinArmar.length;
     const pasos = [
-      st.drive && cfg.carpeta ? { k: 'drive', label: 'Buscar facturas nuevas en Drive, leerlas y cargar las que reconozca', sub: 'Las que no reconozca quedan en “Facturas en Drive” para mirarlas.' } : null,
+      st.drive && cfg.carpeta ? { k: 'drive', label: 'Buscar facturas nuevas en Drive, leerlas y cargar las que reconozca' + (k.cierre.envioAutoDrive() ? ' (y mandárselas a cada cliente)' : ''), sub: 'Las que no reconozca quedan en “Facturas en Drive” para mirarlas.' } : null,
       c.sinArmar.length ? { k: 'armar', label: 'Preparar ' + pl(c.sinArmar.length, 'resumen que falta', 'resúmenes que faltan'), sub: lista(c.sinArmar) + (c.sinPrecio.length ? ' · ojo: ' + pl(c.sinPrecio.length, 'abono no tiene', 'abonos no tienen') + ' precio y saldría sin monto' : '') } : null,
       conRes ? { k: 'enviar', label: 'Mandar por email ' + pl(conRes, 'resumen', 'resúmenes') + ' con el PDF', sub: sinMail(resAhora).length ? 'Sin email (no se mandan): ' + sinMail(resAhora).join(', ') : 'Cada uno con su resumen adjunto y una copia para vos.' } : null,
       bRec && bRec.items.length ? { k: 'recs', label: 'Mandar recordatorio de pago a ' + pl(bRec.items.filter(x => x.para).length, 'cliente', 'clientes'), sub: bRec.items.map(x => x.label + ' (' + x.sub.split(' · ')[0] + ')').join(', ') } : null,
@@ -336,8 +348,9 @@ export function initAsistente(ctx, k) {
           await data.asistente({ accion: 'drive_sync' }); await ctx.reload();
           const ids = AD.DA.filter(d => d.estado === 'Nuevo' || d.estado === 'Error').map(d => d.id).slice(0, 30);
           for (let i = 0; i < ids.length; i += 3) { prog('Leyendo facturas de Drive (' + Math.min(i + 3, ids.length) + ' de ' + ids.length + ')…'); await data.asistente({ accion: 'leer_factura', archivo_ids: ids.slice(i, i + 3) }); }
-          await ctx.reload(); const ls = listosDrive(); for (const x of ls) await cargarDeDrive(x);
-          return ls.length ? pl(ls.length, 'factura cargada', 'facturas cargadas') + ' desde Drive' : 'Drive al día';
+          await ctx.reload(); const ls = listosDrive(); let env = 0;
+          for (const x of ls) { const r = await cargarDeDrive(x); if (r && r.ok) env++; else if (r) errores.push('Factura de Drive sin enviar: ' + r.motivo); }
+          return ls.length ? pl(ls.length, 'factura cargada', 'facturas cargadas') + ' desde Drive' + (env ? ' (' + env + ' enviadas a los clientes)' : '') : 'Drive al día';
         });
         if (v.armar) await correr('Preparando resúmenes', async () => { const rows = filasArmar(m); if (rows.length) await data.insMany('resumenes', rows); return pl(rows.length, 'resumen preparado', 'resúmenes preparados'); });
         const mandar = async (o, que) => { if (!o) return ''; const r = await B.enviarDirecto(o, (n, t) => prog(que + ' (' + n + ' de ' + t + ')…')); if (r.fails.length) errores.push(...r.fails); return r.ok ? r.ok + ' ' + que.toLowerCase().replace('mandando ', '') : ''; };
@@ -377,7 +390,7 @@ export function initAsistente(ctx, k) {
         return '<div class="row" style="cursor:default"><span class="d">' + (d.modificado ? fmt(String(d.modificado).slice(0, 10)) : '') + '</span><span class="t"><b><a href="' + esc(d.link) + '" target="_blank" rel="noopener">' + esc(d.nombre) + '</a></b><span>' + esc(d.carpeta || '') + (desc ? ' · ' + esc(desc) : '') + '</span>' + (reco ? '<span style="margin-top:2px">' + reco + '</span>' : '') + (d.error ? '<span style="color:var(--crit)">' + esc(d.error) + '</span>' : '') + '</span><span class="toolbar">' + pill(VER_DA[d.estado] || d.estado, { Nuevo: '--s-empezar', 'Leído': '--s-revision', Vinculado: '--s-entregado', Ignorado: '--muted', Error: '--crit' }[d.estado]) + btns + (d.estado !== 'Ignorado' && d.estado !== 'Vinculado' ? '<button class="btn ghost sm" data-act="asIgn" data-id="' + esc(d.id) + '" aria-label="Descartar">✕</button>' : d.estado === 'Ignorado' ? '<button class="btn ghost sm" data-act="asRest" data-id="' + esc(d.id) + '">Restaurar</button>' : '') + '</span></div>';
       }).join('');
       inner = '<div class="sheet-b" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)"><span class="muted"><a href="' + esc(cfg.carpeta_url || 'https://drive.google.com/drive/folders/' + cfg.carpeta) + '" target="_blank" rel="noopener">Carpeta de facturas</a>' + (cfg.ultima_sync ? ' · revisada ' + esc(fmt(String(cfg.ultima_sync).slice(0, 10))) + ' ' + esc(String(cfg.ultima_sync).slice(11, 16)) : '') + ' · ' + AD.DA.length + ' archivos</span>' +
-        '<span class="toolbar">' + (AD.as.driveBusy ? '<span class="muted">' + esc(AD.as.driveBusy) + '</span>' : '<button class="btn sm" data-act="asSync">Buscar nuevos</button>' + (nuevos ? '<button class="btn sm primary" data-act="asLeerTodo"' + (st.ia ? '' : ' disabled title="Falta configurar la IA"') + '>✨ Leer ' + nuevos + ' con IA</button>' : '') + (leidos ? '<button class="btn sm primary" data-act="asCrearTodos">Cargar todas las reconocidas</button>' : '')) + '</span></div>' +
+        '<span class="toolbar">' + (AD.as.driveBusy ? '<span class="muted">' + esc(AD.as.driveBusy) + '</span>' : '<label class="chk as-auto" title="Cuando cargás una factura desde Drive, al cliente le llega por email con el PDF"><input type="checkbox" data-act="asAuto"' + (k.cierre.envioAutoDrive() ? ' checked' : '') + '> Mandarlas solas al cliente</label><button class="btn sm" data-act="asSync">Buscar nuevos</button>' + (nuevos ? '<button class="btn sm primary" data-act="asLeerTodo"' + (st.ia ? '' : ' disabled title="Falta configurar la IA"') + '>✨ Leer ' + nuevos + ' con IA</button>' : '') + (leidos ? '<button class="btn sm primary" data-act="asCrearTodos">Cargar todas las reconocidas</button>' : '')) + '</span></div>' +
         '<div class="sheet-b" style="border-bottom:1px solid var(--line)"><div class="seg" role="group" aria-label="Filtro">' + [['pendientes', 'Por revisar'], ['vinculados', 'Cargadas'], ['ignorados', 'Descartadas'], ['todos', 'Todas']].map(([kk, l]) => '<button data-act="asDf" data-v="' + kk + '" aria-pressed="' + (df === kk) + '">' + l + '</button>').join('') + '</div></div>' +
         (rows ? '<div class="rows">' + rows + '</div>' + (ls.length > 120 ? '<div class="count">Mostrando 120 de ' + ls.length + '</div>' : '') : emptyBox(AD.DA.length ? 'Nada en este filtro' : 'Todavía no se revisó la carpeta', AD.DA.length ? '' : 'Tocá “Buscar nuevos”.'));
     }
@@ -444,6 +457,11 @@ export function initAsistente(ctx, k) {
     asDesv: async t => { try { await data.upd('drive_archivos', t.dataset.id, { factura_id: null }); await ctx.reload(); } catch (err) { toast(err.message); } },
     asIgn: async t => { try { await data.upd('drive_archivos', t.dataset.id, { estado: 'Ignorado' }); await ctx.reload(); } catch (err) { toast(err.message); } },
     asRest: async t => { const d = AD.DA.find(x => x.id === t.dataset.id); try { await data.upd('drive_archivos', t.dataset.id, { estado: d && d.datos && d.datos.total != null ? 'Leído' : 'Nuevo' }); await ctx.reload(); } catch (err) { toast(err.message); } },
+    asAuto: async t => {
+      const on = t.checked;
+      try { await data.upsert('ajustes', { clave: 'drive', valor: { ...cfgDrive(), enviar_auto: on } }, 'clave'); toast(on ? 'Las facturas que cargues desde Drive se mandan solas al cliente' : 'Listo: las facturas de Drive ya no se mandan solas'); await ctx.reload(); }
+      catch (err) { toast(err.message); t.checked = !on; }
+    },
     asCarpeta: async t => {
       const raw = ($('#' + (t.dataset.from || 'as-carpeta')) || {}).value || '', id = carpetaId(raw);
       if (!id) { toast('No reconozco ese link. Copiá el de la carpeta desde la barra del navegador.'); return; }

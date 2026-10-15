@@ -47,7 +47,9 @@ const CAT = [
   { k: 'canva', n: 'Canva', cat: 'diseno', ic: siCanva, st: 'prox', esf: 2, que: 'Diseños del proyecto con vista previa desde la ficha.', det: ['Ver y abrir los diseños de cada cliente.', 'Exportar piezas al entregar.'], falta: 'Canva para equipos y la app de Canva Connect.' },
   { k: 'figma', n: 'Figma', cat: 'diseno', ic: siFigma, st: 'prox', esf: 2, que: 'Archivos y prototipos de cada proyecto, con miniatura.', det: ['Ver la última versión sin abrir Figma.', 'Comentarios del cliente como tareas.'], falta: 'Token de Figma del equipo.' },
   { k: 'adobe', n: 'Adobe Creative Cloud', cat: 'diseno', ic: siAdobecreativecloud, st: 'prox', esf: 3, que: 'Bibliotecas de marca de cada cliente a mano.', det: ['Logos, colores y tipografías por cliente.'], falta: 'Cuenta de Adobe para equipos.' },
-  { k: 'dropbox', n: 'Dropbox', cat: 'diseno', ic: siDropbox, st: 'prox', esf: 2, que: 'Entregas pesadas (video, fotos) con link guardado en el proyecto.', det: ['Subir entregables y mandar el link al cliente.'], falta: 'Cuenta de Dropbox.' },
+  { k: 'dropbox', n: 'Dropbox', cat: 'diseno', ic: siDropbox, st: 'cred', cred: 'dropbox', que: 'Las carpetas de redes y entregas se crean solas, el arte se sube desde la app y se cuenta lo que ya está listo.', det: ['Al arrancar un mes de redes se crea Cliente / RRSS / Año / Mes / Historias · Reels · Posts.', 'Subís el arte a cada pieza desde la app y queda en su carpeta.', 'La app cuenta lo que hay en cada carpeta: “Historias 18 de 20”.', 'Las miniaturas se ven en la planilla, en el feed y en el portal del cliente.'], falta: 'La cuenta de Dropbox de la agencia y una app de Dropbox (son 5 minutos).',
+    cfg: [{ c: 'patron_redes', l: 'Carpeta de cada mes de redes', tipo: 'text', def: '{cliente}/RRSS/{año}/{mes}' }, { c: 'mes', l: 'Cómo se escribe el mes', tipo: 'text', def: '{mm} {Mes}' }, { c: 'patron_proyectos', l: 'Carpeta de las entregas de proyectos', tipo: 'text', def: '{cliente}/Proyectos/{proyecto}/Entregas' }],
+    ayuda: 'Las rutas son relativas a la carpeta base. Se reemplazan {cliente}, {proyecto}, {año}, {mes}, {mm} (11) y {Mes} (Noviembre). Las subcarpetas de cada mes son los formatos de redes (se editan en Opciones).' },
   { k: 'behance', n: 'Behance', cat: 'diseno', ic: siBehance, st: 'prox', esf: 2, que: 'Al terminar un proyecto, armar el caso para el portfolio.', det: ['Mr. Piggy redacta el texto del caso.', 'Checklist de imágenes a exportar.'], falta: 'Cuenta de Behance de àndale.' },
   { k: 'loom', n: 'Loom', cat: 'diseno', ic: siLoom, st: 'prox', esf: 1, que: 'Videos explicativos para clientes guardados en el proyecto.', det: ['Presentar una propuesta grabada.'], falta: 'Cuenta de Loom.' },
 
@@ -64,13 +66,14 @@ const CAT = [
   // Equipo y organización
   { k: 'calendario', n: 'Google Calendar', cat: 'equipo', ic: siGooglecalendar, st: 'tog', que: 'Botón “Al calendario” en entregas de proyectos y tareas con fecha.', det: ['Abre Google Calendar con el evento armado.', 'Cada persona lo guarda en su calendario.'], falta: 'Nada: funciona con links directos.', cfg: [{ c: 'aviso', l: 'Agregar al detalle del evento', tipo: 'text', def: 'àndale Operaciones' }] },
   { k: 'calendario_sync', n: 'Calendario sincronizado', cat: 'equipo', ic: siGooglecalendar, st: 'prox', esf: 2, que: 'Las entregas y tareas aparecen solas en el calendario de cada persona.', det: ['Un calendario “àndale” por persona, siempre al día.'], falta: 'Autorizar Google Calendar de cada persona.' },
-  { k: 'slack', n: 'Slack', cat: 'equipo', ic: siSlack, st: 'prox', esf: 1, que: 'Avisos al equipo: entregas del día, tareas vencidas, pagos que entraron.', det: ['Resumen diario a las 9.', 'Aviso cuando un cliente acepta un presupuesto.'], falta: 'Un workspace de Slack y un webhook.' },
+  { k: 'slack', n: 'Slack', cat: 'equipo', ic: siSlack, st: 'cred', cred: 'slack', que: 'Cada aviso de la app le llega a la persona por mensaje directo en Slack, y a la mañana su resumen del día.', det: ['Te asignan una tarea, te mencionan, te toca una etapa o escribe un cliente → mensaje directo.', 'De lunes a viernes 8:30: tareas atrasadas, para hoy y de la semana, y tickets abiertos.', 'Tickets nuevos y respuestas de clientes también en un canal general (opcional).', 'Quien no esté en Slack recibe el resumen por mail.'], falta: 'El Slack de la agencia y una app de Slack con un bot (son 5 minutos).' },
   { k: 'horas', n: 'Toggl y Clockify', cat: 'equipo', ic: siToggl, st: 'prox', esf: 2, que: 'Horas por proyecto para saber cuánto deja cada trabajo de verdad.', det: ['Horas × costo por persona en “Qué deja cada cliente”.', 'Alertas de proyectos que se pasan de horas.'], falta: 'Que el equipo registre horas en Toggl o Clockify.' },
   { k: 'notion', n: 'Notion', cat: 'equipo', ic: siNotion, st: 'prox', esf: 2, que: 'Briefs y actas de reunión enlazados a cada cliente y proyecto.', det: ['Ver la página del brief desde el proyecto.'], falta: 'Token de integración de Notion.' },
   { k: 'importar', n: 'ClickUp, Trello y Asana', cat: 'equipo', ic: siClickup, st: 'prox', esf: 2, que: 'Traer proyectos y tareas que hoy están en otra herramienta.', det: ['Importación única con responsables y fechas.'], falta: 'Exportación o token de la herramienta.' },
   { k: 'miro', n: 'Miro', cat: 'equipo', ic: siMiro, st: 'prox', esf: 1, que: 'Tableros de workshop y estrategia en la ficha del proyecto.', det: ['Vista previa del tablero.'], falta: 'Cuenta de Miro.' },
 
   // Ventas y webs
+  { k: 'tally', n: 'Tally (briefs)', cat: 'clientes', mono: 'T', color: '#1F1F1F', st: 'cred', cred: 'tally', que: 'Los briefs que completan los clientes entran solos a su ficha y a su proyecto, con un resumen de Mr. Piggy.', det: ['Marcás cada formulario como Branding, Web o Redes y se conecta.', 'Cada respuesta llega al momento (webhook) y queda en el cliente y el proyecto.', 'Mr. Piggy resume el brief y anota lo que falta preguntar.', 'Desde la ficha mandás el link del brief ya atado a ese cliente.'], falta: 'La clave de la API de Tally.' },
   { k: 'formularios', n: 'Formularios de contacto', cat: 'ventas', ic: siTypeform, st: 'prox', esf: 1, que: 'Cada consulta de la web de àndale entra como presupuesto en borrador.', det: ['Typeform, Tally o el formulario de la web.', 'Mr. Piggy arma el primer borrador del presupuesto.'], falta: 'Un webhook desde el formulario.' },
   { k: 'hubspot', n: 'HubSpot', cat: 'ventas', ic: siHubspot, st: 'prox', esf: 3, que: 'Seguimiento comercial de prospectos antes de que sean clientes.', det: ['Prospecto → presupuesto → cliente.'], falta: 'Cuenta de HubSpot (el plan gratis alcanza).' },
   { k: 'webs', n: 'WordPress y Webflow', cat: 'ventas', ic: siWordpress, st: 'prox', esf: 2, que: 'Estado de las webs de clientes: si están online, actualizaciones y vencimientos.', det: ['Aviso si una web se cae.', 'Vencimientos de hosting y dominio como cobro.'], falta: 'Lista de sitios y accesos.' },
@@ -99,6 +102,20 @@ const CREDS = {
     { c: 'from', l: 'Remitente', ph: 'àndale <administracion@weareandale.com>' },
     { c: 'reply_to', l: 'Las respuestas van a (opcional)', ph: 'administracion@weareandale.com' }],
     pasos: ['Entrá a resend.com con el email de la agencia.', 'En Domains agregá weareandale.com y cargá los registros DNS que te muestra donde está el dominio.', 'Cuando el dominio diga “Verified”, en API Keys creá una clave con permiso de envío.', 'Pegala acá con el remitente y tocá “Guardar y probar”.'] },
+  slack: { titulo: 'Slack de àndale', campos: [
+    { c: 'token', l: 'Bot User OAuth Token', tipo: 'password', ph: 'xoxb-…' },
+    { c: 'canal', l: 'Canal para tickets y respuestas de clientes (opcional)', ph: 'Ej.: clientes' }],
+    pasos: ['Entrá a api.slack.com/apps → “Create New App” → “From scratch”. Nombre: àndale Operaciones. Elegí el Slack de la agencia.', 'En “OAuth & Permissions” → “Bot Token Scopes” agregá: chat:write, users:read, users:read.email (y chat:write.public si querés usar un canal sin invitar al bot).', 'Arriba tocá “Install to Workspace” y aceptá.', 'Copiá el “Bot User OAuth Token” (empieza con xoxb-) y pegalo acá.', 'Importante: en Equipo, cada persona tiene que tener el mismo email que usa en Slack. Así le llegan sus avisos.'] },
+  dropbox: { titulo: 'Dropbox de la agencia', campos: [
+    { c: 'app_key', l: 'App key', ph: 'De dropbox.com/developers' },
+    { c: 'app_secret', l: 'App secret', tipo: 'password' },
+    { c: 'raiz', l: 'Carpeta base de clientes', ph: '/Clientes' },
+    { c: 'codigo', l: 'Código de autorización', ph: 'Lo da Dropbox al tocar “Autorizar”' }],
+    boton: { l: 'Autorizar en Dropbox ↗', act: 'igDbxAuth' },
+    pasos: ['Entrá a dropbox.com/developers/apps con la cuenta de la agencia → “Create app” → “Scoped access” → “Full Dropbox”. Nombre: andale-ops.', 'En “Permissions” marcá files.metadata.read, files.metadata.write, files.content.read, files.content.write y account_info.read. Tocá “Submit”.', 'En “Settings” copiá App key y App secret y pegalos acá. Poné también la carpeta donde están los clientes (por ejemplo /Clientes).', 'Tocá “Autorizar en Dropbox”, aceptá y copiá el código que te muestra.', 'Pegá el código y tocá “Guardar y probar”.'] },
+  tally: { titulo: 'Cuenta de Tally', campos: [
+    { c: 'key', l: 'Clave de la API', tipo: 'password', ph: 'tly-…' }],
+    pasos: ['En tally.so → Settings → API keys tocá “Create API key” y copiala.', 'Pegala acá y tocá “Guardar y probar”.', 'Abajo marcá qué formulario es de Branding, Web o Redes y tocá “Conectar”. Desde ese momento cada respuesta entra sola.', 'Para que cada brief caiga en el cliente correcto, en cada formulario de Tally agregá un bloque “Hidden fields” con dos campos: cliente y proyecto. El link que manda la app los completa solo.'] },
   whatsapp: { titulo: 'Número de WhatsApp de àndale', campos: [
     { c: 'numero', l: 'Número (como se ve)', ph: '+54 9 351 …' },
     { c: 'phone_id', l: 'Phone number ID', ph: 'Número largo que da Meta' },
@@ -116,7 +133,7 @@ export function initIntegraciones(ctx) {
   const L = () => S.L.integraciones || ctx.DEF;
   const CFG = () => S.L.integraciones_cfg || [];
   const cfgGet = (k, c) => { const p = k + '.' + c + '='; const v = CFG().find(x => x.startsWith(p)); const d = ((CAT.find(x => x.k === k) || {}).cfg || []).find(x => x.c === c); return v != null ? v.slice(p.length) : (d ? d.def : ''); };
-  const on = x => x.st === 'on' || (x.st === 'tog' && L().includes(x.k));
+  const on = x => x.st === 'on' || (x.st === 'tog' && L().includes(x.k)) || (x.st === 'cred' && !!(cuentaDe(x) && (cuentaDe(x).cuenta || cuentaDe(x).secreto_viejo)));
   const quiere = k => L().includes('quiero:' + k);
   const prio = k => { const v = cfgGet(k, 'prio'); return v || (quiere(k) ? 'Media' : ''); };
 
@@ -127,7 +144,7 @@ export function initIntegraciones(ctx) {
     if (ic) return '<span class="lg' + (big ? ' big' : '') + '" title="' + esc(x.n) + '"><svg viewBox="0 0 24 24" width="' + sz + '" height="' + sz + '" role="img" aria-label="' + esc(x.n) + '"><path fill="#' + ic.hex + '" d="' + ic.path + '"/></svg>' + (EXTRA[x.k] ? '<svg class="lg2" viewBox="0 0 24 24" width="' + Math.round(sz * .62) + '" height="' + Math.round(sz * .62) + '" aria-hidden="true"><path fill="#' + EXTRA[x.k].hex + '" d="' + EXTRA[x.k].path + '"/></svg>' : '') + '</span>';
     return '<span class="lg mono' + (big ? ' big' : '') + '" style="--c:' + (x.color || '#6B7280') + '">' + esc(x.mono || x.n.charAt(0)) + '</span>';
   }
-  const badge = x => x.st === 'prox' ? (quiere(x.k) ? '<span class="ig-b pedida">★ Pedida</span>' : '<span class="ig-b prox">Próximamente</span>') : on(x) ? '<span class="ig-b on">' + (x.st === 'on' ? 'Conectada' : 'Activa') + '</span>' : '<span class="ig-b off">Apagada</span>';
+  const badge = x => x.st === 'cred' ? (!isAdmin() ? '<span class="ig-b off">La configuran las socias</span>' : on(x) ? '<span class="ig-b on">Conectada</span>' : '<span class="ig-b off">Para conectar</span>') : x.st === 'prox' ? (quiere(x.k) ? '<span class="ig-b pedida">★ Pedida</span>' : '<span class="ig-b prox">Próximamente</span>') : on(x) ? '<span class="ig-b on">' + (x.st === 'on' ? 'Conectada' : 'Activa') + '</span>' : '<span class="ig-b off">Apagada</span>';
 
   async function guardar(k, arr, msg) { const prev = S.L[k]; S.L[k] = arr; render(); try { await data.saveLista(k, arr); if (msg) toast(msg); } catch (e) { S.L[k] = prev; render(); toast(e.message); } }
   function setCfg(k, c, v) { const p = k + '.' + c + '='; return [...CFG().filter(x => !x.startsWith(p)), ...(v ? [p + v] : [])]; }
@@ -158,7 +175,7 @@ export function initIntegraciones(ctx) {
       '<details class="mas"' + (e && (e.cuenta || e.secreto_viejo) ? '' : ' open') + '><summary>' + (e && (e.cuenta || e.secreto_viejo) ? 'Cambiar de cuenta' : 'Conectar una cuenta') + '</summary><div class="mas-b">' +
       '<ol class="ig-pasos full">' + def.pasos.map(p => '<li>' + esc(p) + '</li>').join('') + '</ol>' + campos +
       '<p class="hint full">🔒 La clave se guarda cifrada en el servidor. Nadie la vuelve a ver: la app solo muestra la cuenta y los últimos 4 caracteres.</p>' +
-      '<div class="toolbar full"><button type="button" class="btn primary sm" data-act="igCredGuardar" data-n="' + x.cred + '">Guardar y probar</button>' + (e && e.cuenta ? '<button type="button" class="btn ghost sm danger" data-act="igCredBorrar" data-n="' + x.cred + '">Desconectar</button>' : '') + '</div>' +
+      '<div class="toolbar full">' + (def.boton ? '<button type="button" class="btn sm" data-act="' + def.boton.act + '">' + esc(def.boton.l) + '</button>' : '') + '<button type="button" class="btn primary sm" data-act="igCredGuardar" data-n="' + x.cred + '">Guardar y probar</button>' + (e && e.cuenta ? '<button type="button" class="btn ghost sm danger" data-act="igCredBorrar" data-n="' + x.cred + '">Desconectar</button>' : '') + '</div>' +
       '</div></details></div>';
   }
   async function credGuardar(t) {
@@ -181,16 +198,16 @@ export function initIntegraciones(ctx) {
   function card(x) {
 
     const pie = x.st === 'tog' ? (isAdmin() ? '<label class="sw"><input type="checkbox" data-integ="' + x.k + '"' + (on(x) ? ' checked' : '') + '><span></span><b>' + (on(x) ? 'Prendida' : 'Apagada') + '</b></label>' : '<span class="muted">' + (on(x) ? 'Prendida' : 'Apagada') + '</span>')
-      : x.st === 'prox' ? '<span class="ig-esf">' + (x.esf ? 'Esfuerzo: ' + ESF[x.esf] : '') + '</span>' : '<span class="muted">Funcionando</span>';
+      : x.st === 'prox' ? '<span class="ig-esf">' + (x.esf ? 'Esfuerzo: ' + ESF[x.esf] : '') + '</span>' : x.st === 'cred' ? '<span class="muted">' + (on(x) ? 'Funcionando' : 'Lista para conectar') + '</span>' : '<span class="muted">Funcionando</span>';
     return '<article class="ig' + (x.st === 'prox' ? ' prox' : '') + '"><button class="ig-x" data-act="igVer" data-k="' + x.k + '" aria-label="Ver ' + esc(x.n) + '"></button><div class="ig-h">' + logo(x) + badge(x) + '</div><h3>' + esc(x.n) + '</h3><p>' + esc(x.que) + '</p>' + lineaCuenta(x) + '<div class="ig-f">' + pie + '<span class="ig-mas">' + ((x.st === 'tog' || x.cred) && isAdmin() ? 'Configurar' : 'Ver más') + ' →</span></div></article>';
   }
 
   function view() {
     if (isAdmin() && !st.est && !st.cargando) setTimeout(() => cargarEstado(), 0);
-    const all = CAT, nOn = all.filter(x => x.st === 'on').length, nTog = all.filter(x => x.st === 'tog' && on(x)).length, nPed = all.filter(x => x.st === 'prox' && quiere(x.k)).length, nProx = all.filter(x => x.st === 'prox').length;
+    const all = CAT, nOn = all.filter(x => x.st === 'on' || (x.st === 'cred' && on(x))).length, nTog = all.filter(x => x.st === 'tog' && on(x)).length, nPed = all.filter(x => x.st === 'prox' && quiere(x.k)).length, nProx = all.filter(x => x.st === 'prox').length;
     const q = st.q.toLowerCase();
     const filtro = x => (!st.cat || x.cat === st.cat) && (!q || (x.n + ' ' + x.que + ' ' + (x.det || []).join(' ')).toLowerCase().includes(q)) &&
-      (!st.ver || (st.ver === 'func' ? x.st !== 'prox' : st.ver === 'prox' ? x.st === 'prox' : quiere(x.k)));
+      (!st.ver || (st.ver === 'func' ? x.st !== 'prox' && (x.st !== 'cred' || on(x)) : st.ver === 'prox' ? x.st === 'prox' || (x.st === 'cred' && !on(x)) : quiere(x.k)));
     const ped = all.filter(x => x.st === 'prox' && quiere(x.k)).sort((a, b) => ['Alta', 'Media', 'Baja'].indexOf(prio(a.k)) - ['Alta', 'Media', 'Baja'].indexOf(prio(b.k)) || (a.esf || 2) - (b.esf || 2));
     let h = '<div class="head"><div><h1>Integraciones</h1><p>Las apps que se conectan con àndale Operaciones y para qué le sirven a la agencia. Tocá cualquiera para ver qué hace, qué hace falta y configurarla.</p></div></div>' +
       '<section class="kpis">' +
@@ -220,13 +237,18 @@ export function initIntegraciones(ctx) {
     if (x.st === 'tog') {
       cfg = '<div class="field full"><span class="lbl">Estado</span>' + (adm ? '<label class="sw"><input type="checkbox" id="ig-on"' + (on(x) ? ' checked' : '') + '><span></span><b>' + (on(x) ? 'Prendida' : 'Apagada') + '</b></label>' : '<span>' + (on(x) ? 'Prendida' : 'Apagada') + '</span>') + '</div>' +
         (x.cfg || []).map(f => '<div class="field full"><label for="ig-c-' + f.c + '">' + esc(f.l) + '</label>' + (f.tipo === 'textarea' ? '<textarea id="ig-c-' + f.c + '" rows="3"' + (adm ? '' : ' disabled') + '>' + esc(cfgGet(k, f.c)) + '</textarea>' : '<input id="ig-c-' + f.c + '" value="' + esc(cfgGet(k, f.c)) + '"' + (adm ? '' : ' disabled') + '>') + '</div>').join('');
+    } else if (x.st === 'cred' && (x.cfg || []).length) {
+      cfg = '<div class="field full"><span class="lbl">Cómo se organizan las carpetas</span>' + (x.ayuda ? '<span class="hint">' + esc(x.ayuda) + '</span>' : '') + '</div>' +
+        x.cfg.map(f => '<div class="field full"><label for="ig-c-' + f.c + '">' + esc(f.l) + '</label><input id="ig-c-' + f.c + '" value="' + esc(cfgGet(k, f.c)) + '"' + (adm ? '' : ' disabled') + '></div>').join('');
     } else if (x.st === 'prox') {
       cfg = '<div class="field full"><span class="lbl">¿La queremos?</span><label class="sw"><input type="checkbox" id="ig-quiero"' + (quiere(k) ? ' checked' : '') + (staff ? '' : ' disabled') + '><span></span><b>Sumarla a la hoja de ruta</b></label></div>' +
         '<div class="field"><label for="ig-prio">Prioridad</label><select id="ig-prio"' + (staff ? '' : ' disabled') + '>' + ['Alta', 'Media', 'Baja'].map(v => opt(v, v, prio(k) || 'Media')).join('') + '</select></div>' +
         '<div class="field"><span class="lbl">Esfuerzo estimado</span><span style="padding:9px 0">' + esc(ESF[x.esf] || '—') + '</span></div>' +
         '<div class="field full"><label for="ig-nota">¿Para qué la usarían? (opcional)</label><textarea id="ig-nota" rows="3" placeholder="Ej.: que el informe mensual de redes salga solo para los 13 clientes"' + (staff ? '' : ' disabled') + '>' + esc(cfgGet(k, 'nota')) + '</textarea></div>';
     }
-    const puede = (x.st === 'tog' && adm) || (x.st === 'prox' && staff);
+    if (x.k === 'slack' && adm) cfg += '<div class="field full"><span class="lbl">Probar</span><div class="toolbar"><button type="button" class="btn sm" data-act="igSlackProbar">Mandarme mi resumen del día ahora</button></div></div>';
+    if (x.k === 'tally' && adm) cfg += '<div class="field full" id="ig-tally"><span class="lbl">Formularios</span><p class="muted" style="margin:0">' + (on(x) ? 'Cargando formularios…' : 'Conectá la cuenta para ver los formularios.') + '</p></div>';
+    const puede = (x.st === 'tog' && adm) || (x.st === 'prox' && staff) || (x.st === 'cred' && adm && (x.cfg || []).length);
     $('#panel').innerHTML = '<form id="igform" novalidate style="display:contents"><div class="panel-h"><div class="ig-ph">' + logo(x, true) + '<div><span class="eyebrow">' + esc(catL) + '</span><h2 id="panel-title">' + esc(x.n) + '</h2></div></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b"><div class="full">' + badge(x) + '</div>' +
       '<p class="formnote full">' + esc(x.que) + '</p>' +
@@ -235,11 +257,26 @@ export function initIntegraciones(ctx) {
       '<div class="panel-f"><span></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">' + (puede ? 'Cancelar' : 'Cerrar') + '</button>' + (puede ? '<button type="submit" class="btn primary">Guardar</button>' : '') + '</span></div></form>';
     $('#panel').hidden = false; $('#scrim').hidden = false; st.abierto = k;
     if (x.cred && isAdmin() && !st.est) cargarEstado();
+    if (x.k === 'tally' && adm && on(x)) tallyForms();
+  }
+  // Tally: formularios de la cuenta, qué tipo de brief es cada uno y si está conectado.
+  async function tallyForms() {
+    const box = $('#ig-tally'); if (!box) return;
+    try {
+      const r = await data.tally({ accion: 'formularios' });
+      const fs = r.formularios || [];
+      box.innerHTML = '<span class="lbl">Formularios</span>' + (fs.length ? '<div class="ig-forms">' + fs.map(f => '<div class="ig-form"><span><b>' + esc(f.nombre) + '</b><small>' + f.respuestas + ' respuestas · ' + esc(f.estado) + '</small></span>' +
+        '<select class="in" data-tallytipo="' + esc(f.id) + '" aria-label="Tipo de brief">' + ['', 'Branding', 'Web', 'Redes', 'Otro'].map(t => opt(t, t || 'No usar', f.tipo || '')).join('') + '</select>' +
+        (f.conectado ? '<span class="ig-b on">Conectado</span>' : '<button type="button" class="btn sm" data-act="igTallyConectar" data-id="' + esc(f.id) + '">Conectar</button>') + '</div>').join('') + '</div>' +
+        '<div class="toolbar" style="margin-top:10px"><button type="button" class="btn sm" data-act="igTallySync">Traer respuestas de los últimos 6 meses</button></div>' : '<p class="muted" style="margin:0">No hay formularios en esa cuenta.</p>');
+    } catch (e) { box.innerHTML = '<span class="lbl">Formularios</span><p class="ig-warn" style="margin:0">' + esc(e.message) + '</p>'; }
   }
   async function guardarPanel() {
     const k = st.abierto, x = CAT.find(y => y.k === k); if (!x) return;
     let lst = [...L()], cfg = [...CFG()];
-    if (x.st === 'tog') {
+    if (x.st === 'cred') {
+      (x.cfg || []).forEach(f => { const el = $('#ig-c-' + f.c); const val = el ? el.value.trim() : ''; const p = k + '.' + f.c + '='; cfg = [...cfg.filter(y => !y.startsWith(p)), ...(val && val !== f.def ? [p + val] : [])]; });
+    } else if (x.st === 'tog') {
       const v = $('#ig-on').checked; lst = lst.filter(y => y !== k); if (v) lst.push(k);
       (x.cfg || []).forEach(f => { const el = $('#ig-c-' + f.c); const val = el ? el.value.trim() : ''; const p = k + '.' + f.c + '='; cfg = [...cfg.filter(y => !y.startsWith(p)), ...(val && val !== f.def ? [p + val.replace(/\n/g, '\\n')] : [])]; });
     } else if (x.st === 'prox') {
@@ -254,6 +291,7 @@ export function initIntegraciones(ctx) {
   document.addEventListener('input', e => { if (e.target.id === 'ig-q') { st.q = e.target.value; clearTimeout(st.t); st.t = setTimeout(() => { const pos = e.target.selectionStart; render(); const i = $('#ig-q'); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (er) { } } }, 180); } });
   document.addEventListener('change', e => {
     if (e.target.id === 'ig-ver') { st.ver = e.target.value; render(); }
+    if (e.target.dataset && e.target.dataset.tallytipo) { const id = e.target.dataset.tallytipo; data.tally({ accion: 'tipo', form_id: id, tipo: e.target.value }).then(() => toast('Guardado'), er => toast(er.message)); }
     if (e.target.dataset && e.target.dataset.integ) { const k = e.target.dataset.integ; const l = L().filter(x => x !== k); guardar('integraciones', e.target.checked ? [...l, k] : l, (CAT.find(x => x.k === k) || {}).n + (e.target.checked ? ' prendida' : ' apagada')); }
   });
   document.addEventListener('submit', e => { if (e.target.id === 'igform') { e.preventDefault(); e.stopImmediatePropagation(); guardarPanel(); } }, true);
@@ -268,6 +306,14 @@ export function initIntegraciones(ctx) {
       igCredProbar: async t => { t.disabled = true; t.textContent = 'Probando…'; try { const r = await data.credenciales({ accion: 'probar', nombre: t.dataset.n }); toast((r.ok ? '✓ ' : '⚠ ') + r.detalle); await cargarEstado(true); } catch (e) { toast(e.message); } t.disabled = false; t.textContent = 'Probar conexión'; },
       igCredBorrar: async t => { if (!window.confirm('¿Desconectar esta cuenta? Si había una cargada a mano en Supabase, vuelve a usarse esa.')) return; try { await data.credenciales({ accion: 'borrar', nombre: t.dataset.n }); toast('Cuenta desconectada'); await cargarEstado(true); } catch (e) { toast(e.message); } },
       igVerF: t => { st.ver = st.ver === t.dataset.v ? '' : t.dataset.v; render(); },
+      igDbxAuth: () => { const k = ($('#cr-app_key') || {}).value; if (!k || !k.trim()) { toast('Pegá primero la App key'); return; } window.open('https://www.dropbox.com/oauth2/authorize?client_id=' + encodeURIComponent(k.trim()) + '&response_type=code&token_access_type=offline', '_blank', 'noopener'); },
+      igSlackProbar: async t => { t.disabled = true; t.textContent = 'Mandando…'; try { const r = await data.avisosFn({ accion: 'probar' }); toast((r.ok ? '✓ ' : '⚠ ') + r.detalle); } catch (e) { toast(e.message); } t.disabled = false; t.textContent = 'Mandarme mi resumen del día ahora'; },
+      igTallyConectar: async t => {
+        const id = t.dataset.id, tipo = ($('[data-tallytipo="' + id + '"]') || {}).value; if (!tipo) { toast('Elegí primero qué tipo de brief es'); return; }
+        t.disabled = true; t.textContent = 'Conectando…';
+        try { await data.tally({ accion: 'conectar', form_id: id, tipo }); toast('Conectado: las respuestas nuevas entran solas'); await tallyForms(); } catch (e) { toast(e.message); t.disabled = false; t.textContent = 'Conectar'; }
+      },
+      igTallySync: async t => { t.disabled = true; t.textContent = 'Trayendo…'; try { const r = await data.tally({ accion: 'sincronizar' }); toast('Listo: ' + (r.nuevos || 0) + ' briefs nuevos' + (r.sin_cliente ? ' · ' + r.sin_cliente + ' para asignar' : '')); } catch (e) { toast(e.message); } t.disabled = false; t.textContent = 'Traer respuestas de los últimos 6 meses'; },
     },
   };
 }

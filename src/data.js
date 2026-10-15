@@ -62,9 +62,19 @@ const check = r => { if (r.error) { const e = friendly(r.error); e.raw = r.error
 export async function loadAll() {
   const names = ['personas', 'clientes', 'cliente_responsables', 'abonos', 'abono_responsables', 'proyectos', 'proyecto_responsables', 'comunicaciones', 'listas'];
   // Contactos (migración 0015): si la tabla todavía no existe, K queda en null y la app usa los campos del cliente.
-  const kq = sb.from('contactos').select('*').order('orden').limit(5000).then(r => (r.error ? null : r.data || []), () => null);
+  const kq = tolerante(sb.from('contactos').select('*').order('orden').limit(5000));
+  // Tablas de la migración 0016: si todavía no existen, la app sigue con lo anterior (tareas en proyectos.etapas).
+  const tq = tolerante(sb.from('tareas').select('*').order('orden').limit(20000));
+  const fq = tolerante(sb.from('flujos').select('*'));
+  const nq = tolerante(sb.from('notificaciones').select('*').order('created_at', { ascending: false }).limit(80));
+  const desde = new Date(); desde.setMonth(desde.getMonth() - 7); desde.setDate(1);
+  const rmq = tolerante(sb.from('redes_meses').select('*').gte('mes', desde.toISOString().slice(0, 10)).order('mes'));
+  const pdq = tolerante(sb.from('pedidos').select('*').order('created_at', { ascending: false }).limit(2000));
+  const bfq = tolerante(sb.from('briefs').select('*').order('respondido_at', { ascending: false }).limit(500));
+  const enq = tolerante(sb.from('entregas').select('*').order('orden').limit(3000));
+  const siq = tolerante(sb.from('sitios').select('*').limit(1000));
   const res = await Promise.all(names.map(n => sb.from(n).select('*').limit(5000)));
-  const krows = await kq;
+  const [krows, trows, frows, nrows, rmrows, pdrows, bfrows, enrows, sirows] = await Promise.all([kq, tq, fq, nq, rmq, pdq, bfq, enq, siq]);
   const d = {}; names.forEach((n, i) => { d[n] = check(res[i]) || []; });
 
   idx.clienteId.clear(); idx.clienteName.clear(); idx.personaId.clear(); idx.personaAlias.clear();
@@ -73,18 +83,171 @@ export async function loadAll() {
   const respOf = (rows, key) => { const m = new Map(); rows.forEach(r => { const a = idx.personaAlias.get(r.persona_id); if (!a) return; if (!m.has(r[key])) m.set(r[key], []); m.get(r[key]).push(a); }); return m; };
   const rp = respOf(d.proyecto_responsables, 'proyecto_id'), ra = respOf(d.abono_responsables, 'abono_id'), rc = respOf(d.cliente_responsables, 'cliente_id');
   const cname = id => idx.clienteName.get(id) || '(cliente sin acceso)';
+  const tks = new Map();
+  if (trows) trows.forEach(t => { if (!tks.has(t.proyecto_id)) tks.set(t.proyecto_id, []); tks.get(t.proyecto_id).push(tareaUI(t)); });
   const meta = r => ({ creado: r.created_at, actualizado: r.updated_at });
 
   return {
     E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, avatar: p.avatar_url || '', ...meta(p) })),
     C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', responsables: rc.get(c.id) || [], ...meta(c) })),
     A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, responsables: ra.get(a.id) || [], ...meta(a) })),
-    P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: Array.isArray(p.etapas) ? p.etapas : [], prioridad: p.prioridad || '', responsables: rp.get(p.id) || [], ...meta(p) })),
+    P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: trows ? (tks.get(p.id) || []) : (Array.isArray(p.etapas) ? p.etapas : []), etapaActual: p.etapa_actual || '', prioridad: p.prioridad || '', responsables: rp.get(p.id) || [], ...meta(p) })),
     M: d.comunicaciones.map(m => ({ _id: m.id, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
     L: Object.fromEntries(d.listas.map(l => [l.clave, l.valores])),
-    K: krows ? krows.filter(k => idx.clienteName.has(k.cliente_id)).map(k => ({ _id: k.id, cliente: cname(k.cliente_id), nombre: k.nombre || '', rol: k.rol || '', email: k.email || '', tel: k.tel || '', principal: !!k.principal, cobros: !!k.cobros, notas: k.notas || '', orden: k.orden || 0 })) : null,
+ T: !!trows,
+    RM: rmrows ? rmrows.filter(m => idx.clienteName.has(m.cliente_id)).map(mesUI) : null,
+    PD: pdrows ? pdrows.filter(x => idx.clienteName.has(x.cliente_id)).map(pedidoUI) : null,
+    BF: bfrows ? bfrows.map(briefUI) : null,
+    EN: enrows ? enrows.map(entregaUI) : null,
+    SI: sirows ? sirows.map(sitioUI) : null,
+    FL: frows ? Object.fromEntries(frows.map(f => [f.tipo, { etapas: Array.isArray(f.etapas) ? f.etapas : [], reglas: f.reglas || {} }])) : null,
+    N: nrows ? nrows.map(n => ({ _id: n.id, tipo: n.tipo, titulo: n.titulo, cuerpo: n.cuerpo, link: n.link, leida: n.leida, actor: idx.personaAlias.get(n.actor_id) || '', creado: n.created_at })) : null,
+    K: krows ? krows.filter(k => idx.clienteName.has(k.cliente_id)).map(k => ({ _id: k.id, cliente: cname(k.cliente_id), nombre: k.nombre || '', rol: k.rol || '', email: k.email || '', tel: k.tel || '', principal: !!k.principal, cobros: !!k.cobros, portal: !!k.portal, portalUltimo: k.portal_ultimo || null, notas: k.notas || '', orden: k.orden || 0 })) : null,
   };
 }
+
+/* ---------- Redes: meses y piezas ---------- */
+export function mesUI(m) {
+  return { _id: m.id, cliente: idx.clienteName.get(m.cliente_id) || '', clienteId: m.cliente_id, abonoId: m.abono_id, mes: String(m.mes || '').slice(0, 7), estado: m.estado, resp: idx.personaAlias.get(m.responsable_id) || '',
+    plan: m.plan || {}, carpeta: m.carpeta || '', carpetaUrl: m.carpeta_url || '', conteo: m.conteo || {}, conteoAt: m.conteo_at, notas: m.notas || '', visible: !!m.visible_cliente,
+    enviadoAt: m.enviado_at, aprobadoAt: m.aprobado_at, aprobadoPor: m.aprobado_por || '', horas: m.horas == null ? '' : +m.horas };
+}
+const MES_COLS = { estado: 'estado', plan: 'plan', carpeta: 'carpeta', carpetaUrl: 'carpeta_url', notas: 'notas', visible: 'visible_cliente', enviadoAt: 'enviado_at', aprobadoAt: 'aprobado_at', aprobadoPor: 'aprobado_por' };
+function mesRow(u) {
+  const r = {};
+  for (const [k, c] of Object.entries(MES_COLS)) if (k in u) r[c] = u[k];
+  if ('resp' in u) r.responsable_id = u.resp ? (idx.personaId.get(u.resp) || null) : null;
+  if ('horas' in u) r.horas = u.horas === '' || u.horas == null ? null : +u.horas;
+  return r;
+}
+export async function mesCrear(u) {
+  const r = check(await sb.from('redes_meses').insert({ cliente_id: idx.clienteId.get(u.cliente), abono_id: u.abonoId || null, mes: u.mes + '-01', ...mesRow(u) }).select().single());
+  return mesUI(r);
+}
+export async function mesUpd(id, u) { check(await sb.from('redes_meses').update(mesRow(u)).eq('id', id)); }
+export async function mesDel(id) { check(await sb.from('redes_meses').delete().eq('id', id)); }
+export function piezaUI(z) {
+  return { _id: z.id, mesId: z.mes_id, formato: z.formato || '', red: z.red || '', fecha: z.fecha || '', hora: z.hora ? String(z.hora).slice(0, 5) : '', tema: z.tema || '', copy: z.copy || '', hashtags: z.hashtags || '',
+    estado: z.estado, extra: !!z.extra, fijo: z.fijo || '', resp: idx.personaAlias.get(z.responsable_id) || '', arte: Array.isArray(z.arte) ? z.arte : [], orden: z.orden || 0,
+    horas: z.horas == null ? '' : +z.horas, respuesta: z.respuesta_cliente || '', respondida: z.respondida_at, creado: z.created_at };
+}
+function piezaRow(u) {
+  const r = {};
+  ['formato', 'red', 'tema', 'copy', 'hashtags', 'estado', 'extra', 'fijo', 'arte', 'orden'].forEach(k => { if (k in u) r[k] = u[k]; });
+  if ('fecha' in u) r.fecha = u.fecha || null;
+  if ('hora' in u) r.hora = u.hora || null;
+  if ('resp' in u) r.responsable_id = u.resp ? (idx.personaId.get(u.resp) || null) : null;
+  if ('horas' in u) r.horas = u.horas === '' || u.horas == null ? null : +u.horas;
+  if ('respuesta' in u) r.respuesta_cliente = u.respuesta;
+  return r;
+}
+export async function piezasDe(mesIds) {
+  const ids = Array.isArray(mesIds) ? mesIds : [mesIds]; if (!ids.length) return [];
+  const rows = check(await sb.from('piezas').select('*').in('mes_id', ids).order('fecha', { nullsFirst: false }).order('orden').limit(10000)) || [];
+  return rows.map(piezaUI);
+}
+export async function piezasIns(mes, lista) {
+  if (!lista.length) return [];
+  const rows = lista.map((u, i) => ({ mes_id: mes._id, cliente_id: mes.clienteId || idx.clienteId.get(mes.cliente), estado: 'Idea', orden: i, ...piezaRow(u) }));
+  return (check(await sb.from('piezas').insert(rows).select()) || []).map(piezaUI);
+}
+export async function piezasUpd(ids, u) { const r = piezaRow(u); if (!Object.keys(r).length || !ids.length) return; check(await sb.from('piezas').update(r).in('id', ids)); }
+export async function piezasDel(ids) { if (ids.length) check(await sb.from('piezas').delete().in('id', ids)); }
+
+/* ---------- Tickets, briefs, entregas y sitios ---------- */
+export function pedidoUI(x) {
+  return { _id: x.id, numero: x.numero, cliente: idx.clienteName.get(x.cliente_id) || '', autor: x.autor_nombre || '', origen: x.origen, titulo: x.titulo, detalle: x.detalle || '', paraCuando: x.para_cuando || '',
+    prio: x.prioridad || '', estado: x.estado, resp: idx.personaAlias.get(x.responsable_id) || '', horas: x.horas == null ? '' : +x.horas, cobro: x.cobro, monto: x.monto == null ? '' : +x.monto, moneda: x.moneda || 'ARS',
+    facturado: !!x.facturado, respuesta: x.respuesta || '', proyectoId: x.proyecto_id, creado: x.created_at, cerrado: x.cerrado_at, deCliente: !!x.contacto_id };
+}
+function pedidoRow(u) {
+  const r = {};
+  ['origen', 'titulo', 'detalle', 'estado', 'cobro', 'moneda', 'facturado', 'respuesta'].forEach(k => { if (k in u) r[k] = u[k]; });
+  if ('cliente' in u) r.cliente_id = idx.clienteId.get(u.cliente) || null;
+  if ('paraCuando' in u) r.para_cuando = u.paraCuando || null;
+  if ('prio' in u) r.prioridad = u.prio || '';
+  if ('resp' in u) r.responsable_id = u.resp ? (idx.personaId.get(u.resp) || null) : null;
+  if ('horas' in u) r.horas = u.horas === '' || u.horas == null ? null : +u.horas;
+  if ('monto' in u) r.monto = u.monto === '' || u.monto == null ? null : +u.monto;
+  if ('proyectoId' in u) r.proyecto_id = u.proyectoId || null;
+  return r;
+}
+export async function pedidoGuardar(id, u) {
+  if (id) { check(await sb.from('pedidos').update(pedidoRow(u)).eq('id', id)); return id; }
+  return check(await sb.from('pedidos').insert({ origen: 'equipo', ...pedidoRow(u) }).select('id').single()).id;
+}
+export async function pedidosUpd(ids, u) { if (ids.length) check(await sb.from('pedidos').update(pedidoRow(u)).in('id', ids)); }
+export async function pedidoDel(id) { check(await sb.from('pedidos').delete().eq('id', id)); }
+export function briefUI(b) {
+  return { _id: b.id, cliente: idx.clienteName.get(b.cliente_id) || '', proyectoId: b.proyecto_id, tipo: b.tipo || '', form: b.form_nombre || '', formId: b.form_id, respondido: b.respondido_at || b.created_at,
+    respuestas: Array.isArray(b.respuestas) ? b.respuestas : [], email: b.email || '', empresa: b.empresa || '', nombre: b.nombre || '', pdf: b.pdf_url || '', preview: b.preview_url || '', resumen: b.resumen || null, estado: b.estado };
+}
+export async function briefUpd(id, u) {
+  const r = {};
+  if ('cliente' in u) r.cliente_id = u.cliente ? (idx.clienteId.get(u.cliente) || null) : null;
+  if ('proyectoId' in u) r.proyecto_id = u.proyectoId || null;
+  ['tipo', 'estado', 'resumen'].forEach(k => { if (k in u) r[k] = u[k]; });
+  check(await sb.from('briefs').update(r).eq('id', id));
+}
+export function entregaUI(e) {
+  return { _id: e.id, proyectoId: e.proyecto_id, cliente: idx.clienteName.get(e.cliente_id) || '', tipo: e.tipo, titulo: e.titulo || '', descripcion: e.descripcion || '', links: Array.isArray(e.links) ? e.links : [],
+    archivos: Array.isArray(e.archivos) ? e.archivos : [], estado: e.estado, enviadaAt: e.enviada_at, respondidaAt: e.respondida_at, aprobadoPor: e.aprobado_por || '', respuesta: e.respuesta || '', orden: e.orden || 0, creado: e.created_at };
+}
+export async function entregaGuardar(id, u, proyecto) {
+  const r = {};
+  ['tipo', 'titulo', 'descripcion', 'links', 'archivos', 'estado', 'orden'].forEach(k => { if (k in u) r[k] = u[k]; });
+  if ('enviadaAt' in u) r.enviada_at = u.enviadaAt;
+  if (id) { check(await sb.from('entregas').update(r).eq('id', id)); return id; }
+  return check(await sb.from('entregas').insert({ proyecto_id: proyecto._id, cliente_id: idx.clienteId.get(proyecto.cliente), ...r }).select('id').single()).id;
+}
+export async function entregaDel(id) { check(await sb.from('entregas').delete().eq('id', id)); }
+export function sitioUI(x) { return { _id: x.id, proyectoId: x.proyecto_id, preview: x.url_preview || '', prod: x.url_prod || '', etapa: x.etapa || '', checklist: Array.isArray(x.checklist) ? x.checklist : [], accesos: x.accesos || '', notas: x.notas || '', visible: x.visible_cliente !== false }; }
+export async function sitioGuardar(id, u, proyecto) {
+  const r = { url_preview: u.preview || '', url_prod: u.prod || '', etapa: u.etapa || '', checklist: u.checklist || [], accesos: u.accesos || '', notas: u.notas || '', visible_cliente: u.visible !== false };
+  if (id) { check(await sb.from('sitios').update(r).eq('id', id)); return id; }
+  return check(await sb.from('sitios').insert({ proyecto_id: proyecto._id, cliente_id: idx.clienteId.get(proyecto.cliente), ...r }).select('id').single()).id;
+}
+
+function tolerante(q) { return q.then(r => (r.error ? null : r.data || []), () => null); }
+// Tarea en la forma que usa la interfaz (la misma que tenían en proyectos.etapas, más id, etapa, horas y plazo).
+function tareaUI(t) {
+  return { _id: t.id, n: t.titulo, ok: !!t.hecha, est: t.en_curso ? 'curso' : '', resp: idx.personaAlias.get(t.responsable_id) || '', fecha: t.fecha || '', prio: t.prioridad || '', nota: t.nota || '',
+    etapa: t.etapa || '', horas: t.horas == null ? '' : +t.horas, plazo: t.plazo_dias == null ? '' : t.plazo_dias, hechaPor: idx.personaAlias.get(t.hecha_por) || '', hechaAt: t.hecha_at || '' };
+}
+const tareaRow = x => ({ titulo: String(x.n || '').slice(0, 300), hecha: !!x.ok, en_curso: !x.ok && x.est === 'curso', responsable_id: x.resp ? (idx.personaId.get(x.resp) || null) : null,
+  fecha: x.fecha || null, prioridad: x.prio || '', nota: x.nota || '', etapa: x.etapa || '', horas: x.horas === '' || x.horas == null ? null : +x.horas, plazo_dias: x.plazo === '' || x.plazo == null ? null : Math.round(+x.plazo) });
+// Guarda solo lo que cambió (así dos personas tocando tareas distintas del mismo proyecto no se pisan).
+export async function tareasSync(pid, prev, next) {
+  const antes = new Map((prev || []).filter(x => x && x._id).map((x, i) => [x._id, { x, i: (prev || []).indexOf(x) }]));
+  const quedan = new Set(next.filter(x => x._id).map(x => x._id));
+  const borrar = [...antes.keys()].filter(id => !quedan.has(id));
+  if (borrar.length) check(await sb.from('tareas').delete().in('id', borrar));
+  const nuevas = [], nuevasRef = [];
+  for (let i = 0; i < next.length; i++) {
+    const x = next[i], row = { ...tareaRow(x), orden: i };
+    if (!x._id) { nuevas.push({ ...row, proyecto_id: pid }); nuevasRef.push(x); continue; }
+    const a = antes.get(x._id), ra = a ? { ...tareaRow(a.x), orden: a.i } : null;
+    const patch = {}; for (const k of Object.keys(row)) if (!ra || JSON.stringify(row[k]) !== JSON.stringify(ra[k])) patch[k] = row[k];
+    if (Object.keys(patch).length) check(await sb.from('tareas').update(patch).eq('id', x._id));
+  }
+  if (nuevas.length) { const ins = check(await sb.from('tareas').insert(nuevas).select('id')) || []; ins.forEach((r, j) => { if (nuevasRef[j]) nuevasRef[j]._id = r.id; }); }
+}
+export async function tareaPatch(id, x) { check(await sb.from('tareas').update(tareaRow(x)).eq('id', id)); }
+export async function guardarFlujo(tipo, f) { check(await sb.from('flujos').upsert({ tipo, etapas: f.etapas || [], reglas: f.reglas || {} })); }
+// Comentarios y avisos
+export async function comentarios(entidad, id) {
+  const rows = check(await sb.from('comentarios').select('*').eq('entidad', entidad).eq('entidad_id', id).order('created_at').limit(500)) || [];
+  return rows.map(comUI);
+}
+export function comUI(c) { return { _id: c.id, entidad: c.entidad, entidadId: c.entidad_id, autor: idx.personaAlias.get(c.autor_id) || c.autor_nombre || '', autorId: c.autor_id, deCliente: !!c.autor_contacto_id, texto: c.texto, interno: c.interno, creado: c.created_at, editado: c.editado_at }; }
+export async function comentar(row) {
+  const r = check(await sb.from('comentarios').insert({ entidad: row.entidad, entidad_id: row.id, cliente_id: row.clienteId ? (idx.clienteId.get(row.clienteId) || row.clienteId) : null, proyecto_id: row.proyectoId || null, texto: row.texto, menciones: (row.menciones || []).map(a => idx.personaId.get(a)).filter(Boolean), interno: row.interno !== false }).select().single());
+  return comUI(r);
+}
+export async function borrarComentario(id) { check(await sb.from('comentarios').delete().eq('id', id)); }
+export async function leerAvisos(ids) { if (ids.length) check(await sb.from('notificaciones').update({ leida: true }).in('id', ids)); }
+export async function avisos() { return tolerante(sb.from('notificaciones').select('*').order('created_at', { ascending: false }).limit(80)).then(rows => rows ? rows.map(n => ({ _id: n.id, tipo: n.tipo, titulo: n.titulo, cuerpo: n.cuerpo, link: n.link, leida: n.leida, actor: idx.personaAlias.get(n.actor_id) || '', creado: n.created_at })) : null); }
+export async function logError(e) { try { await sb.from('errores').insert({ mensaje: String(e.mensaje || '').slice(0, 1900), detalle: String(e.detalle || '').slice(0, 7900), url: String(e.url || '').slice(0, 500), version: String(e.version || '') }); } catch (_) { /* nada */ } }
 
 // ---------- Escritura ----------
 async function syncResp(kind, id, aliases, prev) {
@@ -235,10 +398,14 @@ export async function logout() { await sb.auth.signOut(); }
 export function onAuth(fn) { sb.auth.onAuthStateChange((ev, s) => fn(ev, s)); }
 
 // ---------- Tiempo real ----------
-export function live(onChange, onStatus) {
+// Cambios en vivo. Avisos y comentarios no recargan todo: van a su propio manejador.
+const LIVE_APARTE = new Set(['notificaciones', 'comentarios', 'errores', 'piezas']);
+export function live(onChange, onStatus, onAparte) {
   let t;
-  return sb.channel('ops').on('postgres_changes', { event: '*', schema: 'public' }, () => { clearTimeout(t); t = setTimeout(onChange, 350); })
-    .subscribe(s => onStatus && onStatus(s));
+  return sb.channel('ops').on('postgres_changes', { event: '*', schema: 'public' }, ev => {
+    if (ev && LIVE_APARTE.has(ev.table)) { if (onAparte) onAparte(ev.table, ev); return; }
+    clearTimeout(t); t = setTimeout(onChange, 350);
+  }).subscribe(s => onStatus && onStatus(s));
 }
 
 // Cuentas de las integraciones (solo admins). Las claves van al servidor y nunca vuelven: solo cuenta y últimos caracteres.
@@ -253,3 +420,19 @@ export async function credenciales(payload) {
   if (data && data.error) throw new Error(data.error);
   return data;
 }
+
+// Edge Functions nuevas (0016): avisos (Slack y resumen diario), dropbox (carpetas, subidas, miniaturas) y tally (briefs).
+async function invocar(fn, payload, sinConexion) {
+  const { data, error } = await sb.functions.invoke(fn, { body: payload });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { }
+    if (/Failed to send a request|fetch/i.test(msg)) msg = sinConexion || 'No se pudo conectar con el servidor. Revisá tu conexión.';
+    throw new Error(msg);
+  }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
+export const avisosFn = payload => invocar('avisos', payload);
+export const dropbox = payload => invocar('dropbox', payload, 'No se pudo conectar con Dropbox. Revisá tu conexión.');
+export const tally = payload => invocar('tally', payload, 'No se pudo conectar con Tally. Revisá tu conexión.');

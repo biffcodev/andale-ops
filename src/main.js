@@ -1,17 +1,25 @@
 import './fonts.css';
 import './style.css';
 import { LOGO, ISO } from './marca.js';
-import { ICON } from './iconos.js';
+import { ICON, iconizar } from './iconos.js';
+import { initExportar } from './exportar.js';
 import * as data from './data.js';
 import { initAdmin } from './admin.js';
 import { initIA } from './ia.js';
 import { initCombo } from './combo.js';
 import { initMails } from './mails.js';
 import { initIntegraciones } from './integraciones.js';
+import { initTrabajo } from './trabajo.js';
+import { initHilos } from './hilos.js';
+import { initRedes } from './redes.js';
+import { initTickets } from './tickets.js';
+import { initEntregas } from './entregas.js';
+import * as E from './emails.js';
 initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
 let ADM = null, ADM_FN = {}, MAIL = null;
 let IA = null;
+let TRAB = null, HIL = null, RED = null, TKS = null;
 
 /* ---------- Constantes ---------- */
 const DEF = {
@@ -24,8 +32,9 @@ const DEF = {
   planes: ['SMALL', 'MEDIUM', 'PREMIUM', 'LARGE', 'SMALL+ADS', 'PACK RRSS', 'ESPECIAL'],
   rubros: ['Ads', 'Programación', 'Fotografía', 'Audiovisual', 'Contenido', 'Diseño', 'Contable', 'Otro'],
   monedas: ['ARS', 'USD', 'EUR', 'GBP'],
+  formatosRedes: ['Historias', 'Reels', 'Posts y carruseles'],
 };
-const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores', monedas: 'Monedas (código de 3 letras: ARS, USD, EUR, GBP…)' };
+const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores', monedas: 'Monedas (código de 3 letras: ARS, USD, EUR, GBP…)', formatosRedes: 'Formatos de redes (son también las carpetas de cada mes en Dropbox)' };
 const ESTADOS_ABONO = ['Activo', 'Pausado', 'Baja'];
 const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
 const CERRADOS = new Set(['Entregado', 'Cancelado']);
@@ -35,18 +44,19 @@ const VER_CL = { 'Proyectos': 'Solo proyectos' }; // solo para mostrar: el valor
 const TIPO_COLOR = { Branding: '--accent', Packaging: '--t-naranja', Web: '--s-curso', Diseño: '--s-confirmar', Audiovisual: '--s-presup', Redes: '--t-rosa', Ads: '--t-ambar', Otro: '--s-empezar' };
 const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': '--s-empezar' };
 const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
-const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Opciones'], ['integraciones', 'Integraciones']];
+const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['redes', 'Redes'], ['tickets', 'Tickets'], ['briefs', 'Briefs'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Opciones'], ['integraciones', 'Integraciones']];
 // Menú lateral: grupos por tipo de tarea. Las vistas de administración las aporta admin.js.
-const GRUPOS = [['Trabajo', ['inicio', 'proyectos', 'abonos', 'mis']], ['Clientes', ['clientes', 'propuestas']], ['Plata', ['cobros', 'gastos', 'pagos', 'numeros']], ['Configuración', ['equipo', 'listas', 'integraciones', 'ajustes']]];
+const GRUPOS = [['Trabajo', ['inicio', 'proyectos', 'redes', 'tickets', 'abonos', 'mis']], ['Clientes', ['clientes', 'briefs', 'propuestas']], ['Plata', ['cobros', 'gastos', 'pagos', 'numeros']], ['Configuración', ['equipo', 'listas', 'integraciones', 'ajustes']]];
 // Pantallas que ahora viven como pestañas de otra (los links viejos y los emails siguen funcionando).
 const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], precios: ['abonos', 'precios'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
 const resolver = v => { const a = ALIAS[v]; if (!a) return v; S.tab[a[0]] = a[1]; return a[0]; };
 /** Pestañas de una pantalla: [[clave, rótulo, cantidad?], ...] */
 function subnav(hub, tabs) {
   const cur = S.tab[hub] || tabs[0][0];
-  return '<nav class="subnav" aria-label="Secciones">' + tabs.map(([k, l, n]) => '<button data-act="tab" data-hub="' + hub + '" data-t="' + k + '"' + (cur === k ? ' aria-current="page"' : '') + '>' + esc(l) + (n ? '<span class="snav-n hot">' + n + '</span>' : '') + '</button>').join('') + '</nav>';
+  const SUBI = { mes: 'cierre', facturas: 'facturas', drive: 'drive', movs: 'caja', banco: 'banco', stats: 'estadisticas', rent: 'rentabilidad', abonos: 'abonos', precios: 'precios' };
+  return '<nav class="subnav" aria-label="Secciones">' + tabs.map(([k, l, n]) => '<button data-act="tab" data-hub="' + hub + '" data-t="' + k + '"' + (cur === k ? ' aria-current="page"' : '') + '>' + (ICON[SUBI[k]] || '') + esc(l) + (n ? '<span class="snav-n hot">' + n + '</span>' : '') + '</button>').join('') + '</nav>';
 }
-const EXT_VIEWS = ['mis', 'proyectos', 'abonos', 'clientes', 'comunicaciones'];
+const EXT_VIEWS = ['mis', 'proyectos', 'redes', 'abonos', 'clientes', 'comunicaciones'];
 
 /* ---------- Utilidades ---------- */
 const $ = s => document.querySelector(s);
@@ -88,6 +98,7 @@ const S = {
   mf: { q: '', cliente: '', pend: false },
   tab: {},
   form: null, listDraft: {}, openPick: null, busy: false, gcl: new Set(JSON.parse(lsGet('gcl') || '[]')),
+  T: false, FL: null, N: null, sinHilos: true, hq: null, tkVista: lsGet('tkVista') || 'etapa',
 };
 const isAdmin = () => S.me && S.me.rol === 'admin';
 const isStaff = () => S.me && (S.me.rol === 'admin' || S.me.rol === 'equipo');
@@ -101,10 +112,13 @@ const views = () => {
 };
 const viewFn = k => VIEW_FN[k] || (isAdmin() && ADM_FN[k]);
 function leerHash() {
-  const h = decodeURIComponent(location.hash.slice(1)); if (!h) return;
+  const full = decodeURIComponent(location.hash.slice(1)); if (!full) return;
+  const qi = full.indexOf('?'), h = qi >= 0 ? full.slice(0, qi) : full;
+  S.hq = qi >= 0 ? Object.fromEntries(new URLSearchParams(full.slice(qi + 1))) : null;
   const [v, ...rest] = h.split('/'); const arg = rest.join('/');
-  S.view = resolver(v); S.ficha = null; S.pficha = null;
+  S.view = resolver(v); S.ficha = null; S.pficha = null; S.rmFicha = null;
   if (v === 'proyectos' && arg) S.pficha = arg;
+  if (v === 'redes' && arg) S.rmFicha = arg;
   if (v === 'clientes' && arg) S.ficha = arg;
 }
 leerHash();
@@ -190,7 +204,7 @@ function contactosHtml(c) {
   const ks = contactosDe(c.nombre), can = isStaff() && conTabla();
   const card = k => '<div class="ctc' + (can ? ' click' : '') + '"' + (can ? ' data-act="kEdit" data-id="' + esc(k._id) + '" data-cliente="' + esc(c.nombre) + '"' : '') + '>' + av(nomContacto(k), '', '') +
     '<div class="ctc-b"><div class="ctc-t"><b>' + esc(nomContacto(k)) + '</b>' + (k.rol ? '<span class="ctc-rol">' + esc(k.rol) + '</span>' : '') + '</div>' +
-    '<div class="ctc-tags">' + (k.principal ? '<span class="ctag pri">Principal</span>' : '') + (k.cobros ? '<span class="ctag cob">Recibe cobros</span>' : '') + '</div>' +
+    '<div class="ctc-tags">' + (k.principal ? '<span class="ctag pri">Principal</span>' : '') + (k.cobros ? '<span class="ctag cob">Recibe cobros</span>' : '') + (k.portal ? '<span class="ctag por">Portal</span>' : '') + '</div>' +
     (k.email || k.tel ? '<div class="ctc-l">' + [k.email, k.tel].filter(Boolean).map(esc).join(' · ') + '</div>' : '') +
     (k.notas ? '<div class="ctc-n">' + esc(k.notas) + '</div>' : '') + '</div>' +
     '<div class="ctc-a">' + (k.email && isStaff() ? '<button class="btn ghost sm" data-act="mail" data-cliente="' + esc(c.nombre) + '" data-para="' + esc(k.email) + '" title="Escribirle un mail" aria-label="Mail a ' + esc(nomContacto(k)) + '">✉</button><button class="btn ghost sm" data-act="copy" data-v="' + esc(k.email) + '" title="Copiar email" aria-label="Copiar email">⧉</button>' : '') +
@@ -198,6 +212,11 @@ function contactosHtml(c) {
   const cob = ks.filter(k => k.cobros && k.email).length;
   return '<section class="sheet"><div class="sheet-h"><div><h2>Contactos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">' + (ks.length ? ks.length + (ks.length === 1 ? ' persona' : ' personas') + (cob ? ' · ' + cob + ' reciben resúmenes y facturas' : '') : 'Con quién hablamos en ' + esc(c.nombre) + '.') + '</p></div>' + (can ? '<button class="btn sm" data-act="kNuevo" data-cliente="' + esc(c.nombre) + '">+ Contacto</button>' : '') + '</div>' +
     (ks.length ? '<div class="ctcs">' + ks.map(card).join('') + '</div>' : emptyBox('Sin contactos', can ? 'Sumá a las personas con las que hablamos: dueña, marketing, administración…' : '')) + '</section>';
+}
+const PORTAL_URL = 'https://andale-ops.vercel.app/portal';
+function invitacionPortal() {
+  const g = n => ((($('#k-' + n) || {}).value) || '').trim(), nom = g('nombre').split(' ')[0];
+  return 'Hola' + (nom ? ' ' + nom : '') + ', ¿cómo estás? Te habilitamos el portal de clientes de àndale: ahí vas a poder ver y aprobar el contenido de redes, revisar las entregas de los proyectos, seguir tu web y pedirnos cosas puntuales.\n\nEntrás acá con tu email' + (g('email') ? ' (' + g('email') + ')' : '') + ', sin contraseña: te llega un link para ingresar.\n' + PORTAL_URL + '\n\nCualquier cosa nos escribís.';
 }
 function abrirContacto(cliente, id) {
   const k = id ? (S.K || []).find(x => x._id === id) : null;
@@ -213,6 +232,8 @@ function abrirContacto(cliente, id) {
     fld('email', 'Email', v.email, 'email') + fld('tel', 'Teléfono / WhatsApp', v.tel, 'tel') +
     '<label class="chk full"><input type="checkbox" id="k-principal"' + (v.principal ? ' checked' : '') + (k && k.principal ? ' disabled' : '') + '> <span><b>Contacto principal</b> <span class="muted">· con quien hablamos del día a día. Es el que aparece en la lista de clientes y en el botón de WhatsApp.' + (k && k.principal ? ' Para cambiarlo, marcá a otra persona como principal.' : '') + '</span></span></label>' +
     '<label class="chk full"><input type="checkbox" id="k-cobros"' + (v.cobros ? ' checked' : '') + '> <span><b>Recibe resúmenes de cuenta y facturas</b> <span class="muted">· le llegan los resúmenes, facturas, invoices y recordatorios de pago.</span></span></label>' +
+    (Array.isArray(S.RM) ? '<label class="chk full"><input type="checkbox" id="k-portal"' + (v.portal ? ' checked' : '') + '> <span><b>Acceso al portal de clientes</b> <span class="muted">· entra con su email a ' + esc(PORTAL_URL.replace('https://', '')) + ' y ve lo que marquen como visible: redes para aprobar, entregas, su web, pedidos e informes.' + (k && k.portalUltimo ? ' Entró por última vez el ' + esc(fmt(String(k.portalUltimo).slice(0, 10))) + '.' : '') + '</span></span></label>' +
+      '<div class="toolbar full k-inv"' + (v.portal ? '' : ' hidden') + '><button type="button" class="btn sm" data-act="kInvitar" data-m="copiar">Copiar invitación</button><button type="button" class="btn sm" data-act="kInvitar" data-m="wa">Mandar por WhatsApp</button><button type="button" class="btn sm" data-act="kInvitar" data-m="mail">Mandar por email</button></div>' : '') +
     '<div class="field full"><label for="k-notas">Notas</label><textarea id="k-notas" rows="2" placeholder="Ej.: prefiere WhatsApp, no escribirle después de las 19">' + esc(v.notas || '') + '</textarea></div>' +
     '</div><div class="panel-f"><span id="kdelzone">' + (k ? '<button type="button" class="btn ghost danger" data-act="kDel">Eliminar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="ksave">' + (k ? 'Guardar' : 'Agregar contacto') + '</button></span></div></form>';
   p.hidden = false; $('#scrim').hidden = false;
@@ -227,7 +248,8 @@ async function sincPrincipal(cliente, k) {
 async function guardarContacto() {
   const f = S.kf; if (!f) return;
   const g = n => ((($('#k-' + n) || {}).value) || '').trim();
-  const row = { nombre: g('nombre'), rol: g('rol'), email: g('email').toLowerCase(), tel: g('tel'), principal: f.principal || $('#k-principal').checked, cobros: $('#k-cobros').checked, notas: g('notas') };
+  const row = { nombre: g('nombre'), rol: g('rol'), email: g('email').toLowerCase(), tel: g('tel'), principal: f.principal || $('#k-principal').checked, cobros: $('#k-cobros').checked, notas: g('notas'), ...($('#k-portal') ? { portal: $('#k-portal').checked } : {}) };
+  if (row.portal && !row.email) { const e = $('#ke-email'); if (e) { e.textContent = 'Para entrar al portal necesita email'; e.hidden = false; } return; }
   document.querySelectorAll('#kform .err').forEach(e => { e.hidden = true; });
   const err = (n, m) => { const e = $('#ke-' + n); if (e) { e.textContent = m; e.hidden = false; } };
   if (!row.nombre && !row.email && !row.tel) { err('nombre', 'Poné al menos el nombre, el email o el teléfono'); return; }
@@ -237,8 +259,10 @@ async function guardarContacto() {
   if (row.email && otros.some(x => x.email && x.email.toLowerCase() === row.email)) { err('email', 'Ese email ya está en otro contacto de este cliente'); return; }
   const btn = $('#ksave'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
+    let kid = f.id;
     if (f.id) await data.upd('contactos', f.id, row);
-    else await data.ins('contactos', { ...row, cliente_id: data.ids.cliente(f.cliente), orden: otros.length });
+    else kid = (await data.ins('contactos', { ...row, cliente_id: data.ids.cliente(f.cliente), orden: otros.length })).id;
+    if (row.portal && kid) { try { await data.avisosFn({ accion: 'portal_alta', contacto_id: kid }); } catch (e) { toast('Guardado, pero no se pudo habilitar el acceso: ' + e.message); } }
     if (row.principal) { for (const o of otros.filter(x => x.principal)) await data.upd('contactos', o._id, { principal: false }); await sincPrincipal(f.cliente, row); }
     closeForm(); toast(f.id ? 'Contacto guardado' : 'Contacto agregado'); await reload();
   } catch (e) { toast(e.message); if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
@@ -300,11 +324,14 @@ function estadoSelect(c) {
     (c.estadoManual ? '<span class="fij" title="Fijado a mano. El automático diría: ' + esc(VER_CL[auto] || auto) + '">fijado</span>' : '') + '</span>';
 }
 /* Etapas del proyecto: [{ n, ok }]. Plantillas por tipo en Listas (clave 'etapas:<Tipo>'). */
-const plantilla = tipo => (S.L['etapas:' + tipo] || []).slice();
+const plantilla = tipo => trab().plantillaTareas(tipo).map(x => x.n);
+const plantillaTk = (tipo, inicio) => trab().plantillaTareas(tipo, inicio);
+// Etapas de un proyecto: las de su flujo y las que tengan sus tareas.
+function etapasProyecto(p) { const ets = trab().etapasFlujo(p.tipo).slice(); etapasDe(p).forEach(x => { if (x.etapa && !ets.includes(x.etapa)) ets.push(x.etapa); }); return ets; }
 const etapasDe = p => Array.isArray(p.etapas) ? p.etapas : [];
 function etapaInfo(p) {
   const e = etapasDe(p), done = e.filter(x => x.ok).length, cur = e.find(x => !x.ok);
-  return { e, done, total: e.length, cur: cur ? cur.n : (e.length ? 'Completo' : '') };
+  return { e, done, total: e.length, cur: p.etapaActual && cur ? p.etapaActual + ' · ' + cur.n : cur ? cur.n : (e.length ? 'Completo' : '') };
 }
 const segs = (e) => '<span class="prog" aria-hidden="true">' + e.map(x => '<i class="' + (x.ok ? 'on' : '') + '"></i>').join('') + '</span>';
 function etapaCell(p) {
@@ -354,7 +381,20 @@ function tareasHtml(p) {
       '<div class="toolbar tk-tools">' + (tpl.length ? '<button class="btn ghost sm" data-act="etCargar" data-id="' + pid + '">' + (e.length ? '+ Sumar' : '+ Usar') + ' tareas modelo de ' + esc(p.tipo) + '</button>' : '') +
       (isStaff() ? '<button class="btn ghost sm" data-act="tkIA" data-id="' + pid + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Que Mr. Piggy arme las tareas</button>' : '') + '</div>' : '');
 }
-async function guardarTareas(p, next, msg) { p.etapas = next; render(); await upd('proyecto', p._id, { etapas: next }, null, true); if (msg) toast(msg); }
+async function guardarTareas(p, next, msg) {
+  if (!S.T) { p.etapas = next; render(); await upd('proyecto', p._id, { etapas: next }, null, true); if (msg) toast(msg); return; }
+  const prev = etapasDe(p); p.etapas = next; render();
+  try { await data.tareasSync(p._id, prev, next); if (msg) toast(msg); } catch (err) { toast(err.message); }
+  await reload();
+}
+// Al cerrar una tarea: ¿cuánto te llevó? (opcional, con un toque)
+let horasT = null;
+function pedirHoras(p, x) {
+  const b = $('#horasbar'); if (!b || !S.T || !x) return;
+  b.dataset.pid = p._id; b.dataset.n = x.n; b.dataset.id = x._id || '';
+  b.innerHTML = '<span class="hb-ok">✓</span><span class="hb-t"><b>' + esc(x.n) + '</b><span>¿Cuánto te llevó?</span></span>' + [['0.5', '½ h'], ['1', '1 h'], ['2', '2 h'], ['4', '4 h'], ['8', '1 día']].map(([h, l]) => '<button class="hb-c" data-act="hrSet" data-h="' + h + '">' + l + '</button>').join('') + '<button class="btn ghost sm" data-act="hrNo" aria-label="No cargar horas">✕</button>';
+  b.hidden = false; clearTimeout(horasT); horasT = setTimeout(() => { b.hidden = true; }, 14000);
+}
 
 /* ---------- Vistas ---------- */
 const kpiBtn = (n, label, sub, attrs, cls) => '<button class="kpi ' + (cls || '') + '" ' + attrs + '><span class="eyebrow">' + label + '</span><b>' + n + '</b><span>' + sub + '</span></button>';
@@ -501,7 +541,7 @@ function vLista() {
 /* ---------- Detalle de una tarea (panel lateral) ---------- */
 function abrirTarea(pid, i) {
   const p = S.P.find(x => x._id === pid); if (!p) return;
-  const can = canEditProj(p), x = i >= 0 ? etapasDe(p)[i] : { n: '', ok: false };
+  const can = canEditProj(p), x = i >= 0 ? etapasDe(p)[i] : { n: '', ok: false, etapa: p.etapaActual || '' };
   if (!x) return;
   S.tkf = { pid, i }; S.form = null;
   const ro = can ? '' : ' disabled', k = estTk(x);
@@ -512,8 +552,12 @@ function abrirTarea(pid, i) {
     '<div class="field"><label for="tk-prio">Prioridad</label><select id="tk-prio"' + ro + '>' + opt('', 'Sin prioridad', x.prio || '') + PRIOS.map(v => opt(v, v, x.prio || '')).join('') + '</select></div>' +
     '<div class="field"><label for="tk-resp">Responsable</label><select id="tk-resp"' + ro + '>' + opt('', 'Sin asignar', x.resp || '') + [...new Set([...personas(), x.resp].filter(Boolean))].map(a => opt(a, a, x.resp || '')).join('') + '</select></div>' +
     '<div class="field"><label for="tk-fecha">Para cuándo</label><input id="tk-fecha" type="date" value="' + esc(x.fecha || '') + '"' + ro + '></div>' +
+    (S.T ? (() => { const ets = etapasProyecto(p); return (ets.length ? '<div class="field"><label for="tk-etapa">Etapa</label><select id="tk-etapa"' + ro + '>' + opt('', 'Sin etapa', x.etapa || '') + ets.map(e => opt(e, e, x.etapa || '')).join('') + '</select></div>' : '') +
+      '<div class="field"><label for="tk-horas">Horas que llevó</label><input id="tk-horas" type="number" min="0" step="0.25" inputmode="decimal" placeholder="Opcional" value="' + esc(x.horas ?? '') + '"' + ro + '><span class="hint">Aproximado. Sirve para saber cuánto cuesta cada trabajo.</span></div>'; })() : '') +
     '<div class="field full"><label for="tk-nota">Notas</label><textarea id="tk-nota" rows="6" placeholder="Detalles, links, lo que pidió el cliente…"' + ro + '>' + esc(x.nota || '') + '</textarea></div>' +
     (x.fecha && integ('calendario') ? '<div class="toolbar full">' + calBtn(x.n + ' · ' + p.proyecto, x.fecha, 'Tarea del proyecto ' + p.proyecto + ' (' + p.cliente + ')', 'sm') + '</div>' : '') +
+    (x.hechaPor ? '<p class="formnote full">Hecha por ' + esc(x.hechaPor) + (x.hechaAt ? ' el ' + fmt(x.hechaAt.slice(0, 10)) : '') + '</p>' : '') +
+    (x._id ? '<div class="full">' + hil().html('tarea', x._id, { cliente: p.cliente, proyectoId: p._id, titulo: 'Comentarios', compacto: true }) + '</div>' : '') +
     '</div><div class="panel-f"><span>' + (can && i >= 0 ? '<button type="button" class="btn ghost danger" data-act="tkBorrar">Borrar tarea</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">' + (can ? 'Cancelar' : 'Cerrar') + '</button>' + (can ? '<button type="submit" class="btn primary">' + (i >= 0 ? 'Guardar' : 'Agregar') + '</button>' : '') + '</span></div></form>';
   $('#panel').hidden = false; $('#scrim').hidden = false;
   setTimeout(() => { const n = $('#tk-n'); if (n && i < 0) n.focus(); }, 30);
@@ -522,7 +566,8 @@ async function guardarTareaPanel() {
   const f = S.tkf; if (!f) return; const p = S.P.find(x => x._id === f.pid); if (!p) return;
   const n = ($('#tk-n').value || '').trim(); if (!n) { toast('Escribí la tarea'); $('#tk-n').focus(); return; }
   const base = f.i >= 0 ? etapasDe(p)[f.i] : {};
-  const x = conEst({ ...base, n, resp: $('#tk-resp').value, fecha: $('#tk-fecha').value, prio: $('#tk-prio').value, nota: $('#tk-nota').value.trim() }, $('#tk-est').value);
+  const hv = $('#tk-horas') ? $('#tk-horas').value.trim() : (base.horas ?? '');
+  const x = conEst({ ...base, n, resp: $('#tk-resp').value, fecha: $('#tk-fecha').value, prio: $('#tk-prio').value, nota: $('#tk-nota').value.trim(), etapa: $('#tk-etapa') ? $('#tk-etapa').value : (base.etapa || ''), horas: hv === '' ? '' : Math.max(0, +String(hv).replace(',', '.') || 0) }, $('#tk-est').value);
   const next = f.i >= 0 ? etapasDe(p).map((y, i) => i === f.i ? x : y) : [...etapasDe(p), x];
   closeForm(); S.tkf = null;
   await guardarTareas(p, next, f.i >= 0 ? 'Tarea guardada' : 'Tarea agregada');
@@ -550,10 +595,30 @@ function tkRow(p, x, i, can) {
 }
 function pfTareas(p, can) {
   const e = etapasDe(p).map((x, i) => ({ x, i }));
+  const ets = S.T ? etapasProyecto(p) : [];
+  const porEtapa = ets.length && e.some(o => o.x.etapa) && S.tkVista !== 'estado';
   const grupos = TK_EST.map(([k, l, c]) => [k, l, c, e.filter(o => estTk(o.x) === k)]);
   const tpl = plantilla(p.tipo), pid = esc(p._id);
-  const add = can ? '<form class="tkr-add" data-tkadd="' + pid + '"><span class="tkr-plus" aria-hidden="true">+</span><input class="in" name="n" placeholder="Agregar tarea y Enter" aria-label="Nueva tarea" autocomplete="off"><select class="in" name="resp" aria-label="Quién la hace">' + opt('', 'Sin asignar', '') + personas().map(a => opt(a, a, '')).join('') + '</select><input class="in" type="date" name="fecha" aria-label="Para cuándo"><button class="btn sm primary">Agregar</button></form>' : '';
-  let h = '<div class="tkl">';
+  const addF = etapaDef => can ? '<form class="tkr-add" data-tkadd="' + pid + '"><span class="tkr-plus" aria-hidden="true">+</span><input class="in" name="n" placeholder="Agregar tarea y Enter" aria-label="Nueva tarea" autocomplete="off"><select class="in" name="resp" aria-label="Quién la hace">' + opt('', 'Sin asignar', '') + personas().map(a => opt(a, a, '')).join('') + '</select><input class="in" type="date" name="fecha" aria-label="Para cuándo">' + (porEtapa ? '<input type="hidden" name="etapa" value="' + esc(etapaDef || '') + '">' : '') + '<button class="btn sm primary">Agregar</button></form>' : '';
+  const add = addF('');
+  const vista = ets.length && e.some(o => o.x.etapa) ? '<div class="tk-vista"><span class="muted">Ver por</span><div class="seg"><button data-act="tkVista" data-v="etapa" aria-pressed="' + (porEtapa ? 'true' : 'false') + '">Etapa</button><button data-act="tkVista" data-v="estado" aria-pressed="' + (porEtapa ? 'false' : 'true') + '">Estado</button></div></div>' : '';
+  if (porEtapa) {
+    const orden = [...ets, ''];
+    const actual = p.etapaActual || '';
+    const idxAct = orden.indexOf(actual);
+    let h = '<div class="tkl">' + vista + '<ol class="etl" aria-label="Etapas">' + ets.map((x, j) => { const arr = e.filter(o => o.x.etapa === x), hechas = arr.filter(o => o.x.ok).length; const st = x === actual ? 'cur' : (arr.length && hechas === arr.length) || (idxAct >= 0 && j < idxAct) ? 'ok' : ''; return '<li class="' + st + '"><span>' + (st === 'ok' ? '✓' : j + 1) + '</span><b>' + esc(x) + '</b>' + (arr.length ? '<small>' + hechas + '/' + arr.length + '</small>' : '') + '</li>'; }).join('') + '</ol>';
+    orden.forEach(et => {
+      const arr = e.filter(o => (o.x.etapa || '') === et && (et !== '' || !ets.includes(o.x.etapa)));
+      if (!arr.length && et !== actual) return;
+      const key = 'tke:' + p._id + ':' + et, hechas = arr.filter(o => o.x.ok).length, completa = arr.length && hechas === arr.length;
+      const cerrado = completa && et !== actual ? !S.gcl.has(key + ':open') : S.gcl.has(key);
+      const c = et === actual ? '--s-curso' : completa ? '--s-entregado' : '--s-empezar';
+      h += '<section class="tkg' + (cerrado ? ' cerrado' : '') + (et === actual ? ' actual' : '') + '" style="--c:var(' + c + ')"><button class="grp-h" data-act="tkGrp" data-g="' + esc(key) + '" data-hecha="' + (completa && et !== actual ? 1 : '') + '" aria-expanded="' + !cerrado + '"><span class="chev" aria-hidden="true">▾</span><span class="grp-pill">' + esc(et || 'Otras tareas') + '</span><span class="grp-n">' + hechas + '/' + arr.length + '</span>' + (et === actual ? '<span class="tkg-act">Etapa actual</span>' : '') + '</button>' +
+        (cerrado ? '' : '<div class="tkg-b"><div class="tkr tkr-h" aria-hidden="true"><span></span><span>Tarea</span><span>Responsable</span><span>Fecha</span><span>Prioridad</span></div>' + arr.map(o => tkRow(p, o.x, o.i, can)).join('') + addF(et) + '</div>') + '</section>';
+    });
+    return h + '</div>';
+  }
+  let h = '<div class="tkl">' + vista;
   if (!e.length) h += '<div class="tkl-empty"><b>Este proyecto todavía no tiene tareas.</b><span>Sumalas abajo' + (tpl.length ? ', usá las tareas modelo de ' + esc(p.tipo) : '') + (isStaff() ? ' o pedile a Mr. Piggy que las arme.' : '.') + '</span>' +
     (can ? '<span class="toolbar" style="justify-content:center">' + (tpl.length ? '<button class="btn sm" data-act="etCargar" data-id="' + pid + '">Usar tareas modelo de ' + esc(p.tipo) + '</button>' : '') + (isStaff() ? '<button class="btn sm primary" data-act="tkIA" data-id="' + pid + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Que Mr. Piggy arme las tareas</button>' : '') + '</span>' : '') + '</div>';
   grupos.forEach(([k, l, c, arr]) => {
@@ -625,7 +690,7 @@ function vProyectoFicha() {
   if (!p) return '<section class="sheet">' + emptyBox('Ese proyecto no existe o no tenés acceso', '') + '<div class="sheet-b"><button class="btn" data-act="pback">← Volver a Proyectos</button></div></section>';
   const can = canEditProj(p), e = etapasDe(p), pct = avance(p);
   const ms = S.M.filter(m => m.cliente === p.cliente).length;
-  const tabs = [['tareas', 'Tareas'], ['tablero', 'Tablero'], ['crono', 'Cronograma'], ['detalles', 'Detalles'], ['charlas', 'Charlas' + (ms ? ' ' + ms : '')], ...(isAdmin() && ADM && ADM.proyectoSection ? [['plata', 'Precio y cobro']] : [])];
+  const tabs = [['tareas', 'Tareas'], ['tablero', 'Tablero'], ['crono', 'Cronograma'], ...(S.T ? [['conv', 'Conversación']] : []), ...(Array.isArray(S.EN) ? [['entregas', 'Entregas' + (ent().cuenta(p).pend ? ' <span class="snav-n hot">' + ent().cuenta(p).pend + '</span>' : ent().cuenta(p).n ? ' <span class="muted">' + ent().cuenta(p).n + '</span>' : '')]] : []), ...(Array.isArray(S.SI) && (p.tipo === 'Web' || ent().tieneSitio(p)) ? [['web', 'Sitio web']] : []), ['detalles', 'Detalles'], ['charlas', 'Charlas' + (ms ? ' ' + ms : '')], ...(isAdmin() && ADM && ADM.proyectoSection ? [['plata', 'Precio y cobro']] : [])];
   const tab = tabs.some(t => t[0] === S.ptab) ? S.ptab : 'tareas';
   const estado = can ? '<select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado del proyecto" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado">' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select>' : stPill(p.estado);
   const fechas = (p.fechaInicio || p.entrega) ? '<span class="pf-fechas">' + (p.fechaInicio ? fmt(p.fechaInicio) : '…') + ' → ' + (p.entrega ? '<b>' + fmt(p.entrega) + '</b>' : 'sin entrega') + '</span>' : '';
@@ -636,11 +701,14 @@ function vProyectoFicha() {
   else if (tab === 'crono') body = '<section class="sheet"><div class="sheet-b">' + pfCronograma(p) + '</div></section>';
   else if (tab === 'detalles') body = '<div class="pf-grid"><div>' + pfDetalles(p, can) + '</div>' + pfLado(p) + '</div>';
   else if (tab === 'charlas') body = pfCharlas(p);
+  else if (tab === 'conv') body = '<div class="pf-grid"><div>' + hil().html('proyecto', p._id, { cliente: p.cliente, proyectoId: p._id, titulo: 'Conversación del equipo', vacio: 'Lo que se habla de este proyecto, en un solo lugar. Con @ mencionás a alguien y le llega el aviso.' }) + '</div>' + pfLado(p) + '</div>';
+  else if (tab === 'entregas') body = ent().entregasHtml(p);
+  else if (tab === 'web') body = ent().sitioHtml(p);
   else if (tab === 'plata') body = ADM.proyectoSection(p);
   return '<div class="pf-head" style="--t:var(' + (TIPO_COLOR[p.tipo] || '--accent') + ')">' +
-    '<div class="pf-top"><span class="pf-ico" aria-hidden="true">' + ICON.proyectos + '</span><div class="pf-tit"><button class="btn link pf-cli" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + av(p.cliente, cliC.avatar, 'sq') + esc(p.cliente) + '</button><h1>' + esc(p.proyecto) + '</h1></div>' +
+    '<div class="pf-top"><button class="pf-logo" data-act="ficha" data-cliente="' + esc(p.cliente) + '" title="Ficha de ' + esc(p.cliente) + '">' + av(p.cliente, cliC.avatar, 'xl sq') + '</button><div class="pf-tit"><button class="btn link pf-cli" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente) + '</button><h1>' + esc(p.proyecto) + '</h1></div>' +
     '<div class="toolbar pf-acc">' + (isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(p.cliente) + '">✉ Mail al cliente</button>' : '') + calBtn('Entrega: ' + p.proyecto + ' · ' + p.cliente, isOpen(p) ? p.entrega : '', 'Entrega pactada del proyecto ' + p.proyecto + ' (' + p.cliente + ')') + (can ? '<button class="btn primary" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar proyecto</button>' : '') + '</div></div>' +
-    '<div class="pf-meta">' + estado + prioSelect(p) + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + fechas + daysBadge(p) +
+    '<div class="pf-meta">' + estado + (p.etapaActual ? '<span class="pf-etapa" title="Etapa del flujo">Etapa: <b>' + esc(p.etapaActual) + '</b></span>' : '') + prioSelect(p) + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + fechas + daysBadge(p) +
     '<span class="pf-prog" title="' + pct + '% de las tareas hechas"><span class="pf-bar"><i style="width:' + pct + '%"></i></span><b>' + pct + '%</b><span class="muted">' + e.filter(x => x.ok).length + '/' + e.length + '</span></span></div>' +
     '<nav class="pf-tabs" aria-label="Secciones del proyecto">' + tabs.map(([k, l]) => '<button data-act="ptab" data-t="' + k + '"' + (tab === k ? ' aria-current="page"' : '') + '>' + l + '</button>').join('') + '</nav></div>' + body;
 }
@@ -654,10 +722,7 @@ function herramientas() {
     exp: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>',
     share: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 10.8 7.6-4M8.2 13.2l7.6 4"/></svg>',
   };
-  const hayTabla = !!document.querySelector('#view table');
-  return '<div class="pagetools" role="group" aria-label="Imprimir, exportar y compartir">' +
-    '<button class="btn ghost sm" data-act="print" title="Imprimir o guardar como PDF">' + ico.print + '<span>Imprimir</span></button>' +
-    (hayTabla ? '<button class="btn ghost sm" data-act="exportar" title="Descargar en Excel">' + ico.exp + '<span>Excel</span></button>' : '') +
+  return '<div class="pagetools" role="group" aria-label="Descargar, imprimir y compartir">' + EXP.menuVista() +
     '<details class="share"><summary class="btn ghost sm" title="Compartir">' + ico.share + '<span>Compartir</span></summary><div class="menu-pop">' +
     '<button class="btn ghost sm" data-act="shareCopy">Copiar link</button><button class="btn ghost sm" data-act="shareWa">Enviar por WhatsApp</button><button class="btn ghost sm" data-act="shareMail">Enviar por email</button></div></details></div>';
 }
@@ -669,6 +734,7 @@ function ponerHerramientas() {
   const sep = '<span class="cr-sep" aria-hidden="true">/</span>';
   let cr = '<button class="cr" data-act="go" data-view="' + esc(S.view) + '">' + (ICON[S.view] || '') + '<span>' + esc(lab) + '</span></button>';
   if (S.view === 'proyectos' && S.pficha) { const p = S.P.find(x => x._id === S.pficha); if (p) cr = '<button class="cr" data-act="pback">' + ICON.proyectos + '<span>Proyectos</span></button>' + sep + '<button class="cr" data-act="ficha" data-cliente="' + esc(p.cliente) + '"><span>' + esc(p.cliente) + '</span></button>' + sep + '<span class="cr on">' + esc(p.proyecto) + '</span>'; }
+  else if (S.view === 'redes' && S.rmFicha) { const m = (S.RM || []).find(x => x._id === S.rmFicha); if (m) cr = '<button class="cr" data-act="go" data-view="redes">' + ICON.redes + '<span>Redes</span></button>' + sep + '<button class="cr" data-act="ficha" data-cliente="' + esc(m.cliente) + '"><span>' + esc(m.cliente) + '</span></button>' + sep + '<span class="cr on">' + esc(cap1(monthLabel(m.mes))) + '</span>'; }
   else if (S.view === 'clientes' && S.ficha) cr = '<button class="cr" data-act="back">' + ICON.clientes + '<span>Clientes</span></button>' + sep + '<span class="cr on">' + esc(S.ficha) + '</span>';
   $('#crumbs').innerHTML = cr;
   $('#ttools').innerHTML = herramientas();
@@ -896,6 +962,7 @@ function vFicha() {
     '<div class="stack">' +
     '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + as.filter(a => a.estado === 'Activo').length + ' activos</span></div>' + (as.length ? '<div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('Sin abonos', '')) + '</section>' +
     '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' +
+    (S.T && isStaff() ? tk().fichaHtml(c.nombre) : '') + redesFicha(c) +
     (() => { const hs = historiaCliente(c.nombre); return hs.length ? '<section class="sheet"><div class="sheet-h"><h2>Lo que hicimos juntos</h2><span class="muted num">' + hs.length + '</span></div><ol class="hist">' + hs.map(x => '<li class="' + (x.on ? 'on' : '') + '"><button class="hist-i" data-act="' + x.act + '"' + (x.kind ? ' data-kind="' + x.kind + '"' : '') + ' data-id="' + esc(x.id) + '"><span class="srv' + (x.on ? ' on' : '') + '" style="--c:var(' + (TIPO_COLOR[x.tipo] || '--muted') + ')">' + esc(x.tipo) + '</span><span class="t"><b>' + esc(x.t) + '</b><span>' + esc(x.sub) + '</span></span><span class="mono muted">' + (x.f ? esc(x.f.slice(0, 4)) : '') + '</span></button></li>').join('') + '</ol></section>' : ''; })() +
     (() => { const pend = ms.filter(m => m.proximo && !m.hecho), resto = ms.filter(m => !(m.proximo && !m.hecho));
       return '<section class="sheet"><div class="sheet-h"><div><h2>Charlas y pendientes</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Lo que se habló con ' + esc(c.nombre) + ', qué se acordó y lo que falta hacer.</p></div>' + ((isStaff() || isExt()) ? '<button class="btn sm" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Anotar charla</button>' : '') + '</div>' +
@@ -904,6 +971,13 @@ function vFicha() {
     '</div></div>';
 }
 
+// Ficha del cliente: cómo viene el mes de redes.
+function redesFicha(c) {
+  if (!S.RM || !S.A.some(a => a.cliente === c.nombre && a.tipo === 'Redes')) return '';
+  const ms = S.RM.filter(m => m.cliente === c.nombre).sort((a, b) => b.mes.localeCompare(a.mes)).slice(0, 4);
+  return '<section class="sheet"><div class="sheet-h"><h2>Redes</h2>' + (isStaff() ? '<button class="btn sm" data-act="go" data-view="redes">Ver todos</button>' : '') + '</div>' +
+    (ms.length ? '<div class="rows">' + ms.map(m => '<button class="row" data-act="rmAbrir" data-id="' + esc(m._id) + '"><span class="d">' + esc(cap1(monthLabel(m.mes)).split(' ')[0]) + '</span><span class="t"><b>' + esc(m.estado) + '</b><span>' + esc([m.resp || 'sin responsable', Object.entries(m.plan || {}).map(([f, n]) => n + ' ' + f).join(', ')].filter(Boolean).join(' · ')) + '</span></span>' + (m.visible ? '<span class="rm-vis">👁 En el portal</span>' : '') + '</button>').join('') + '</div>' : emptyBox('Todavía no se armó ningún mes', 'Desde Redes arrancás el mes con su plan.')) + '</section>';
+}
 function comItem(m, inFicha) {
   const can = isStaff() || (S.me && m.responsable === S.me.alias);
   return '<div class="ti"><div class="meta"><span class="mono">' + (m.fecha ? fmt(m.fecha) : '—') + '</span>' + (inFicha ? '' : '<b style="color:var(--fg)">' + esc(m.cliente || '') + '</b>') + (m.canal ? '<span class="tag">' + esc(m.canal) + '</span>' : '') + (m.conQuien ? '<span>con ' + esc(m.conQuien) + '</span>' : '') + (m.responsable ? '<span>· ' + esc(m.responsable) + '</span>' : '') + '<button class="btn ghost sm" style="margin-left:auto" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '">' + (can ? 'Editar' : 'Ver') + '</button></div>' +
@@ -934,29 +1008,62 @@ function vComs() {
 
 function vListas() {
   let h = '<div class="head"><div><h1>Opciones</h1><p>Las opciones que aparecen en los desplegables.</p></div></div><div class="lists">';
-  const etapaKeys = (S.L.tipos || []).filter(t => !['Redes', 'Ads'].includes(t)).map(t => ['etapas:' + t, 'Tareas modelo · ' + t]);
+  const etapaKeys = S.FL ? [] : (S.L.tipos || []).filter(t => !['Redes', 'Ads'].includes(t)).map(t => ['etapas:' + t, 'Tareas modelo · ' + t]);
   for (const [k, label] of [...Object.entries(LIST_LABELS), ...etapaKeys]) {
     const arr = S.L[k] || [];
     h += (etapaKeys.length && k === etapaKeys[0][0] ? '</div><h2 style="margin:8px 0 0">Etapas por tipo de proyecto</h2><p class="muted" style="margin:0">Se cargan al crear un proyecto de ese tipo. Cambiarlas no modifica los proyectos que ya existen.</p><div class="lists">' : '') + '<section class="sheet"><div class="sheet-h"><h3>' + esc(label) + '</h3><span class="muted num">' + arr.length + '</span></div><div class="sheet-b"><div class="chips">' +
       arr.map((v, i) => '<span class="chip">' + esc(v) + (isStaff() && !(k === 'estadosProyecto' && CERRADOS.has(v)) ? '<button aria-label="Quitar ' + esc(v) + '" data-act="listDel" data-k="' + k + '" data-i="' + i + '">×</button>' : '<span style="width:8px"></span>') + '</span>').join('') +
       '</div>' + (isStaff() ? '<form class="addrow" data-list="' + k + '"><input class="in" id="li-' + k + '" placeholder="Agregar valor" value="' + esc(S.listDraft[k] || '') + '" data-bind="listDraft.' + k + '"><button class="btn" type="submit">Agregar</button></form>' : '') + '</div></section>';
   }
-  return h + '</div>';
+  return h + '</div>' + (S.FL ? trab().flujosHtml() + planesHtml() : '');
 }
 
+// Piezas que incluye cada plan de redes (con eso arranca cada mes).
+function planesHtml() {
+  const fs = S.L.formatosRedes || DEF.formatosRedes;
+  const val = (p, f) => { const x = (S.L['plan:' + p] || []).find(y => y.startsWith(f + '=')); return x ? x.slice(f.length + 1) : ''; };
+  return '<h2 style="margin:24px 0 0">Piezas por plan de redes</h2><p class="muted" style="margin:0">Con esto arranca cada mes de un cliente según su plan. Es una meta: lo que se haga de más queda como extra.</p>' +
+    '<section class="sheet" style="margin-top:12px"><div class="tbl"><table><thead><tr><th>Plan</th>' + fs.map(f => '<th>' + esc(f) + '</th>').join('') + '</tr></thead><tbody>' +
+    (S.L.planes || []).map(p => '<tr><td class="name">' + esc(p) + '</td>' + fs.map(f => '<td><input class="in sm" type="number" min="0" max="200" style="width:80px" value="' + esc(val(p, f)) + '" data-plan="' + esc(p) + '" data-fmt="' + esc(f) + '"' + (isStaff() ? '' : ' disabled') + ' aria-label="' + esc(f + ' en ' + p) + '"></td>').join('') + '</tr>').join('') + '</tbody></table></div></section>';
+}
 /* ---------- Integraciones (catálogo y configuración en integraciones.js) ---------- */
 let INTEGR = null;
 const integr = () => INTEGR || (INTEGR = initIntegraciones({ S, esc, opt, toast, $, data, render, isAdmin, isStaff, closeForm, ISO, emptyBox, DEF: INTEG_DEF }));
 const vIntegraciones = () => integr().view();
+const trab = () => TRAB || (TRAB = initTrabajo({ S, esc, opt, toast, data, render, isStaff, personas }));
+const red = () => RED || (RED = initRedes({ avisarCliente: (c, t, i) => avisarCliente(c, t, i), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
+  cfgGet: (k, c) => integr().cfgGet(k, c), servicios: n => serviciosDe(n).map(x => x.tipo).join(', '),
+  irMes: id => { S.view = 'redes'; S.rmFicha = id || null; S.ficha = null; S.pficha = null; try { history.replaceState(null, '', '#redes' + (id ? '/' + id : '')); } catch (e) { } render(); window.scrollTo(0, 0); } }));
+const moneyFmt = (n, m) => { try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: m || 'ARS', maximumFractionDigits: 0 }).format(+n || 0); } catch (e) { return (m || '') + ' ' + n; } };
+const tk = () => TKS || (TKS = initTickets({ S, esc, opt, toast, data, render, $, av, fotoDe, personas, fmt, fmtShort, today, thisMonth, isStaff, isAdmin, cmp, norm, emptyBox, hil, clienteOpts, closeForm, reload, ISO, money: moneyFmt, copyText, waNum, openMail: o => MAIL && MAIL.open(o) }));
+const vTickets = () => tk().vTickets();
+const vBriefs = () => tk().vBriefs();
+const vRedes = () => S.rmFicha ? red().vMes(S.rmFicha) : red().vLista();
+let ENT = null;
+const ent = () => ENT || (ENT = initEntregas({ S, esc, opt, toast, data, render, $, fmt, isStaff, emptyBox, hil, closeForm, reload: () => reload(), avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
+// Aviso por email a los contactos con acceso al portal cuando algo queda para revisar (mes de redes o entrega).
+async function avisarCliente(cliente, tipo, info) {
+  const ks = contactosDe(cliente).filter(k => k.portal && k.email);
+  if (!ks.length) { toast('Ningún contacto de ' + cliente + ' tiene acceso al portal todavía: habilitalo en su ficha → Contactos.'); return; }
+  const que = tipo === 'redes' ? 'el contenido de redes de ' + monthLabel(String(info.mes || '').slice(0, 7)) : '“' + info.titulo + '” de ' + info.proyecto;
+  if (!window.confirm('¿Le avisamos por email a ' + ks.map(nomContacto).join(', ') + ' que tiene para revisar ' + que + '?')) return;
+  const nombres = ks.map(k => (k.nombre || '').split(' ')[0]).filter(Boolean);
+  const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\nYa tenés para revisar ' + que + ' en el portal de àndale. Desde ahí podés aprobar o pedirnos cambios, y comentar lo que quieras.\n\nEntrás con tu email, sin contraseña.';
+  const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: tipo === 'redes' ? 'Tus redes del mes, listas para revisar' : 'Tenés una entrega para revisar', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ir al portal', firma: 'Saludos,\n' + ((S.me && (S.me.nombre || S.me.alias) || '').split(' ')[0] || 'Equipo') + '\nàndale', asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
+  try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); }
+  catch (e) { toast('No se pudo mandar el aviso: ' + e.message); }
+}
+const hil = () => HIL || (HIL = initHilos({ S, esc, toast, data, $, av, fotoDe, personas, go, abrirLink }));
 // Link a Google Calendar (sin API): abre el evento ya armado para guardarlo.
 function gcalUrl(titulo, fecha, detalle) {
   if (!fecha) return ''; const d = fecha.replace(/-/g, ''); const n = new Date(fecha + 'T12:00'); n.setDate(n.getDate() + 1);
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titulo) + '&dates=' + d + '/' + n.toISOString().slice(0, 10).replace(/-/g, '') + '&details=' + encodeURIComponent(detalle || 'àndale Operaciones');
 }
 const calBtn = (titulo, fecha, detalle, cls) => integ('calendario') && fecha ? '<a class="btn ' + (cls || '') + '" href="' + esc(gcalUrl(titulo, fecha, [detalle, integr().cfgGet('calendario', 'aviso')].filter(Boolean).join(' · '))) + '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅 Al calendario</a>' : '';
-const VIEW_FN = { inicio: vInicio, proyectos: vProyectos, abonos: vAbonos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, integraciones: vIntegraciones };
+const VIEW_FN = { inicio: vInicio, redes: () => vRedes(), tickets: () => vTickets(), briefs: () => vBriefs(), proyectos: vProyectos, abonos: vAbonos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, integraciones: vIntegraciones };
 
 /* ---------- Render ---------- */
+document.addEventListener('change', e => { if (e.target.id === 'k-portal') { const b = document.querySelector('.k-inv'); if (b) b.hidden = !e.target.checked; } });
 document.addEventListener('change', e => { if (e.target.matches && e.target.matches('[data-srvab="Redes"]')) { const b = document.getElementById('srvplan'); if (b) b.hidden = !e.target.checked; } });
 function kbFlechas(kb) {
   const w = kb && kb.parentElement; if (!w) return;
@@ -988,7 +1095,7 @@ function render() {
   const sel = fid && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
   const kb = document.querySelector('.kb'), kbLeft = kb ? kb.scrollLeft : 0, kbTops = kb ? [...kb.querySelectorAll('.col')].map(c => c.scrollTop) : [];
   if (!views().some(v => v[0] === S.view)) S.view = isExt() ? 'mis' : 'inicio';
-  const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length };
+  const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length, tickets: S.PD ? S.PD.filter(t => t.estado === 'Nuevo').length : 0, briefs: S.BF ? S.BF.filter(b => b.estado === 'Nuevo').length : 0 };
   const item = ([k, l]) => '<button class="snav-i" data-act="go" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : '') + '>' + (ICON[k] || '') + '<span class="snav-l">' + l + '</span>' + (counts[k] ? '<span class="snav-n' + (k === 'cobros' ? ' hot' : '') + '">' + counts[k] + '</span>' : '') + '</button>';
   const vs = new Map(views().map(v => [v[0], v[1]]));
   $('#nav').innerHTML = GRUPOS.map(([g, ks]) => { const its = ks.filter(k => vs.has(k)); return its.length ? '<span class="snav-g">' + g + '</span>' + its.map(k => item([k, vs.get(k)])).join('') : ''; }).join('');
@@ -1045,6 +1152,7 @@ function recargarVersion() {
 window.addEventListener('vite:preloadError', e => { if (recargarVersion()) e.preventDefault(); });
 window.addEventListener('unhandledrejection', e => { if (esVersionVieja(e.reason && e.reason.message)) recargarVersion(); });
 let toastT; function toast(msg) { if (esVersionVieja(msg) && recargarVersion()) return; const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
+const EXP = initExportar({ $, toast: m => toast(m), titulo: () => tituloVista() });
 
 /* ---------- Formularios ---------- */
 const FORMS = {
@@ -1165,10 +1273,10 @@ function openForm(kind, id, preset) {
       (def.fields.some(f => f.adv) ? '<details class="mas full" id="f-mas"' + (rec ? ' open' : '') + '><summary>' + esc(def.masLabel || 'Más opciones') + '</summary><div class="mas-b">' + def.fields.filter(f => f.adv).map(f => fieldHtml(f, vals[f.k], ro)).join('') + '</div></details>' : '') + extra + '</div><div class="panel-f">' + foot + '</div></form>';
   p.hidden = false; $('#scrim').hidden = false;
   if (kind === 'comunicacion') fillConQuien();
-  if (kind === 'proyecto') { S.form.etapas = JSON.parse(JSON.stringify(vals.etapas || [])); if (!S.form.etapas.length && plantilla(vals.tipo).length && !rec) S.form.etapas = plantilla(vals.tipo).map(n => ({ n, ok: false })); renderEtapasField(); }
+  if (kind === 'proyecto') { S.form.etapas = JSON.parse(JSON.stringify(vals.etapas || [])); if (!S.form.etapas.length && plantilla(vals.tipo).length && !rec) S.form.etapas = plantillaTk(vals.tipo, vals.fechaInicio); renderEtapasField(); }
   if (!rec) { const first = p.querySelector('.panel-b input:not([type=checkbox]):not([disabled]),.panel-b select:not([disabled]),.panel-b textarea:not([disabled])'); if (first) first.focus(); }
 }
-function closeForm() { $('#panel').hidden = true; $('#scrim').hidden = true; S.form = null; S.tkf = null; S.kf = null; }
+function closeForm() { $('#panel').hidden = true; $('#scrim').hidden = true; S.form = null; S.tkf = null; S.kf = null; if (RED) RED.closePieza(); }
 
 async function saveForm() {
   if (!S.form || S.form.ro) return;
@@ -1197,7 +1305,7 @@ async function saveForm() {
   }
   if (bad) return;
   if (kind === 'proyecto' && out.estado === 'Entregado' && !out.entregaReal) out.entregaReal = today();
-  if (kind === 'proyecto' && out.etapas && !out.etapas.length && !id && plantilla(out.tipo).length) out.etapas = plantilla(out.tipo).map(n => ({ n, ok: false }));
+  if (kind === 'proyecto' && out.etapas && !out.etapas.length && !id && plantilla(out.tipo).length) out.etapas = plantillaTk(out.tipo, out.fechaInicio);
   if (kind === 'cliente') { if (out.estado === '__auto') { out.estadoManual = false; delete out.estado; } else out.estadoManual = out.estado !== estadoAuto(out.nombre); }
   const prev = id ? S[def.arr].find(x => x._id === id) : null;
   const btn = $('#savebtn'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
@@ -1205,14 +1313,21 @@ async function saveForm() {
     const srvAb = kind === 'cliente' && !prev ? [...document.querySelectorAll('[data-srvab]:checked')].map(x => x.dataset.srvab) : [];
     const srvPr = kind === 'cliente' && !prev ? [...document.querySelectorAll('[data-srvpr]:checked')].map(x => x.dataset.srvpr) : [];
     const plan = ($('#f-srvplan') || {}).value || '';
+    let tks = null;
+    if (kind === 'proyecto' && S.T && Array.isArray(out.etapas)) { tks = out.etapas; delete out.etapas; }
     const nid = await data.save(kind, id, out, prev ? resp(prev) : []);
+    if (tks) await data.tareasSync(nid, prev ? etapasDe(prev) : [], tks);
     if (kind === 'cliente' && !prev && conTabla() && (out.contacto || out.email || out.tel)) {
       try { await data.ins('contactos', { cliente_id: nid, nombre: out.contacto || '', email: (out.email || '').toLowerCase(), tel: out.tel || '', principal: true, cobros: true, orden: 0 }); } catch (e) { toast(e.message); }
     }
     if (srvAb.length || srvPr.length) {
       await reload();
       for (const t of srvAb) await data.save('abono', null, { cliente: out.nombre, tipo: t, plan: t === 'Redes' ? plan : '', desde: thisMonth(), estado: 'Activo', responsables: out.responsables || [] }, []);
-      for (const t of srvPr) await data.save('proyecto', null, { cliente: out.nombre, proyecto: t + ' · ' + out.nombre, tipo: t, estado: 'Por empezar', fechaInicio: today(), responsables: out.responsables || [] }, []);
+      for (const t of srvPr) {
+        const tk = plantillaTk(t, today());
+        const pid = await data.save('proyecto', null, { cliente: out.nombre, proyecto: t + ' · ' + out.nombre, tipo: t, estado: 'Por empezar', fechaInicio: today(), responsables: out.responsables || [], ...(S.T ? {} : { etapas: tk }) }, []);
+        if (S.T && tk.length) await data.tareasSync(pid, [], tk);
+      }
     }
     closeForm(); toast(prev ? 'Cambios guardados' : 'Creado' + (srvAb.length + srvPr.length ? ' con ' + (srvAb.length + srvPr.length) + ' servicios' : '')); await reload();
   } catch (err) { toast(err.message); if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
@@ -1235,7 +1350,7 @@ function setBind(path, v) {
   if (path === 'yo') lsSet('yo', v);
 }
 function menu(open) { const o = open === undefined ? !document.body.classList.contains('menu-open') : open; document.body.classList.toggle('menu-open', o); $('#sidescrim').hidden = !o; }
-function go(view) { menu(false); view = resolver(view); S.view = view; S.ficha = null; S.pficha = null; if (ADM) ADM.resetView(); try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
+function go(view) { menu(false); view = resolver(view); S.view = view; S.ficha = null; S.pficha = null; S.rmFicha = null; if (ADM) ADM.resetView(); try { history.replaceState(null, '', '#' + view); } catch (e) { } render(); window.scrollTo(0, 0); }
 async function saveListas(k, arr) {
   const prev = S.L[k]; S.L[k] = arr; render();
   try { await data.saveLista(k, arr); toast('Lista actualizada'); }
@@ -1249,6 +1364,14 @@ const ACT = {
   ptab: t => { S.ptab = t.dataset.t; render(); },
   tkGrp: t => { const g = t.dataset.g, k = t.dataset.hecha ? g + ':open' : g; if (S.gcl.has(k)) S.gcl.delete(k); else S.gcl.add(k); lsSet('gcl', JSON.stringify([...S.gcl])); render(); },
   tkAbrir: t => abrirTarea(t.dataset.id, +t.dataset.i),
+  tkVista: t => { S.tkVista = t.dataset.v; lsSet('tkVista', S.tkVista); render(); },
+  hrNo: () => { $('#horasbar').hidden = true; },
+  hrSet: t => {
+    const b = $('#horasbar'); b.hidden = true;
+    const p = S.P.find(x => x._id === b.dataset.pid); if (!p) return;
+    const i = etapasDe(p).findIndex(x => (b.dataset.id && x._id === b.dataset.id) || (!b.dataset.id && x.n === b.dataset.n)); if (i < 0) return;
+    guardarTareas(p, etapasDe(p).map((x, j) => j === i ? { ...x, horas: +t.dataset.h } : x), 'Anotadas ' + (t.dataset.h === '8' ? '8 h' : t.dataset.h.replace('.5', ',5') + ' h'));
+  },
   kNuevo: t => abrirContacto(t.dataset.cliente, null),
   kEdit: t => abrirContacto(t.dataset.cliente, t.dataset.id),
   kDel: () => { $('#kdelzone').innerHTML = '<span class="muted" style="font-size:13px">¿Seguro?</span> <button type="button" class="btn danger sm" data-act="kDelYes">Sí, eliminar</button> <button type="button" class="btn ghost sm" data-act="kDelNo">No</button>'; },
@@ -1271,8 +1394,16 @@ const ACT = {
   back: () => { S.ficha = null; try { history.replaceState(null, '', '#clientes'); } catch (e) { } render(); },
   pver: t => { const id = t.dataset.id; if (S.pficha !== id) S.ptab = 'tareas'; S.pficha = id; S.ficha = null; S.view = 'proyectos'; closeForm(); try { history.replaceState(null, '', '#proyectos/' + id); } catch (e) { } render(); window.scrollTo(0, 0); },
   pback: () => { S.pficha = null; try { history.replaceState(null, '', '#proyectos'); } catch (e) { } render(); },
+  kInvitar: t => {
+    const txt = invitacionPortal(), tel = (($('#k-tel') || {}).value || ''), mail = (($('#k-email') || {}).value || '').trim();
+    if (t.dataset.m === 'copiar') { copyText(txt); return; }
+    if (t.dataset.m === 'wa') { const n = waNum(tel); window.open('https://wa.me/' + (n || '') + '?text=' + encodeURIComponent(txt), '_blank', 'noopener'); return; }
+    if (!mail) { toast('Cargá el email del contacto'); return; }
+    location.href = 'mailto:' + encodeURIComponent(mail) + '?subject=' + encodeURIComponent('Tu acceso al portal de àndale') + '&body=' + encodeURIComponent(txt);
+  },
   print: () => window.print(),
   exportar: () => exportarVista(),
+  ...EXP.actions,
   shareCopy: () => { copyText(location.href); cerrarShare(); },
   shareWa: () => { window.open('https://wa.me/?text=' + encodeURIComponent(tituloVista() + '\n' + location.href), '_blank', 'noopener'); cerrarShare(); },
   shareMail: () => { location.href = 'mailto:?subject=' + encodeURIComponent(tituloVista() + ' · àndale') + '&body=' + encodeURIComponent(tituloVista() + '\n' + location.href); cerrarShare(); },
@@ -1288,21 +1419,25 @@ const ACT = {
   menu: () => menu(),
   logout: async () => { await data.logout(); location.reload(); },
   cSelNone: () => { S.csel.clear(); render(); },
-  etCargar: t => { const p = S.P.find(x => x._id === t.dataset.id); if (!p) return; const ya = new Set(etapasDe(p).map(x => norm(x.n))); const nuevas = plantilla(p.tipo).filter(n => !ya.has(norm(n))).map(n => ({ n, ok: false })); if (!nuevas.length) { toast('Ya están todas las tareas modelo de ' + p.tipo); return; } guardarTareas(p, [...etapasDe(p), ...nuevas], nuevas.length + ' tareas sumadas'); },
+  etCargar: t => { const p = S.P.find(x => x._id === t.dataset.id); if (!p) return; const ya = new Set(etapasDe(p).map(x => norm(x.n))); const nuevas = plantillaTk(p.tipo, today()).filter(x => !ya.has(norm(x.n))); if (!nuevas.length) { toast('Ya están todas las tareas modelo de ' + p.tipo); return; } guardarTareas(p, [...etapasDe(p), ...nuevas], nuevas.length + ' tareas sumadas'); },
   tkDel: t => { const p = S.P.find(x => x._id === t.dataset.id); if (!p) return; guardarTareas(p, etapasDe(p).filter((x, i) => i !== +t.dataset.i)); },
   tkIA: async t => {
     const p = S.P.find(x => x._id === t.dataset.id); if (!p) return;
     t.disabled = true; t.innerHTML = '<span class="ia-dots"><i></i><i></i><i></i></span> Mr. Piggy está armando las tareas…';
     try {
-      const r = await data.ia({ modo: 'tareas', texto: JSON.stringify({ proyecto: p.proyecto, cliente: p.cliente, tipo: p.tipo, inicio: p.fechaInicio || today(), entrega: p.entrega || '', entregables: p.entregables || '', notas: p.notas || '', responsables: resp(p), tareas_existentes: etapasDe(p).map(x => x.n) }), contexto: { equipo: S.E.filter(e => e.activo !== false).map(e => ({ alias: e.persona, puesto: e.puesto })), tareas_modelo: plantilla(p.tipo) } });
-      const nuevas = (r.tareas || []).filter(x => x && x.titulo).map(x => ({ n: String(x.titulo).slice(0, 140), ok: false, resp: personas().includes(x.responsable) ? x.responsable : '', fecha: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') ? x.fecha : '' }));
+      const r = await data.ia({ modo: 'tareas', texto: JSON.stringify({ proyecto: p.proyecto, cliente: p.cliente, tipo: p.tipo, inicio: p.fechaInicio || today(), entrega: p.entrega || '', entregables: p.entregables || '', notas: p.notas || '', responsables: resp(p), tareas_existentes: etapasDe(p).map(x => x.n + (x.etapa ? ' [' + x.etapa + ']' : '')) }), contexto: { equipo: S.E.filter(e => e.activo !== false).map(e => ({ alias: e.persona, puesto: e.puesto })), tareas_modelo: plantilla(p.tipo), etapas_flujo: S.T ? etapasProyecto(p) : [] } });
+      const ets = S.T ? etapasProyecto(p) : [];
+      const nuevas = (Array.isArray(r.tareas) ? r.tareas : []).filter(x => x && x.titulo).map(x => ({ n: String(x.titulo).slice(0, 140), ok: false, resp: personas().includes(x.responsable) ? x.responsable : '', fecha: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') ? x.fecha : '', etapa: ets.includes(x.etapa) ? x.etapa : '' }));
       if (!nuevas.length) { toast('Mr. Piggy no encontró tareas para sumar'); render(); return; }
-      await guardarTareas(p, [...etapasDe(p), ...nuevas], 'Mr. Piggy sumó ' + nuevas.length + ' tareas. Revisalas y borrá las que no sirvan.');
+      // Con etapas, cada tarea nueva se ubica al final de su etapa.
+      let lista = [...etapasDe(p)];
+      nuevas.forEach(x => { let pos = lista.length; if (x.etapa) { const ult = lista.map(y => y.etapa).lastIndexOf(x.etapa); if (ult >= 0) pos = ult + 1; else { const orden = ets.indexOf(x.etapa); const sig = lista.findIndex(y => ets.indexOf(y.etapa) > orden); if (sig >= 0) pos = sig; } } lista = [...lista.slice(0, pos), x, ...lista.slice(pos)]; });
+      await guardarTareas(p, lista, 'Mr. Piggy sumó ' + nuevas.length + ' tareas. Revisalas y borrá las que no sirvan.');
     } catch (err) { toast(err.message); render(); }
   },
   fetDel: t => { S.form.etapas.splice(+t.dataset.i, 1); renderEtapasField(); },
   fetAdd: () => { const i = $('#f-etapa-nueva'); const v = i && i.value.trim(); if (!v) return; S.form.etapas.push({ n: v, ok: false }); renderEtapasField(); const n = $('#f-etapa-nueva'); if (n) n.focus(); },
-  fetTpl: () => { const tipo = ($('#f-tipo') || {}).value; S.form.etapas = plantilla(tipo).map(n => ({ n, ok: false })); renderEtapasField(); },
+  fetTpl: () => { const tipo = ($('#f-tipo') || {}).value; S.form.etapas = plantillaTk(tipo, ($('#f-fechaInicio') || {}).value); renderEtapasField(); },
   cMasivo: async () => {
     const est = S.cmasivo, ids = [...S.csel]; if (!est || !ids.length) return;
     let ok = 0; const fails = [];
@@ -1343,6 +1478,7 @@ document.addEventListener('change', async e => {
     return;
   }
   if (t.dataset.integ) return;
+  if (t.dataset.plan) { const k = 'plan:' + t.dataset.plan, f = t.dataset.fmt, n = Math.max(0, Math.round(+t.value || 0)); saveListas(k, [...(S.L[k] || []).filter(x => !x.startsWith(f + '=')), ...(n ? [f + '=' + n] : [])]); return; }
   if (t.dataset.tk) {
     const p = S.P.find(x => x._id === t.dataset.pid); if (!p) return;
     const k = t.dataset.tk, v = t.value.trim(); if (k === 'n' && !v) { render(); return; }
@@ -1351,14 +1487,15 @@ document.addEventListener('change', async e => {
   }
   if (t.dataset.etoggle) {
     const p = S.P.find(x => x._id === t.dataset.etoggle); if (!p) return;
-    const next = etapasDe(p).map((x, i) => i === +t.dataset.i ? { ...x, ok: t.checked } : x);
-    p.etapas = next; S.openPick = 'etapa:' + p._id; if (S.view === 'mis' || S.view === 'inicio' || S.pficha) render();
-    upd('proyecto', p._id, { etapas: next }, null, true);
+    const ti = +t.dataset.i, next = etapasDe(p).map((x, i) => i === ti ? { ...x, ok: t.checked, est: t.checked ? '' : x.est } : x);
+    S.openPick = 'etapa:' + p._id;
+    if (S.T) { guardarTareas(p, next); if (t.checked) pedirHoras(p, next[ti]); }
+    else { p.etapas = next; if (S.view === 'mis' || S.view === 'inicio' || S.pficha) render(); upd('proyecto', p._id, { etapas: next }, null, true); }
     if (next.length && next.every(x => x.ok) && isOpen(p)) toast('Todas las tareas listas. ¿Lo pasás a Entregado?');
     return;
   }
   if (t.dataset.fet !== undefined && S.form && S.form.etapas) { S.form.etapas[+t.dataset.fet].ok = t.checked; return; }
-  if (t.id === 'f-tipo' && S.form && S.form.kind === 'proyecto' && S.form.etapas && !S.form.etapas.length && plantilla(t.value).length) { S.form.etapas = plantilla(t.value).map(n => ({ n, ok: false })); renderEtapasField(); return; }
+  if (t.id === 'f-tipo' && S.form && S.form.kind === 'proyecto' && S.form.etapas && !S.form.etapas.length && plantilla(t.value).length) { S.form.etapas = plantillaTk(t.value, ($('#f-fechaInicio') || {}).value); renderEtapasField(); return; }
   if (t.id === 'f-tipo' && S.form && S.form.kind === 'proyecto') { renderEtapasField(); return; }
   if (t.id === 'f-cliente' && S.form && S.form.kind === 'comunicacion') { fillConQuien(); return; }
   if (t.dataset.csel) { if (t.checked) S.csel.add(t.dataset.csel); else S.csel.delete(t.dataset.csel); render(); return; }
@@ -1387,7 +1524,11 @@ document.addEventListener('submit', async e => {
   if (f.id === 'kform') { guardarContacto(); return; }
   if (f.dataset.tkadd) {
     const p = S.P.find(x => x._id === f.dataset.tkadd), n = f.elements.n.value.trim(); if (!p || !n) return;
-    await guardarTareas(p, [...etapasDe(p), { n, ok: false, resp: f.elements.resp.value, fecha: f.elements.fecha.value }]);
+    const et = f.elements.etapa ? f.elements.etapa.value : (p.etapaActual || '');
+    const lista = etapasDe(p), nueva = { n, ok: false, resp: f.elements.resp.value, fecha: f.elements.fecha.value, etapa: et };
+    // Con etapas, la tarea nueva va al final de su etapa.
+    let pos = lista.length; if (et) { const ult = lista.map(x => x.etapa).lastIndexOf(et); if (ult >= 0) pos = ult + 1; }
+    await guardarTareas(p, [...lista.slice(0, pos), nueva, ...lista.slice(pos)]);
     const i = document.querySelector('[data-tkadd="' + p._id + '"] [name="n"]'); if (i) i.focus();
     return;
   }
@@ -1413,7 +1554,26 @@ document.addEventListener('submit', async e => {
   }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && (S.form || !$('#panel').hidden)) closeForm(); });
-window.addEventListener('hashchange', () => { const prev = [S.view, S.ficha, S.pficha].join('|'); leerHash(); if (!viewFn(S.view)) S.view = 'inicio'; if ([S.view, S.ficha, S.pficha].join('|') !== prev) { render(); window.scrollTo(0, 0); } });
+window.addEventListener('hashchange', () => { const prev = [S.view, S.ficha, S.pficha, S.rmFicha].join('|'); leerHash(); if (!viewFn(S.view)) S.view = 'inicio'; if ([S.view, S.ficha, S.pficha, S.rmFicha].join('|') !== prev) { render(); window.scrollTo(0, 0); } aplicarQuery(); });
+// Links de los avisos: #proyectos/<id>?t=<tarea>, #tickets?k=<ticket>, #redes/<mes>?p=<pieza>
+function abrirLink(link) { if (!link) return; if (location.hash === link) { leerHash(); render(); aplicarQuery(); } else location.hash = link; }
+function aplicarQuery() {
+  const q = S.hq; if (!q || S.status !== 'ok') return;
+  if (q.t && S.pficha) { const p = S.P.find(x => x._id === S.pficha); const i = p ? etapasDe(p).findIndex(x => x._id === q.t) : -1; if (i >= 0) { S.hq = null; setTimeout(() => abrirTarea(p._id, i), 0); } }
+  if (q.k && S.view === 'tickets') { S.hq = null; setTimeout(() => tk().abrir(q.k), 0); }
+  if (q.b && S.view === 'briefs') { S.hq = null; setTimeout(() => tk().abrirBrief(q.b), 0); }
+  if (q.p && S.rmFicha && RED) { const ps = RED.piezas(S.rmFicha); if (ps && ps.some(z => z._id === q.p)) { S.hq = null; setTimeout(() => RED.abrirPieza(q.p), 0); } else if (!ps) RED.cargar([S.rmFicha]).then(() => aplicarQuery()); }
+  if (window.__queryExtra) window.__queryExtra(q);
+}
+// Errores de la app: se guardan para revisarlos (máximo unos pocos por sesión).
+const errVistos = new Set();
+function registrarError(msg, det) {
+  if (!S.me || !S.T || errVistos.size > 8 || esVersionVieja(msg)) return;
+  const k = String(msg).slice(0, 200); if (errVistos.has(k)) return; errVistos.add(k);
+  data.logError({ mensaje: msg, detalle: det || '', url: location.hash, version: (document.querySelector('meta[name="version"]') || {}).content || '' });
+}
+window.addEventListener('error', e => registrarError(e.message || 'Error', e.error && e.error.stack));
+window.addEventListener('unhandledrejection', e => registrarError((e.reason && e.reason.message) || String(e.reason), e.reason && e.reason.stack));
 
 /* Arrastrar en el tablero */
 let dragId = null;
@@ -1443,14 +1603,18 @@ async function reload() {
   try {
     const d = await data.loadAll();
     const L = {}; for (const k of Object.keys(DEF)) L[k] = Array.isArray(d.L[k]) && d.L[k].length ? [...d.L[k]] : [...DEF[k]];
-    for (const [k, v] of Object.entries(d.L || {})) if (k.startsWith('etapas:') && Array.isArray(v)) L[k] = [...v];
+    for (const [k, v] of Object.entries(d.L || {})) if ((k.startsWith('etapas:') || k.startsWith('plan:')) && Array.isArray(v)) L[k] = [...v];
     L.integraciones = Array.isArray(d.L.integraciones) ? [...d.L.integraciones] : [...INTEG_DEF];
     L.integraciones_cfg = Array.isArray(d.L.integraciones_cfg) ? [...d.L.integraciones_cfg] : [];
-    Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, K: Array.isArray(d.K) ? d.K : null, L, status: 'ok' });
+    Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, K: Array.isArray(d.K) ? d.K : null, L, status: 'ok', T: !!d.T, FL: d.FL || null, sinHilos: !d.T });
+    if (Array.isArray(d.N)) S.N = d.N;
+    Object.assign(S, { RM: d.RM === undefined ? null : d.RM, PD: d.PD === undefined ? null : d.PD, BF: d.BF === undefined ? null : d.BF, EN: d.EN === undefined ? null : d.EN, SI: d.SI === undefined ? null : d.SI });
     if (isAdmin() && ADM) await ADM.load();
     banner('');
   } catch (err) { S.status = 'offline'; banner(esc(err.message), true); }
   render();
+  if (HIL) HIL.campana();
+  aplicarQuery();
 }
 function showLogin(msg) {
   $('#top').hidden = true;
@@ -1469,7 +1633,7 @@ async function start(sess) {
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
   S.me = me;
   if (me.rol === 'admin' && !ADM) {
-    ADM = initAdmin({ S, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
+    ADM = initAdmin({ S, av, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
     ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
     Object.assign(ACT, ADM.actions);
   }
@@ -1480,17 +1644,19 @@ async function start(sess) {
     IA = initIA({ S, contactos: n => contactosDe(n), esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
     Object.assign(ACT, IA.actions);
   }
+  if (!ACT.flEditar) { Object.assign(ACT, trab().acts); Object.assign(ACT, hil().acts); Object.assign(ACT, red().acts); Object.assign(ACT, tk().acts); Object.assign(ACT, ent().acts); }
   $('#askbtn').hidden = !IA; $('#askbtn .askbtn-i').innerHTML = ISO; document.querySelectorAll('.askmini').forEach(b => { b.hidden = !IA; b.innerHTML = ISO; });
   $('#top').hidden = false;
   $('#hoy').textContent = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   if (isExt()) S.yo = me.alias; else if (!S.yo) S.yo = me.alias;
   render();
   await reload();
-  data.live(reload, s => { if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') { S.status = 'offline'; render(); } });
+  data.live(reload, s => { if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') { S.status = 'offline'; render(); } }, (tabla, ev) => { if (tabla === 'piezas') { if (RED) RED.enVivo(ev); } else hil().enVivo(tabla, ev); });
   window.addEventListener('focus', reload);
 }
 
 (async () => {
+  iconizar(document.body); EXP.observar();
   if (!data.configured) { $('#view').innerHTML = '<div class="login"><div class="login-card"><h2>Falta configurar la base de datos</h2><p>Definí VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.</p></div></div>'; return; }
   data.onAuth((ev, s) => { if (ev === 'SIGNED_IN' && s) start(s); if (ev === 'SIGNED_OUT') { S.me = null; started = false; showLogin(); } });
   const s = await data.session();

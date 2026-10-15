@@ -1,5 +1,8 @@
 // Estadísticas (solo admins): cómo viene el año con los números de Caja, cobranza y operación.
-// Gráficos en SVG propio: columnas con base común, barras horizontales y mini tendencias. Sin librerías.
+// Lenguaje visual: números grandes y claros, listas de barras finas, una dona y curvas suaves
+// comparadas con el año anterior. Todo en SVG propio, sin librerías. Cada gráfico lleva su tabla
+// de datos (oculta a la vista) para leerlo con lector de pantalla y para descargarlo en Excel o CSV.
+import { ICON } from './iconos.js';
 
 const MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 // Cuentas que no son operación: saldo inicial, compra/venta de divisas, retiros y aportes de socios.
@@ -8,22 +11,26 @@ const ABONO_SUB = new Set(['S.Redes sociales', 'S.Redes Ads']);
 const limpiaSub = s => String(s || 'Sin categoría').replace(/^S\./, '');
 
 export function initStats(ctx, k) {
-  const { S, esc, opt, cap, thisMonth, emptyBox, $ } = { ...ctx, cap: k.cap };
-  const { AD, money, add, multi } = k;
-  AD.st = { anio: String(new Date().getFullYear()), mon: 'ARS' };
+  const { S, esc, opt, thisMonth, emptyBox } = ctx;
+  const { AD, money, add } = k;
+  AD.st = { anio: String(new Date().getFullYear()), mon: 'ARS', clTodos: false };
 
   const compact = (n, cur) => {
-    const sym = cur === 'USD' ? 'US$' : cur === 'EUR' ? '€' : '$';
+    const sym = cur === 'USD' ? 'US$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '$';
     const a = Math.abs(n), sg = n < 0 ? '−' : '';
     const t = a >= 1e6 ? (a / 1e6).toLocaleString('es-AR', { maximumFractionDigits: a >= 1e8 ? 0 : 1 }) + ' M' : a >= 1e3 ? Math.round(a / 1e3).toLocaleString('es-AR') + ' k' : Math.round(a).toLocaleString('es-AR');
     return sg + sym + ' ' + t;
   };
   const niceMax = v => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; };
   const tip = (t, l) => ' data-tip="' + esc(t) + '" data-tip2="' + esc(l || '') + '"';
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+  function agrupar(xs, key, val) { const m = new Map(); xs.forEach(v => { const kk = key(v); m.set(kk, (m.get(kk) || 0) + val(v)); }); return [...m.entries()].sort((a, b) => b[1] - a[1]); }
+  const top = (rows, n) => rows.length > n ? [...rows.slice(0, n - 1), ['Otros (' + (rows.length - n + 1) + ')', sum(rows.slice(n - 1).map(r => r[1]))]] : rows;
 
   /* ---------- datos ---------- */
-  function base() {
-    const y = AD.st.anio, mon = AD.st.mon;
+  function base(y, hasta) {
+    const mon = AD.st.mon;
     // En dólares también entran EUR, GBP y otras monedas del exterior, por los USD que realmente se recibieron.
     const ext = v => mon === 'USD' && v.moneda !== 'ARS' && v.moneda !== 'USD' && v.usd != null && v.usd !== '';
     const mv = AD.MV.filter(v => (v.fecha || '').startsWith(y) && (v.moneda === mon || ext(v)) && !NO_OPERATIVAS.has(v.cuenta))
@@ -31,104 +38,146 @@ export function initStats(ctx, k) {
     const ing = mv.filter(v => v.ingreso > 0 && /^Venta/.test(v.cuenta)), eg = mv.filter(v => v.egreso > 0);
     const sinUsd = mon === 'USD' ? AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.moneda !== 'ARS' && v.moneda !== 'USD' && (v.usd == null || v.usd === '') && !NO_OPERATIVAS.has(v.cuenta)) : [];
     const porMes = (xs, f) => MES.map((_, i) => xs.filter(v => +v.fecha.slice(5, 7) === i + 1).reduce((a, v) => a + f(v), 0));
-    const ultimo = AD.st.anio === thisMonth().slice(0, 4) ? +thisMonth().slice(5, 7) : 12;
+    const ultimo = hasta || (y === thisMonth().slice(0, 4) ? +thisMonth().slice(5, 7) : 12);
     return { y, mon, ing, eg, ultimo, sinUsd,
       ingMes: porMes(ing, v => v.ingreso).slice(0, ultimo), egMes: porMes(eg, v => v.egreso).slice(0, ultimo),
       aboMes: porMes(ing.filter(v => ABONO_SUB.has(v.subcuenta)), v => v.ingreso).slice(0, ultimo),
       proMes: porMes(ing.filter(v => !ABONO_SUB.has(v.subcuenta)), v => v.ingreso).slice(0, ultimo),
       labMes: porMes(eg.filter(v => v.cuenta === 'Costo Laboral'), v => v.egreso).slice(0, ultimo) };
   }
-  const sum = a => a.reduce((x, y) => x + y, 0);
-  function agrupar(xs, key, val) { const m = new Map(); xs.forEach(v => { const kk = key(v); m.set(kk, (m.get(kk) || 0) + val(v)); }); return [...m.entries()].sort((a, b) => b[1] - a[1]); }
 
-  /* ---------- piezas de gráfico ---------- */
-  function spark(vals, color) {
-    if (vals.length < 2) return '';
-    const w = 120, h = 30, mx = Math.max(...vals, 1), st = w / (vals.length - 1);
-    const pts = vals.map((v, i) => (i * st).toFixed(1) + ',' + (h - 3 - (v / mx) * (h - 6)).toFixed(1));
-    const last = pts[pts.length - 1].split(',');
-    return '<svg class="spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" aria-hidden="true"><polyline points="' + pts.join(' ') + '" fill="none" stroke="var(--muted)" stroke-opacity=".45" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="' + last[0] + '" cy="' + last[1] + '" r="4" fill="' + color + '" stroke="var(--surface)" stroke-width="2"/></svg>';
-  }
-  function tile(label, valor, sub, vals, color, cls) {
-    return '<div class="kpi' + (cls ? ' ' + cls : '') + '" style="--k:' + color + '"><span class="eyebrow">' + esc(label) + '</span><b style="font-size:28px">' + esc(valor) + '</b><span>' + sub + '</span>' + (vals ? spark(vals, color) : '') + '</div>';
-  }
-  // Columnas por mes; agrupadas o apiladas. Una sola escala.
-  function columnas(series, n, { apilado = false, mon = 'ARS', W = 720 } = {}) {
-    const H = 250, L = 56, R = 8, T = 14, B = 26, iw = W - L - R, ih = H - T - B;
-    const tot = i => apilado ? sum(series.map(s => s.v[i] || 0)) : Math.max(...series.map(s => s.v[i] || 0));
-    const mx = niceMax(Math.max(...Array.from({ length: n }, (_, i) => tot(i)), 1));
-    const band = iw / Math.max(n, 1), bw = apilado ? Math.min(24, band * 0.55) : Math.min(22, (band * 0.7 - 2) / series.length);
-    const y = v => T + ih - (v / mx) * ih;
-    let g = '';
-    for (let t = 0; t <= 4; t++) { const v = mx * t / 4, yy = y(v).toFixed(1); g += '<line class="' + (t ? 'gl' : 'bl') + '" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax" x="' + (L - 8) + '" y="' + (+yy + 4) + '" text-anchor="end">' + esc(compact(v, mon).replace(/^\$ /, '')) + '</text>'; }
-    const bar = (x, y0, y1, color, round, t1, t2) => {
-      const h = Math.max(0, y0 - y1); if (h <= 0.5) return '';
-      const r = round ? Math.min(4, h, bw / 2) : 0;
-      const d = 'M' + x + ',' + y0 + 'V' + (y1 + r) + (r ? 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + y1 + ' ' + (x + bw) + ',' + (y1 + r) : 'H' + (x + bw)) + 'V' + y0 + 'Z';
-      return '<path class="m" d="' + d + '" fill="' + color + '"' + tip(t1, t2) + '/>';
+  /* ---------- piezas ---------- */
+  const tituloSec = (icon, t, sub, der) => '<div class="sx-h"><span class="sx-i">' + (ICON[icon] || '') + '</span><h2>' + t + (sub ? ' <span class="sx-sub">' + sub + '</span>' : '') + '</h2>' + (der ? '<div class="sx-der">' + der + '</div>' : '') + '</div>';
+  // Tabla de datos del gráfico: invisible en pantalla, la leen el lector de pantalla y las descargas.
+  const datos = (titulo, cab, filas) => '<table class="sr-only" data-titulo="' + esc(titulo) + '"><caption>' + esc(titulo) + '</caption><thead><tr>' + cab.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' + filas.map(f => '<tr>' + f.map(c => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+  const delta = (a, b, alReves) => {
+    if (!b) return '<span class="sx-d nada">sin datos del año anterior</span>';
+    const d = Math.round((a / b - 1) * 100); const bien = alReves ? d <= 0 : d >= 0;
+    return '<span class="sx-d ' + (d === 0 ? 'igual' : bien ? 'up' : 'down') + '">' + (d > 0 ? '▲ ' : d < 0 ? '▼ ' : '') + Math.abs(d) + '% vs. ' + esc(String(+AD.st.anio - 1)) + '</span>';
+  };
+  const grande = (valor, label, extra, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(valor) + '</b><span>' + esc(label) + '</span>' + (extra || '') + '</div>';
+
+  // Curva suave (monótona: no inventa picos ni baja de cero) con área y comparación gris.
+  function curva(main0, prev0, n0, mon, { W = 640, H = 230, color = 'var(--c1)', nombre = '', nombrePrev = '' } = {}) {
+    // Arranca en el primer mes con datos (de este año o del anterior), así no se pierde medio gráfico en ceros.
+    let d0 = 0; while (d0 < n0 - 2 && !(main0[d0] || (prev0 && prev0[d0]))) d0++;
+    const main = main0.slice(d0), prev = prev0 ? prev0.slice(d0) : null, n = n0 - d0, MS = MES.slice(d0);
+    const L = 48, R = 12, T = 12, B = 26, iw = W - L - R, ih = H - T - B;
+    const mx = niceMax(Math.max(...main.slice(0, n), ...(prev || []).slice(0, n), 1));
+    const X = i => n > 1 ? L + iw * i / (n - 1) : L + iw / 2, Y = v => T + ih - (v / mx) * ih;
+    const path = vals => {
+      const p = vals.slice(0, n).map((v, i) => [X(i), Y(v)]); if (p.length < 2) return p.length ? 'M' + p[0][0] + ',' + p[0][1] : '';
+      const m = p.map((_, i) => { if (i === 0) return (p[1][1] - p[0][1]) / (p[1][0] - p[0][0]); if (i === p.length - 1) return (p[i][1] - p[i - 1][1]) / (p[i][0] - p[i - 1][0]); const d0 = (p[i][1] - p[i - 1][1]) / (p[i][0] - p[i - 1][0]), d1 = (p[i + 1][1] - p[i][1]) / (p[i + 1][0] - p[i][0]); return d0 * d1 <= 0 ? 0 : 2 / (1 / d0 + 1 / d1); });
+      let d = 'M' + p[0][0].toFixed(1) + ',' + p[0][1].toFixed(1);
+      for (let i = 0; i < p.length - 1; i++) { const h = (p[i + 1][0] - p[i][0]) / 3; d += 'C' + (p[i][0] + h).toFixed(1) + ',' + (p[i][1] + m[i] * h).toFixed(1) + ' ' + (p[i + 1][0] - h).toFixed(1) + ',' + (p[i + 1][1] - m[i + 1] * h).toFixed(1) + ' ' + p[i + 1][0].toFixed(1) + ',' + p[i + 1][1].toFixed(1); }
+      return d;
     };
-    for (let i = 0; i < n; i++) {
-      const cx = L + band * i + band / 2;
-      if (apilado) {
-        let acc = 0; const x = cx - bw / 2;
-        series.forEach((s, si) => { const v = s.v[i] || 0; if (!v) return; const y0 = y(acc) - (acc ? 2 : 0), y1 = y(acc + v); acc += v; g += bar(+x.toFixed(1), +y0.toFixed(1), +y1.toFixed(1), s.c, si === series.length - 1 || !series.slice(si + 1).some(z => z.v[i]), MES[i] + ' · ' + s.n, compact(v, mon) + ' (' + Math.round(v / tot(i) * 100) + '%)'); });
-      } else {
-        const gw = series.length * bw + (series.length - 1) * 2;
-        series.forEach((s, si) => { const v = s.v[i] || 0; const x = cx - gw / 2 + si * (bw + 2); g += bar(+x.toFixed(1), y(0), +y(v).toFixed(1), s.c, true, MES[i] + ' · ' + s.n, money(v, mon)); });
-      }
-      g += '<text class="ax" x="' + cx.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + MES[i] + '</text>';
-    }
-    return '<div class="legend">' + series.map(s => '<span><i style="--c:' + s.c + '"></i>' + esc(s.n) + '</span>').join('') + '</div><div class="chart"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(series.map(s => s.n).join(' y ') + ' por mes') + '">' + g + '</svg></div>';
+    const id = 'g' + Math.random().toString(36).slice(2, 8);
+    let g = '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + color + '" stop-opacity=".28"/><stop offset="1" stop-color="' + color + '" stop-opacity="0"/></linearGradient></defs>';
+    for (let t = 0; t <= 4; t++) { const v = mx * t / 4, yy = Y(v).toFixed(1); g += '<line class="' + (t ? 'gl' : 'bl') + '" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax" x="' + (L - 8) + '" y="' + (+yy + 4) + '" text-anchor="end">' + esc(compact(v, mon).replace(/^(US)?\$ |^[€£] /, '')) + '</text>'; }
+    for (let i = 0; i < n; i++) g += '<text class="ax" x="' + X(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="' + (n > 1 && i === 0 ? 'start' : n > 1 && i === n - 1 ? 'end' : 'middle') + '">' + MS[i] + '</text>';
+    const pm = path(main);
+    if (prev && prev.some(v => v)) g += '<path d="' + path(prev) + '" fill="none" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.6"/>';
+    if (n > 1) g += '<path d="' + pm + 'L' + X(n - 1).toFixed(1) + ',' + Y(0) + 'L' + L + ',' + Y(0) + 'Z" fill="url(#' + id + ')"/>';
+    g += '<path d="' + pm + '" fill="none" stroke="' + color + '" stroke-width="2.4" stroke-linecap="round"/>';
+    const last = main[n - 1] || 0; g += '<circle cx="' + X(n - 1).toFixed(1) + '" cy="' + Y(last).toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2"/>';
+    // Zonas para el tooltip, una por mes.
+    const band = n > 1 ? iw / (n - 1) : iw;
+    for (let i = 0; i < n; i++) g += '<rect class="hz" x="' + Math.max(L, X(i) - band / 2).toFixed(1) + '" y="' + T + '" width="' + band.toFixed(1) + '" height="' + ih + '"' + tip(MS[i] + ' ' + AD.st.anio, nombre + ': ' + money(main[i] || 0, mon) + (prev && prev.some(v => v) ? ' · ' + nombrePrev + ': ' + money(prev[i] || 0, mon) : '')) + '/>';
+    return '<div class="sx-chart"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(nombre + ' por mes') + '">' + g + '</svg></div>';
   }
-  function hbars(rows, color, mon, extra) {
+  const leyenda = items => '<div class="sx-ley">' + items.map(([n, c]) => '<span><i style="--c:' + c + '"></i>' + esc(n) + '</span>').join('') + '</div>';
+
+  // Lista de barras: nombre a la izquierda, valor a la derecha, barra fina abajo. La primera, en color pleno.
+  function barras(rows, color, fmt, { tituloDatos, avatar } = {}) {
     if (!rows.length) return emptyBox('Sin datos para este año', '');
     const mx = Math.max(...rows.map(r => r[1]), 1), tot = sum(rows.map(r => r[1]));
-    return '<div class="hbars">' + rows.map(([l, v]) => '<div class="hb"' + tip(l, money(v, mon) + ' · ' + Math.round(v / tot * 100) + '% del total') + '><span class="lab">' + esc(l) + '</span><span class="tr"><i style="width:' + (v / mx * 100).toFixed(1) + '%;--c:' + color + '"></i></span><span class="v">' + esc(compact(v, mon)) + '<small>' + Math.round(v / tot * 100) + '%</small></span></div>').join('') + (extra || '') + '</div>';
+    return '<div class="bl">' + rows.map(([l, v], i) => '<div class="bl-r"' + tip(l, fmt(v) + ' · ' + pct(v, tot) + '% del total') + '><div class="bl-t">' + (avatar ? avatar(l) : '') + '<span class="bl-l">' + esc(l) + '</span><span class="bl-v">' + esc(fmt(v)) + '<small>' + pct(v, tot) + '%</small></span></div><span class="bl-tr" style="--c:' + color + '"><i class="' + (i ? '' : 'top') + '" style="width:' + Math.max(1, v / mx * 100).toFixed(1) + '%"></i></span></div>').join('') + '</div>' +
+      (tituloDatos ? datos(tituloDatos, ['Concepto', 'Monto', '% del total'], rows.map(([l, v]) => [l, money(v, AD.st.mon), pct(v, tot) + '%'])) : '');
   }
-  const top = (rows, n) => rows.length > n ? [...rows.slice(0, n - 1), ['Otros (' + (rows.length - n + 1) + ')', sum(rows.slice(n - 1).map(r => r[1]))]] : rows;
+  function dona(rows, colores, fmt, centro) {
+    const tot = sum(rows.map(r => r[1])); if (!tot) return '';
+    const R = 60, r = 40, C = 74; let a0 = -Math.PI / 2, g = '';
+    rows.forEach(([l, v], i) => {
+      if (!v) return; const a1 = a0 + (v / tot) * Math.PI * 2 - (rows.filter(x => x[1]).length > 1 ? 0.025 : 0);
+      const big = a1 - a0 > Math.PI ? 1 : 0, p = (rad, ang) => (C + rad * Math.cos(ang)).toFixed(2) + ',' + (C + rad * Math.sin(ang)).toFixed(2);
+      const d = v / tot > 0.9999 ? 'M' + p(R, 0) + 'A' + R + ',' + R + ' 0 1 1 ' + p(R, Math.PI) + 'A' + R + ',' + R + ' 0 1 1 ' + p(R, 0) + 'M' + p(r, 0) + 'A' + r + ',' + r + ' 0 1 0 ' + p(r, Math.PI) + 'A' + r + ',' + r + ' 0 1 0 ' + p(r, 0) + 'Z'
+        : 'M' + p(R, a0) + 'A' + R + ',' + R + ' 0 ' + big + ' 1 ' + p(R, a1) + 'L' + p(r, a1) + 'A' + r + ',' + r + ' 0 ' + big + ' 0 ' + p(r, a0) + 'Z';
+      g += '<path d="' + d + '" fill="' + colores[i % colores.length] + '" fill-rule="evenodd"' + tip(l, fmt(v) + ' · ' + pct(v, tot) + '%') + '/>';
+      a0 = a1 + (rows.filter(x => x[1]).length > 1 ? 0.025 : 0);
+    });
+    return '<div class="sx-dona"><svg viewBox="0 0 148 148" width="168" height="168" role="img" aria-label="Distribución">' + g + (centro ? '<text x="74" y="72" text-anchor="middle" class="dn-b">' + esc(centro[0]) + '</text><text x="74" y="90" text-anchor="middle" class="dn-s">' + esc(centro[1]) + '</text>' : '') + '</svg>' +
+      '<ul>' + rows.map(([l, v], i) => '<li><i style="--c:' + colores[i % colores.length] + '"></i><span>' + esc(l) + '</span><b>' + pct(v, tot) + '%</b></li>').join('') + '</ul></div>';
+  }
 
   /* ---------- vista ---------- */
   function vStats() {
-    const st = AD.st, b = base(), C1 = 'var(--c1)', C2 = 'var(--c2)', C3 = 'var(--c3)';
+    const st = AD.st, b = base(st.anio), prev = base(String(+st.anio - 1), b.ultimo), C1 = 'var(--c1)', C2 = 'var(--c2)', C3 = 'var(--c3)';
     const anios = [...new Set([...AD.MV.map(v => (v.fecha || '').slice(0, 4)), st.anio])].filter(Boolean).sort().reverse();
     const ti = sum(b.ingMes), te = sum(b.egMes), res = ti - te, lab = sum(b.labMes), meses = Math.max(b.ultimo, 1);
-    const sinMov = !b.ing.length && !b.eg.length;
+    const pi = sum(prev.ingMes), pe = sum(prev.egMes), pl = sum(prev.labMes);
+    const hayPrev = prev.ing.length + prev.eg.length > 0, y0 = String(+st.anio - 1), M = v => money(v, st.mon), K = v => compact(v, st.mon);
+    const periodo = b.ultimo === 12 ? 'todo ' + st.anio : 'enero a ' + MES[b.ultimo - 1].toLowerCase() + ' de ' + st.anio;
     let h = '<div class="head"><div><h1>Estadísticas</h1><p>Cómo viene ' + esc(st.anio) + ' según Gastos e ingresos: lo que entra, lo que sale y de dónde viene.</p></div>' +
       '<div class="toolbar"><div class="seg" role="group" aria-label="Moneda">' + ['ARS', 'USD'].map(m => '<button data-act="stMon" data-v="' + m + '" aria-pressed="' + (st.mon === m) + '">' + (m === 'ARS' ? 'Pesos' : 'Dólares (con EUR y GBP)') + '</button>').join('') + '</div><select class="in" data-stk="anio" aria-label="Año">' + anios.map(a => opt(a, a, st.anio)).join('') + '</select></div></div>' +
       (b.sinUsd.length ? '<section class="callout"><p><b>' + b.sinUsd.length + ' movimientos en ' + esc([...new Set(b.sinUsd.map(v => v.moneda))].join(' y ')) + ' sin los USD cargados</b>: no se suman acá. Abrilos en Gastos e ingresos y completá “¿Cuántos USD fueron?”.</p></section>' : '');
-    if (sinMov) return h + '<section class="sheet">' + emptyBox('Sin gastos ni ingresos en ' + (st.mon === 'ARS' ? 'pesos' : 'dólares') + ' para ' + st.anio, 'Probá con la otra moneda u otro año.') + '</section>';
-    h += '<section class="hero">' +
-      tile('Ingresos', compact(ti, st.mon), 'promedio ' + esc(compact(ti / meses, st.mon)) + ' por mes', b.ingMes, C1) +
-      tile('Gastos', compact(te, st.mon), 'promedio ' + esc(compact(te / meses, st.mon)) + ' por mes', b.egMes, C2) +
-      tile('Lo que quedó', compact(res, st.mon), ti ? Math.round(res / ti * 100) + '% de lo que entra' : '—', b.ingMes.map((v, i) => v - b.egMes[i]), res >= 0 ? 'var(--ok)' : 'var(--crit)', res < 0 ? 'alert' : '') +
-      tile('Sueldos', compact(lab, st.mon), ti ? Math.round(lab / ti * 100) + '% de los ingresos' : 'sueldos y aguinaldos', b.labMes, C3) + '</section>';
+    if (!b.ing.length && !b.eg.length) return h + '<section class="sheet">' + emptyBox('Sin gastos ni ingresos en ' + (st.mon === 'ARS' ? 'pesos' : 'dólares') + ' para ' + st.anio, 'Probá con la otra moneda u otro año.') + '</section>';
 
-    // Ingresos vs egresos
-    h += '<div class="stats"><section class="sheet w8"><div class="sheet-h"><h2>Ingresos y gastos por mes</h2><span class="muted">sin contar cambio de dólares ni retiros de socios</span></div>' + columnas([{ n: 'Ingresos', c: C1, v: b.ingMes }, { n: 'Gastos', c: C2, v: b.egMes }], b.ultimo, { mon: st.mon }) + '</section>';
-    // Fijos vs variables
+    // 1. El año en cuatro números
+    h += '<section class="sheet sx">' + tituloSec('resultado', 'El año en números', '(' + esc(periodo) + ')') +
+      '<div class="sx-ns">' +
+      grande(K(ti), 'Ingresos', '<small>' + esc(K(ti / meses)) + ' por mes</small>' + (hayPrev ? delta(ti, pi) : '')) +
+      grande(K(te), 'Gastos', '<small>' + esc(K(te / meses)) + ' por mes</small>' + (hayPrev ? delta(te, pe, true) : '')) +
+      grande(K(res), 'Lo que quedó', '<small>' + (ti ? pct(res, ti) + '% de lo que entra' : '—') + '</small>' + (hayPrev ? delta(res, pi - pe) : ''), res < 0 ? 'neg' : 'pos') +
+      grande(K(lab), 'Sueldos', '<small>' + (ti ? pct(lab, ti) + '% de los ingresos' : 'sueldos y aguinaldos') + '</small>' + (hayPrev ? delta(lab, pl, true) : '')) +
+      '</div>' + datos('El año en números', ['Concepto', st.anio, y0], [['Ingresos', M(ti), M(pi)], ['Gastos', M(te), M(pe)], ['Lo que quedó', M(res), M(pi - pe)], ['Sueldos', M(lab), M(pl)]]) + '</section>';
+
+    // 2. Curvas de ingresos y gastos contra el año anterior
+    const fila = (n, a, p) => MES.slice(0, b.ultimo).map((m, i) => [m, M(a[i] || 0), M(p[i] || 0)]);
+    h += '<div class="sx-2">' +
+      '<section class="sheet sx">' + tituloSec('ingreso', '<b>' + esc(K(ti)) + '</b> de ingresos', '(' + esc(st.anio) + ')', leyenda([[st.anio, C1], ...(hayPrev ? [[y0, 'var(--muted)']] : [])])) +
+      curva(b.ingMes, hayPrev ? prev.ingMes : null, b.ultimo, st.mon, { color: C1, nombre: st.anio, nombrePrev: y0 }) + datos('Ingresos por mes', ['Mes', st.anio, y0], fila('Ingresos', b.ingMes, prev.ingMes)) + '</section>' +
+      '<section class="sheet sx">' + tituloSec('gasto', '<b>' + esc(K(te)) + '</b> de gastos', '(' + esc(st.anio) + ')', leyenda([[st.anio, C2], ...(hayPrev ? [[y0, 'var(--muted)']] : [])])) +
+      curva(b.egMes, hayPrev ? prev.egMes : null, b.ultimo, st.mon, { color: C2, nombre: st.anio, nombrePrev: y0 }) + datos('Gastos por mes', ['Mes', st.anio, y0], fila('Gastos', b.egMes, prev.egMes)) + '</section></div>';
+
+    // 3. De dónde viene la plata: abonos vs. proyectos y por servicio
     const ab = sum(b.aboMes), pr = sum(b.proMes);
-    h += '<section class="sheet w4"><div class="sheet-h"><h2>Abonos y proyectos</h2></div>' +
-      '<div class="hbars">' + [['Abonos (redes y Ads)', ab, C1], ['Proyectos', pr, C3]].map(([l, v, c]) => '<div class="hb"' + tip(l, money(v, st.mon)) + '><span class="lab">' + l + '</span><span class="tr"><i style="width:' + (v / Math.max(ab, pr, 1) * 100).toFixed(1) + '%;--c:' + c + '"></i></span><span class="v">' + esc(compact(v, st.mon)) + '<small>' + (ab + pr ? Math.round(v / (ab + pr) * 100) : 0) + '%</small></span></div>').join('') + '</div>' +
-      '<p class="muted" style="margin:0;padding:0 18px 16px;font-size:13.5px">Lo recurrente sostiene ' + (ab + pr ? Math.round(ab / (ab + pr) * 100) : 0) + '% de los ingresos del año.</p></section>';
-    h += '<section class="sheet w12"><div class="sheet-h"><h2>De dónde vienen los ingresos, mes a mes</h2></div>' + columnas([{ n: 'Abonos', c: C1, v: b.aboMes }, { n: 'Proyectos', c: C3, v: b.proMes }], b.ultimo, { apilado: true, mon: st.mon, W: 1140 }) +
-      '<details style="padding:0 18px 14px"><summary class="muted" style="cursor:pointer;font-size:13px">Ver números</summary><div class="tbl"><table><thead><tr><th>Mes</th><th class="r">Abonos</th><th class="r">Proyectos</th><th class="r">Total</th></tr></thead><tbody>' + b.aboMes.map((v, i) => '<tr><td>' + MES[i] + '</td><td class="r">' + money(v, st.mon) + '</td><td class="r">' + money(b.proMes[i], st.mon) + '</td><td class="r"><b>' + money(v + b.proMes[i], st.mon) + '</b></td></tr>').join('') + '</tbody></table></div></details></section>';
-    // Servicios, clientes, egresos
-    h += '<section class="sheet"><div class="sheet-h"><h2>Ingresos por servicio</h2></div>' + hbars(top(agrupar(b.ing, v => limpiaSub(v.subcuenta), v => v.ingreso), 8), C1, st.mon) + '</section>';
-    h += '<section class="sheet"><div class="sheet-h"><h2>Clientes que más facturaron</h2></div>' + hbars(top(agrupar(b.ing, v => v.cliente || v.contraparte || 'Sin cliente', v => v.ingreso), 10), C1, st.mon) + '</section>';
-    h += '<section class="sheet"><div class="sheet-h"><h2>En qué se va la plata</h2></div>' + hbars(top(agrupar(b.eg, v => v.subcuenta || v.cuenta, v => v.egreso), 9), C2, st.mon) + '</section>';
-    h += '<section class="sheet"><div class="sheet-h"><h2>Proveedores</h2></div>' + hbars(top(agrupar(b.eg.filter(v => v.cuenta === 'Proveedores'), v => v.contraparte || v.subcuenta, v => v.egreso), 8), C2, st.mon) + '</section>';
-    // Operación y cobranza (todas las monedas)
+    const serv = top(agrupar(b.ing, v => limpiaSub(v.subcuenta), v => v.ingreso), 8);
+    h += '<section class="sheet sx">' + tituloSec('dona', 'De dónde viene la plata') +
+      '<div class="sx-panel sx-split"><div><p class="sx-lead">Lo recurrente (abonos de redes y Ads) sostiene <b>' + pct(ab, ab + pr) + '%</b> de los ingresos de ' + esc(periodo) + '.</p>' +
+      barras(serv, C1, K, { tituloDatos: 'Ingresos por servicio' }) + '</div>' +
+      dona([['Abonos', ab], ['Proyectos', pr]], [C1, C3], M, [pct(ab, ab + pr) + '%', 'recurrente']) + '</div>' +
+      datos('Abonos y proyectos por mes', ['Mes', 'Abonos', 'Proyectos', 'Total'], b.aboMes.map((v, i) => [MES[i], M(v), M(b.proMes[i]), M(v + b.proMes[i])])) + '</section>';
+
+    // 4. Clientes: tabla con logo, como un ranking
+    const cl = agrupar(b.ing, v => v.cliente || v.contraparte || 'Sin cliente', v => v.ingreso), totCl = sum(cl.map(r => r[1]));
+    const mesesDe = n => new Set(b.ing.filter(v => (v.cliente || v.contraparte || 'Sin cliente') === n).map(v => v.fecha.slice(0, 7))).size;
+    const ultimoDe = n => b.ing.filter(v => (v.cliente || v.contraparte || 'Sin cliente') === n).map(v => v.fecha).sort().pop();
+    const logo = n => { const c = S.C.find(x => x.nombre === n); return ctx.av ? ctx.av(n, c && c.avatar, 'sq') : ''; };
+    const verCl = st.clTodos ? cl : cl.slice(0, 8);
+    h += '<section class="sheet sx">' + tituloSec('ranking', 'Clientes que más facturaron', '(' + esc(periodo) + ')') +
+      (cl.length ? '<div class="tbl sx-tbl"><table><thead><tr><th>Cliente</th><th class="r">Ingresó</th><th class="r">% del total</th><th class="r">Meses con pagos</th><th class="r">Último pago</th></tr></thead><tbody>' +
+        verCl.map(([n, v]) => '<tr><td><span class="sx-cl">' + logo(n) + '<b>' + esc(n) + '</b></span></td><td class="r"><b class="sx-big">' + esc(K(v)) + '</b></td><td class="r">' + pct(v, totCl) + '%</td><td class="r">' + mesesDe(n) + '</td><td class="r muted">' + esc(ctx.fmt(ultimoDe(n))) + '</td></tr>').join('') + '</tbody></table></div>' +
+        (cl.length > 8 ? '<div class="sx-more"><button class="btn sm" data-act="stClTodos">' + (st.clTodos ? 'Ver menos' : 'Ver los ' + cl.length + ' clientes') + '</button></div>' : '') : emptyBox('Sin ingresos de clientes', '')) + '</section>';
+
+    // 5. En qué se va la plata y proveedores
+    h += '<div class="sx-2">' +
+      '<section class="sheet sx">' + tituloSec('gasto', 'En qué se va la plata') + '<div class="sx-panel">' + barras(top(agrupar(b.eg, v => v.subcuenta || v.cuenta, v => v.egreso), 9), C2, K, { tituloDatos: 'En qué se va la plata' }) + '</div></section>' +
+      '<section class="sheet sx">' + tituloSec('pagos', 'Proveedores') + '<div class="sx-panel">' + barras(top(agrupar(b.eg.filter(v => v.cuenta === 'Proveedores'), v => v.contraparte || v.subcuenta, v => v.egreso), 8), C2, K, { tituloDatos: 'Proveedores' }) + '</div></section></div>';
+
+    // 6. Operación hoy (todas las monedas)
     const porCobrar = {}, vencido = {}; AD.F.forEach(f => { if (f.saldo > 0.009) { add(porCobrar, f.moneda, f.saldo); if (k.estadoFactura(f) === 'Vencida') add(vencido, f.moneda, f.saldo); } });
     const ab2 = S.A.filter(a => a.estado === 'Activo'), est = {}; S.P.filter(p => !['Entregado', 'Cancelado'].includes(p.estado)).forEach(p => { est[p.estado] = (est[p.estado] || 0) + 1; });
-    const totP = sum(Object.values(est));
-    h += '<section class="sheet w12"><div class="sheet-h"><h2>Operación hoy</h2></div><div class="sheet-b" style="display:grid;gap:18px">' +
-      '<div class="hero">' +
-      '<div class="kpi" style="--k:var(--s-entregado)"><span class="eyebrow">Clientes activos</span><b style="font-size:28px">' + S.C.filter(c => c.estado === 'Activo').length + '</b><span>' + ab2.filter(a => a.tipo === 'Redes').length + ' con redes · ' + ab2.filter(a => a.tipo === 'Ads').length + ' con Ads</span></div>' +
-      '<div class="kpi" style="--k:var(--s-curso)"><span class="eyebrow">Proyectos abiertos</span><b style="font-size:28px">' + totP + '</b><span>' + S.P.filter(p => p.estado === 'Entregado' && (p.entregaReal || p.entrega || '').startsWith(st.anio)).length + ' entregados en ' + esc(st.anio) + '</span></div>' +
-      '<div class="kpi" style="--k:var(--warn)"><span class="eyebrow">Por cobrar</span><b style="font-size:24px">' + esc(multi(porCobrar)) + '</b><span>en facturas hechas</span></div>' +
-      '<div class="kpi ' + (Object.keys(vencido).length ? 'alert' : '') + '"><span class="eyebrow">Vencido</span><b style="font-size:24px">' + esc(multi(vencido)) + '</b><span>' + (n => n + (n === 1 ? ' factura' : ' facturas'))(AD.F.filter(f => k.estadoFactura(f) === 'Vencida').length) + '</span></div></div>' +
-      (totP ? '<div><span class="eyebrow">Proyectos abiertos por estado</span><div style="display:flex;gap:2px;height:14px;margin:8px 0 10px;border-radius:7px;overflow:hidden">' + Object.entries(est).map(([e, n]) => '<span' + tip(e, n + ' proyectos') + ' style="flex:' + n + ';background:var(' + ctx.stVar(e) + ')"></span>').join('') + '</div><div class="tags" style="gap:8px">' + Object.entries(est).sort((a, b) => b[1] - a[1]).map(([e, n]) => ctx.pill(e + ' · ' + n, ctx.stVar(e))).join('') + '</div></div>' : '') +
-      '</div></section></div>';
+    const totP = sum(Object.values(est)), nVenc = AD.F.filter(f => k.estadoFactura(f) === 'Vencida').length;
+    const plataN = acc => { const e = Object.entries(acc).filter(([, v]) => Math.abs(v) > 0.004); return e.length ? e.map(([c, v]) => compact(v, c)).join(' · ') : compact(0, 'ARS'); };
+    h += '<section class="sheet sx">' + tituloSec('operacion', 'Operación hoy') +
+      '<div class="sx-ns">' +
+      grande(String(S.C.filter(c => c.estado === 'Activo').length), 'Clientes activos', '<small>' + ab2.filter(a => a.tipo === 'Redes').length + ' con redes · ' + ab2.filter(a => a.tipo === 'Ads').length + ' con Ads</small>') +
+      grande(String(totP), 'Proyectos abiertos', '<small>' + S.P.filter(p => p.estado === 'Entregado' && (p.entregaReal || p.entrega || '').startsWith(st.anio)).length + ' entregados en ' + esc(st.anio) + '</small>') +
+      grande(plataN(porCobrar), 'Por cobrar', '<small>en facturas hechas</small>', Object.keys(porCobrar).length > 1 ? 'chico' : '') +
+      grande(plataN(vencido), 'Vencido', '<small>' + nVenc + (nVenc === 1 ? ' factura' : ' facturas') + '</small>', (Object.keys(vencido).length ? 'neg' : '') + (Object.keys(vencido).length > 1 ? ' chico' : '')) + '</div>' +
+      (totP ? '<div class="sx-panel"><p class="sx-lead">Proyectos abiertos por estado</p>' + '<div class="bl">' + Object.entries(est).sort((a, c) => c[1] - a[1]).map(([e, n]) => '<div class="bl-r"><div class="bl-t"><span class="bl-dot" style="--c:var(' + ctx.stVar(e) + ')"></span><span class="bl-l">' + esc(e) + '</span><span class="bl-v">' + n + (n === 1 ? ' proyecto' : ' proyectos') + '</span></div><span class="bl-tr" style="--c:var(' + ctx.stVar(e) + ')"><i class="top" style="width:' + (n / Math.max(...Object.values(est)) * 100).toFixed(1) + '%"></i></span></div>').join('') + '</div></div>' : '') +
+      datos('Operación hoy', ['Indicador', 'Valor'], [['Clientes activos', S.C.filter(c => c.estado === 'Activo').length], ['Proyectos abiertos', totP], ['Por cobrar', plataN(porCobrar)], ['Vencido', plataN(vencido)], ...Object.entries(est).map(([e, n]) => ['Proyectos ' + e.toLowerCase(), n])]) + '</section>';
     return h;
   }
 
@@ -144,5 +193,5 @@ export function initStats(ctx, k) {
   document.addEventListener('mousemove', e => { if (tipEl && !tipEl.hidden) { const x = Math.min(e.clientX + 14, innerWidth - tipEl.offsetWidth - 8); tipEl.style.left = x + 'px'; tipEl.style.top = (e.clientY + 14) + 'px'; } });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.stk) { AD.st[t.dataset.stk] = t.value; ctx.render(); } });
 
-  return { view: vStats, actions: { stMon: t => { AD.st.mon = t.dataset.v; ctx.render(); } } };
+  return { view: vStats, actions: { stMon: t => { AD.st.mon = t.dataset.v; ctx.render(); }, stClTodos: () => { AD.st.clTodos = !AD.st.clTodos; ctx.render(); } } };
 }

@@ -11,7 +11,7 @@ const CORS = {
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 class Aviso extends Error { status: number; constructor(m: string, s = 400) { super(m); this.status = s; } }
-const NOMBRES = ['anthropic', 'google', 'email', 'whatsapp'];
+const NOMBRES = ['anthropic', 'google', 'email', 'whatsapp', 'slack', 'dropbox', 'tally'];
 const pista = (s: string) => s ? '…' + String(s).slice(-4) : '';
 const EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
 const ENV: Record<string, () => boolean> = {
@@ -19,7 +19,29 @@ const ENV: Record<string, () => boolean> = {
   google: () => !!Deno.env.get('GOOGLE_SERVICE_ACCOUNT'),
   email: () => !!Deno.env.get('RESEND_API_KEY'),
   whatsapp: () => false,
+  slack: () => false,
+  dropbox: () => false,
+  tally: () => false,
 };
+// Dropbox: se conecta con la app key/secret y el código que da Dropbox al autorizar (sin redirección).
+async function dropboxCodigo(d: Record<string, any>) {
+  const s = (k: string) => String(d[k] ?? '').trim();
+  if (!s('app_key') || !s('app_secret')) throw new Aviso('Faltan la App key y el App secret (los ves en dropbox.com/developers → tu app → Settings).');
+  if (!s('codigo')) throw new Aviso('Falta el código de autorización: tocá “Autorizar en Dropbox”, aceptá y pegá acá el código que te muestra.');
+  const r = await fetch('https://api.dropboxapi.com/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'authorization_code', code: s('codigo'), client_id: s('app_key'), client_secret: s('app_secret') }) });
+  const o = await r.json().catch(() => ({}));
+  if (!r.ok || !o.refresh_token) throw new Aviso('Dropbox no aceptó el código (' + (o.error_description || o.error || r.status) + '). Los códigos duran unos minutos y sirven una sola vez: pedí uno nuevo.');
+  let raiz = s('raiz') || '/'; if (!raiz.startsWith('/')) raiz = '/' + raiz; raiz = raiz.replace(/\/+$/, '') || '/';
+  return { app_key: s('app_key'), app_secret: s('app_secret'), refresh_token: o.refresh_token, raiz };
+}
+async function dropboxToken(v: any) {
+  const r = await fetch('https://api.dropboxapi.com/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: v.refresh_token, client_id: v.app_key, client_secret: v.app_secret }) });
+  const o = await r.json().catch(() => ({}));
+  if (!r.ok || !o.access_token) throw new Error('Dropbox: ' + (o.error_description || o.error || r.status));
+  return o.access_token as string;
+}
 
 // Normaliza y valida lo que se carga; devuelve { valor, cuenta, pista }.
 function preparar(n: string, d: Record<string, any>) {
@@ -43,6 +65,15 @@ function preparar(n: string, d: Record<string, any>) {
   if (n === 'whatsapp') {
     if (!s('token') || !/^\d{6,}$/.test(s('phone_id'))) throw new Aviso('Faltan el token y el Phone number ID (son números, los ves en Meta → WhatsApp → Configuración de la API).');
     return { valor: { token: s('token'), phone_id: s('phone_id'), waba_id: s('waba_id'), numero: s('numero') }, cuenta: s('numero') || 'Número ' + s('phone_id'), pista: pista(s('token')) };
+  }
+  if (n === 'slack') {
+    if (!/^xoxb-/.test(s('token'))) throw new Aviso('El token del bot de Slack empieza con “xoxb-”. Lo ves en api.slack.com/apps → tu app → OAuth & Permissions.');
+    return { valor: { token: s('token'), canal: s('canal').replace(/^#/, '') }, cuenta: 'Slack', pista: pista(s('token')) };
+  }
+  if (n === 'tally') {
+    if (!/^tly-/.test(s('key'))) throw new Aviso('La clave de Tally empieza con “tly-”. Creala en tally.so → Settings → API keys.');
+    const firma = s('firma') || Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+    return { valor: { key: s('key'), firma }, cuenta: 'Tally', pista: pista(s('key')) };
   }
   throw new Aviso('Integración desconocida');
 }
@@ -87,6 +118,31 @@ async function probar(n: string, v: any): Promise<{ ok: boolean; detalle: string
       if (!r.ok) return { ok: false, detalle: 'Meta: ' + (o?.error?.message || r.status) };
       return { ok: true, detalle: 'Conectado: ' + (o.display_phone_number || '') + (o.verified_name ? ' · ' + o.verified_name : '') + (o.quality_rating ? ' · calidad ' + o.quality_rating : '') };
     }
+    if (n === 'slack') {
+      const r = await fetch('https://slack.com/api/auth.test', { method: 'POST', headers: { Authorization: 'Bearer ' + v.token } });
+      const o = await r.json().catch(() => ({}));
+      if (!o.ok) return { ok: false, detalle: 'Slack: ' + (o.error || r.status) };
+      let extra = '';
+      const sc = (r.headers.get('x-oauth-scopes') || '').split(',').map((x: string) => x.trim());
+      const faltan = ['chat:write', 'users:read', 'users:read.email'].filter(x => !sc.includes(x));
+      if (sc.length > 1 && faltan.length) return { ok: false, detalle: 'Conectado a ' + o.team + ', pero al bot le faltan permisos: ' + faltan.join(', ') + '. Agregalos en OAuth & Permissions y reinstalá la app.' };
+      if (v.canal) extra = ' · avisos generales en #' + v.canal;
+      return { ok: true, detalle: 'Conectado a ' + o.team + ' como ' + o.user + extra + '.' };
+    }
+    if (n === 'dropbox') {
+      const t = await dropboxToken(v);
+      const r = await fetch('https://api.dropboxapi.com/2/users/get_current_account', { method: 'POST', headers: { Authorization: 'Bearer ' + t } });
+      const o = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, detalle: 'Dropbox: ' + (o.error_summary || r.status) };
+      const equipo = o.root_info && o.root_info.root_namespace_id !== o.root_info.home_namespace_id;
+      return { ok: true, detalle: 'Conectado como ' + (o.name && o.name.display_name) + ' (' + o.email + ')' + (equipo ? ' · carpetas del equipo' : '') + ' · carpeta base ' + v.raiz + '.' };
+    }
+    if (n === 'tally') {
+      const r = await fetch('https://api.tally.so/users/me', { headers: { Authorization: 'Bearer ' + v.key } });
+      const o = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, detalle: 'Tally: ' + (o.message || r.status) };
+      return { ok: true, detalle: 'Conectado como ' + (o.fullName || o.firstName || o.email || 'usuario de Tally') + '.' };
+    }
   } catch (e) { return { ok: false, detalle: (e as Error).message }; }
   return { ok: false, detalle: 'Sin prueba para esta integración.' };
 }
@@ -112,7 +168,14 @@ Deno.serve(async req => {
         return json({ listo: !error, error: error ? 'Falta correr 0014_credenciales.sql en Supabase.' : null, cuentas: Object.fromEntries(NOMBRES.map(k => [k, { ...(filas.find((f: any) => f.nombre === k) || {}), secreto_viejo: ENV[k]() }])) });
       }
       case 'guardar': {
-        const p = preparar(n, b.datos || {});
+        let p: { valor: any; cuenta: string; pista: string };
+        if (n === 'dropbox') { const v = await dropboxCodigo(b.datos || {}); p = { valor: v, cuenta: 'Dropbox', pista: '' }; }
+        else if (n === 'tally') {
+          // Conserva la firma de los webhooks si ya existía (así no se rompen los que ya están creados).
+          const { data: prev } = await svc.rpc('cred_leer', { n });
+          const pv = prev ? JSON.parse(prev) : null;
+          p = preparar(n, { ...(b.datos || {}), firma: pv && pv.firma });
+        } else p = preparar(n, b.datos || {});
         const pr = await probar(n, p.valor);
         if (!pr.ok && !b.forzar) return json({ ok: false, guardado: false, detalle: pr.detalle });
         const { error } = await svc.rpc('cred_guardar', { n, v: JSON.stringify(p.valor), p_cuenta: p.cuenta, p_pista: p.pista, p_por: yo.id });

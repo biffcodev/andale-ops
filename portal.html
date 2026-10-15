@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Portal · àndale</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap">
+</head>
+<body class="po">
+<header class="po-top" id="top" hidden>
+  <span class="po-brand"><span class="po-logo" id="logo"></span><span class="po-sub">Portal de clientes</span></span>
+  <span class="po-cli" id="cli"></span>
+  <span class="po-me"><span id="me"></span><button class="btn ghost sm" data-act="salir">Salir</button></span>
+</header>
+<nav class="po-tabs" id="tabs" hidden></nav>
+<main class="po-main" id="view"><p class="muted" style="padding:40px;text-align:center">Cargando…</p></main>
+<footer class="po-foot" id="foot"></footer>
+<div id="scrim" class="scrim" data-act="cerrar" hidden></div>
+<aside id="panel" class="panel" hidden aria-modal="true" role="dialog" aria-labelledby="panel-title"></aside>
+<div id="toast" class="toast" hidden></div>
+<script type="module" src="/src/portal.js"></script>
+</body>
+</html>

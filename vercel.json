@@ -5,6 +5,10 @@
       "destination": "/p.html"
     },
     {
+      "source": "/portal(.*)",
+      "destination": "/portal.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

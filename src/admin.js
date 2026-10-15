@@ -5,6 +5,7 @@ import * as E from './emails.js';
 import { initEquipo } from './equipo.js';
 import { initAsistente } from './asistente.js';
 import { initStats } from './stats.js';
+import { ICON } from './iconos.js';
 import { initPropuestas } from './propuestas.js';
 
 export function initAdmin(ctx) {
@@ -67,8 +68,11 @@ export function initAdmin(ctx) {
     S.P.filter(p => p.cliente === cliente).forEach(p => {
       AD.PF.filter(c => c.proyecto_id === p._id && c.periodo === m).forEach(c => out.push({ inc: true, origen: 'Proyecto', ref: 'pf:' + c.id, concepto: p.proyecto + (c.concepto ? ' · ' + c.concepto : ''), monto: c.monto == null ? '' : String(c.monto), moneda: c.moneda }));
     });
+    // Tickets marcados "A facturar" que todavía no se facturaron (los de ese mes o de antes).
+    ticketsAFacturar(cliente, m).forEach(t => out.push({ inc: true, origen: 'Ticket', ref: 'ticket:' + t._id, concepto: 'Ticket #' + t.numero + ' · ' + t.titulo, monto: t.monto === '' ? '' : String(t.monto), moneda: t.moneda || 'ARS' }));
     return out;
   }
+  const ticketsAFacturar = (cliente, m) => (S.PD || []).filter(t => t.cliente === cliente && t.cobro === 'A facturar' && !t.facturado && t.estado !== 'Descartado' && String(t.cerrado || t.creado || '').slice(0, 7) <= m);
   const totalItems = items => items.filter(i => i.inc).reduce((s, i) => s + (parseMonto(i.monto) || 0), 0);
   function clientesDelMes(m) {
     const s = new Set();
@@ -76,6 +80,7 @@ export function initAdmin(ctx) {
     AD.PF.forEach(c => { if (c.periodo === m) { const p = S.P.find(x => x._id === c.proyecto_id); if (p) s.add(p.cliente); } });
     AD.R.forEach(r => { if (r.periodo === m) s.add(r.cliente); });
     AD.F.forEach(f => { if (f.periodo === m) s.add(f.cliente); });
+    (S.PD || []).forEach(t => { if (ticketsAFacturar(t.cliente, m).length) s.add(t.cliente); });
     return [...s].filter(Boolean).sort(cmp);
   }
   function estadoFactura(f) {
@@ -201,6 +206,9 @@ export function initAdmin(ctx) {
     const row = { cliente_id: cid, periodo: rd.m + '-01', moneda: rd.moneda, items, total: r2(totalItems(rd.items)), nota: rd.nota.trim(), estado, enviado_el: estado === 'Enviado' ? (rd.enviado_el || today()) : null, link_pdf: rd.link_pdf.trim() };
     try {
       if (rd.id) await data.upd('resumenes', rd.id, row); else { const nr = await data.ins('resumenes', row); rd.id = nr.id; rd.numero = nr.numero || ''; }
+      // Los tickets incluidos en el resumen quedan como facturados.
+      const tks = items.filter(i => i.inc && String(i.ref).startsWith('ticket:')).map(i => i.ref.slice(7));
+      if (tks.length && data.pedidosUpd) await data.pedidosUpd(tks, { facturado: true });
       if (estado === 'Enviado' && rd.estado !== 'Enviado' && !opts.sinGestion) await data.ins('gestiones', { cliente_id: cid, periodo: rd.m + '-01', tipo: 'Resumen de cuenta', fecha: today(), canal: 'Email', persona_id: data.ids.persona(S.me.alias) });
       rd.estado = estado; rd.enviado_el = row.enviado_el || '';
       if (!opts.silencioso) { toast(estado === 'Enviado' ? 'Resumen marcado como enviado' : 'Resumen guardado'); await ctx.reload(); }
@@ -383,6 +391,21 @@ export function initAdmin(ctx) {
     }
     return { ok, fails, sinMail: o.items.filter(it => !it.para).map(it => it.label) };
   }
+  // Factura que entra desde Drive: se manda sola al cliente, con el PDF de Drive adjunto.
+  // Solo si el cliente tiene email de cobros; si no se puede bajar el PDF, no se manda (mejor nada que un mail sin factura).
+  async function enviarFacturaDrive({ f, cliente, periodo, da }) {
+    const para = mailsDe(cliente); if (!para) return { ok: false, motivo: cliente + ' no tiene email de cobros' };
+    let adjuntos;
+    try { const r = await data.asistente({ accion: 'drive_descargar', archivo_id: da.id }); adjuntos = [{ nombre: /\.pdf$/i.test(r.nombre) ? r.nombre : r.nombre + '.pdf', base64: r.base64 }]; }
+    catch (err) { return { ok: false, motivo: 'no se pudo bajar el PDF de ' + cliente + ' (' + err.message + ')' }; }
+    const comp = (f.tipo === 'Invoice' ? 'el invoice' : 'la factura') + (f.numero ? ' N° ' + f.numero : '');
+    const per = periodo ? String(periodo).slice(0, 7) : '';
+    const b = E.facturaEmail({ cfg: cfgMarca(), contacto: contactoFull(cliente), cuenta: cliente, periodo: per ? periodoTit(per) : '', tipo: f.tipo, numero: f.numero, fecha: f.fecha, vencimiento: f.vencimiento, monto: f.monto, moneda: f.moneda, link: f.link_pdf, conPago: true,
+      mensaje: E.textos.factura({ nombre: contactoDe(cliente), comprobante: comp, periodo: per ? periodoTxt(per) : '' }), firma: firma() });
+    await data.sendEmail({ tipo: 'Factura enviada', cliente_id: data.ids.cliente(cliente), periodo: per ? per + '-01' : null, factura_id: f.id, para, cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: true, adjuntos });
+    return { ok: true, para };
+  }
+  const envioAutoDrive = () => !AD.AJ || !AD.AJ.drive || AD.AJ.drive.enviar_auto !== false;
   const mail = {
     resumen(rd) {
       const items = itemsDe(rd); if (!items.length) { toast('El resumen no tiene ítems'); return; }
@@ -737,7 +760,8 @@ export function initAdmin(ctx) {
     if (f.type === 'select') ctl = '<select id="' + id + '">' + (f.html ? f.html(v || '') : optsFrom(f.opts, v || '', f.blank)) + '</select>';
     else if (f.type === 'textarea') ctl = '<textarea id="' + id + '" rows="' + (f.rows || 3) + '">' + esc(v || '') + '</textarea>';
     else ctl = '<input id="' + id + '" type="' + (f.type || 'text') + '" value="' + esc(v ?? '') + '"' + (f.ph ? ' placeholder="' + esc(f.ph) + '"' : '') + (f.num ? ' inputmode="decimal"' : '') + '>';
-    return '<div class="field' + (f.full ? ' full' : '') + '"><label for="' + id + '">' + esc(f.label) + (f.req ? ' <b>*</b>' : '') + '</label>' + ctl + (f.hint ? '<span class="hint" id="ah-' + f.k + '">' + esc(f.hint) + '</span>' : '') + '<span class="err" id="ae-' + f.k + '" hidden></span></div>';
+    const lbl = '<label for="' + id + '">' + esc(f.label) + (f.req ? ' <b>*</b>' : '') + '</label>';
+    return '<div class="field' + (f.full ? ' full' : '') + '">' + (f.piggy ? '<div class="lbl-row">' + lbl + '<button type="button" class="btn link sm piggy-f" data-act="aPiggyCampo" data-k="' + esc(f.k) + '">' + ICON.ia + 'Que lo escriba Mr. Piggy</button></div>' : lbl) + ctl + (f.hint ? '<span class="hint" id="ah-' + f.k + '">' + esc(f.hint) + '</span>' : '') + '<span class="err" id="ae-' + f.k + '" hidden></span></div>';
   }
   function openPanel(cfg) {
     AD.form = cfg;
@@ -793,7 +817,12 @@ export function initAdmin(ctx) {
         { k: 'periodo', label: '¿De qué mes es?', type: 'month', month: 1 },
         { k: 'tipo', label: 'Tipo', type: 'select', html: v => TIPOS_COMP.map(t => opt(t, verTipo(t), v)).join(''), adv: 1 },
         { k: 'vencimiento', label: 'Vencimiento', type: 'date', adv: 1 },
-        { k: 'concepto', label: 'Concepto', full: 1, adv: 1 },
+        { k: 'concepto', label: 'Concepto', full: 1, adv: 1, piggy: () => {
+          const g = k => (($('#af-' + k) || {}).value || '').trim(), cl = g('cliente');
+          const ej = [...new Set(AD.F.filter(x => x.concepto && x.cliente === cl).map(x => x.concepto))].slice(0, 6);
+          const ab = S.A.filter(a => a.cliente === cl && a.estado === 'Activo').map(a => a.tipo + (a.plan ? ' ' + a.plan : '')), pr = S.P.filter(p => p.cliente === cl && !['Cancelado'].includes(p.estado)).slice(0, 5).map(p => p.proyecto);
+          return { tarea: 'concepto', texto: ['Cliente: ' + cl, 'Tipo: ' + g('tipo'), 'Monto: ' + g('monto') + ' ' + g('moneda'), g('periodo') ? 'Mes: ' + g('periodo') : '', ab.length ? 'Abonos activos: ' + ab.join(', ') : '', pr.length ? 'Proyectos: ' + pr.join(', ') : '', g('concepto') ? 'Lo que ya escribieron: ' + g('concepto') : '', ej.length ? 'Conceptos de otras facturas a este cliente:\n- ' + ej.join('\n- ') : ''].filter(Boolean).join('\n') };
+        } },
         { k: 'link_pdf', label: 'Link al PDF (carpeta de administración)', type: 'url', full: 1, ph: 'https://drive.google.com/...', adv: 1 },
         { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2, adv: 1 },
       ],
@@ -1006,7 +1035,7 @@ export function initAdmin(ctx) {
       '<section class="sheet"><div class="sheet-h"><h2>Año ' + esc(y) + '</h2><span class="muted">sin contar la plata con la que arrancó</span></div>' + (anual.length ? '<div class="tbl"><table><thead><tr><th>Mes</th><th class="r">Quedó $</th><th class="r">Quedó US$</th></tr></thead><tbody>' + anual.map(r => '<tr class="click" data-act="aCjIr" data-mes="' + r.mm + '"' + (r.mm === m ? ' style="font-weight:600"' : '') + '><td style="text-transform:capitalize">' + esc(monthLabel(r.mm).split(' ')[0]) + '</td><td class="r" style="color:var(' + (r.iA - r.eA < 0 ? '--crit' : '--money') + ')">' + money(r.iA - r.eA, 'ARS') + '</td><td class="r" style="color:var(' + (r.iU - r.eU < 0 ? '--crit' : '--money') + ')">' + money(r.iU - r.eU, 'USD') + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('Sin gastos ni ingresos este año', '')) + '</section></div>';
     const cuentasMes = [...new Set(delMes.map(x => x.cuenta))].sort(cmp);
     const list = delMes.filter(x => (!cj.cuenta || x.cuenta === cj.cuenta) && (!cj.moneda || x.moneda === cj.moneda) && (!q || norm([x.contraparte, x.detalle, x.subcuenta, x.cuenta].join(' ')).includes(q))).sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.created_at || '').localeCompare(a.created_at || ''));
-    h += '<section class="sheet"><div class="sheet-h"><div><h2>Movimientos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Tocá cualquiera para corregirlo o borrarlo.</p></div><div class="toolbar"><input class="in" type="search" id="cj-q" data-acj="q" placeholder="Buscar" value="' + esc(cj.q) + '"><select class="in" id="cj-c" data-acj="cuenta" aria-label="Categoría">' + opt('', 'Todas las categorías', cj.cuenta) + cuentasMes.map(c => opt(c, c, cj.cuenta)).join('') + '</select><select class="in" id="cj-m" data-acj="moneda" aria-label="Moneda">' + opt('', 'Todas las monedas', cj.moneda) + MONEDAS.map(c => opt(c, c, cj.moneda)).join('') + '</select></div></div>' +
+    h += '<section class="sheet"><div class="sheet-h"><div><h2>Movimientos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Tocá cualquiera para corregirlo o borrarlo.</p></div></div><div class="fbar"><label class="fbar-q">' + ICON.buscar + '<input class="in" type="search" id="cj-q" data-acj="q" placeholder="Buscar por cliente, proveedor o detalle" aria-label="Buscar" value="' + esc(cj.q) + '"></label><select class="in" id="cj-c" data-acj="cuenta" aria-label="Categoría">' + opt('', 'Todas las categorías', cj.cuenta) + cuentasMes.map(c => opt(c, c, cj.cuenta)).join('') + '</select><select class="in" id="cj-m" data-acj="moneda" aria-label="Moneda">' + opt('', 'Todas las monedas', cj.moneda) + MONEDAS.map(c => opt(c, c, cj.moneda)).join('') + '</select></div>' +
       (list.length ? '<div class="tbl"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Cliente / proveedor</th><th>Detalle</th><th class="r">Ingreso</th><th class="r">Gasto</th></tr></thead><tbody>' + list.map(x => '<tr class="click" data-act="aMov" data-id="' + esc(x.id) + '"><td class="mono">' + fmt(x.fecha) + '</td><td>' + esc(x.cuenta) + '<span class="sub">' + esc(x.subcuenta) + '</span></td><td>' + esc(x.contraparte) + (x.factura_id ? '<span class="sub">cobro de factura</span>' : '') + (x.reintegro_a ? '<span class="sub">pagó ' + esc(x.reintegro_a) + (x.reintegrado ? ' · devuelto' : '') + '</span>' : '') + '</td><td>' + esc(x.detalle) + '</td><td class="r">' + (x.ingreso ? '<span class="money">' + money(x.ingreso, x.moneda) + '</span>' : '') + '</td><td class="r">' + (x.egreso ? money(x.egreso, x.moneda) : '') + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('No hay nada con ese filtro', '')) +
       '<div class="count num">' + list.length + ' de ' + delMes.length + ' gastos e ingresos del mes</div></section>';
     return h;
@@ -1037,7 +1066,12 @@ export function initAdmin(ctx) {
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
         { k: 'usd', label: '¿Cuántos USD fueron?', num: 1, hint: 'Lo que entró (o salió) de verdad al pasarlo a dólares. Así Números lo suma en USD.' },
         { k: 'contraparte', label: '¿A quién / de quién?', full: 1, ph: 'Meta, Adobe, Cata, Apromax…', hint: 'Si ya le pagaste antes, la categoría y la cuenta se completan solas.' },
-        { k: 'detalle', label: 'Detalle', full: 1, ph: 'Ej.: Ads octubre P4 y Cultu' },
+        { k: 'detalle', label: 'Detalle', full: 1, ph: 'Ej.: Ads octubre P4 y Cultu', piggy: () => {
+          const g = k => (($('#af-' + k) || {}).value || '').trim(), quien = g('contraparte');
+          const imp = (AD.impDraft || []).map(i => { const [t, id] = String(i.dest || '').split(':'); const a = t === 'a' ? S.A.find(z => z._id === id || z.id === id) : S.P.find(z => z._id === id); return a ? (a.cliente || '') + (a.proyecto ? ' · ' + a.proyecto : '') : ''; }).filter(Boolean);
+          const ej = [...new Set(AD.MV.filter(v => v.detalle && (v.contraparte === quien || v.subcuenta === g('subcuenta'))).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).map(v => v.detalle))].slice(0, 8);
+          return { tarea: 'detalle', texto: ['Tipo: ' + g('tipo'), 'Fecha: ' + g('fecha'), 'Monto: ' + g('monto') + ' ' + g('moneda'), 'A quién / de quién: ' + quien, 'Categoría: ' + g('cuenta') + (g('subcuenta') ? ' / ' + g('subcuenta') : ''), imp.length ? 'Asignado a: ' + imp.join(', ') : '', g('detalle') ? 'Lo que ya escribieron: ' + g('detalle') : '', ej.length ? 'Ejemplos de cómo lo escribimos otras veces:\n- ' + ej.join('\n- ') : ''].filter(Boolean).join('\n') };
+        } },
         { k: 'cuenta', label: 'Categoría', type: 'select', opts: cuentas, req: 1, adv: 1 },
         { k: 'subcuenta', label: 'Detalle de la categoría', ph: 'Elegí o escribí', hint: '', adv: 1 },
         { k: 'caja', label: 'Cuenta de banco o efectivo', type: 'select', html: v => opt('', '—', v) + AD.CJ.map(c => opt(c.id, c.nombre + ' (' + c.moneda + ')', v)).join(''), adv: 1 },
@@ -1083,7 +1117,7 @@ export function initAdmin(ctx) {
   }
 
   /* ---------- Módulos: sueldos y pagos, asistente ---------- */
-  const kit = { cierre: { bulkResumenes, bulkRecordatorios, bulkAvisos, enviarDirecto }, estiloDoc, hoyDMY, cfgDocs, datosClienteDoc, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
+  const kit = { cierre: { bulkResumenes, bulkRecordatorios, bulkAvisos, enviarDirecto, enviarFacturaDrive, envioAutoDrive }, estiloDoc, hoyDMY, cfgDocs, datosClienteDoc, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
     formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a),
     openComposer: o => openComposer(o), cfgMarca: () => cfgMarca(), firma: () => firma(), mailsDe: c => mailsDe(c), cuotasPlan };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;
@@ -1108,6 +1142,13 @@ export function initAdmin(ctx) {
     aSugAdd: t => { const s = sugerencias(AD.rd.cliente, AD.rd.m).find(x => x.ref === t.dataset.ref); if (s) { AD.rd.items.push({ inc: true, origen: s.origen, ref: s.ref, concepto: s.concepto, monto: s.monto }); ctx.render(); } },
     aResSave: t => saveResumen(t.dataset.estado),
     aCopy: () => ctx.copyText(resumenTexto(AD.rd)),
+    aPiggyCampo: async t => {
+      const f = ((AD.form && AD.form.fields) || []).find(x => x.k === t.dataset.k), el = $('#af-' + t.dataset.k); if (!f || !f.piggy || !el) return;
+      const q = f.piggy(); t.disabled = true; const t0 = t.innerHTML; t.textContent = 'Escribiendo…';
+      try { const r = await data.ia({ modo: 'texto', tarea: q.tarea, texto: q.texto }); const v = String(r.texto || '').trim().replace(/^["“]|["”]$/g, ''); if (v) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.focus(); } }
+      catch (err) { toast(err.message); }
+      t.disabled = false; t.innerHTML = t0;
+    },
     aCopyPanel: () => { const el = $('#af-texto'); if (el) ctx.copyText(el.value); },
     aPrint: () => printResumen(),
     aCSV: () => exportCSV(),
