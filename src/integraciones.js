@@ -2,6 +2,7 @@
 // Logos: set abierto Simple Icons (CC0). Las que no están en el set llevan monograma.
 // Estado: 'on' conectada y funcionando · 'tog' se prende/apaga y se configura acá · 'prox' todavía no conectada (se puede pedir y priorizar).
 // Guardado en listas (las ve todo el equipo): 'integraciones' (prendidas y pedidas: 'quiero:k') e 'integraciones_cfg' ('k.campo=valor').
+import { confirmar } from './dialogo.js';
 import {
   siWhatsapp, siGmail, siGooglecalendar, siGoogledrive, siGooglesheets, siMercadopago, siWise, siPayoneer, siPaypal, siStripe,
   siMeta, siInstagram, siTiktok, siLinkedin, siGoogleanalytics, siGoogleads, siSlack, siNotion, siTrello, siClickup, siCanva, siFigma,
@@ -186,7 +187,7 @@ export function initIntegraciones(ctx) {
     try {
       let r = await data.credenciales({ accion: 'guardar', nombre: n, datos });
       if (!r.guardado) {
-        if (!window.confirm('La prueba falló: ' + r.detalle + '\n\n¿La guardo igual?')) { t.disabled = false; t.textContent = 'Guardar y probar'; toast(r.detalle); return; }
+        if (!await confirmar('La prueba falló: ' + r.detalle + '\n\n¿La guardo igual?')) { t.disabled = false; t.textContent = 'Guardar y probar'; toast(r.detalle); return; }
         r = await data.credenciales({ accion: 'guardar', nombre: n, datos, forzar: true });
       }
       toast((r.ok ? '✓ ' : '⚠ ') + r.detalle);
@@ -304,7 +305,7 @@ export function initIntegraciones(ctx) {
       igCat: t => { st.cat = t.dataset.v; render(); },
       igCredGuardar: t => credGuardar(t),
       igCredProbar: async t => { t.disabled = true; t.textContent = 'Probando…'; try { const r = await data.credenciales({ accion: 'probar', nombre: t.dataset.n }); toast((r.ok ? '✓ ' : '⚠ ') + r.detalle); await cargarEstado(true); } catch (e) { toast(e.message); } t.disabled = false; t.textContent = 'Probar conexión'; },
-      igCredBorrar: async t => { if (!window.confirm('¿Desconectar esta cuenta? Si había una cargada a mano en Supabase, vuelve a usarse esa.')) return; try { await data.credenciales({ accion: 'borrar', nombre: t.dataset.n }); toast('Cuenta desconectada'); await cargarEstado(true); } catch (e) { toast(e.message); } },
+      igCredBorrar: async t => { if (!await confirmar('¿Desconectar esta cuenta? Si había una cargada a mano en Supabase, vuelve a usarse esa.')) return; try { await data.credenciales({ accion: 'borrar', nombre: t.dataset.n }); toast('Cuenta desconectada'); await cargarEstado(true); } catch (e) { toast(e.message); } },
       igVerF: t => { st.ver = st.ver === t.dataset.v ? '' : t.dataset.v; render(); },
       igDbxAuth: () => { const k = ($('#cr-app_key') || {}).value; if (!k || !k.trim()) { toast('Pegá primero la App key'); return; } window.open('https://www.dropbox.com/oauth2/authorize?client_id=' + encodeURIComponent(k.trim()) + '&response_type=code&token_access_type=offline', '_blank', 'noopener'); },
       igSlackProbar: async t => { t.disabled = true; t.textContent = 'Mandando…'; try { const r = await data.avisosFn({ accion: 'probar' }); toast((r.ok ? '✓ ' : '⚠ ') + r.detalle); } catch (e) { toast(e.message); } t.disabled = false; t.textContent = 'Mandarme mi resumen del día ahora'; },

@@ -4,6 +4,7 @@
 // - Sitio web: links de prueba y publicado, etapa y lo que falta (qué le toca al cliente y qué a àndale).
 //   Nunca se guardan contraseñas: solo una nota de dónde están los accesos (gestor de contraseñas).
 import { ICON } from './iconos.js';
+import { confirmar } from './dialogo.js';
 
 const ETAPAS_WEB = ['Diseño', 'Desarrollo', 'Revisión', 'Publicado', 'Mantenimiento'];
 const CHECK_WEB = [
@@ -114,11 +115,11 @@ export function initEntregas(ctx) {
   const acts = {
     enNueva: t => { const p = proyDe(t.dataset.id); if (p) formEntrega(p, null, t.dataset.tipo); },
     enEditar: t => { const e = (S.EN || []).find(x => x._id === t.dataset.id); const p = e && proyDe(e.proyectoId); if (p) formEntrega(p, e); },
-    enBorrar: async t => { if (!window.confirm('¿Borrar esta entrega?')) return; try { await data.entregaDel(t.dataset.id); closeForm(); toast('Borrada'); await ctx.reload(); } catch (e) { toast(e.message); } },
+    enBorrar: async t => { if (!await confirmar('¿Borrar esta entrega?')) return; try { await data.entregaDel(t.dataset.id); closeForm(); toast('Borrada'); await ctx.reload(); } catch (e) { toast(e.message); } },
     enMandar: async t => {
       const e = (S.EN || []).find(x => x._id === t.dataset.id), p = e && proyDe(e.proyectoId); if (!p) return;
       if (!e.descripcion && !(e.links || []).length && !(e.archivos || []).length) { toast('La entrega está vacía: agregale una descripción, links o archivos.'); return; }
-      if (!window.confirm('“' + (e.titulo || e.tipo) + '” se publica en el portal de ' + p.cliente + ' para que la apruebe o pida cambios. ¿Seguimos?')) return;
+      if (!await confirmar('“' + (e.titulo || e.tipo) + '” se publica en el portal de ' + p.cliente + ' para que la apruebe o pida cambios. ¿Seguimos?')) return;
       try { await data.entregaGuardar(e._id, { estado: 'Enviada', enviadaAt: new Date().toISOString() }); toast('Listo: ' + p.cliente + ' ya la ve en el portal'); await ctx.reload(); if (ctx.avisarCliente) ctx.avisarCliente(p.cliente, 'entrega', { titulo: e.titulo || e.tipo, proyecto: p.proyecto }); }
       catch (err) { toast(err.message); }
     },
@@ -128,7 +129,7 @@ export function initEntregas(ctx) {
     siGuardar: async t => {
       const sec = t.closest('section[data-si]'), s = (S.SI || []).find(x => x._id === sec.dataset.si), p = s && proyDe(s.proyectoId); if (!p) return;
       const u = leerSitio(sec);
-      if (/contraseñ|password|clave\s*[:=]|pass\s*[:=]/i.test(u.accesos + ' ' + u.notas) && !window.confirm('Parece que hay una contraseña escrita. Acá solo va dónde están los accesos (por ejemplo, el gestor de contraseñas). ¿Guardar igual?')) return;
+      if (/contraseñ|password|clave\s*[:=]|pass\s*[:=]/i.test(u.accesos + ' ' + u.notas) && !await confirmar('Parece que hay una contraseña escrita. Acá solo va dónde están los accesos (por ejemplo, el gestor de contraseñas). ¿Guardar igual?')) return;
       t.disabled = true; try { await data.sitioGuardar(s._id, u, p); toast('Ficha guardada'); await ctx.reload(); } catch (e) { toast(e.message); t.disabled = false; }
     },
   };

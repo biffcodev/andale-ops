@@ -22,6 +22,7 @@ import { firmaDe } from './firma.js';
 import { initPerfil, aplicarTema, temaGuardado } from './perfil.js';
 import { masMenu, vistaSel, vistaDe, guardarVista, toastAccion, uiActs, filtrosMenu, reabrir } from './ui.js';
 import * as E from './emails.js';
+import { confirmar } from './dialogo.js';
 initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
 let ADM = null, ADM_FN = {}, MAIL = null;
@@ -1145,7 +1146,7 @@ const fm = () => FM || (FM = initFichaMarca({ S, esc, toast, data, render, empty
 let RLJ = null;
 const rlj = () => RLJ || (RLJ = initReloj({ S, esc, opt, toast, data, $, today, cmp }));
 let INF = null;
-const inf = () => INF || (INF = initInformes({ marcaCtx: (c, ps) => fm().contexto(c, ps), S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
+const inf = () => INF || (INF = initInformes({ marcaCtx: (c, ps) => fm().contexto(c, ps), S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], cfgMarca: () => (ADM && ADM.cfgMarca ? ADM.cfgMarca() : null), avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
 const red = () => RED || (RED = initRedes({ servChips: (c, o) => servChips(c, o), servAb: c => servicioRedes(c).redes, autoBtn: p => aut().boton(p), toastAccion, masMenu, marcaCtx: (c, ps) => fm().contexto(c, ps), avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
   cfgGet: (k, c) => integr().cfgGet(k, c), servicios: n => serviciosDe(n).map(x => x.tipo).join(', '),
   irMes: id => { S.view = 'redes'; S.rmFicha = id || null; S.ficha = null; S.pficha = null; try { history.replaceState(null, '', '#redes' + (id ? '/' + id : '')); } catch (e) { } render(); window.scrollTo(0, 0); } }));
@@ -1163,7 +1164,7 @@ async function avisarCliente(cliente, tipo, info) {
   if (!ks.length) { toast('Ningún contacto de ' + cliente + ' tiene acceso al portal todavía: habilitalo en su ficha → Contactos.'); return false; }
   const mesTxt = monthLabel(String(info.mes || '').slice(0, 7));
   const que = tipo === 'redes' ? 'el contenido de redes de ' + mesTxt : tipo === 'informe' ? 'el informe de redes de ' + mesTxt : '“' + info.titulo + '” de ' + info.proyecto;
-  if (!window.confirm('¿Le avisamos por email a ' + ks.map(nomContacto).join(', ') + (tipo === 'informe' ? ' que ya puede ver ' : ' que tiene para revisar ') + que + '?')) return false;
+  if (!await confirmar('Le llega un mail a ' + ks.map(k => nomContacto(k) + (k.email ? ' (' + k.email + ')' : '')).join(', ') + (tipo === 'informe' ? ' avisando que ya puede ver ' : ' avisando que tiene para revisar ') + que + ', con el link a su portal.', { titulo: '¿Avisamos a ' + cliente + '?', ok: 'Mandar el mail', tipo: 'mail' })) return false;
   const nombres = ks.map(k => (k.nombre || '').split(' ')[0]).filter(Boolean);
   const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\n' + (tipo === 'informe' ? 'Ya está en el portal de àndale ' + que + ': cómo fue el mes, qué funcionó mejor y qué proponemos para el que viene.' : 'Ya tenés para revisar ' + que + ' en el portal de àndale. Desde ahí podés aprobar o pedirnos cambios, y comentar lo que quieras.') + '\n\nEntrás con tu email, sin contraseña.';
   const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: tipo === 'redes' ? 'Tus redes del mes, listas para revisar' : tipo === 'informe' ? 'Tu informe de redes de ' + mesTxt : 'Tenés una entrega para revisar', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ir al portal', firma: firmaDe(S), asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : tipo === 'informe' ? 'Informe de redes de ' + mesTxt + ' · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });

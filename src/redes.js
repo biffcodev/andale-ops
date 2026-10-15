@@ -9,6 +9,7 @@ const REDES = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X'];
 const FORMATOS_DEF = ['Historias', 'Reels', 'Posts y carruseles'];
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 import { vistaSel, vistaDe, filtrosMenu } from './ui.js';
+import { confirmar } from './dialogo.js';
 const IMG = /\.(jpe?g|png|gif|webp|tiff?|bmp|heic)$/i;
 
 export function initRedes(ctx) {
@@ -112,7 +113,7 @@ export function initRedes(ctx) {
     const tabs = [['planilla', 'Planilla'], ['calendario', 'Calendario'], ['feed', 'Feed'], ['conv', 'Conversación'], ...(can && ctx.informe ? [['informe', 'Informe']] : [])];
     const tab = tabs.some(t => t[0] === st.tab) ? st.tab : 'planilla';
     let h = '<div class="pf-head rm-head"><div class="pf-top"><button class="pf-logo" data-act="ficha" data-cliente="' + esc(m.cliente) + '">' + av(m.cliente, cli.avatar, 'xl sq') + '</button><div class="pf-tit"><button class="btn link pf-cli" data-act="ficha" data-cliente="' + esc(m.cliente) + '">' + esc(m.cliente) + '</button>' +
-      '<h1 class="rm-tit">' + (prev ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(prev._id) + '" aria-label="Mes anterior">←</button>' : '') + 'Redes · ' + esc(cap(monthLabel(m.mes))) + (next ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(next._id) + '" aria-label="Mes siguiente">→</button>' : '') + '</h1>' + (ctx.servChips ? '<div class="rm-serv">' + ctx.servChips(m.cliente, { precio: true }) + (can && ctx.servAb && ctx.servAb(m.cliente) ? '<button class="btn link sm" data-act="edit" data-kind="abono" data-id="' + esc(ctx.servAb(m.cliente)._id) + '">Editar plan</button>' : '') + '</div>' : '') + '</div>' +
+      '<h1 class="rm-tit">' + (prev ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(prev._id) + '" aria-label="Mes anterior">←</button>' : '') + 'Redes · ' + esc(cap(monthLabel(m.mes))) + (next ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(next._id) + '" aria-label="Mes siguiente">→</button>' : '') + '</h1>' + (ctx.servChips ? '<div class="rm-serv">' + ctx.servChips(m.cliente, { precio: true }) + (can && ctx.servAb && ctx.servAb(m.cliente) ? '<button class="btn link sm" data-act="edit" data-kind="abono" data-id="' + esc(ctx.servAb(m.cliente)._id) + '">Editar servicio</button>' : '') + '</div>' : '') + '</div>' +
       '<div class="toolbar pf-acc">' + (can ? carpetaBtn(m) + enviarBtn(m, lista) + (ctx.masMenu ? ctx.masMenu([
         next ? null : { act: 'rmSiguiente', label: 'Arrancar ' + monthLabel(addMonth(m.mes, 1)).split(' ')[0], attrs: ' data-id="' + esc(m._id) + '"', icon: 'calendario' },
         { act: 'rmBorrarMes', label: 'Borrar este mes', attrs: ' data-id="' + esc(m._id) + '"', danger: true, icon: 'alerta' }]) : '') : '') + '</div></div>' +
@@ -296,7 +297,7 @@ export function initRedes(ctx) {
   async function ideas(btn, m) {
     const ps = piezas(m._id) || [], plan = m.plan || {}, cnt = conteoPorFormato(ps);
     const faltan = Object.fromEntries(Object.entries(plan).map(([f, n]) => [f, Math.max(0, (+n || 0) - (cnt[f] || 0))]).filter(([, n]) => n > 0));
-    if (!Object.keys(faltan).length && !window.confirm('El plan del mes ya está completo. ¿Querés que Mr. Piggy proponga ideas extra igual?')) return;
+    if (!Object.keys(faltan).length && !await confirmar('El plan del mes ya está completo. ¿Querés que Mr. Piggy proponga ideas extra igual?')) return;
     btn.disabled = true; const t0 = btn.innerHTML; btn.innerHTML = '<span class="ia-dots"><i></i><i></i><i></i></span> Mr. Piggy está pensando el mes…';
     try {
       const prev = mesCliente(m.cliente, addMonth(m.mes, -1)), pp = prev ? (piezas(prev._id) || []) : [];
@@ -416,7 +417,7 @@ export function initRedes(ctx) {
     rmArrancar: async t => { t.disabled = true; try { const m = await arrancar(t.dataset.c, st.mes, mesCliente(t.dataset.c, addMonth(st.mes, -1))); ctx.irMes(m._id); ofrecerDeshacer('Mes arrancado para ' + t.dataset.c, [m]); } catch (e) { toast(e.message); t.disabled = false; } },
     rmBorrarMes: async t => {
       const m = mesDe(t.dataset.id); if (!m) return; const n = (piezas(m._id) || []).length;
-      if (!window.confirm('¿Borrar ' + monthLabel(m.mes) + ' de ' + m.cliente + '?' + (n ? ' Se borran también sus ' + n + ' piezas.' : '') + ' No se puede deshacer.')) return;
+      if (!await confirmar('¿Borrar ' + monthLabel(m.mes) + ' de ' + m.cliente + '?' + (n ? ' Se borran también sus ' + n + ' piezas.' : '') + ' No se puede deshacer.')) return;
       try { await borrarMes(m); } catch (e) { toast(e.message); }
     },
     rmArrancarTodos: async t => { t.disabled = true; const hechos = []; for (const c of clientesMes(st.mes).filter(c => !mesCliente(c, st.mes))) { try { hechos.push(await arrancar(c, st.mes, mesCliente(c, addMonth(st.mes, -1)))); } catch (e) { toast(c + ': ' + e.message); } } render(); if (hechos.length) ofrecerDeshacer(hechos.length + ' meses arrancados', hechos); },
@@ -427,7 +428,7 @@ export function initRedes(ctx) {
       const m = mesDe(t.dataset.id); if (!m) return; const ps = piezas(m._id) || [];
       const ids = ps.filter(z => z.estado === 'Revisión interna').map(z => z._id);
       if (!ids.length && !ps.some(z => z.estado === 'Para el cliente')) { toast('No hay piezas en “Revisión interna” para mandar. Pasalas a ese estado cuando estén listas.'); return; }
-      if (!window.confirm((ids.length ? ids.length + ' piezas pasan a “Para el cliente” y ' : '') + 'el mes se publica en el portal de ' + m.cliente + '. ¿Seguimos?')) return;
+      if (!await confirmar((ids.length ? ids.length + ' piezas pasan a “Para el cliente” y ' : '') + 'el mes se publica en el portal de ' + m.cliente + '. ¿Seguimos?')) return;
       try {
         if (ids.length) { await data.piezasUpd(ids, { estado: 'Para el cliente' }); local(m._id, ids, { estado: 'Para el cliente' }); }
         const u = { visible: true, estado: 'Con el cliente', enviadoAt: new Date().toISOString() }; await data.mesUpd(m._id, u); Object.assign(m, u);
@@ -440,10 +441,10 @@ export function initRedes(ctx) {
     rmChat: t => { const m = mesDe(t.dataset.id); if (m) abrirChat(m); },
     rmCopys: t => { const ids = [...st.sel]; const m = meses().find(x => (piezas(x._id) || []).some(z => ids.includes(z._id))); if (m) copys(ids, m, t); },
     rmCopyUno: async t => { const f = st.fpz; if (!f) return; const m = mesDe(f.mesId); const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!m || !z) return; z.tema = ($('#pz-tema').value || '').trim() || z.tema; await copys([z._id], m, t); const zz = piezas(f.mesId).find(x => x._id === f.id); if ($('#pz-copy') && zz) { $('#pz-copy').value = zz.copy; $('#pz-hashtags').value = zz.hashtags; } },
-    rmBorrar: async () => { const ids = [...st.sel]; if (!ids.length || !window.confirm('¿Borrar ' + ids.length + ' pieza' + (ids.length > 1 ? 's' : '') + '?')) return; try { await data.piezasDel(ids); P.forEach((ps, k) => P.set(k, ps.filter(z => !ids.includes(z._id)))); st.sel.clear(); toast('Borradas'); render(); } catch (e) { toast(e.message); } },
+    rmBorrar: async () => { const ids = [...st.sel]; if (!ids.length || !await confirmar('¿Borrar ' + ids.length + ' pieza' + (ids.length > 1 ? 's' : '') + '?')) return; try { await data.piezasDel(ids); P.forEach((ps, k) => P.set(k, ps.filter(z => !ids.includes(z._id)))); st.sel.clear(); toast('Borradas'); render(); } catch (e) { toast(e.message); } },
     rmSelNada: () => { st.sel.clear(); render(); },
     rmPieza: t => abrirPieza(t.dataset.id),
-    rmPiezaBorrar: async () => { const f = st.fpz; if (!f || !window.confirm('¿Borrar esta pieza?')) return; try { await data.piezasDel([f.id]); P.set(f.mesId, (piezas(f.mesId) || []).filter(z => z._id !== f.id)); ctx.closeForm(); toast('Pieza borrada'); render(); } catch (e) { toast(e.message); } },
+    rmPiezaBorrar: async () => { const f = st.fpz; if (!f || !await confirmar('¿Borrar esta pieza?')) return; try { await data.piezasDel([f.id]); P.set(f.mesId, (piezas(f.mesId) || []).filter(z => z._id !== f.id)); ctx.closeForm(); toast('Pieza borrada'); render(); } catch (e) { toast(e.message); } },
     rmArteVer: async t => { const w = window.open('', '_blank'); try { const r = await data.dropbox({ accion: 'link', path: t.dataset.path }); if (r.link && w) w.location = r.link; else if (w) w.close(); } catch (e) { if (w) w.close(); toast(e.message); } },
     rmArteQuitar: async t => { const f = st.fpz; if (!f) return; const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!z) return; const arte = z.arte.filter((_, i) => i !== +t.dataset.i); try { await data.piezasUpd([z._id], { arte }); z.arte = arte; abrirPieza(z._id); render(); toast('Quitado de la pieza (el archivo sigue en Dropbox)'); } catch (e) { toast(e.message); } },
   };

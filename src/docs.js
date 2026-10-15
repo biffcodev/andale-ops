@@ -400,3 +400,119 @@ export function bytesBase64(bytes) {
   for (let i = 0; i < bytes.length; i += step) s += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
   return btoa(s);
 }
+
+/* ---------------- informe de redes (PDF a color, para descargar desde la app o el portal) ---------------- */
+// i = { cliente, mesLabel, inf: { datos, texto }, piezas, cfg }
+export async function informeDoc(i) {
+  const { PALETA, variacion, corto, porRed, porFormato } = await import('./informe-vista.js');
+  const inf = i.inf || {}, d = inf.datos || {};
+  const met = (d.metricas || []).filter(x => x && x.nombre && String(x.nombre).trim());
+  const dst = (d.destacadas || []).filter(x => x && x.titulo && String(x.titulo).trim()), rec = (d.recomendaciones || []).filter(Boolean);
+  const D = await nuevoDoc('Informe de redes ' + i.mesLabel + ' ' + i.cliente, { margen: 40, footH: 30, alPie: numeroPagina });
+  const { F } = D, M = D.M, CW = D.cw, WHITE = rgb(1, 1, 1);
+  const mix = (h, k) => { const c = [1, 3, 5].map(j => parseInt(h.slice(j, j + 2), 16) / 255); return rgb(...c.map(v => v * k + (1 - k))); };
+  const dark = (h, k) => { const c = [1, 3, 5].map(j => parseInt(h.slice(j, j + 2), 16) / 255); return rgb(...c.map(v => v * k)); };
+  const UP = hex('#4F7A00'), DOWN = hex('#D9363B'), PREV = hex('#E4E6EC');
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  D.addPage();
+  // Encabezado de color
+  const HH = 168;
+  D.page.drawRectangle({ x: 0, y: H - HH, width: W, height: HH, color: hex('#FF595E') });
+  D.page.drawCircle({ x: W - 70, y: H - 10, size: 150, color: hex('#FF924C') });
+  D.page.drawCircle({ x: W - 10, y: H - HH + 10, size: 90, color: hex('#FFCA3A'), opacity: 0.55 });
+  D.logo(W - M - 74, H - 34, 74, WHITE);
+  D.text('INFORME DE REDES', M, H - 56, F.b, 9, WHITE);
+  D.text(cap(i.mesLabel), M, H - 96, F.d, 34, WHITE);
+  D.text(i.cliente || '', M, H - 122, F.s, 14, WHITE);
+  const conAnt = met.filter(x => variacion(x) != null), sub = conAnt.filter(x => variacion(x) > 0).length;
+  if (conAnt.length) { const t = sub + ' de ' + conAnt.length + ' métricas crecieron contra el mes anterior', w = D.wid(t, F.s, 9) + 20; D.rect(M, H - 152, w, 18, mix('#FFFFFF', 1), 9); D.text(t, M + 10, H - 146, F.s, 9, hex('#D9363B')); }
+  D.y = H - HH - 24;
+  const titulo = (t, extra) => { D.need(40); D.y -= 18; D.text(t, M, D.y, F.b, 12.5, COL.ink); if (extra) D.text(extra, M + D.wid(t, F.b, 12.5) + 8, D.y, F.s, 9.5, COL.muted); D.y -= 12; };
+  // Números
+  if (met.length) {
+    const cols = 3, gap = 10, tw = (CW - gap * (cols - 1)) / cols, th = 84;
+    for (let r = 0; r < Math.ceil(met.length / cols); r++) {
+      D.need(th + gap); const top = D.y;
+      met.slice(r * cols, r * cols + cols).forEach((x, k) => {
+        const idx = r * cols + k, c = PALETA[idx % PALETA.length], xx = M + k * (tw + gap), v = variacion(x);
+        D.rect(xx, top - th, tw, th, mix(c, 0.14), 12);
+        D.text(x.nombre, xx + 14, top - 20, F.s, 9.5, dark(c, 0.6));
+        if (x.red) { const rw = D.wid(x.red, F.r, 7.5) + 10, rx = xx + 14 + D.wid(x.nombre, F.s, 9.5) + 6; if (rx + rw < xx + tw - 8) { D.rect(rx, top - 23, rw, 12, mix(c, 0.28), 6); D.text(x.red, rx + 5, top - 19.5, F.r, 7.5, dark(c, 0.55)); } }
+        D.text(corto(x.valor), xx + 14, top - 50, F.d, 24, COL.ink);
+        if (v != null) { const t = (v > 0 ? '+' : '') + v + '%', w = D.wid(t, F.b, 9); D.rect(xx + 14, top - 72, w + 14, 15, WHITE, 7.5); D.text(t, xx + 21, top - 67, F.b, 9, v > 0 ? UP : v < 0 ? DOWN : COL.muted); D.text('vs. ' + corto(x.anterior), xx + 34 + w, top - 67, F.r, 8.5, COL.muted); }
+        else D.text('primer mes medido', xx + 14, top - 67, F.r, 8.5, COL.muted);
+      });
+      D.y = top - th - gap;
+    }
+  }
+  // Este mes vs. el anterior
+  const comp = met.filter(x => x.anterior != null && x.anterior !== '' && x.valor != null);
+  if (comp.length) {
+    titulo('Este mes vs. el anterior');
+    const bw = CW - 70;
+    D.need(14); D.rect(M, D.y - 2, 8, 8, PREV, 2); D.text('Mes anterior', M + 12, D.y - 1, F.r, 8.5, COL.muted); [0, 1, 2].forEach(k => D.rect(M + 80 + k * 5, D.y - 2, 5, 8, hex(PALETA[k]), 0)); D.text('Este mes', M + 100, D.y - 1, F.r, 8.5, COL.muted); D.y -= 10;
+    comp.forEach(x => {
+      D.need(44); const c = PALETA[met.indexOf(x) % PALETA.length], mx = Math.max(+x.valor, +x.anterior) || 1, v = variacion(x);
+      D.y -= 14; D.text(x.nombre + (x.red ? ' · ' + x.red : ''), M, D.y, F.s, 9.5, COL.ink);
+      if (v != null) D.right((v > 0 ? '+' : '') + v + '%', M + CW, D.y, F.b, 9.5, v >= 0 ? UP : DOWN);
+      D.y -= 12; const w1 = Math.max(4, x.anterior / mx * bw); D.rect(M, D.y, w1, 6, PREV, 3); D.text(corto(x.anterior), M + w1 + 6, D.y, F.r, 8, COL.muted);
+      D.y -= 13; const w2 = Math.max(4, x.valor / mx * bw); D.rect(M, D.y, w2, 9, hex(c), 4.5); D.text(corto(x.valor), M + w2 + 6, D.y + 1, F.s, 8.5, COL.ink);
+      D.y -= 4;
+    });
+  }
+  // Por red y por formato, lado a lado
+  const red = porRed(met), fmts = porFormato(i.piezas);
+  if (red || fmts.length) {
+    const alto = 140; D.need(alto + 34); D.y -= 14;
+    const top = D.y, half = (CW - 12) / 2, two = red && fmts.length;
+    let x0 = M;
+    if (red) {
+      const w = two ? half : CW; D.rect(x0, top - alto, w, alto, COL.paper, 12);
+      D.text(red.nombre + ' por red', x0 + 14, top - 20, F.b, 10.5, COL.ink);
+      const tot = red.filas.reduce((s, f) => s + f.valor, 0) || 1, cx = x0 + 62, cy = top - 82, R = 40, r = 25;
+      let a0 = -Math.PI / 2;
+      red.filas.forEach((f, k) => {
+        const a1 = a0 + f.valor / tot * Math.PI * 2, big = a1 - a0 > Math.PI ? 1 : 0, P = (rr, a) => (rr * Math.cos(a)).toFixed(2) + ' ' + (rr * Math.sin(a)).toFixed(2);
+        D.page.drawSvgPath('M' + P(R, a0) + ' A' + R + ' ' + R + ' 0 ' + big + ' 1 ' + P(R, a1) + ' L' + P(r, a1) + ' A' + r + ' ' + r + ' 0 ' + big + ' 0 ' + P(r, a0) + 'Z', { x: cx, y: cy, color: hex(PALETA[k % PALETA.length]) });
+        a0 = a1;
+      });
+      const t = corto(tot); D.text(t, cx - D.wid(t, F.b, 10) / 2, cy - 4, F.b, 10, COL.ink);
+      red.filas.forEach((f, k) => { const ly = top - 50 - k * 18; D.page.drawCircle({ x: x0 + 124, y: ly + 3, size: 4, color: hex(PALETA[k % PALETA.length]) }); D.text(f.red, x0 + 134, ly, F.s, 9.5, COL.ink); D.right(Math.round(f.valor / tot * 100) + '%', Math.min(x0 + w - 14, x0 + 290), ly, F.s, 9.5, COL.muted); });
+      x0 += half + 12;
+    }
+    if (fmts.length) {
+      const w = two ? half : CW, mx = Math.max(...fmts.map(f => f[1])), tot = fmts.reduce((s, f) => s + f[1], 0);
+      D.rect(x0, top - alto, w, alto, COL.paper, 12);
+      D.text('Lo que publicamos', x0 + 14, top - 20, F.b, 10.5, COL.ink); D.right(tot + ' piezas', x0 + w - 14, top - 20, F.s, 9, COL.muted);
+      const lab = 92, bw = w - lab - 54;
+      fmts.slice(0, 5).forEach(([f, n], k) => { const ly = top - 46 - k * 19; D.text(D.wrap(f, F.s, 9, lab - 6)[0], x0 + 14, ly, F.s, 9, COL.ink); const bwi = Math.max(4, n / mx * bw); D.rect(x0 + 14 + lab, ly - 1, bwi, 9, hex(PALETA[(k + 3) % PALETA.length]), 4.5); D.text(String(n), x0 + 20 + lab + bwi, ly, F.s, 8.5, COL.muted); });
+    }
+    D.y = top - alto - 4;
+  }
+  // Texto
+  if (inf.texto) { titulo('Cómo fue el mes'); String(inf.texto).split(/\n\s*\n/).forEach(p => { D.para(p, M, F.r, 10.5, CW, COL.soft, 1.55); D.y -= 8; }); }
+  // Lo que mejor funcionó
+  if (dst.length) {
+    titulo('Lo que mejor funcionó');
+    dst.forEach((x, k) => {
+      const c = PALETA[(k * 3 + 1) % PALETA.length], tl = D.wrap(x.titulo, F.b, 10.5, CW - 60), pl = x.por_que ? D.wrap(x.por_que, F.r, 9.5, CW - 60) : [];
+      const h = 22 + tl.length * 14 + pl.length * 13.5; D.need(h + 8); const top = D.y;
+      D.rect(M, top - h, CW, h, mix(c, 0.12), 12);
+      D.page.drawCircle({ x: M + 24, y: top - 22, size: 11, color: hex(c) }); const n = String(k + 1); D.text(n, M + 24 - D.wid(n, F.b, 10) / 2, top - 25.5, F.b, 10, WHITE);
+      let y = top - 26; tl.forEach(l => { D.text(l, M + 46, y, F.b, 10.5, COL.ink); y -= 14; }); pl.forEach(l => { D.text(l, M + 46, y, F.r, 9.5, COL.soft); y -= 13.5; });
+      D.y = top - h - 8;
+    });
+  }
+  // Para el mes que viene
+  if (rec.length) {
+    titulo('Para el mes que viene');
+    rec.forEach((x, k) => {
+      const c = PALETA[(k + 2) % PALETA.length], ls = D.wrap(x, F.r, 10, CW - 52), h = 16 + ls.length * 14; D.need(h + 6); const top = D.y;
+      D.rect(M, top - h, CW, h, mix(c, 0.11), 10); D.rect(M + 10, top - 8 - 16, 16, 16, hex(c), 5); D.text('>', M + 15, top - 20, F.b, 10, WHITE);
+      let y = top - 19; ls.forEach(l => { D.text(l, M + 36, y, F.r, 10, COL.ink); y -= 14; });
+      D.y = top - h - 6;
+    });
+  }
+  pieFinal(D, i.cfg || {});
+  return D.save();
+}

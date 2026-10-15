@@ -1878,3 +1878,69 @@ tr.pp-sub td.name{padding-left:14px}
 .pp-t td .sub{white-space:nowrap}
 .pp-t td.nowrap .btn + .btn{margin-left:6px}
 .pl-lab{paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+
+/* ---------- Informe de redes (app y portal): color, gráficos, sin bordes ---------- */
+.ir{--ir-prev:color-mix(in srgb,var(--fg) 14%,var(--surface));display:grid;gap:18px;color:var(--fg)}
+.ir h3{margin:0 0 12px;font-size:15px;font-weight:750;letter-spacing:-.01em}
+.ir h3 span{font-weight:600;color:var(--muted);font-size:13px;margin-left:6px}
+.ir-hero{position:relative;overflow:hidden;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:30px 30px 26px;border-radius:24px;color:#fff;
+  background:radial-gradient(120% 140% at 100% 0%,#FFCA3A 0%,transparent 45%),linear-gradient(120deg,#FF595E 0%,#FF924C 70%,#FFB347 100%)}
+.ir-hero::after{content:"";position:absolute;right:-60px;bottom:-90px;width:260px;height:260px;border-radius:50%;background:rgba(255,255,255,.12)}
+.ir-hero-t{position:relative;z-index:1;display:grid;gap:4px}
+.ir-eb{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.9}
+.ir .ir-hero h2,.po-sec .ir .ir-hero h2{margin:0;font-size:clamp(30px,4vw,44px);line-height:1.02;font-weight:800;letter-spacing:-.03em;color:#fff}
+.ir-hero p{margin:0;font-size:16px;font-weight:600;opacity:.95}
+.ir-hero-pill{justify-self:start;margin-top:10px;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.22);font-size:13px;font-weight:650}
+.ir-hero-a{position:relative;z-index:1}
+.ir-hero-a .btn{background:#fff;color:#17171C;border:0;box-shadow:0 6px 18px -6px rgba(0,0,0,.25)}
+.ir-hero-a .btn:hover{background:#fff;filter:brightness(.97)}
+.ir-hero-a .btn svg{width:16px;height:16px}
+.ir-kpis{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:12px}
+.ir-kpi{display:grid;gap:4px;align-content:start;padding:16px 18px 15px;border-radius:18px;background:color-mix(in srgb,var(--c) 13%,var(--surface))}
+.ir-kl{font-size:13px;font-weight:650;color:color-mix(in srgb,var(--c) 55%,var(--fg));display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.ir-kl i{font-style:normal;font-weight:600;font-size:11.5px;padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--c) 20%,var(--surface))}
+.ir-kpi b{font-size:clamp(26px,2.6vw,34px);line-height:1.05;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.ir-d{justify-self:start;font-size:12.5px;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--surface)}
+.ir-d small{font-weight:500;color:var(--muted)}
+.ir-d.up{color:#4F7A00}.ir-d.down{color:#D9363B}.ir-d.eq{color:var(--muted)}
+.ir-d.nada{font-weight:500;color:var(--muted);background:transparent;padding-left:0}
+.ir-vacio{margin:0;color:var(--muted)}
+.ir-graf{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px;align-items:start}
+.ir-graf:has(> :only-child){grid-template-columns:1fr}
+.ir-col{display:grid;gap:12px}
+.ir-card{padding:18px 20px;border-radius:18px;background:var(--surface-2)}
+.ir-ley{display:flex;gap:14px;margin:-4px 0 12px;font-size:12px;color:var(--muted);font-weight:600}
+.ir-ley i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.ir-cb{display:grid;gap:4px;padding:8px 0}
+.ir-cb-h{display:flex;justify-content:space-between;gap:8px;font-size:13.5px;font-weight:650}
+.ir-cb-h i{font-style:normal;color:var(--muted);font-weight:500}
+.ir-cb-h b{font-size:12.5px;padding:1px 8px;border-radius:999px}
+.ir-cb-h b.up{color:#4F7A00;background:color-mix(in srgb,#8AC926 18%,var(--surface))}
+.ir-cb-h b.down{color:#D9363B;background:color-mix(in srgb,#FF595E 14%,var(--surface))}
+.ir-bar{display:flex;align-items:center;gap:8px;height:14px}
+.ir-bar i{display:block;height:100%;border-radius:999px;min-width:6px;transition:width .4s ease}
+.ir-bar.prev i{background:var(--ir-prev);height:9px}
+.ir-bar span{font-size:12px;font-weight:650;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ir-dn{display:flex;align-items:center;gap:18px}
+.ir-dn-b{font:800 15px var(--f-body,Inter,sans-serif);fill:var(--fg)}
+.ir-dn-s{font:500 10.5px var(--f-body,Inter,sans-serif);fill:var(--muted)}
+.ir-dn ul{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:13.5px;font-weight:600}
+.ir-dn li{display:flex;align-items:center;gap:8px}
+.ir-dn li i{width:10px;height:10px;border-radius:50%}
+.ir-dn li b{margin-left:auto;padding-left:10px;color:var(--muted)}
+.ir-fb{display:grid;grid-template-columns:minmax(90px,130px) 1fr;gap:10px;align-items:center;padding:5px 0;font-size:13.5px;font-weight:600}
+.ir-fb .ir-bar{height:12px}
+.ir-txt{padding:4px 4px 0;max-width:72ch}
+.ir-txt p{margin:0 0 12px;font-size:15.5px;line-height:1.65}
+.ir-dst-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.ir-dc{position:relative;display:grid;gap:6px;align-content:start;padding:16px 18px;border-radius:18px;background:color-mix(in srgb,var(--c) 12%,var(--surface))}
+.ir-dn-n{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--c);color:#fff;font-weight:800;font-size:14px}
+.ir-dc b{font-size:15px;line-height:1.3}
+.ir-dc p{margin:0;font-size:13.5px;line-height:1.5;color:color-mix(in srgb,var(--fg) 78%,var(--surface))}
+.ir-rec ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.ir-rec li{display:flex;gap:10px;align-items:flex-start;padding:12px 16px;border-radius:14px;background:color-mix(in srgb,var(--c) 10%,var(--surface));font-size:14.5px;line-height:1.5}
+.ir-rec li span{flex:0 0 auto;width:24px;height:24px;border-radius:8px;display:grid;place-items:center;background:var(--c);color:#fff;font-weight:800;font-size:13px}
+.inf-prev{padding:0}
+.inf-prev-h{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:13px;font-weight:650;color:var(--muted)}
+@media (max-width:860px){.ir-graf{grid-template-columns:1fr}.ir-hero{padding:24px 20px 20px;border-radius:20px}.ir-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media print{.ir-hero-a{display:none}}

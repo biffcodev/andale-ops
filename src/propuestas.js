@@ -3,6 +3,7 @@ import * as data from './data.js';
 import * as E from './emails.js';
 import './propuesta.css';
 import { propuestaHTML, totalDe, subtotal, PLANES, venceEl } from './propuesta-vista.js';
+import { confirmar } from './dialogo.js';
 
 const ESTADOS = ['Borrador', 'Enviada', 'Aceptada', 'Rechazada', 'Vencida'];
 const EST_COLOR = { Borrador: '--s-empezar', Enviada: '--s-curso', Aceptada: '--s-entregado', Rechazada: '--s-cancelado', Vencida: '--s-revision' };
@@ -172,7 +173,7 @@ export function initPropuestas(ctx, k) {
   const actions = {
     pzNueva: t => { AD.pz.d = nueva({ clase: (t && t.dataset.clase) || 'Propuesta', ...(t && t.dataset.preset ? JSON.parse(t.dataset.preset) : {}) }); AD.pz.sel = 'nuevo'; AD.pz.ia = null; AD.pz.dirty = true; ctx.render(); window.scrollTo(0, 0); },
     pzAbrir: t => { const p = (AD.PROP || []).find(x => x.id === t.dataset.id); if (!p) return; AD.pz.d = desdeFila(p); AD.pz.sel = p.id; AD.pz.ia = null; AD.pz.dirty = false; ctx.render(); window.scrollTo(0, 0); },
-    pzVolver: () => { if (AD.pz.dirty && !confirm('Hay cambios sin guardar. ¿Salir igual?')) return; AD.pz.sel = null; AD.pz.d = null; ctx.render(); },
+    pzVolver: async () => { if (AD.pz.dirty && !await confirmar('Hay cambios sin guardar. ¿Salir igual?')) return; AD.pz.sel = null; AD.pz.d = null; ctx.render(); },
     pzF: t => { AD.pz.f = t.dataset.v; ctx.render(); },
     pzC: t => { AD.pz.c = t.dataset.v; ctx.render(); },
     pzClase: () => { const d = AD.pz.d; d.clase = esPre(d) ? 'Propuesta' : 'Presupuesto'; AD.pz.dirty = true; toast('Ahora es ' + (esPre(d) ? 'un presupuesto' : 'una propuesta') + '. Guardá para confirmar; el número no cambia.'); ctx.render(); },
@@ -220,7 +221,7 @@ export function initPropuestas(ctx, k) {
     pzEstado: async t => { AD.pz.d.estado = t.dataset.v; await guardar({ estado: t.dataset.v }); },
     pzProyecto: () => convertir(),
     pzDuplicar: () => { const d = AD.pz.d; AD.pz.d = { ...JSON.parse(JSON.stringify(d)), id: null, numero: '', estado: 'Borrador', token: null, respuesta: null, vista_el: null, proyecto_id: null, fecha: today(), titulo: d.titulo + ' (copia)' }; AD.pz.sel = 'nuevo'; AD.pz.dirty = true; ctx.render(); },
-    pzBorrar: async () => { const d0 = AD.pz.d; if (!confirm('¿Eliminar ' + la(d0) + ' ' + (d0.numero || '') + '? El link deja de funcionar.')) return; try { await data.del('propuestas', d0.id); AD.pz.sel = null; AD.pz.d = null; toast(Palabra(d0) + (esPre(d0) ? ' eliminado' : ' eliminada')); await ctx.reload(); } catch (err) { toast(err.message); } },
+    pzBorrar: async () => { const d0 = AD.pz.d; if (!await confirmar('¿Eliminar ' + la(d0) + ' ' + (d0.numero || '') + '? El link deja de funcionar.')) return; try { await data.del('propuestas', d0.id); AD.pz.sel = null; AD.pz.d = null; toast(Palabra(d0) + (esPre(d0) ? ' eliminado' : ' eliminada')); await ctx.reload(); } catch (err) { toast(err.message); } },
   };
   const tocar = (t, rerender) => {
     const d = AD.pz.d; if (!d) return false;

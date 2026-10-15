@@ -5,6 +5,7 @@ import './propuesta.css';
 import { createClient } from '@supabase/supabase-js';
 import { propuestaHTML } from './propuesta-vista.js';
 import { LOGO } from './marca.js';
+import { avisar } from './dialogo.js';
 
 const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 const $ = s => document.querySelector(s);
@@ -64,7 +65,7 @@ document.addEventListener('click', async e => {
     if (b.dataset.r === 'Consulta' && !comentario.trim()) { $('#com').focus(); return; }
     b.disabled = true;
     const { error } = await sb.rpc('responder_propuesta', { t: token, accion: b.dataset.r, nombre, comentario });
-    if (error) { b.disabled = false; alert('No se pudo registrar la respuesta: ' + error.message); return; }
+    if (error) { b.disabled = false; avisar('No se pudo registrar la respuesta: ' + error.message); return; }
     P.respuesta = { accion: b.dataset.r, nombre, comentario }; respuesta();
   }
   if (e.target.id === 'imp') window.print();
@@ -74,7 +75,7 @@ document.addEventListener('click', async e => {
       const { propuestaDoc, abrirPdf } = await import('./docs.js');
       const bytes = await propuestaDoc(P, P.marca || {});
       abrirPdf(bytes, PAL.charAt(0).toUpperCase() + PAL.slice(1) + ' ' + (P.numero || '') + ' ' + (P.cliente || ''));
-    } catch (err) { alert('No se pudo generar el PDF'); }
+    } catch (err) { avisar('No se pudo generar el PDF'); }
     e.target.disabled = false; e.target.textContent = 'Descargar PDF';
   }
 });

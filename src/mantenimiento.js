@@ -4,6 +4,7 @@
 // - Carga inicial guiada: qué falta cargar para arrancar en limpio, con acceso directo a cada lugar.
 // - Errores de la app: lo que falló en el navegador de alguien, para poder arreglarlo.
 import { ICON } from './iconos.js';
+import { confirmar } from './dialogo.js';
 
 export function initMantenimiento(ctx, k) {
   const { S, esc, toast, $, emptyBox, thisMonth } = ctx;
@@ -104,12 +105,12 @@ export function initMantenimiento(ctx, k) {
       const conf = (($('#mt-conf') || {}).value || '').trim();
       if (!($('#mt-tengo') || {}).checked) { toast('Primero descargá la copia y marcá que la tenés guardada'); return; }
       if (conf !== 'BORRAR TODO') { toast('Escribí BORRAR TODO, en mayúsculas, para confirmar'); return; }
-      if (!window.confirm('Última confirmación: se borran todos los clientes, proyectos, plata y redes. ¿Seguimos?')) return;
+      if (!await confirmar('Última confirmación: se borran todos los clientes, proyectos, plata y redes. ¿Seguimos?')) return;
       try { const r = await data.resetDatos(conf); toast('Listo: se borraron ' + (r && r.borrados) + ' registros. Empezá por la carga inicial.'); S.tab.ajustes = 'carga'; await ctx.reload(); setTimeout(() => { const el = document.getElementById('mt-carga'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 200); }
       catch (e) { toast(e.message); }
     },
     mtErr: async () => { const mt = AD.mt; mt.verErr = true; mt.cargandoErr = true; ctx.render(); mt.errores = await data.errores(); mt.cargandoErr = false; ctx.render(); },
-    mtErrBorrar: async () => { if (!window.confirm('¿Borrar la lista de errores?')) return; try { await data.erroresBorrar(); AD.mt.errores = []; ctx.render(); } catch (e) { toast(e.message); } },
+    mtErrBorrar: async () => { if (!await confirmar('¿Borrar la lista de errores?')) return; try { await data.erroresBorrar(); AD.mt.errores = []; ctx.render(); } catch (e) { toast(e.message); } },
   };
   return { html, actions };
 }

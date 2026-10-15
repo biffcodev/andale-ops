@@ -6,8 +6,10 @@ import './fonts.css';
 import './style.css';
 import './portal.css';
 import { LOGO, ISO } from './marca.js';
-import { iconizar } from './iconos.js';
+import { iconizar, ICON } from './iconos.js';
+import { informeVista } from './informe-vista.js';
 import { sb, configured } from './data.js';
+import { confirmar } from './dialogo.js';
 
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -178,13 +180,14 @@ function vTickets() {
     '<div class="field"><label for="tk-p">¿Para cuándo? (opcional)</label><input id="tk-p" type="date"></div><div class="field" style="align-self:end"><button class="btn primary">Enviar pedido</button></div></form>' +
     (ts.length ? '<div class="po-tks">' + ts.map(t => '<article class="po-tkc"><div class="po-cm"><b>#' + t.numero + '</b> · ' + esc(fecha(t.created_at)) + ' <span class="pzst" style="--c:var(' + ({ Nuevo: '--s-revision', 'En curso': '--s-curso', 'Esperando al cliente': '--s-confirmar', Hecho: '--s-entregado', Descartado: '--s-empezar' }[t.estado] || '--muted') + ')">' + esc(t.estado === 'Esperando al cliente' ? 'Esperamos tu respuesta' : t.estado) + '</span></div><h3>' + esc(t.titulo) + '</h3>' + (t.detalle ? '<p>' + esc(t.detalle) + '</p>' : '') + (t.respuesta ? '<p class="po-resp ok">àndale: ' + esc(t.respuesta) + '</p>' : '') + (t.cobro && t.cobro !== 'A definir' ? '<p class="muted" style="font-size:13px">' + esc(t.cobro === 'A facturar' ? 'Se suma al próximo resumen de cuenta' : t.cobro === 'Incluido en el abono' ? 'Incluido en tu abono' : 'Sin cargo') + '</p>' : '') + hiloHtml('pedido', t.id, (S.d.comentarios || []).filter(c => c.entidad === 'pedido' && c.entidad_id === t.id)) + '</article>').join('') + '</div>' : '') + '</section>';
 }
+// Informes: el último abierto con todo su color; los anteriores en una lista para abrir. Cada uno se baja en PDF.
+const mesDeInforme = i => (S.d.meses || []).find(m => String(m.mes).slice(0, 7) === String(i.mes).slice(0, 7));
 function vInformes() {
-  const is = S.d.informes || [];
-  return '<section class="po-sec"><h1>Informes de redes</h1>' + is.map(i => { const d = i.datos || {};
-    return '<article class="po-inf"><h2>' + esc(cap(mesTxt(i.mes))) + '</h2>' + ((d.metricas || []).length ? '<div class="po-mets">' + d.metricas.map(x => { const v = x.anterior ? Math.round((x.valor / x.anterior - 1) * 100) : null; return '<div class="po-met"><span>' + esc(x.nombre) + (x.red ? ' · ' + esc(x.red) : '') + '</span><b>' + esc(Number(x.valor).toLocaleString('es-AR')) + '</b>' + (v != null && isFinite(v) ? '<small class="' + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '▲ ' : '▼ ') + Math.abs(v) + '% vs. mes anterior</small>' : '') + '</div>'; }).join('') + '</div>' : '') +
-      '<div class="po-txt">' + esc(i.texto).split(/\n\s*\n/).map(p => '<p>' + p.replace(/\n/g, '<br>') + '</p>').join('') + '</div>' +
-      ((d.destacadas || []).length ? '<h3>Lo que mejor funcionó</h3><ul>' + d.destacadas.map(x => '<li><b>' + esc(x.titulo) + '</b> — ' + esc(x.por_que) + '</li>').join('') + '</ul>' : '') +
-      ((d.recomendaciones || []).length ? '<h3>Para el mes que viene</h3><ul>' + d.recomendaciones.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') + '</article>'; }).join('') + '</section>';
+  const is = S.d.informes || [], sel = is.find(i => i.id === S.inf) || is[0];
+  if (!sel) return '<section class="po-sec"><h1>Informes de redes</h1><p class="muted">Todavía no hay informes.</p></section>';
+  const btn = '<button type="button" class="btn" data-act="infPdf" data-id="' + esc(sel.id) + '">' + ICON.descargar + 'Descargar PDF</button>';
+  return '<section class="po-sec po-infs">' + (is.length > 1 ? '<div class="po-inf-meses" role="tablist" aria-label="Elegí el mes">' + is.map(i => '<button role="tab" data-act="infVer" data-id="' + esc(i.id) + '" aria-selected="' + (i === sel) + '">' + esc(cap(mesTxt(i.mes))) + '</button>').join('') + '</div>' : '') +
+    informeVista({ inf: sel, cliente: S.d.cliente.nombre, mesLabel: mesTxt(sel.mes), piezas: (mesDeInforme(sel) || {}).piezas, descargar: btn }) + '</section>';
 }
 function vCuenta() {
   const c = S.d.cuenta || {}, fs = c.facturas || [], rs = c.resumenes || [];
@@ -208,6 +211,16 @@ async function responder(entidad, id, accion, texto) {
   S.busy = false;
 }
 const ACT = {
+  infVer: t => { S.inf = t.dataset.id; render(); window.scrollTo(0, 0); },
+  infPdf: async t => {
+    const i = (S.d.informes || []).find(x => x.id === t.dataset.id); if (!i) return;
+    const txt = t.innerHTML; t.disabled = true; t.textContent = 'Preparando…';
+    try {
+      const { informeDoc, abrirPdf } = await import('./docs.js');
+      abrirPdf(await informeDoc({ cliente: S.d.cliente.nombre, mesLabel: mesTxt(i.mes), inf: i, piezas: (mesDeInforme(i) || {}).piezas }), 'Informe de redes ' + mesTxt(i.mes) + ' ' + S.d.cliente.nombre);
+    } catch (e) { toast('No se pudo armar el PDF'); }
+    t.disabled = false; t.innerHTML = txt;
+  },
   tab: t => { S.tab = t.dataset.t; render(); window.scrollTo(0, 0); },
   vista: t => { S.vista = t.dataset.v; render(); },
   salir: async () => { await sb.auth.signOut(); location.reload(); },
@@ -216,7 +229,7 @@ const ACT = {
   irProy: t => { S.tab = 'proyectos'; render(); setTimeout(() => { const el = document.getElementById('py-' + t.dataset.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); },
   aprobar: t => responder(t.dataset.e, t.dataset.id, 'aprobar', ''),
   cambios: t => pedirTexto('¿Qué cambiarías?', 'Contanos qué cambiar. Cuanto más concreto, mejor (textos, colores, fotos…).', txt => responder(t.dataset.e, t.dataset.id, 'cambios', txt)),
-  aprobarMes: t => { const m = (S.d.meses || []).find(x => x.id === t.dataset.id); if (!m) return; if (!confirm('¿Aprobás todas las piezas pendientes de ' + mesTxt(m.mes) + '?')) return; responder('mes', m.id, 'aprobar', ''); },
+  aprobarMes: async t => { const m = (S.d.meses || []).find(x => x.id === t.dataset.id); if (!m) return; if (!await confirmar('¿Aprobás todas las piezas pendientes de ' + mesTxt(m.mes) + '?')) return; responder('mes', m.id, 'aprobar', ''); },
 };
 document.addEventListener('click', e => { const t = e.target.closest('[data-act]'); if (!t || t.tagName === 'A') return; const fn = ACT[t.dataset.act]; if (fn) { e.preventDefault(); fn(t); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#panel').hidden) cerrar(); });

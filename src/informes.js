@@ -4,6 +4,8 @@
 // 3) El equipo corrige, publica en el portal y avisa al cliente.
 // Cuando haya conexión directa con Meta, el paso 1 se reemplaza por la API; el resto queda igual.
 import { ICON } from './iconos.js';
+import { informeVista } from './informe-vista.js';
+import { confirmar } from './dialogo.js';
 
 const IMG_MAX = 1600;
 
@@ -52,25 +54,17 @@ export function initInformes(ctx) {
       (inf.enviadoAt ? '<span class="muted" style="font-size:13px">Avisado el ' + esc(ctx.fmt(String(inf.enviadoAt).slice(0, 10))) + '</span>' : '') +
       (can ? '<span class="toolbar"><button class="btn sm ghost" data-act="infRehacer" data-id="' + esc(m._id) + '">' + ICON.ia + 'Volver a armar</button><button class="btn sm" data-act="infGuardar">Guardar cambios</button>' +
         (pub ? '<button class="btn sm" data-act="infAvisar">Avisar al cliente</button><button class="btn sm ghost" data-act="infPublicar" data-v="0">Despublicar</button>' : '<button class="btn sm primary" data-act="infPublicar" data-v="1">Publicar en el portal</button>') + '</span>' : '') + '</div>' +
-      '<section class="sheet"><div class="sheet-h"><h2>Así lo ve el cliente</h2></div>' + vista(m, inf) + '</section>' +
+      '<section class="inf-prev"><p class="inf-prev-h">Así lo ve el cliente en su portal' + (pub ? '' : ' (cuando lo publiques)') + '</p>' + vista(m, inf) + '</section>' +
       (can ? '<section class="sheet"><div class="sheet-h"><div><h2>Métricas</h2><p class="muted" style="margin:4px 0 0;font-size:13px">“Mes anterior” es opcional: si está, el cliente ve cuánto subió o bajó.</p></div></div><div class="tbl"><table class="inf-met"><thead><tr><th>Métrica</th><th>Red</th><th class="r">Este mes</th><th class="r">Mes anterior</th><th></th></tr></thead><tbody>' + met.map(fila).join('') + '</tbody></table></div><div class="sheet-b"><button type="button" class="btn sm ghost" data-act="infMetAdd">+ Agregar métrica</button></div></section>' +
         '<section class="sheet"><div class="sheet-h"><h2>Texto para el cliente</h2></div><div class="sheet-b"><div class="field full"><textarea id="inf-texto" rows="8" placeholder="Cómo fue el mes, qué funcionó y por qué.">' + esc(inf.texto) + '</textarea></div>' +
         '<div class="field full"><span class="lbl">Lo que mejor funcionó</span><div class="inf-dsts">' + dst.map(dfila).join('') + '</div><button type="button" class="btn sm ghost" data-act="infDstAdd" style="justify-self:start">+ Agregar</button></div>' +
         '<div class="field full"><label for="inf-rec">Para el mes que viene (una por renglón)</label><textarea id="inf-rec" rows="4">' + esc(rec.join('\n')) + '</textarea></div>' +
         '<div class="toolbar"><button class="btn primary" data-act="infGuardar">Guardar cambios</button><button class="btn ghost danger" data-act="infBorrar">Borrar informe</button></div></div></section>' : '') + '</div>';
   }
-  // Vista del cliente: números grandes con la variación contra el mes anterior.
+  // Vista del cliente (la misma que en el portal), con el botón para bajar el PDF.
   function vista(m, inf) {
-    const d = inf.datos || {}, met = d.metricas || [];
-    return '<div class="sheet-b inf-vista"><h3>' + esc(cap(monthLabel(m.mes))) + ' · ' + esc(m.cliente) + '</h3>' +
-      (met.length ? '<div class="sx-ns inf-ns">' + met.map(x => {
-        const v = x.anterior ? Math.round((x.valor / x.anterior - 1) * 100) : null;
-        return '<div class="sx-n"><b>' + esc(fmtN(x.valor)) + '</b><span>' + esc(x.nombre) + (x.red ? ' · ' + esc(x.red) : '') + '</span>' + (v != null && isFinite(v) ? '<span class="sx-d ' + (v > 0 ? 'up' : v < 0 ? 'down' : 'igual') + '">' + (v > 0 ? '▲ ' : v < 0 ? '▼ ' : '') + Math.abs(v) + '% vs. mes anterior</span>' : '') + '</div>';
-      }).join('') + '</div>' : '<p class="muted">Sin métricas cargadas.</p>') +
-      '<div class="inf-txt">' + (inf.texto ? esc(inf.texto).split(/\n\s*\n/).map(p => '<p>' + p.replace(/\n/g, '<br>') + '</p>').join('') : '<p class="muted">Sin texto todavía.</p>') + '</div>' +
-      ((d.destacadas || []).length ? '<h4>Lo que mejor funcionó</h4><ul>' + d.destacadas.map(x => '<li><b>' + esc(x.titulo) + '</b>' + (x.por_que ? ' — ' + esc(x.por_que) : '') + '</li>').join('') + '</ul>' : '') +
-      ((d.recomendaciones || []).length ? '<h4>Para el mes que viene</h4><ul>' + d.recomendaciones.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
-      '<table class="sr-only" data-titulo="Métricas"><thead><tr><th>Métrica</th><th>Red</th><th>Este mes</th><th>Mes anterior</th></tr></thead><tbody>' + met.map(x => '<tr><td>' + esc(x.nombre) + '</td><td>' + esc(x.red || '') + '</td><td>' + esc(fmtN(x.valor)) + '</td><td>' + esc(fmtN(x.anterior)) + '</td></tr>').join('') + '</tbody></table></div>';
+    return informeVista({ inf, cliente: m.cliente, mesLabel: monthLabel(m.mes), piezas: ctx.piezas ? ctx.piezas(m._id) : null,
+      descargar: '<button type="button" class="btn" data-act="infPdf" data-id="' + esc(m._id) + '">' + ICON.descargar + 'Descargar PDF</button>' });
   }
 
   /* ---------- Archivos y armado ---------- */
@@ -146,7 +140,17 @@ export function initInformes(ctx) {
       const ok = await ctx.avisarCliente(m.cliente, 'informe', { mes: m.mes });
       if (ok) { try { await data.informeGuardar(inf._id, { enviadoAt: new Date().toISOString() }); await cargar(m.cliente, true); } catch (e) { /* el aviso salió igual */ } }
     },
-    infBorrar: async t => { const b = caja(t), m = mesDeCaja(b), inf = infDeCaja(b); if (!inf || !window.confirm('¿Borrar el informe de ' + monthLabel(m.mes) + '?')) return; try { await data.informeDel(inf._id); toast('Borrado'); await cargar(m.cliente, true); } catch (e) { toast(e.message); } },
+    infPdf: async t => {
+      const m = (S.RM || []).find(x => x._id === t.dataset.id), b = document.querySelector('[data-inf][data-mes="' + (m && m._id) + '"]'), inf = m && delMes(m); if (!inf) return;
+      const datos = b ? leer(b) : inf; const txt = t.innerHTML; t.disabled = true; t.textContent = 'Preparando…';
+      try {
+        const { informeDoc, abrirPdf } = await import('./docs.js');
+        const bytes = await informeDoc({ cliente: m.cliente, mesLabel: monthLabel(m.mes), inf: { datos: datos.datos, texto: datos.texto }, piezas: ctx.piezas ? ctx.piezas(m._id) : null, cfg: ctx.cfgMarca ? ctx.cfgMarca() : null });
+        abrirPdf(bytes, 'Informe de redes ' + monthLabel(m.mes) + ' ' + m.cliente);
+      } catch (e) { toast('No se pudo armar el PDF: ' + e.message); }
+      t.disabled = false; t.innerHTML = txt;
+    },
+    infBorrar: async t => { const b = caja(t), m = mesDeCaja(b), inf = infDeCaja(b); if (!inf || !await confirmar('¿Borrar el informe de ' + monthLabel(m.mes) + '?')) return; try { await data.informeDel(inf._id); toast('Borrado'); await cargar(m.cliente, true); } catch (e) { toast(e.message); } },
     infMetAdd: t => editarLocal(caja(t), v => v.datos.metricas.push({ nombre: ' ', red: '', valor: null, anterior: null })),
     infMetDel: t => editarLocal(caja(t), v => v.datos.metricas.splice(+t.dataset.i, 1)),
     infDstAdd: t => editarLocal(caja(t), v => v.datos.destacadas.push({ titulo: ' ', por_que: '' })),
