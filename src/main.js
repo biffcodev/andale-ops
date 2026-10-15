@@ -18,6 +18,7 @@ import { initInformes } from './informes.js';
 import { initReloj } from './reloj.js';
 import { initFichaMarca } from './fichamarca.js';
 import { initAutomatizar } from './automatizar.js';
+import { firmaDe } from './firma.js';
 import { initPerfil, aplicarTema, temaGuardado } from './perfil.js';
 import { masMenu, vistaSel, vistaDe, guardarVista, toastAccion, uiActs, filtrosMenu, reabrir } from './ui.js';
 import * as E from './emails.js';
@@ -1117,7 +1118,7 @@ async function avisarCliente(cliente, tipo, info) {
   if (!window.confirm('¿Le avisamos por email a ' + ks.map(nomContacto).join(', ') + (tipo === 'informe' ? ' que ya puede ver ' : ' que tiene para revisar ') + que + '?')) return false;
   const nombres = ks.map(k => (k.nombre || '').split(' ')[0]).filter(Boolean);
   const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\n' + (tipo === 'informe' ? 'Ya está en el portal de àndale ' + que + ': cómo fue el mes, qué funcionó mejor y qué proponemos para el que viene.' : 'Ya tenés para revisar ' + que + ' en el portal de àndale. Desde ahí podés aprobar o pedirnos cambios, y comentar lo que quieras.') + '\n\nEntrás con tu email, sin contraseña.';
-  const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: tipo === 'redes' ? 'Tus redes del mes, listas para revisar' : tipo === 'informe' ? 'Tu informe de redes de ' + mesTxt : 'Tenés una entrega para revisar', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ir al portal', firma: 'Saludos,\n' + ((S.me && (S.me.nombre || S.me.alias) || '').split(' ')[0] || 'Equipo') + '\nàndale', asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : tipo === 'informe' ? 'Informe de redes de ' + mesTxt + ' · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
+  const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: tipo === 'redes' ? 'Tus redes del mes, listas para revisar' : tipo === 'informe' ? 'Tu informe de redes de ' + mesTxt : 'Tenés una entrega para revisar', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ir al portal', firma: firmaDe(S), asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : tipo === 'informe' ? 'Informe de redes de ' + mesTxt + ' · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
   try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); return true; }
   catch (e) { toast('No se pudo mandar el aviso: ' + e.message); return false; }
 }

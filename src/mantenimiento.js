@@ -23,7 +23,7 @@ export function initMantenimiento(ctx, k) {
       ['equipo', 'Equipo con email y rol', S.E.filter(e => e.activo !== false).length > 1, S.E.filter(e => e.activo !== false).length + ' personas', 'equipo'],
       ['integraciones', 'Conexiones (IA, Drive, email, Slack, Dropbox, Tally)', !!(st && st.ia && st.drive && st.email), st ? [st.ia ? 'IA ✓' : 'IA falta', st.drive ? 'Drive ✓' : 'Drive falta', st.email ? 'Email ✓' : 'Email falta'].join(' · ') + ' · el resto en Integraciones' : 'revisalas en Integraciones', 'integraciones'],
       ['listas', 'Flujos de trabajo y planes de redes', (S.FL || []).length > 0 && planes > 0, ((S.FL || []).length ? (S.FL || []).length + ' flujos guardados' : 'flujos sugeridos sin revisar') + ' · ' + planes + ' planes con piezas', 'listas'],
-      ['cajas', 'Cuentas de banco con su saldo inicial', AD.CJ.length > 0 && AD.CJ.every(c => saldoIni.has(c.id)), AD.CJ.length + ' cuentas · ' + AD.CJ.filter(c => saldoIni.has(c.id)).length + ' con saldo inicial', 'gastos'],
+      ['cajas', 'Cuentas de banco con su saldo inicial', AD.CJ.length > 0 && AD.CJ.every(c => saldoIni.has(c.id)), AD.CJ.length + ' cuentas · ' + AD.CJ.filter(c => saldoIni.has(c.id)).length + ' con saldo inicial', 'ajustes'],
       ['pagos', 'Sueldos, honorarios y proveedores', AD.CO.length > 0, AD.CO.length + ' cargados', 'pagos'],
       ['clientes', 'Clientes activos (con logo)', act.length > 0, act.length + ' activos · ' + act.filter(c => c.avatar).length + ' con logo', 'clientes'],
       ['contactos', 'Contacto que recibe cobros en cada cliente', act.length > 0 && conCobros.length === act.length, conCobros.length + ' de ' + act.length + ' clientes activos', 'clientes'],
@@ -36,7 +36,7 @@ export function initMantenimiento(ctx, k) {
   function html(parte) {
     const ps = pasos(), listos = ps.filter(p => p[2]).length, mt = AD.mt;
     let h = '<section class="sheet sx" id="mt-carga"><div class="sx-h"><span class="sx-i">' + ICON.tarea + '</span><h2>Carga inicial <span class="sx-sub">(' + listos + ' de ' + ps.length + ' listos)</span></h2></div>' +
-      '<div class="sx-panel"><div class="mt-pasos">' + ps.map(([key, l, ok, sub, v]) => '<button class="mt-paso' + (ok ? ' ok' : '') + '" data-act="go" data-view="' + esc(v) + '"><span class="mt-c">' + (ok ? ICON.check : '') + '</span><span class="mt-t"><b>' + esc(l) + '</b><small>' + esc(sub) + '</small></span><span class="mt-ir">Ir →</span></button>').join('') + '</div></div></section>';
+      '<div class="sx-panel"><div class="mt-pasos">' + ps.map(([key, l, ok, sub, v]) => '<button class="mt-paso' + (ok ? ' ok' : '') + '" data-act="go" data-view="' + esc(v) + '"' + (key === 'cajas' ? ' data-tab="bancos"' : '') + '><span class="mt-c">' + (ok ? ICON.check : '') + '</span><span class="mt-t"><b>' + esc(l) + '</b><small>' + esc(sub) + '</small></span><span class="mt-ir">Ir →</span></button>').join('') + '</div></div></section>';
     const carga = h; h = '';
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.descargar + '</span><h2>Copia de seguridad</h2></div><div class="sx-panel mt-b">' +
       '<p class="sx-lead">Baja <b>todo</b> lo que hay en la base: clientes, proyectos, tareas, plata, redes y configuración. Guardala en un lugar seguro: tiene datos de clientes y de facturación.</p>' +

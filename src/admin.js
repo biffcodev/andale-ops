@@ -1,5 +1,6 @@
 // Administración: precios y aumentos, cierre de mes (resumen → comprobante → cobro → recordatorio), facturas.
 // Solo para administradores. La base de datos además lo impide para otros roles.
+import { firmaDe } from './firma.js';
 import * as data from './data.js';
 import * as E from './emails.js';
 import { initEquipo } from './equipo.js';
@@ -228,7 +229,7 @@ export function initAdmin(ctx) {
     const l = ks.length ? ks.map(k => k.email) : [cadm(cliente).email_facturacion || c.email || ''];
     return [...new Set(l.flatMap(x => String(x).split(/[,;\s]+/)).map(x => x.trim().toLowerCase()).filter(Boolean))].join(', ');
   };
-  const firma = () => 'Saludos,\n' + (((S.me && (S.me.nombre || S.me.alias)) || '').split(' ')[0] || 'Equipo') + '\nàndale';
+  const firma = () => firmaDe(S);
   const pdfLib = () => import('./docs.js');
   const estiloDoc = () => ((AD.AJ && AD.AJ.documentos) || {}).estilo || 'editorial';
   const hoyDMY = () => { const [y, m, d] = today().split('-'); return d + '/' + m + '/' + y; };
@@ -270,10 +271,11 @@ export function initAdmin(ctx) {
         { k: 'mensaje', label: 'Mensaje', type: 'textarea', rows: 7, full: 1 },
         { k: 'copia', label: 'Mandarme una copia a administracion@weareandale.com', type: 'check' },
       ],
-      extra: (adj.length ? '<div class="field full"><span class="lbl">Adjuntos</span><div class="tags" style="gap:6px">' + adj.map((a, i) => '<button type="button" class="btn sm" data-act="aAdjVer" data-i="' + i + '">📎 ' + esc(a.nombre) + '</button>').join('') + '</div></div>' : '') +
+      extra: '<div class="field full" id="mail-adj">' + adjHtml(adj, o) + '</div>' +
         '<div class="field full"><span class="lbl">Vista previa</span><iframe id="mail-prev" title="Vista previa del email" style="width:100%;height:560px;border:1px solid var(--line);border-radius:8px;background:#f1f1f1"></iframe></div>' +
         '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aMailCopy">Copiar texto (WhatsApp)</button>' + (o.extraBtns || '') + '</div>',
       onSave: async v => {
+        if (o.pideAdjunto && !adj.length && !AD.sinAdjOk) { AD.sinAdjOk = true; throw new Error('No tiene el PDF adjunto: adjuntalo con “Adjuntar archivo”. Si igual querés mandarlo así, tocá Enviar otra vez.'); }
         const b = o.build(v);
         const r = await data.sendEmail({ tipo: o.tipo, cliente_id: o.cliente ? data.ids.cliente(o.cliente) : null, periodo: o.periodo ? o.periodo + '-01' : null, factura_id: o.factura_id || null,
           para: v.para, cc: v.cc, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia, adjuntos: adj.map(a => ({ nombre: a.nombre, base64: a.base64 })) });
@@ -281,9 +283,25 @@ export function initAdmin(ctx) {
         toast('Email enviado a ' + v.para);
       },
     });
-    AD.adj = adj;
+    AD.adj = adj; AD.sinAdjOk = false;
     refreshPreview();
   }
+  const adjHtml = (adj, o) => (adj.length || (o && o.adjuntar) ? '<span class="lbl">Adjuntos</span><div class="tags" style="gap:6px;align-items:center">' + adj.map((a, i) => '<span class="adj-ch"><button type="button" class="btn sm" data-act="aAdjVer" data-i="' + i + '">' + ICON.clip + esc(a.nombre) + '</button><button type="button" class="btn ghost sm" data-act="aAdjQuitar" data-i="' + i + '" aria-label="Quitar adjunto">✕</button></span>').join('') +
+    ((o && o.adjuntar) || adj.length ? '<label class="btn sm ghost">' + ICON.clip + 'Adjuntar archivo<input type="file" data-mailadj="1" accept="application/pdf,image/*" multiple hidden></label>' : '') + '</div>' : '');
+  // Adjuntar desde la compu (por ejemplo el PDF de la factura de ARCA).
+  document.addEventListener('change', async e => {
+    const t = e.target; if (!t.dataset || !t.dataset.mailadj || !AD.form || !AD.form.composer) return;
+    const files = [...t.files]; t.value = '';
+    for (const f of files) {
+      if (f.size > 8e6) { toast(f.name + ' pesa más de 8 MB'); continue; }
+      const bytes = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      AD.adj.push({ nombre: f.name, base64: btoa(bin), bytes });
+    }
+    const box = $('#mail-adj'); if (box) box.innerHTML = adjHtml(AD.adj, AD.form.composer);
+    const m = $('#af-mensaje');
+    if (m && AD.form.composer.tipo === 'Factura enviada' && AD.adj.length && !/adjunt/i.test(m.value)) { m.value = m.value.replace(/(\n\n¡Gracias!)?\s*$/, '\n\nTe la adjuntamos en este mail.$1'); refreshPreview(); }
+    toast(files.length === 1 ? 'Adjunto: ' + files[0].name : files.length + ' archivos adjuntos');
+  });
   function composerValues() {
     const o = AD.form && AD.form.composer; if (!o) return null;
     const v = {}; for (const f of AD.form.fields) { const el = $('#af-' + f.k); if (el) v[f.k] = f.type === 'check' ? el.checked : el.value; }
@@ -316,7 +334,7 @@ export function initAdmin(ctx) {
         for (const [it, i] of sel) {
           const st = $('#bulk-st-' + i), prog = $('#bulk-prog');
           if (prog) prog.textContent = 'Enviando ' + (++n) + ' de ' + sel.length + '…';
-          const fill = t => String(t || '').replace(/\{nombre\}/g, it.nombre || '').replace(/\{cuenta\}/g, it.label).replace(/\{periodo\}/g, it.periodo || '').replace(/Hola ,/g, 'Hola,');
+          const fill = t => String(t || '').replace(/\{nombre\}/g, it.nombre || '').replace(/\{cuenta\}/g, it.label).replace(/\{periodo\}/g, it.periodo || '').replace(/ \(un ajuste del \{pct\}%\)/g, it.pct ? ' (un ajuste del ' + it.pct + '%)' : '').replace(/\{pct\}/g, it.pct || '').replace(/\n\nEl motivo: \{motivo\}\./g, it.motivo ? '\n\nEl motivo: ' + it.motivo + '.' : '').replace(/\{motivo\}/g, it.motivo || '').replace(/Hola ,/g, 'Hola,');
           try { await o.send(it, { asunto: fill(v.asunto), mensaje: fill(v.mensaje), copia: v.copia }); if (st) { st.textContent = '✓ Enviado'; st.className = 'days'; st.style.color = 'var(--ok)'; } }
           catch (err) { fails.push(it.label + ': ' + err.message); if (st) { st.textContent = 'Error'; st.className = 'days late'; } }
           await new Promise(r => setTimeout(r, 600)); // Resend: máx. 2 por segundo
@@ -328,6 +346,7 @@ export function initAdmin(ctx) {
   }
 
   function servicioDe(a) { return a.tipo === 'Redes' ? 'Redes sociales' + (a.plan ? ' · plan ' + a.plan : '') : a.tipo === 'Ads' ? 'Ads (gestión de campañas)' : a.tipo; }
+  const motivoReal = mt => { const x = String(mt || '').trim(); return /^aumento\s*[\d.,]+\s*%?$/i.test(x) ? '' : x; };
   function datosAviso(p) {
     const a = S.A.find(x => x._id === p.abono_id); if (!a) return null;
     const prev = AD.PR.filter(x => x.abono_id === a._id && x.desde < p.desde).sort((x, y) => y.desde.localeCompare(x.desde))[0];
@@ -373,11 +392,11 @@ export function initAdmin(ctx) {
       if (!ps.length) return null;
       return {
         titulo: 'Avisos de aumento', asunto: 'Actualización de tu abono · desde ' + periodoTit(ps[0].p.desde),
-        mensaje: E.textos.aviso({ nombre: '{nombre}', servicio: 'tu abono', desde: '{periodo}', pct: '' }),
-        items: ps.map(({ p, d }) => ({ label: d.a.cliente, nombre: contactoDe(d.a.cliente), para: mailsDe(d.a.cliente), sub: servicioDe(d.a) + ' · ' + money(p.monto, p.moneda) + ' desde ' + fmt(p.desde), periodo: periodoTxt(p.desde), p, d })),
+        mensaje: E.textos.aviso({ nombre: '{nombre}', servicio: 'tu abono', desde: '{periodo}', pct: '{pct}', motivo: '{motivo}' }),
+        items: ps.map(({ p, d }) => ({ label: d.a.cliente, nombre: contactoDe(d.a.cliente), para: mailsDe(d.a.cliente), sub: servicioDe(d.a) + ' · ' + money(p.monto, p.moneda) + ' desde ' + fmt(p.desde) + (d.pct ? ' · +' + d.pct + '%' : '') + (motivoReal(p.motivo) ? ' · ' + motivoReal(p.motivo) : ' · sin motivo cargado'), periodo: periodoTxt(p.desde), pct: d.pct, motivo: motivoReal(p.motivo), p, d })),
         send: async (it, v) => {
           const { p, d } = it;
-          const b = E.avisoEmail({ cfg: cfgMarca(), contacto: contactoFull(d.a.cliente), cuenta: d.a.cliente, servicio: servicioDe(d.a), anterior: d.prev ? d.prev.monto : null, nuevo: p.monto, moneda: p.moneda, desde: periodoTit(p.desde), mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
+          const b = E.avisoEmail({ cfg: cfgMarca(), contacto: contactoFull(d.a.cliente), cuenta: d.a.cliente, servicio: servicioDe(d.a), anterior: d.prev ? d.prev.monto : null, nuevo: p.monto, moneda: p.moneda, desde: periodoTit(p.desde), pct: d.pct, motivo: motivoReal(p.motivo), mensaje: v.mensaje, firma: firma(), asunto: v.asunto });
           await data.sendEmail({ tipo: 'Aviso de aumento', cliente_id: data.ids.cliente(d.a.cliente), periodo: p.desde + '-01', para: it.para, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia });
           await data.upd('precios_abono', p.id, { aviso_enviado: today() });
         },
@@ -404,7 +423,7 @@ export function initAdmin(ctx) {
     const comp = (f.tipo === 'Invoice' ? 'el invoice' : 'la factura') + (f.numero ? ' N° ' + f.numero : '');
     const per = periodo ? String(periodo).slice(0, 7) : '';
     const b = E.facturaEmail({ cfg: cfgMarca(), contacto: contactoFull(cliente), cuenta: cliente, periodo: per ? periodoTit(per) : '', tipo: f.tipo, numero: f.numero, fecha: f.fecha, vencimiento: f.vencimiento, monto: f.monto, moneda: f.moneda, link: f.link_pdf, conPago: true,
-      mensaje: E.textos.factura({ nombre: contactoDe(cliente), comprobante: comp, periodo: per ? periodoTxt(per) : '' }), firma: firma() });
+      mensaje: E.textos.factura({ nombre: contactoDe(cliente), comprobante: comp, periodo: per ? periodoTxt(per) : '', como: 'adjunto' }), firma: firma() });
     await data.sendEmail({ tipo: 'Factura enviada', cliente_id: data.ids.cliente(cliente), periodo: per ? per + '-01' : null, factura_id: f.id, para, cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: true, adjuntos });
     return { ok: true, para };
   }
@@ -445,7 +464,7 @@ export function initAdmin(ctx) {
           titulo: 'Invoice ' + (f.numero || ''), eyebrow: f.cliente, tipo: 'Factura enviada', cliente: f.cliente, periodo: f.periodo || null, factura_id: f.id,
           para: mailsDe(f.cliente), asunto: 'Invoice ' + (f.numero || '') + ' · àndale',
           mensaje: 'Hi' + (nom ? ' ' + nom : '') + ',\n\nPlease find attached invoice ' + (f.numero || '') + ' for ' + PDFm(f.monto, f.moneda) + (f.vencimiento ? ', due ' + new Date(f.vencimiento + 'T12:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '') + '. Payment details are included in the PDF.\n\nThank you!',
-          build: v => E.libreEmail({ cfg: cfgMarca(), cuenta: f.cliente, titulo: 'Invoice ' + (f.numero || ''), mensaje: v.mensaje, firma: 'Best regards,\n' + ((((S.me && (S.me.nombre || S.me.alias)) || '').split(' ')[0]) || 'àndale') + '\nàndale', asunto: v.asunto }),
+          build: v => E.libreEmail({ cfg: cfgMarca(), cuenta: f.cliente, titulo: 'Invoice ' + (f.numero || ''), mensaje: v.mensaje, firma: { ...firmaDe(S), saludo: 'Best regards,' }, asunto: v.asunto }),
         });
         return;
       }
@@ -458,13 +477,13 @@ export function initAdmin(ctx) {
       }
       openComposer({ adjuntos,
         titulo: verTipo(f.tipo) + ' ' + (f.numero || 'sin número'), eyebrow: f.cliente, tipo: 'Factura enviada', cliente: f.cliente, periodo: f.periodo || null, factura_id: f.id,
-        para: mailsDe(f.cliente), mensaje: E.textos.factura({ nombre: contactoDe(f.cliente), comprobante: comp, periodo: f.periodo ? periodoTxt(f.periodo) : '' }),
+        para: mailsDe(f.cliente), mensaje: E.textos.factura({ nombre: contactoDe(f.cliente), comprobante: comp, periodo: f.periodo ? periodoTxt(f.periodo) : '', como: adjuntos.length ? 'adjunto' : f.link_pdf ? 'boton' : '' }),
         values: { conPago: f.saldo > 0.009 },
         extraFields: [{ k: 'conPago', label: 'Incluir datos de pago', type: 'check' }],
+        adjuntar: true, pideAdjunto: !f.link_pdf,
         build: v => E.facturaEmail({ cfg: cfgMarca(), contacto: contactoFull(f.cliente), cuenta: f.cliente, periodo: f.periodo ? periodoTit(f.periodo) : '', tipo: f.tipo, numero: f.numero, fecha: f.fecha, vencimiento: f.vencimiento, monto: f.monto, moneda: f.moneda, link: f.link_pdf, conPago: v.conPago, mensaje: v.mensaje, firma: firma(), asunto: v.asunto }),
-        intro2: f.link_pdf || adjuntos.length ? '' : 'Esta factura no tiene link al PDF: el email sale sin botón.',
+        intro2: f.link_pdf || adjuntos.length ? '' : 'Esta factura no tiene el PDF cargado: adjuntalo abajo con “Adjuntar archivo” para que le llegue al cliente.',
       });
-      if (!f.link_pdf && !adjuntos.length) toast('Ojo: la factura no tiene link al PDF cargado');
     },
     recordatorios() { const o = bulkRecordatorios(); if (!o) { toast('No hay facturas vencidas'); return; } openBulk(o); },
     aviso(p) {
@@ -472,8 +491,8 @@ export function initAdmin(ctx) {
       const { a, prev, pct } = d;
       openComposer({
         titulo: 'Aviso de aumento', eyebrow: a.cliente, tipo: 'Aviso de aumento', cliente: a.cliente, periodo: p.desde,
-        para: mailsDe(a.cliente), mensaje: E.textos.aviso({ nombre: contactoDe(a.cliente), servicio: servicioDe(a).toLowerCase(), desde: periodoTxt(p.desde), pct }),
-        build: v => E.avisoEmail({ cfg: cfgMarca(), contacto: contactoFull(a.cliente), cuenta: a.cliente, servicio: servicioDe(a), anterior: prev ? prev.monto : null, nuevo: p.monto, moneda: p.moneda, desde: periodoTit(p.desde), mensaje: v.mensaje, firma: firma(), asunto: v.asunto }),
+        para: mailsDe(a.cliente), mensaje: E.textos.aviso({ nombre: contactoDe(a.cliente), servicio: servicioDe(a).toLowerCase(), desde: periodoTxt(p.desde), pct, motivo: motivoReal(p.motivo) }),
+        build: v => E.avisoEmail({ cfg: cfgMarca(), contacto: contactoFull(a.cliente), cuenta: a.cliente, servicio: servicioDe(a), anterior: prev ? prev.monto : null, nuevo: p.monto, moneda: p.moneda, desde: periodoTit(p.desde), pct, motivo: motivoReal(p.motivo), mensaje: v.mensaje, firma: firma(), asunto: v.asunto }),
         onSent: async () => { await data.upd('precios_abono', p.id, { aviso_enviado: today() }); },
         extraBtns: '<button type="button" class="btn sm ghost" data-act="aAvisoManual" data-id="' + esc(p.id) + '">Avisado por otro canal</button>',
       });
@@ -750,30 +769,41 @@ export function initAdmin(ctx) {
   }
 
   /* ---------- Vista: Precios y aumentos ---------- */
+  // Meses entre dos 'AAAA-MM'.
+  const mesesEntre = (a, b) => { if (!a || !b) return null; const [y1, m1] = a.slice(0, 7).split('-').map(Number), [y2, m2] = b.slice(0, 7).split('-').map(Number); return (y2 - y1) * 12 + (m2 - m1); };
+  const pctDe = id => { const v = AD.pp.pctPor && AD.pp.pctPor[id]; return parseMonto(v != null && v !== '' ? v : AD.pp.pct); };
   function vPrecios() {
-    const pp = AD.pp, m = thisMonth();
+    const pp = AD.pp, m = thisMonth(); pp.pctPor = pp.pctPor || {}; pp.minMeses = pp.minMeses || '3';
     const ab = S.A.filter(a => a.estado === 'Activo').sort((a, b) => cmp(a.cliente, b.cliente) || cmp(a.tipo, b.tipo));
     const pct = parseMonto(pp.pct);
     const sel = ab.filter(a => pp.sel.has(a._id));
-    let h = '<div class="head"><div>' + lock + '<h1>Precios y aumentos</h1><p>Precio vigente de cada abono, aumentos e historial.</p></div>' +
+    const sinAum = a => { const cur = precioEn(a._id, m); const ref = cur ? cur.desde : (a.desde || ''); return mesesEntre(ref, pp.desde || m); };
+    let h = '<div class="head"><div>' + lock + '<h1>Precios y aumentos</h1><p>Precio vigente de cada abono, aumentos e historial. Elegí a qué clientes les aplicás cada aumento.</p></div>' +
       (AD.PR.some(p => p.desde > m && !p.aviso_enviado) ? '<div class="toolbar"><button class="btn primary" data-act="aAvisos">Avisar aumentos por email</button></div>' : '') + '</div>';
-    h += '<section class="sheet"><div class="sheet-h"><h2>Aplicar aumento</h2><span class="muted">' + sel.length + ' abonos seleccionados</span></div><div class="sheet-b"><div class="toolbar">' +
+    h += '<section class="sheet"><div class="sheet-h"><h2>Aplicar aumento</h2><span class="muted">' + sel.length + ' abonos elegidos</span></div><div class="sheet-b" style="display:grid;gap:12px"><div class="toolbar" style="align-items:flex-end">' +
       '<div class="field"><label for="pp-pct">Aumento %</label><input class="in" id="pp-pct" data-app="pct" inputmode="decimal" value="' + esc(pp.pct) + '" placeholder="4" style="width:90px"></div>' +
       '<div class="field"><label for="pp-desde">Desde qué mes</label><input class="in" id="pp-desde" type="month" data-app="desde" value="' + esc(pp.desde) + '"></div>' +
-      '<div class="field" style="flex:1;min-width:200px"><label for="pp-mot">Motivo</label><input class="in" id="pp-mot" data-app="motivo" value="' + esc(pp.motivo) + '" placeholder="Aumento bimestral"></div>' +
-      '<div class="field"><span class="lbl">&nbsp;</span><span class="toolbar"><button class="btn sm" data-act="aPpAll">Tildar todos</button><button class="btn primary" data-act="aPpApply"' + (sel.length && pct ? '' : ' disabled') + '>Aplicar a ' + sel.length + '</button></span></div></div></div></section>';
+      '<div class="field" style="flex:1;min-width:240px"><label for="pp-mot">Motivo (sale en el mail al cliente)</label><input class="in" id="pp-mot" data-app="motivo" list="dl-motivos" value="' + esc(pp.motivo) + '" placeholder="Ej.: la inflación de los últimos meses">' +
+      '<datalist id="dl-motivos"><option value="la inflación de los últimos meses"><option value="el aumento de nuestros costos (herramientas, licencias y equipo)"><option value="la suma de servicios al abono"><option value="la actualización anual de tarifas"></datalist></div></div>' +
+      '<div class="toolbar pp-sel"><span class="muted">Elegir:</span><button class="btn sm" data-act="aPpAll">Todos</button><button class="btn sm" data-act="aPpSin">Los que llevan</button><select class="in sm" data-app="minMeses" aria-label="Meses sin aumento">' + ['2', '3', '4', '6', '12'].map(n => opt(n, n + ' meses o más', pp.minMeses)).join('') + '</select><span class="muted">sin aumento</span><button class="btn sm ghost" data-act="aPpNone">Ninguno</button>' +
+      '<span style="flex:1"></span><button class="btn primary" data-act="aPpApply"' + (sel.length && sel.every(a => pctDe(a._id)) ? '' : ' disabled') + '>Aplicar a ' + sel.length + '</button></div>' +
+      '<p class="muted" style="margin:0;font-size:13px">Podés cambiar el % de un cliente en particular en su fila. Los que entraron hace poco o aumentaron hace poco aparecen marcados.</p></div></section>';
     const rows = ab.map(a => {
       const cur = precioEn(a._id, m), next = precioEn(a._id, '9999-12'), hist = historial(a._id);
-      const futuro = next && next.desde > m ? next : null;
-      const nuevo = pct && cur && pp.sel.has(a._id) ? r2(cur.monto * (1 + pct / 100)) : null;
+      const futuro = next && next.desde > m ? next : null, on = pp.sel.has(a._id), pr = pctDe(a._id);
+      const nuevo = pr && cur && on ? r2(cur.monto * (1 + pr / 100)) : null;
+      const desdeAlta = mesesEntre(a.desde, m), ult = cur ? mesesEntre(cur.desde, m) : null, sa = sinAum(a);
+      const reciente = (desdeAlta != null && desdeAlta < 3) || (cur && ult != null && ult < 2 && hist.length > 1);
       const aviso = futuro ? (futuro.aviso_enviado ? '<span class="muted">Avisado ' + fmt(futuro.aviso_enviado) + '</span>' : '<button class="btn sm" data-act="aAviso" data-id="' + esc(futuro.id) + '">Avisar por email</button>') : '';
-      return '<tr><td><input type="checkbox" aria-label="Seleccionar" data-ppsel="' + esc(a._id) + '"' + (pp.sel.has(a._id) ? ' checked' : '') + (cur ? '' : ' disabled') + '></td><td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button><span class="sub">' + esc(a.tipo + (a.plan ? ' · ' + a.plan : '')) + '</span></td>' +
-        '<td class="r">' + (cur ? '<span class="money">' + money(cur.monto, cur.moneda) + '</span><span class="sub">desde ' + fmt(cur.desde) + '</span>' : '<span class="days late">Sin precio</span>') + '</td>' +
-        '<td class="r">' + (futuro ? '<span class="money">' + money(futuro.monto, futuro.moneda) + '</span><span class="sub">desde ' + fmt(futuro.desde) + (futuro.motivo ? ' · ' + esc(futuro.motivo) : '') + '</span>' : nuevo ? '<span class="money" style="opacity:.7">' + money(nuevo, cur.moneda) + '</span><span class="sub">vista previa</span>' : '<span class="muted">—</span>') + '</td>' +
+      return '<tr class="' + (on ? 'pp-on' : '') + '"><td><input type="checkbox" aria-label="Elegir ' + esc(a.cliente) + '" data-ppsel="' + esc(a._id) + '"' + (on ? ' checked' : '') + (cur ? '' : ' disabled') + '></td><td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button><span class="sub">' + esc(a.tipo + (a.plan ? ' · ' + a.plan : '')) + '</span></td>' +
+        '<td>' + (a.desde ? '<span class="mono">' + esc(fmt(a.desde)) + '</span>' + (desdeAlta != null && desdeAlta < 3 ? '<span class="sub"><span class="pzst" style="--c:var(--s-revision)">entró hace ' + (desdeAlta <= 0 ? 'menos de un mes' : desdeAlta + (desdeAlta === 1 ? ' mes' : ' meses')) + '</span></span>' : '') : '<span class="muted">—</span>') + '</td>' +
+        '<td class="r">' + (cur ? '<span class="money">' + money(cur.monto, cur.moneda) + '</span><span class="sub">' + (hist.length > 1 ? 'último aumento ' + fmt(cur.desde) : 'desde ' + fmt(cur.desde)) + (sa != null ? ' · ' + (sa <= 0 ? 'este mes' : 'hace ' + sa + (sa === 1 ? ' mes' : ' meses')) : '') + '</span>' : '<span class="days late">Sin precio</span>') + '</td>' +
+        '<td class="r">' + (on && cur ? '<input class="in sm pp-pct" inputmode="decimal" data-pppct="' + esc(a._id) + '" value="' + esc(pp.pctPor[a._id] != null ? pp.pctPor[a._id] : '') + '" placeholder="' + esc(pp.pct || '%') + '" aria-label="% para ' + esc(a.cliente) + '"> %' : '') + '</td>' +
+        '<td class="r">' + (futuro ? '<span class="money">' + money(futuro.monto, futuro.moneda) + '</span><span class="sub">desde ' + fmt(futuro.desde) + (futuro.motivo ? ' · ' + esc(futuro.motivo) : '') + '</span>' : nuevo ? '<span class="money" style="opacity:.75">' + money(nuevo, cur.moneda) + '</span><span class="sub">vista previa · +' + esc(String(pr).replace('.', ',')) + '%</span>' : '<span class="muted">—</span>') + (reciente && on ? '<span class="sub t-crit">ojo: es reciente</span>' : '') + '</td>' +
         '<td>' + (a.tipo === 'Ads' ? (() => { const af = AD.ABF.get(a._id); return '<button class="btn ghost sm" data-act="aAds" data-abono="' + esc(a._id) + '">' + (af && af.inversion ? esc((af.inversion_paga === 'àndale' ? 'Adelanta àndale · ' : 'Paga el cliente · ') + money(af.inversion, af.inversion_moneda)) : 'Cargar pauta') + '</button>'; })() : '<span class="muted">—</span>') + '</td>' +
-        '<td>' + aviso + '</td><td class="muted">' + hist.length + ' precios</td><td class="r"><button class="btn ghost sm" data-act="aPrecio" data-abono="' + esc(a._id) + '">' + (cur ? 'Cambiar precio' : 'Cargar precio') + '</button></td></tr>';
+        '<td>' + aviso + '</td><td class="r"><button class="btn ghost sm" data-act="aPrecio" data-abono="' + esc(a._id) + '">' + (cur ? 'Cambiar precio' : 'Cargar precio') + '</button><span class="sub">' + hist.length + ' precios</span></td></tr>';
     }).join('');
-    return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th></th><th>Abono</th><th class="r">Precio vigente</th><th class="r">Próximo</th><th>Pauta</th><th>Aviso</th><th>Historial</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+    return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th></th><th>Abono</th><th>Cliente desde</th><th class="r">Precio vigente</th><th class="r">% propio</th><th class="r">Próximo</th><th>Pauta</th><th>Aviso</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
   }
 
   /* ---------- Sección en la ficha del cliente ---------- */
@@ -1137,7 +1167,7 @@ export function initAdmin(ctx) {
     const prev = AD.PR.filter(x => x.abono_id === a._id && x.desde < p.desde).sort((x, y) => y.desde.localeCompare(x.desde))[0];
     const pct = prev && prev.monto ? Math.round((p.monto / prev.monto - 1) * 1000) / 10 : null;
     const nombre = contactoDe(a.cliente);
-    return 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás? Te escribimos de àndale para contarte que a partir de ' + monthLabel(p.desde) + ' el abono de ' + (a.tipo === 'Redes' ? 'redes sociales' + (a.plan ? ' (plan ' + a.plan + ')' : '') : a.tipo) + ' pasa a ' + money(p.monto, p.moneda) + ' por mes' + (pct ? ', un ajuste del ' + String(pct).replace('.', ',') + '%' : '') + '. Cualquier consulta, estamos para conversarlo. ¡Gracias por seguir trabajando con nosotros!';
+    return 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás? Te escribimos de àndale para contarte que a partir de ' + monthLabel(p.desde) + ' el abono de ' + (a.tipo === 'Redes' ? 'redes sociales' + (a.plan ? ' (plan ' + a.plan + ')' : '') : a.tipo) + ' pasa a ' + money(p.monto, p.moneda) + ' por mes' + (pct ? ', un ajuste del ' + String(pct).replace('.', ',') + '%' : '') + '.' + (motivoReal(p.motivo) ? ' El motivo: ' + motivoReal(p.motivo) + '.' : '') + ' Cualquier consulta, estamos para conversarlo. ¡Gracias por seguir trabajando con nosotros!';
   }
 
   /* ---------- Vista: Plata hoy (las tres preguntas) ---------- */
@@ -1199,7 +1229,7 @@ export function initAdmin(ctx) {
       '<div class="seg" role="group" aria-label="Meses">' + [3, 6].map(k => '<button data-act="plN" data-v="' + k + '" aria-pressed="' + (k === P.n) + '">' + k + ' meses</button>').join('') + '</div></div></div>';
     // Hoy
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.banco + '</span><h2>Hoy</h2></div><div class="sx-ns n3">' +
-      n(M(fl.hay), 'Hay en las cuentas', 'todas las cuentas en ' + (mon === 'ARS' ? 'pesos' : mon), fl.hay < 0 ? 'neg' : '') +
+      n(M(fl.hay), 'Hay en las cuentas', 'en ' + (mon === 'ARS' ? 'pesos' : mon) + ' · <button class="btn link" data-act="go" data-view="ajustes" data-tab="bancos">ver cuentas</button>', fl.hay < 0 ? 'neg' : '') +
       n(M(debeTot), 'Nos deben', vencTot > 0.009 ? '<span class="t-crit">' + esc(M(vencTot)) + ' vencido</span> · <button class="btn link" data-act="go" data-view="cuentas">ver quién</button>' : 'nada vencido') +
       n(M(x0.sal.sueldos), 'Falta pagar este mes', 'sueldos, honorarios y extras · <button class="btn link" data-act="go" data-view="pagos">ver</button>') + '</div></section>';
     // Lo que viene
@@ -1415,6 +1445,11 @@ export function initAdmin(ctx) {
     plMon: t => { AD.pl = AD.pl || { n: 3 }; AD.pl.mon = t.dataset.v; AD.pl.det = null; ctx.render(); },
     plN: t => { AD.pl = AD.pl || { mon: 'ARS' }; AD.pl.n = +t.dataset.v; AD.pl.det = null; ctx.render(); },
     plDet: t => { AD.pl = AD.pl || { mon: 'ARS', n: 3 }; const k = +t.dataset.k; AD.pl.det = AD.pl.det === k ? null : k; ctx.render(); },
+    bkCaja: t => formCaja(t.dataset.id || null),
+    bkPago: t => formPago(t.dataset.i != null ? +t.dataset.i : null),
+    bkFila: () => { const box = $('#bk-rows'); if (box) { box.insertAdjacentHTML('beforeend', filaPago('', '')); box.lastElementChild.querySelector('input').focus(); } },
+    bkQuitar: t => { const r = t.closest('.bk-row'); if (r && r.parentElement.children.length > 1) r.remove(); else if (r) r.querySelectorAll('input').forEach(i => { i.value = ''; }); },
+    bkSubir: async t => { const i = +t.dataset.i, cfg = cfgMarca(), cs = [...(cfg.cuentas || [])]; if (i < 1 || !cs[i]) return; [cs[i - 1], cs[i]] = [cs[i], cs[i - 1]]; try { await data.upsert('ajustes', { clave: 'resumen_pdf', valor: { ...cfg, cuentas: cs } }, 'clave'); toast(i === 1 ? 'Ahora es la principal' : 'Orden guardado'); await ctx.reload(); } catch (err) { toast(err.message); } },
     aRecCliente: t => { const ec = estadoCuenta(t.dataset.cliente), f = ec.vencidas[0]; if (!f) { toast('No tiene facturas vencidas'); return; } mail.recordatorio(cuenta(t.dataset.cliente, f.periodo ? String(f.periodo).slice(0, 7) : thisMonth())); },
     aCuDebe: () => { AD.cf = AD.cf || {}; AD.cf.debe = !AD.cf.debe; ctx.render(); },
     aCuentaOtro: () => { const v = $('#a-otro').value; if (v) openCuenta(v, AD.mes); },
@@ -1458,6 +1493,7 @@ export function initAdmin(ctx) {
     aMailFactura: t => { const f = AD.F.find(x => x.id === t.dataset.id); if (f) mail.factura(f); },
     aMailLibre: t => mail.libre(t.dataset.cliente || (AD.rd && AD.rd.cliente)),
     aAvisos: () => mail.avisos(),
+    aAdjQuitar: t => { AD.adj.splice(+t.dataset.i, 1); const box = $('#mail-adj'); if (box) box.innerHTML = adjHtml(AD.adj, AD.form && AD.form.composer); },
     aAdjVer: async t => { const a = AD.adj[+t.dataset.i]; if (!a) return; const w = window.open('', '_blank'); const { abrirPdf } = await pdfLib(); abrirPdf(a.bytes, a.nombre.replace(/\.pdf$/, ''), w); },
     aMailCopy: () => { const o = AD.form && AD.form.composer; if (o) ctx.copyText(o.build(composerValues()).texto); },
     aGest: () => formGestion(),
@@ -1482,10 +1518,14 @@ export function initAdmin(ctx) {
     aFf: t => { AD.ff[t.dataset.k] = t.dataset.v; ctx.render(); },
     aPpAll: () => { S.A.filter(a => a.estado === 'Activo' && precioEn(a._id, thisMonth())).forEach(a => AD.pp.sel.add(a._id)); ctx.render(); },
     aPpApply: async () => {
-      const pct = parseMonto(AD.pp.pct), desde = AD.pp.desde; if (!pct || !/^\d{4}-\d{2}$/.test(desde)) { toast('Completá el porcentaje y el mes'); return; }
-      const rows = [...AD.pp.sel].map(id => { const cur = precioEn(id, thisMonth()); return cur ? { abono_id: id, desde: desde + '-01', monto: r2(cur.monto * (1 + pct / 100)), moneda: cur.moneda, motivo: AD.pp.motivo || ('Aumento ' + String(pct).replace('.', ',') + '%') } : null; }).filter(Boolean);
-      try { for (const r of rows) await data.upsert('precios_abono', r, 'abono_id,desde'); toast('Aumento cargado en ' + rows.length + ' abonos'); AD.pp.sel.clear(); AD.pp.pct = ''; await ctx.reload(); } catch (err) { toast(err.message); }
+      const desde = AD.pp.desde; if (!/^\d{4}-\d{2}$/.test(desde)) { toast('Elegí desde qué mes'); return; }
+      const motivo = String(AD.pp.motivo || '').trim(); if (!motivo) { toast('Contá el motivo del aumento: se incluye en el mail al cliente'); const i = $('#pp-mot'); if (i) i.focus(); return; }
+      const rows = [...AD.pp.sel].map(id => { const cur = precioEn(id, thisMonth()), pct = pctDe(id); return cur && pct ? { abono_id: id, desde: desde + '-01', monto: r2(cur.monto * (1 + pct / 100)), moneda: cur.moneda, motivo } : null; }).filter(Boolean);
+      if (!rows.length) { toast('Poné el % del aumento'); return; }
+      try { for (const r of rows) await data.upsert('precios_abono', r, 'abono_id,desde'); toast('Aumento cargado en ' + rows.length + ' abonos'); AD.pp.sel.clear(); AD.pp.pct = ''; AD.pp.pctPor = {}; await ctx.reload(); } catch (err) { toast(err.message); }
     },
+    aPpNone: () => { AD.pp.sel.clear(); ctx.render(); },
+    aPpSin: () => { const m = thisMonth(), n = +AD.pp.minMeses || 3; AD.pp.sel.clear(); S.A.filter(a => a.estado === 'Activo').forEach(a => { const cur = precioEn(a._id, m); if (!cur) return; const sa = mesesEntre(cur.desde, AD.pp.desde || m); if (sa != null && sa >= n) AD.pp.sel.add(a._id); }); toast(AD.pp.sel.size + ' abonos llevan ' + n + ' meses o más sin aumento'); ctx.render(); },
     aAviso: t => { const p = AD.PR.find(x => x.id === t.dataset.id); if (p) mail.aviso(p); },
     aAvisoManual: t => {
       const p = AD.PR.find(x => x.id === t.dataset.id); const a = p && S.A.find(x => x._id === p.abono_id); if (!a) return;
@@ -1508,6 +1548,7 @@ export function initAdmin(ctx) {
     if (t.dataset.ri !== undefined && t.type !== 'checkbox' && AD.rd) { AD.rd.items[+t.dataset.ri][t.dataset.rik] = t.value; ctx.render(); return; }
     if (t.dataset.rdk && t.tagName !== 'SELECT' && AD.rd) { AD.rd[t.dataset.rdk] = t.value; return; }
     if (t.dataset.app) { AD.pp[t.dataset.app] = t.value; ctx.render(); return; }
+    if (t.dataset.pppct) { AD.pp.pctPor = AD.pp.pctPor || {}; AD.pp.pctPor[t.dataset.pppct] = t.value; ctx.render(); return; }
     if (t.dataset.acj && t.tagName !== 'SELECT') { AD.cj[t.dataset.acj] = t.value; ctx.render(); }
   });
   document.addEventListener('change', e => {
@@ -1520,6 +1561,7 @@ export function initAdmin(ctx) {
     if (t.dataset.rdk && t.tagName === 'SELECT' && AD.rd) { AD.rd[t.dataset.rdk] = t.value; ctx.render(); return; }
     if (t.dataset.aff) { AD.ff[t.dataset.aff] = t.value; ctx.render(); return; }
     if (t.dataset.acj && t.tagName === 'SELECT') { AD.cj[t.dataset.acj] = t.value; ctx.render(); return; }
+    if (t.dataset.app && t.tagName === 'SELECT') { AD.pp[t.dataset.app] = t.value; ctx.render(); return; }
     if (t.dataset.ppsel) { if (t.checked) AD.pp.sel.add(t.dataset.ppsel); else AD.pp.sel.delete(t.dataset.ppsel); ctx.render(); }
   });
   document.addEventListener('submit', e => { if (e.target.id === 'aform') { e.preventDefault(); submitPanel(); } });
@@ -1539,6 +1581,76 @@ export function initAdmin(ctx) {
       como_se_cargo_antes: [...pat.values()].sort((a, b) => b.veces - a.veces).slice(0, 50), categorias: cats, cuentas: AD.CJ.filter(c => c.activa !== false).map(c => ({ id: c.id, nombre: c.nombre, moneda: c.moneda })) };
   }
 
+  /* ---------- Bancos y datos de pago ---------- */
+  // Dos cosas distintas: dónde está la plata (cuentas de banco y efectivo, con su saldo) y los datos que ven los clientes para pagar.
+  const CAMPOS_PAGO = ['Alias', 'CBU', 'CVU', 'Nombre del banco', 'Nombre del beneficiario', 'CUIT', 'Tipo de cuenta', 'Número de cuenta', 'Dirección del banco', 'Enrutamiento de ABA', 'IBAN', 'BIC / SWIFT'];
+  const saldoCaja = c => AD.MV.filter(v => v.caja_id === c.id).reduce((a, v) => a + v.ingreso - v.egreso, 0);
+  const movsCaja = c => AD.MV.filter(v => v.caja_id === c.id).length;
+  function vBancos() {
+    const cfg = cfgMarca(), cs = cfg.cuentas || [];
+    const cajas = AD.CJ.slice().sort((a, b) => (b.activa !== false) - (a.activa !== false) || (a.orden || 0) - (b.orden || 0));
+    let h = '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.banco + '</span><h2>Dónde está la plata</h2><div class="sx-der"><button class="btn sm primary" data-act="bkCaja">+ Cuenta</button></div></div>' +
+      '<div class="sx-panel"><p class="sx-lead" style="margin:0 0 10px">Las cuentas de banco y el efectivo donde entran y salen los pagos. El saldo sale de Gastos e ingresos.</p>' +
+      (cajas.length ? '<div class="bk-l">' + cajas.map(c => '<button class="bk-c' + (c.activa === false ? ' off' : '') + '" data-act="bkCaja" data-id="' + esc(c.id) + '"><span class="bk-n"><b>' + esc(c.nombre) + '</b><span>' + esc(c.moneda) + (c.activa === false ? ' · desactivada' : '') + ' · ' + movsCaja(c) + ' movimientos</span></span><b class="money' + (saldoCaja(c) < 0 ? ' t-crit' : '') + '">' + esc(money(saldoCaja(c), c.moneda)) + '</b><span class="muted">Editar</span></button>').join('') + '</div>' : emptyBox('Todavía no hay cuentas cargadas', 'Sumá la cuenta del banco y el efectivo, con la plata que tenían el día que empezaron a usar la app.')) + '</div></section>';
+    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.mail + '</span><h2>Datos para que te paguen</h2><div class="sx-der"><button class="btn sm primary" data-act="bkPago">+ Datos de pago</button></div></div>' +
+      '<div class="sx-panel"><p class="sx-lead" style="margin:0 0 10px">Es lo que sale en “Cómo pagar” en los mails de resúmenes, facturas y recordatorios, y en los PDF. La primera es la principal (la que se ve destacada).</p>' +
+      (cs.length ? '<div class="bk-l">' + cs.map((c, i) => '<div class="bk-c bk-p"><span class="bk-n"><b>' + esc(c.titulo || 'Sin título') + (i === 0 ? ' <span class="pzst" style="--c:var(--s-entregado)">principal</span>' : '') + '</b><span>' + esc((c.sub ? c.sub + ' · ' : '') + (c.campos || []).filter(x => x[1]).map(x => x[0] + ' ' + x[1]).join(' · ')) + '</span></span>' +
+        '<span class="toolbar">' + (i > 0 ? '<button class="btn ghost sm" data-act="bkSubir" data-i="' + i + '" title="Subir">↑</button>' : '') + '<button class="btn sm" data-act="bkPago" data-i="' + i + '">Editar</button></span></div>').join('') + '</div>' : emptyBox('No hay datos de pago', 'Sin esto, los mails no muestran cómo pagar.')) + '</div></section>';
+    return h;
+  }
+  function formCaja(id) {
+    const c = id ? AD.CJ.find(x => x.id === id) : null;
+    const ini = c ? AD.MV.find(v => v.caja_id === c.id && v.cuenta === 'Saldo Inicial') : null;
+    const n = c ? movsCaja(c) : 0;
+    openPanel({ title: c ? c.nombre : 'Nueva cuenta', eyebrow: 'Dónde está la plata',
+      intro: c ? 'Saldo hoy: <b>' + esc(money(saldoCaja(c), c.moneda)) + '</b> · ' + n + ' movimientos.' : 'Una cuenta de banco, una billetera virtual o el efectivo.',
+      values: { nombre: c ? c.nombre : '', moneda: c ? c.moneda : 'ARS', ini: ini ? String(ini.ingreso - ini.egreso) : '', fini: ini ? ini.fecha : (c && c.saldo_inicial_fecha) || today(), activa: c ? c.activa !== false : true },
+      fields: [
+        { k: 'nombre', label: 'Nombre', req: 1, full: 1, ph: 'Ej.: Galicia pesos, Mercado Pago, Efectivo' },
+        { k: 'moneda', label: 'Moneda', type: 'select', opts: ['ARS', 'USD', 'EUR', 'GBP'] },
+        { k: 'activa', label: 'En uso (aparece al cargar gastos e ingresos)', type: 'check' },
+        { k: 'ini', label: 'Plata que tenía al empezar', hint: 'El saldo el día que empezaron a cargar movimientos. Vacío si no corresponde.', ph: 'Ej.: 1250000' },
+        { k: 'fini', label: 'A qué fecha', type: 'date' },
+      ],
+      onDelete: c ? async () => { if (n - (ini ? 1 : 0) > 0) throw new Error('Tiene movimientos: desactivala en vez de borrarla, así no se pierde el historial.'); if (ini) await data.del('movimientos', ini.id); await data.del('cajas', c.id); toast('Cuenta borrada'); } : null,
+      deleteLabel: 'Borrar cuenta',
+      onSave: async v => {
+        const row = { nombre: v.nombre.trim(), moneda: v.moneda, activa: !!v.activa, saldo_inicial_fecha: v.fini || null };
+        if (AD.CJ.some(x => x.nombre.toLowerCase() === row.nombre.toLowerCase() && (!c || x.id !== c.id))) throw new Error('Ya hay una cuenta con ese nombre');
+        let cid = c && c.id;
+        if (c) await data.upd('cajas', c.id, row); else { const r = await data.ins('cajas', { ...row, orden: AD.CJ.length }); cid = r.id; }
+        const monto = parseMonto(v.ini);
+        if (monto != null && !isNaN(monto)) {
+          const mv = { fecha: v.fini || today(), cuenta: 'Saldo Inicial', subcuenta: '', detalle: 'Saldo inicial', ingreso: monto > 0 ? monto : 0, egreso: monto < 0 ? -monto : 0, moneda: row.moneda, caja_id: cid };
+          if (ini) await data.upd('movimientos', ini.id, mv); else await data.ins('movimientos', mv);
+        } else if (ini) await data.del('movimientos', ini.id);
+        toast(c ? 'Cuenta guardada' : 'Cuenta creada');
+      },
+    });
+  }
+  function formPago(i) {
+    const cfg = cfgMarca(), cs = (cfg.cuentas || []).map(c => ({ ...c, campos: (c.campos || []).map(x => [...x]) }));
+    const c = i != null && cs[i] ? cs[i] : { titulo: '', sub: '', campos: [['Alias', ''], ['CBU', ''], ['Nombre del banco', ''], ['Nombre del beneficiario', '']] };
+    const filas = c.campos.length ? c.campos : [['', '']];
+    openPanel({ title: i != null ? (c.titulo || 'Datos de pago') : 'Nuevos datos de pago', eyebrow: 'Datos para que te paguen',
+      intro: 'Así aparecen en los mails: un título (por ejemplo “Argentina” o “EEUU”), una aclaración opcional y los datos uno por renglón.',
+      values: { titulo: c.titulo || '', sub: c.sub || '' },
+      fields: [{ k: 'titulo', label: 'Título', req: 1, ph: 'Ej.: Argentina' }, { k: 'sub', label: 'Aclaración', ph: 'Ej.: solo cuentas Empresa' }],
+      extra: '<div class="field full"><span class="lbl">Datos</span><div id="bk-rows" class="bk-rows">' + filas.map(([kk, vv]) => filaPago(kk, vv)).join('') + '</div><button type="button" class="btn sm ghost" data-act="bkFila">+ Otro dato</button>' +
+        '<datalist id="dl-pago">' + CAMPOS_PAGO.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></div>',
+      onDelete: i != null && cs[i] ? async () => { cs.splice(i, 1); await data.upsert('ajustes', { clave: 'resumen_pdf', valor: { ...cfg, cuentas: cs } }, 'clave'); toast('Datos de pago borrados'); } : null,
+      deleteLabel: 'Borrar estos datos',
+      onSave: async v => {
+        const campos = [...document.querySelectorAll('#bk-rows .bk-row')].map(r => [r.querySelector('[data-bk="k"]').value.trim(), r.querySelector('[data-bk="v"]').value.trim()]).filter(([kk, vv]) => kk && vv);
+        if (!campos.length) throw new Error('Cargá al menos un dato (por ejemplo el alias o el CBU)');
+        const nuevo = { titulo: v.titulo.trim(), sub: v.sub.trim(), campos };
+        if (i != null && cs[i]) cs[i] = { ...cs[i], ...nuevo }; else cs.push(nuevo);
+        await data.upsert('ajustes', { clave: 'resumen_pdf', valor: { ...cfg, cuentas: cs } }, 'clave'); toast('Datos de pago guardados');
+      },
+    });
+  }
+  const filaPago = (kk, vv) => '<div class="bk-row"><input class="in" data-bk="k" list="dl-pago" value="' + esc(kk || '') + '" placeholder="Dato (ej.: Alias)" aria-label="Dato"><input class="in" data-bk="v" value="' + esc(vv || '') + '" placeholder="Valor" aria-label="Valor"><button type="button" class="btn ghost sm" data-act="bkQuitar" aria-label="Quitar este dato">✕</button></div>';
+
   /* ---------- pantallas con pestañas ---------- */
   function vCobros() {
     const venc = AD.F.filter(f => estadoFactura(f) === 'Vencida').length, drv = AS.driveCount();
@@ -1553,9 +1665,9 @@ export function initAdmin(ctx) {
     return tabs + ((S.tab.gastos || 'movs') === 'banco' ? AS.bancoView() : vCaja());
   }
   function vAjustes() {
-    const tabs = ctx.subnav('ajustes', [['conexiones', 'Conexiones y facturación'], ['auto', 'Automatizaciones'], ['carga', 'Carga inicial'], ['datos', 'Copia y datos']]);
+    const tabs = ctx.subnav('ajustes', [['conexiones', 'Conexiones y facturación'], ['bancos', 'Bancos y datos de pago'], ['auto', 'Automatizaciones'], ['carga', 'Carga inicial'], ['datos', 'Copia y datos']]);
     const t = S.tab.ajustes || 'conexiones';
-    return tabs + (t === 'auto' && ctx.autoVista ? ctx.autoVista() : t === 'carga' ? MT.html('carga') : t === 'datos' ? MT.html('datos') : AS.ajustes());
+    return tabs + (t === 'bancos' ? vBancos() : t === 'auto' && ctx.autoVista ? ctx.autoVista() : t === 'carga' ? MT.html('carga') : t === 'datos' ? MT.html('datos') : AS.ajustes());
   }
   function vNumeros() {
     const tabs = ctx.subnav('numeros', [['stats', 'Estadísticas'], ['rent', 'Qué deja cada cliente']]);

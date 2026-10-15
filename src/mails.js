@@ -1,6 +1,7 @@
 // Mails libres a clientes (fuera de cobranza y documentos): novedades, pedir material, coordinar, avisos.
 // Los puede mandar todo el equipo. Salen con el nombre de quien escribe y las respuestas le llegan a esa persona.
 // Mr. Piggy ayuda a redactar, mejorar, acortar o pasar al inglés.
+import { firmaDe } from './firma.js';
 import * as E from './emails.js';
 
 // Datos de marca para el pie cuando no hay acceso a Ajustes (equipo): sin datos bancarios.
@@ -44,7 +45,7 @@ export function initMails(ctx) {
   }
   const nombreDe = n => (n ? destino(n).nombre : '');
   const mailDe = n => destino(n).para.join(', ');
-  const firma = () => 'Saludos,\n' + (((S.me && (S.me.nombre || S.me.alias)) || '').split(' ')[0] || 'Equipo') + '\nàndale';
+  const firma = () => firmaDe(S);
   const marca = () => (ctx.marca && ctx.marca()) || MARCA_DEF;
   const personal = (t, n) => String(t || '').replace(/\{nombre\}/g, nombreDe(n) || '').replace(/Hola ,/g, 'Hola,');
   const val = id => (($('#ml-' + id) || {}).value || '').trim();

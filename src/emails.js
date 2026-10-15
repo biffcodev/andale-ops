@@ -3,6 +3,7 @@
 // El detalle completo (todas las cuentas, formato imprimible) va en el PDF; el mail resume.
 // HTML "email-safe": tablas, estilos en línea, imágenes PNG alojadas en el sitio, Helvetica/Arial de respaldo (Gmail no carga fuentes).
 
+import { firmaTexto } from './firma.js';
 export const APP_URL = 'https://andale-ops.vercel.app';
 const ACC = '#FC4855', INK = '#111111', SOFT = '#3d3d3d', MUTED = '#767676', LINE = '#e7e7e7';
 const TITLE = "'Delight','Inter',Helvetica,Arial,sans-serif";
@@ -53,7 +54,20 @@ export const B = {
   },
   boton: (texto, url) => !url ? '' : td('<a href="' + esc(url) + '" style="display:inline-block;background:' + INK + ';color:#ffffff;text-decoration:none;font-family:' + TITLE + ';font-size:15px;font-weight:700;padding:13px 24px;border-radius:999px">' + esc(texto) + '&nbsp;&nbsp;→</a>'),
   nota: t => !t ? '' : td(esc(t), txt(13, MUTED)),
-  firma: t => !t ? '' : td(esc(t).replace(/\n/g, '<br>'), txt(15, INK)),
+  firma: t => {
+    if (!t) return '';
+    if (typeof t !== 'object') return td(esc(t).replace(/\n/g, '<br>'), txt(15, INK));
+    // Firma armada: saludo y, al lado de la foto, nombre, cargo y contacto.
+    const tel = t.tel ? '<a href="tel:' + esc(String(t.tel).replace(/[^\d+]/g, '')) + '" style="color:' + SOFT + ';text-decoration:none">' + esc(t.tel) + '</a>' : '';
+    const mail = t.email ? '<a href="mailto:' + esc(t.email) + '" style="color:' + SOFT + ';text-decoration:none">' + esc(t.email) + '</a>' : '';
+    const foto = t.foto ? '<td width="64" valign="top" style="width:64px;padding:0 14px 0 0"><img src="' + esc(t.foto) + '" width="56" height="56" alt="' + esc(t.nombre) + '" style="display:block;width:56px;height:56px;border-radius:50%;object-fit:cover;border:0"></td>' : '';
+    return (t.saludo ? td(esc(t.saludo), txt(15, INK, 'padding:0 0 12px')) : '') +
+      td('<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>' + foto + '<td valign="middle" style="' + txt(14, SOFT) + '">' +
+        '<div style="' + txt(15.5, INK, 'font-weight:700') + '">' + esc(t.nombre) + '</div>' +
+        ((t.cargo || t.marca) ? '<div style="' + txt(13.5, MUTED) + '">' + esc([t.cargo, t.marca].filter(Boolean).join(' · ')) + '</div>' : '') +
+        ((tel || mail) ? '<div style="' + txt(13.5, SOFT, 'padding-top:2px') + '">' + [tel, mail].filter(Boolean).join('&nbsp;&nbsp;·&nbsp;&nbsp;') + '</div>' : '') +
+        '</td></tr></table>');
+  },
 };
 
 /** Estructura común: fondo blanco, columna de 560px alineada a la izquierda. `filas` = HTML de <tr>. */
@@ -112,7 +126,7 @@ export function layout({ cfg = {}, asunto = '', preheader = '', filas = '' }) {
 }
 
 function textoPlano(partes, cfg) {
-  return partes.filter(Boolean).join('\n\n') + '\n\n—\nàndale · ' + (cfg.contacto || []).map(c => c[0]).join(' · ');
+  return partes.map(p => p && typeof p === 'object' ? firmaTexto(p) : p).filter(Boolean).join('\n\n') + '\n\n—\nàndale · ' + (cfg.contacto || []).map(c => c[0]).join(' · ');
 }
 const pagoTexto = cfg => (cfg.cuentas || []).map(c => c.titulo + (c.sub ? ' (' + c.sub + ')' : '') + '\n' + (c.campos || []).map(([k, v]) => k + ': ' + v).join('\n')).join('\n\n');
 const venceTexto = cfg => cfg.vence_email || 'Se abona del 1 al 5 del mes en curso.';
@@ -121,8 +135,8 @@ const venceTexto = cfg => cfg.vence_email || 'Se abona del 1 al 5 del mes en cur
 export const textos = {
   resumen: ({ nombre, periodo }) => 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás?\n\nTe mandamos el resumen de cuenta de ' + periodo + '. Abajo tenés el detalle y los datos para el pago, y el PDF va adjunto por si lo necesitás para tu administración.\n\nCuando lo abones, respondé este mail con el comprobante así lo registramos. ¡Gracias!',
   recordatorio: ({ nombre, periodo }) => 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás?\n\nTe escribimos porque todavía figura pendiente el pago de ' + periodo + '. Te dejamos el detalle y los datos para abonar.\n\nSi ya lo pagaste, desestimá este mensaje y, si podés, respondenos con el comprobante. ¡Gracias!',
-  aviso: ({ nombre, servicio, desde, pct }) => 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás?\n\nQueríamos contarte con tiempo que a partir de ' + desde + ' actualizamos el valor de ' + servicio + (pct ? ' (un ajuste del ' + pct + '%)' : '') + '.\n\nCualquier duda la charlamos. ¡Gracias por seguir trabajando con nosotros!',
-  factura: ({ nombre, comprobante, periodo }) => 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás?\n\nTe enviamos ' + comprobante + (periodo ? ' de ' + periodo : '') + '. Podés verlo y descargarlo desde el botón.\n\n¡Gracias!',
+  aviso: ({ nombre, servicio, desde, pct, motivo }) => 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás?\n\nQueríamos contarte con tiempo que a partir de ' + desde + ' actualizamos el valor de ' + servicio + (pct ? ' (un ajuste del ' + pct + '%)' : '') + '.' + (motivo ? '\n\nEl motivo: ' + motivo + '.' : '') + '\n\nCualquier duda la charlamos. ¡Gracias por seguir trabajando con nosotros!',
+  factura: ({ nombre, comprobante, periodo, como }) => 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás?\n\nTe enviamos ' + comprobante + (periodo ? ' de ' + periodo : '') + '.' + (como === 'adjunto' ? ' Te la adjuntamos en este mail.' : como === 'boton' ? ' La podés ver y descargar desde el botón.' : '') + '\n\n¡Gracias!',
   libre: ({ nombre }) => 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás?\n\n',
 };
 
@@ -155,9 +169,9 @@ export function avisoEmail(d) {
   const filas = B.etiqueta(['Actualización de abono', d.cuenta]) + sp(18) +
     B.titular(plata(d.nuevo, d.moneda), 'Desde ' + d.desde, 'por mes · ' + d.servicio) + sp(30) +
     B.mensaje(d.mensaje) + sp(12) +
-    B.detalle('', [['Servicio', d.servicio], ...(d.anterior ? [['Valor actual', plata(d.anterior, d.moneda)]] : []), ['Desde', d.desde]], ['Valor nuevo', plata(d.nuevo, d.moneda)]) + sp(32) +
+    B.detalle('', [['Servicio', d.servicio], ...(d.anterior ? [['Valor actual', plata(d.anterior, d.moneda)]] : []), ...(d.pct ? [['Ajuste', d.pct + '%']] : []), ...(d.motivo ? [['Motivo', d.motivo]] : []), ['Desde', d.desde]], ['Valor nuevo', plata(d.nuevo, d.moneda)]) + sp(32) +
     B.firma(d.firma);
-  const texto = textoPlano([d.mensaje, 'Servicio: ' + d.servicio + (d.anterior ? '\nValor actual: ' + plata(d.anterior, d.moneda) : '') + '\nValor nuevo: ' + plata(d.nuevo, d.moneda) + '\nDesde: ' + d.desde, d.firma], d.cfg);
+  const texto = textoPlano([d.mensaje, 'Servicio: ' + d.servicio + (d.anterior ? '\nValor actual: ' + plata(d.anterior, d.moneda) : '') + (d.pct ? '\nAjuste: ' + d.pct + '%' : '') + (d.motivo ? '\nMotivo: ' + d.motivo : '') + '\nValor nuevo: ' + plata(d.nuevo, d.moneda) + '\nDesde: ' + d.desde, d.firma], d.cfg);
   return { asunto, html: layout({ cfg: d.cfg, asunto, preheader: 'Desde ' + d.desde + ': ' + plata(d.nuevo, d.moneda) + ' por mes', filas }), texto };
 }
 
@@ -185,3 +199,6 @@ export function authEmail(cfg, { titulo, mensaje, boton }) {
   return layout({ cfg, asunto: titulo, preheader: mensaje, filas: B.etiqueta(['àndale Operaciones']) + sp(18) + B.titular(titulo) + sp(26) + B.mensaje(mensaje) + sp(6) +
     B.boton(boton, '{{ .ConfirmationURL }}') + sp(26) + B.nota('Si no pediste este acceso, ignorá este mensaje. El link vence en una hora y sirve una sola vez.') });
 }
+
+/** Vista previa de la firma (para Mi perfil). */
+export const firmaPreview = f => '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:10px;padding:16px 18px;width:100%">' + B.firma(f) + '</table>';

@@ -1758,3 +1758,35 @@ details.ec-datos[open]>summary::after{content:"▴"}
 .per{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .per select.in{min-width:170px}
 .per input[type=date]{width:auto}
+/* Menú: sin líneas de separación */
+.snav-sep{display:none}
+.snav-sub{border-left:0;padding-left:0;margin-left:30px}
+.side .snav-g,.side hr{border:0}
+/* Bancos y datos de pago */
+.bk-l{display:grid;gap:8px}
+.bk-c{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 14px;font:inherit;color:var(--fg);cursor:pointer}
+.bk-c.bk-p{cursor:default;grid-template-columns:minmax(0,1fr) auto}
+.bk-c:not(.bk-p):hover{border-color:var(--muted)}
+.bk-c.off{opacity:.6}
+.bk-n{display:grid;gap:3px;min-width:0}
+.bk-n b{font-size:14.5px;display:flex;gap:8px;align-items:center}
+.bk-n>span{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-rows{display:grid;gap:6px;margin-bottom:8px}
+.bk-row{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr) auto;gap:6px}
+.adj-ch{display:inline-flex;align-items:center;gap:2px}
+.adj-ch .btn svg,#mail-adj label svg{width:14px;height:14px}
+#mail-adj label.btn{cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.side-f{border-top:0}
+.mp-fir-g{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:600px){.mp-fir-g{grid-template-columns:1fr}}
+.mp-fir-prev{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.mp-fir-prev img{object-fit:cover}
+input.in.pp-pct{width:64px;display:inline-block;text-align:right;padding-left:6px;padding-right:6px}
+.mp-fir .chk{display:flex;align-items:center;gap:8px;margin-top:4px}
+.mp-fir .chk input{width:auto;flex:none;margin:0}
+.mp-fir .chk span{font-size:14px}
+td:has(> .pp-pct){white-space:nowrap}
+.mp-fir-prev{padding:16px 18px}
+.mp-fir-prev table{width:auto!important;padding:0!important;border:0}
+.mp-fir-prev td,.mp-fir-prev tr{border:0!important;background:none!important;padding-left:0;padding-right:0;vertical-align:middle}
+.mp-fir-prev td[width="64"]{padding-right:14px!important}

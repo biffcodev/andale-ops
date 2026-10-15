@@ -2,6 +2,8 @@
 // Tus datos (nombre, puesto, teléfono, foto), qué avisos querés y por dónde, el resumen diario, el tema y salir.
 // Las preferencias de avisos se respetan en la base (un aviso apagado ni se crea) y en Slack / mail.
 import { ICON } from './iconos.js';
+import { firmaDe } from './firma.js';
+import { firmaPreview } from './emails.js';
 
 export const TIPOS_AVISO = [
   ['tarea', 'Te asignan una tarea', 'tarea'],
@@ -21,7 +23,7 @@ export function initPerfil(ctx) {
   const yo = () => S.E.find(e => e._id === (S.me && S.me.id)) || {};
 
   function abrir() {
-    const e = yo(), pr = e.prefs || {}, av = pr.avisos || {}, sl = pr.slack || {}, tema = temaGuardado();
+    const e = yo(), pr = e.prefs || {}, av = pr.avisos || {}, sl = pr.slack || {}, tema = temaGuardado(), fi = pr.firma || {};
     S.form = null;
     const fila = ([k, l, ic]) => '<div class="mp-av"><span class="mp-avi">' + (ICON[ic] || '') + '</span><span class="mp-avl">' + esc(l) + '</span>' +
       '<label class="sw" title="Avisarme en la app"><input type="checkbox" data-pfa="' + k + '"' + (av[k] === false ? '' : ' checked') + '><span></span></label>' +
@@ -36,16 +38,29 @@ export function initPerfil(ctx) {
       '<label class="chk full mp-hor"><input type="checkbox" id="pf-horario"' + (pr.horario ? ' checked' : '') + '> <span>Slack solo en horario de trabajo <span class="muted">· de lunes a viernes de 9 a 19; lo de afuera te llega a la mañana</span></span></label>' +
       '<div class="field"><label for="pf-diario">Resumen del día</label><select id="pf-diario"><option value="si"' + (pr.diario === false ? '' : ' selected') + '>Sí, a las 8:30</option><option value="no"' + (pr.diario === false ? ' selected' : '') + '>No, gracias</option></select></div>' +
       '<div class="field"><label for="pf-canal">Por dónde</label><select id="pf-canal">' + [['auto', 'Slack (o mail si no hay Slack)'], ['slack', 'Solo Slack'], ['mail', 'Solo mail']].map(([v, l]) => '<option value="' + v + '"' + ((pr.diario_canal || 'auto') === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></div>' +
+      '<div class="field full mp-fir"><span class="lbl">Firma de los mails</span><p class="muted" style="margin:0 0 8px;font-size:13px">Va al pie de los mails que mandás a clientes (resúmenes, facturas, avisos y mensajes). Nombre, puesto y teléfono salen de arriba.</p>' +
+        '<div class="mp-fir-g"><div class="field"><label for="pf-saludo">Saludo</label><input id="pf-saludo" value="' + esc(fi.saludo != null ? fi.saludo : 'Saludos,') + '" placeholder="Saludos,"></div>' +
+        '<div class="field"><label for="pf-femail">Email que se muestra</label><input id="pf-femail" type="email" value="' + esc(fi.email || '') + '" placeholder="' + esc(e.email || 'hola@weareandale.com') + '"></div></div>' +
+        '<label class="chk full mp-hor"><input type="checkbox" id="pf-ffoto"' + (fi.foto === false ? '' : ' checked') + '> <span>Mostrar mi foto</span></label>' +
+        '<div class="mp-fir-prev" id="pf-fprev"></div></div>' +
       '<div class="field full"><span class="lbl">Tema</span><div class="seg" role="group" aria-label="Tema">' + TEMAS.map(([v, l]) => '<button type="button" data-act="pfTema" data-v="' + v + '" aria-pressed="' + (tema === v) + '">' + l + '</button>').join('') + '</div></div>' +
       '</div><div class="panel-f"><span><button type="button" class="btn ghost" data-act="logout">' + ICON.salir + 'Salir</button></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" id="pfsave">Guardar</button></span></div></form>';
     $('#panel').hidden = false; $('#scrim').hidden = false;
+    pintarFirma();
   }
+  // La firma con lo que está escrito en el formulario, sin guardar todavía.
+  function firmaForm() {
+    const g = id => (($('#' + id) || {}).value || '').trim(), e = yo(), base = firmaDe(S);
+    return { ...base, saludo: ($('#pf-saludo') || {}).value != null ? $('#pf-saludo').value : base.saludo, nombre: g('pf-nombre') || base.nombre, cargo: g('pf-puesto'), tel: g('pf-tel'), email: g('pf-femail') || e.email || '', foto: ($('#pf-ffoto') || {}).checked ? (e.avatar || '') : '' };
+  }
+  function pintarFirma() { const b = $('#pf-fprev'); if (b) b.innerHTML = firmaPreview(firmaForm()); }
   async function guardar() {
     const e = yo(), g = id => (($('#' + id) || {}).value || '').trim();
     const avisos = {}, slack = {};
     document.querySelectorAll('[data-pfa]').forEach(i => { if (!i.checked) avisos[i.dataset.pfa] = false; });
     document.querySelectorAll('[data-pfs]').forEach(i => { if (!i.checked) slack[i.dataset.pfs] = false; });
-    const prefs = { ...(e.prefs || {}), avisos, slack, horario: !!($('#pf-horario') || {}).checked, diario: g('pf-diario') !== 'no', diario_canal: g('pf-canal') || 'auto' };
+    const firma = { saludo: ($('#pf-saludo') || {}).value != null ? $('#pf-saludo').value.trim() : 'Saludos,', email: g('pf-femail'), foto: !!($('#pf-ffoto') || {}).checked };
+    const prefs = { ...(e.prefs || {}), avisos, slack, firma, horario: !!($('#pf-horario') || {}).checked, diario: g('pf-diario') !== 'no', diario_canal: g('pf-canal') || 'auto' };
     const b = $('#pfsave'); if (b) { b.disabled = true; b.textContent = 'Guardando…'; }
     try {
       await data.perfilGuardar({ nombre: g('pf-nombre'), puesto: g('pf-puesto'), tel: g('pf-tel'), prefs });
@@ -58,6 +73,7 @@ export function initPerfil(ctx) {
     pfTema: t => { try { localStorage.setItem('tema', t.dataset.v); } catch (e) { /* sin storage */ } aplicarTema(t.dataset.v); document.querySelectorAll('[data-act="pfTema"]').forEach(x => x.setAttribute('aria-pressed', String(x === t))); },
   };
   document.addEventListener('submit', e => { if (e.target.id === 'pfform') { e.preventDefault(); guardar(); } });
-  document.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.pfa) { const s = document.querySelector('[data-pfs="' + t.dataset.pfa + '"]'); if (s) { s.disabled = !t.checked; if (!t.checked) s.checked = false; } } });
+  document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#pfform')) pintarFirma(); });
+  document.addEventListener('change', e => { const t = e.target; if (t.closest && t.closest('#pfform')) pintarFirma(); if (t.dataset && t.dataset.pfa) { const s = document.querySelector('[data-pfs="' + t.dataset.pfa + '"]'); if (s) { s.disabled = !t.checked; if (!t.checked) s.checked = false; } } });
   return { acts, abrir };
 }
