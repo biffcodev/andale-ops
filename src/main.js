@@ -95,6 +95,8 @@ const cmp = (a, b) => String(a || '').localeCompare(String(b || ''), 'es', { sen
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const isOpen = p => !CERRADOS.has(p.estado);
 const cap1 = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+// "hace 2 años y 3 meses" a partir de un mes AAAA-MM
+const antig = m => { const [y, mm] = String(m).slice(0, 7).split('-').map(Number), [ty, tm] = thisMonth().split('-').map(Number), n = (ty - y) * 12 + (tm - mm); if (n <= 0) return 'este mes'; const a = Math.floor(n / 12), r = n % 12; return 'hace ' + (a ? a + (a === 1 ? ' año' : ' años') : '') + (a && r ? ' y ' : '') + (r ? r + (r === 1 ? ' mes' : ' meses') : ''); };
 const initials = s => String(s || '?').trim().slice(0, 2).toUpperCase();
 const AV_HUES = ['--s-curso', '--s-confirmar', '--s-presup', '--s-revision', '--s-entregado', '--accent', '--s-cancelado'];
 const avStyle = n => { let h = 0; for (const ch of String(n || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return '--c:var(' + AV_HUES[h % AV_HUES.length] + ')'; };
@@ -1007,7 +1009,7 @@ function vClientes() {
   const rows = list.map(c => {
     const act = proyectosDe(c.nombre).filter(isOpen).length;
     const est = staff ? estadoSelect(c) : clPill(c.estado);
-    return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name"><span class="who1">' + av(c.nombre, c.avatar, 'sq') + esc(c.nombre) + '</span></td><td>' + est + '</td><td>' + (servPills(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(contactoTxt(c)) + '</td></tr>';
+    return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name"><span class="who1">' + av(c.nombre, c.avatar, 'sq') + '<span>' + esc(c.nombre) + (c.desde ? '<span class="sub">desde ' + esc(monthLabel(c.desde)) + '</span>' : '') + '</span></span></td><td>' + est + '</td><td>' + (servPills(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(contactoTxt(c)) + '</td></tr>';
   }).join('');
   const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado', VER_CL) + opt('__auto', '↺ Automático', S.cmasivo) + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><span class="bulk-sep"></span><button class="btn sm" data-act="mail">✉ Escribir mail a ' + (S.csel.size > 1 ? 'los ' + S.csel.size : 'este cliente') + '</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
   const allSel = staff && list.length && list.every(c => S.csel.has(c._id));
@@ -1098,6 +1100,7 @@ function vFicha() {
     : addBtn('comunicacion', 'Charla', { cliente: c.nombre });
   let body = '';
   if (tab === 'resumen') body = (isAdmin() && ADM && ADM.deudaLinea ? ADM.deudaLinea(c.nombre) : '') + (IA ? IA.fichaHtml(c.nombre) : '') + '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
+    '<dt>Cliente desde</dt><dd>' + (c.desde ? esc(cap1(monthLabel(c.desde))) + ' <span class="muted">· ' + esc(antig(c.desde)) + '</span>' : '<span class="muted">—</span>') + '</dd>' +
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
     (conTabla() ? '' : '<dt>Contacto</dt><dd>' + (c.contacto ? esc(c.contacto) : '<span class="muted">—</span>') + '</dd>' +
     '<dt>Email</dt><dd>' + copy(c.email) + '</dd>' +
@@ -1383,6 +1386,7 @@ const FORMS = {
   ], defaults: () => ({ tipo: 'Redes', estado: 'Activo', desde: thisMonth(), responsables: [] }), can: () => isStaff() },
   cliente: { arr: 'C', title: 'cliente', nuevo: 'Nuevo cliente', label: c => c.nombre, fields: [
     { k: 'nombre', label: 'Cliente', req: 1, full: 1 },
+    { k: 'desde', label: 'Cliente desde (mes y año)', type: 'month', hint: 'Cuándo empezó a trabajar con àndale. No hace falta el día.' },
     { k: 'estado', label: 'Estado', type: 'select', html: v => opt('__auto', 'Automático', v) + optsFrom(S.L.estadosCliente, v === '__auto' ? '' : v, undefined, VER_CL), hint: 'Se calcula solo con sus abonos y proyectos. Elegí otro solo si no coincide.' },
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
     { k: 'contacto', label: 'Contacto principal (nombre)', alta: 1 },
@@ -1391,7 +1395,7 @@ const FORMS = {
     { k: 'web', label: 'Instagram / web', ph: 'https:// o @usuario' },
     { k: 'carpeta', label: 'Carpeta del cliente', type: 'url', ph: 'https://' },
     { k: 'notas', label: 'Notas', type: 'textarea', full: 1, hint: 'No guardes contraseñas acá: usá el gestor de contraseñas del equipo.' },
-  ], defaults: () => ({ estado: '__auto', responsables: [] }), can: () => isStaff() },
+  ], defaults: () => ({ estado: '__auto', desde: thisMonth(), responsables: [] }), can: () => isStaff() },
   persona: { arr: 'E', title: 'persona', nuevo: 'Nueva persona', label: e => e.persona, fields: [
     { k: 'persona', label: 'Cómo le decimos', req: 1 },
     { k: 'nombre', label: 'Nombre completo' },
@@ -1496,6 +1500,7 @@ async function saveForm() {
   if (kind === 'persona' && S.E.some(x => norm(x.persona) === norm(out.persona) && x._id !== id)) showErr('persona', 'Ya hay alguien con ese nombre');
   if (kind === 'persona' && out.email && S.E.some(x => norm(x.email) === norm(out.email) && x._id !== id)) showErr('email', 'Ese email ya lo usa otra persona');
   if (kind === 'persona' && id && S.me && id === S.me.id && out.rol !== 'admin') showErr('rol', 'No podés quitarte el rol de administrador a vos mismo');
+  if (kind === 'cliente' && out.desde && (!/^\d{4}-\d{2}$/.test(out.desde) || out.desde > thisMonth())) showErr('desde', out.desde > thisMonth() ? 'Elegí este mes o uno anterior' : 'Elegí mes y año');
   if (kind === 'abono') {
     if (out.desde && !/^\d{4}-\d{2}$/.test(out.desde)) showErr('desde', 'Usá el formato AAAA-MM');
     if (out.hasta && !/^\d{4}-\d{2}$/.test(out.hasta)) showErr('hasta', 'Usá el formato AAAA-MM');
@@ -1526,7 +1531,7 @@ async function saveForm() {
     }
     if (srvAb.length || srvPr.length) {
       await reload();
-      for (const t of srvAb) await data.save('abono', null, { cliente: out.nombre, tipo: t, plan: t === 'Redes' ? plan : '', desde: thisMonth(), estado: 'Activo', responsables: out.responsables || [] }, []);
+      for (const t of srvAb) await data.save('abono', null, { cliente: out.nombre, tipo: t, plan: t === 'Redes' ? plan : '', desde: out.desde || thisMonth(), estado: 'Activo', responsables: out.responsables || [] }, []);
       for (const t of srvPr) {
         const tk = plantillaTk(t, today());
         const pid = await data.save('proyecto', null, { cliente: out.nombre, proyecto: t + ' · ' + out.nombre, tipo: t, estado: 'Por empezar', fechaInicio: today(), responsables: out.responsables || [], ...(S.T ? {} : { etapas: tk }) }, []);

@@ -19,7 +19,7 @@ const T = {
 const FIELDS = {
   proyecto: { cliente: ['cliente_id', 'cliente'], proyecto: ['nombre'], tipo: ['tipo'], estado: ['estado'], fechaInicio: ['fecha_inicio', 'date'], entrega: ['entrega', 'date'], entregaReal: ['entrega_real', 'date'], entregables: ['entregables'], drive: ['drive'], slides: ['slides'], canva: ['canva'], notas: ['notas'], etapas: ['etapas', 'json'], prioridad: ['prioridad'] },
   abono: { cliente: ['cliente_id', 'cliente'], tipo: ['tipo'], plan: ['plan'], desde: ['desde', 'month'], hasta: ['hasta', 'month'], estado: ['estado'], notas: ['notas'] },
-  cliente: { nombre: ['nombre'], estado: ['estado'], estadoManual: ['estado_manual', 'bool'], servicio: ['servicio'], plan: ['plan'], contacto: ['contacto'], email: ['email'], tel: ['tel'], web: ['web'], carpeta: ['carpeta'], notas: ['notas'] },
+  cliente: { nombre: ['nombre'], desde: ['desde', 'month'], estado: ['estado'], estadoManual: ['estado_manual', 'bool'], servicio: ['servicio'], plan: ['plan'], contacto: ['contacto'], email: ['email'], tel: ['tel'], web: ['web'], carpeta: ['carpeta'], notas: ['notas'] },
   persona: { persona: ['alias'], nombre: ['nombre'], puesto: ['puesto'], email: ['email', 'nullable'], tel: ['tel'], rol: ['rol'], activo: ['activo', 'bool'], notas: ['notas'] },
   comunicacion: { fecha: ['fecha', 'date'], cliente: ['cliente_id', 'cliente'], canal: ['canal'], conQuien: ['con_quien'], resumen: ['resumen'], acuerdo: ['acuerdo'], proximo: ['proximo'], fechaProximo: ['fecha_proximo', 'date'], hecho: ['hecho', 'bool'], responsable: ['responsable_id', 'persona'] },
 };
@@ -89,7 +89,7 @@ export async function loadAll() {
 
   return {
     E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, avatar: p.avatar_url || '', prefs: p.prefs || {}, ...meta(p) })),
-    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', marca: 'marca' in c ? (c.marca || {}) : undefined, responsables: rc.get(c.id) || [], ...meta(c) })),
+    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, desde: month(c.desde), estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', marca: 'marca' in c ? (c.marca || {}) : undefined, responsables: rc.get(c.id) || [], ...meta(c) })),
     A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, responsables: ra.get(a.id) || [], ...meta(a) })),
     P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: trows ? (tks.get(p.id) || []) : (Array.isArray(p.etapas) ? p.etapas : []), etapaActual: p.etapa_actual || '', prioridad: p.prioridad || '', responsables: rp.get(p.id) || [], ...meta(p) })),
     M: d.comunicaciones.map(m => ({ _id: m.id, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
@@ -368,6 +368,13 @@ async function syncResp(kind, id, aliases, prev) {
 
 export async function save(kind, id, ui, prevResp) {
   const row = toRow(kind, ui);
+  // Si todavía no se corrió el SQL 0022, el cliente se guarda igual sin "Cliente desde".
+  if (kind === 'cliente' && 'desde' in row && clienteSinDesde) delete row.desde;
+  try { return await guardar(kind, id, ui, row, prevResp); }
+  catch (e) { if (kind === 'cliente' && 'desde' in row && /desde/.test(e.message || '')) { clienteSinDesde = true; delete row.desde; return guardar(kind, id, ui, row, prevResp); } throw e; }
+}
+let clienteSinDesde = false;
+async function guardar(kind, id, ui, row, prevResp) {
   let rid = id;
   if (id) check(await sb.from(T[kind].table).update(row).eq('id', id));
   else rid = check(await sb.from(T[kind].table).insert(row).select('id').single()).id;
