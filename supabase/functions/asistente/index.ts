@@ -384,7 +384,7 @@ const TOOL_BRIEF = {
     puntos: { type: 'array', items: { type: 'object', required: ['texto', 'prioridad'], properties: { texto: { type: 'string' }, prioridad: { type: 'string', enum: ['alta', 'media', 'baja'] } } } },
   } },
 };
-const SYS_BRIEF = 'Sos el asistente de administración de àndale, agencia de branding y redes de Córdoba. Escribís para Fer y Jime, las socias, en español rioplatense, tuteo, directo y sin relleno. ' +
+const SYS_BRIEF = 'Sos el asistente de administración de àndale, agencia de branding y redes de Córdoba. Escribís para Fer y Jime, las socias, en español rioplatense, tuteo, directo y sin relleno. Los montos van siempre completos, con punto de miles ($ 730.000), nunca abreviados con K, k, mil ni M. ' +
   'A partir del checklist del cierre de mes, armá un titular y entre 3 y 7 puntos accionables ordenados por prioridad (primero lo que cuesta plata o vence). Nombrá clientes concretos y montos cuando los haya. No inventes datos.';
 async function briefing(ctx: Ctx, checklist: unknown) {
   return claude(ctx, 'cierre', { system: SYS_BRIEF, tool: TOOL_BRIEF, maxTokens: 1500, content: [{ type: 'text', text: 'CHECKLIST (JSON):\n' + JSON.stringify(checklist).slice(0, 60_000) }] });

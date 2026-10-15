@@ -1322,14 +1322,14 @@ export function initAdmin(ctx) {
   // filas = [{ l, a, b, v? }]  a = entra, b = sale, v = valor de la línea
   function grafBarras(filas, M, { linea = 'Queda en las cuentas', titulo = 'Entra y sale' } = {}) {
     const n = filas.length; if (!n) return '';
-    const W = 1000, H = 290, L = 60, R = 14, T = 24, B = 32, iw = W - L - R, ih = H - T - B;
+    const W = 1000, H = 290, L = 104, R = 14, T = 24, B = 32, iw = W - L - R, ih = H - T - B;
     const conLinea = filas.some(f => f.v != null);
     const vals = filas.flatMap(f => [f.a || 0, f.b || 0, ...(conLinea ? [f.v || 0] : [])]);
     const top = Math.max(1, ...vals), bot = Math.min(0, ...vals);
     const paso = (x => { const p = Math.pow(10, Math.floor(Math.log10(x))); const f = x / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; })((top - bot) / 4 || 1);
     const yMax = Math.ceil(top / paso) * paso, yMin = Math.floor(bot / paso) * paso, rangoY = yMax - yMin || 1;
     const Y = v => T + ih - ((v - yMin) / rangoY) * ih, col = iw / n, bw = Math.max(6, Math.min(24, col * 0.2));
-    const corto = v => { const a = Math.abs(v), sg = v < 0 ? '−' : ''; return sg + (a >= 1e6 ? (a / 1e6).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' M' : a >= 1e3 ? Math.round(a / 1e3).toLocaleString('es-AR') + ' k' : Math.round(a).toLocaleString('es-AR')); };
+    const corto = v => (v < 0 ? '−' : '') + Math.round(Math.abs(v)).toLocaleString('es-AR'); // números enteros, sin abreviar (nada de k ni M)
     let g = '';
     for (let v = yMin; v <= yMax + 1e-9; v += paso) { const y = Y(v).toFixed(1); g += '<line class="' + (Math.abs(v) < 1e-9 ? 'bl' : 'gl') + '" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text class="ax" x="' + (L - 8) + '" y="' + (+y + 4) + '" text-anchor="end">' + esc(corto(v)) + '</text>'; }
     const y0 = Y(0), barra = (x, v, c) => { const y = Y(Math.max(0, v)), h = Math.abs(Y(v) - y0); return '<path d="M' + x.toFixed(1) + ',' + (y + h).toFixed(1) + 'V' + (y + 4).toFixed(1) + 'q0,-4 4,-4h' + (bw - 8).toFixed(1) + 'q4,0 4,4V' + (y + h).toFixed(1) + 'Z" fill="' + c + '"/>'; };

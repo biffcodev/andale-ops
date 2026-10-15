@@ -434,7 +434,7 @@ export async function informeDoc(i) {
         D.rect(xx, top - th, tw, th, mix(c, 0.14), 12);
         D.text(x.nombre, xx + 14, top - 20, F.s, 9.5, dark(c, 0.6));
         if (x.red) { const rw = D.wid(x.red, F.r, 7.5) + 10, rx = xx + 14 + D.wid(x.nombre, F.s, 9.5) + 6; if (rx + rw < xx + tw - 8) { D.rect(rx, top - 23, rw, 12, mix(c, 0.28), 6); D.text(x.red, rx + 5, top - 19.5, F.r, 7.5, dark(c, 0.55)); } }
-        D.text(corto(x.valor), xx + 14, top - 50, F.d, 24, COL.ink);
+        { const t = corto(x.valor), fs = Math.min(24, 24 * (tw - 28) / Math.max(1, D.wid(t, F.d, 24))); D.text(t, xx + 14, top - 50, F.d, fs, COL.ink); }
         if (v != null) { const t = (v > 0 ? '+' : '') + v + '%', w = D.wid(t, F.b, 9); D.rect(xx + 14, top - 72, w + 14, 15, WHITE, 7.5); D.text(t, xx + 21, top - 67, F.b, 9, v > 0 ? UP : v < 0 ? DOWN : COL.muted); D.text('vs. ' + corto(x.anterior), xx + 34 + w, top - 67, F.r, 8.5, COL.muted); }
         else D.text('primer mes medido', xx + 14, top - 67, F.r, 8.5, COL.muted);
       });

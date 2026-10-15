@@ -21,7 +21,7 @@ export function initStats(ctx, k) {
   const compact = (n, cur) => {
     const sym = cur === 'USD' ? 'US$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '$';
     const a = Math.abs(n), sg = n < 0 ? '−' : '';
-    const t = a >= 1e6 ? (a / 1e6).toLocaleString('es-AR', { maximumFractionDigits: a >= 1e8 ? 0 : 1 }) + ' M' : a >= 1e3 ? Math.round(a / 1e3).toLocaleString('es-AR') + ' k' : Math.round(a).toLocaleString('es-AR');
+    const t = Math.round(a).toLocaleString('es-AR'); // sin abreviar: nada de k ni M
     return sg + sym + ' ' + t;
   };
   const niceMax = v => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; };
@@ -66,7 +66,7 @@ export function initStats(ctx, k) {
     // Arranca en el primer mes con datos (de este año o del anterior), así no se pierde medio gráfico en ceros.
     let d0 = 0; while (d0 < n0 - 2 && !(main0[d0] || (prev0 && prev0[d0]))) d0++;
     const main = main0.slice(d0), prev = prev0 ? prev0.slice(d0) : null, n = n0 - d0, MS = etiquetas.slice(d0);
-    const L = 48, R = 12, T = 12, B = 26, iw = W - L - R, ih = H - T - B;
+    const L = 92, R = 12, T = 12, B = 26, iw = W - L - R, ih = H - T - B;
     const mx = niceMax(Math.max(...main.slice(0, n), ...(prev || []).slice(0, n), 1));
     const X = i => n > 1 ? L + iw * i / (n - 1) : L + iw / 2, Y = v => T + ih - (v / mx) * ih;
     const path = vals => {

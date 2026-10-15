@@ -5,12 +5,10 @@ export const PALETA = ['#1CB0F6', '#FF9600', '#56CB01', '#CE82FF', '#FFC800', '#
 export const PUBLICADA = ['Programada', 'Publicada', 'Aprobada'];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const fmtN = v => v == null || v === '' || isNaN(+v) ? '—' : Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 });
-// Número corto para tarjetas y etiquetas: 18.450 → 18,5 mil; 1.250.000 → 1,25 M.
+// Número para tarjetas y etiquetas, siempre completo (nada de "mil", k ni M): 18.450, 1.250.000, 3,5.
 export const corto = v => {
   if (v == null || isNaN(+v)) return '—'; const n = +v, a = Math.abs(n);
-  if (a >= 1e6) return (n / 1e6).toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' M';
-  if (a >= 1e4) return (n / 1e3).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' mil';
-  return n.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+  return n.toLocaleString('es-AR', { maximumFractionDigits: a >= 100 ? 0 : 2 });
 };
 export const variacion = x => (x && x.anterior && x.valor != null && +x.anterior !== 0) ? Math.round((x.valor / x.anterior - 1) * 100) : null;
 // Reparto por red: la métrica (p. ej. Alcance) que aparece en dos o más redes.
@@ -34,7 +32,7 @@ function dona(filas) {
       : '<path d="M' + p(R, a0) + ' A' + R + ' ' + R + ' 0 ' + big + ' 1 ' + p(R, a1) + ' L' + p(r, a1) + ' A' + r + ' ' + r + ' 0 ' + big + ' 0 ' + p(r, a0) + 'Z" fill="' + PALETA[i % PALETA.length] + '"/>';
     a0 = a1;
   });
-  return '<svg viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Reparto por red">' + h + '<text x="64" y="62" text-anchor="middle" class="ir-dn-b">' + esc(corto(tot)) + '</text><text x="64" y="78" text-anchor="middle" class="ir-dn-s">en total</text></svg>';
+  return '<svg viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Reparto por red">' + h + '<text x="64" y="62" text-anchor="middle" class="ir-dn-b"' + (corto(tot).length > 7 ? ' style="font-size:' + Math.max(10, 15 - (corto(tot).length - 7) * 1.2).toFixed(1) + 'px"' : '') + '>' + esc(corto(tot)) + '</text><text x="64" y="78" text-anchor="middle" class="ir-dn-s">en total</text></svg>';
 }
 
 /** o = { inf, cliente, mesLabel, piezas, descargar: html del botón, editable } */
