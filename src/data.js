@@ -61,7 +61,10 @@ const check = r => { if (r.error) { const e = friendly(r.error); e.raw = r.error
 // ---------- Lectura ----------
 export async function loadAll() {
   const names = ['personas', 'clientes', 'cliente_responsables', 'abonos', 'abono_responsables', 'proyectos', 'proyecto_responsables', 'comunicaciones', 'listas'];
+  // Contactos (migración 0015): si la tabla todavía no existe, K queda en null y la app usa los campos del cliente.
+  const kq = sb.from('contactos').select('*').order('orden').limit(5000).then(r => (r.error ? null : r.data || []), () => null);
   const res = await Promise.all(names.map(n => sb.from(n).select('*').limit(5000)));
+  const krows = await kq;
   const d = {}; names.forEach((n, i) => { d[n] = check(res[i]) || []; });
 
   idx.clienteId.clear(); idx.clienteName.clear(); idx.personaId.clear(); idx.personaAlias.clear();
@@ -79,6 +82,7 @@ export async function loadAll() {
     P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: Array.isArray(p.etapas) ? p.etapas : [], prioridad: p.prioridad || '', responsables: rp.get(p.id) || [], ...meta(p) })),
     M: d.comunicaciones.map(m => ({ _id: m.id, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
     L: Object.fromEntries(d.listas.map(l => [l.clave, l.valores])),
+    K: krows ? krows.filter(k => idx.clienteName.has(k.cliente_id)).map(k => ({ _id: k.id, cliente: cname(k.cliente_id), nombre: k.nombre || '', rol: k.rol || '', email: k.email || '', tel: k.tel || '', principal: !!k.principal, cobros: !!k.cobros, notas: k.notas || '', orden: k.orden || 0 })) : null,
   };
 }
 

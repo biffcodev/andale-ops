@@ -17,7 +17,7 @@ export function initIA(ctx) {
   function contexto() {
     const abiertos = S.P.filter(p => !['Entregado', 'Cancelado', 'Finalizado'].includes(p.estado));
     const c = {
-      clientes: S.C.map(x => ({ nombre: x.nombre, estado: x.estado, contacto: x.contacto || '', servicios: serviciosTxt(x.nombre) })),
+      clientes: S.C.map(x => ({ nombre: x.nombre, estado: x.estado, contacto: x.contacto || '', contactos: (ctx.contactos ? ctx.contactos(x.nombre) : []).filter(k => k.nombre || k.rol).map(k => [k.nombre, k.rol].filter(Boolean).join(' · ') + (k.principal ? ' (principal)' : '')), servicios: serviciosTxt(x.nombre) })),
       equipo: S.E.filter(e => e.activo !== false).map(e => ({ alias: e.persona, nombre: e.nombre || '', puesto: e.puesto || '' })),
       abonos: S.A.filter(a => a.estado !== 'Baja').map(a => ({ cliente: a.cliente, tipo: a.tipo, plan: a.plan || '', estado: a.estado, responsables: a.responsables || [] })),
       proyectos_abiertos: abiertos.map(p => ({ cliente: p.cliente, nombre: p.proyecto, tipo: p.tipo || '', estado: p.estado, prioridad: p.prioridad || '', entrega: p.entrega || '', responsables: p.responsables || [],

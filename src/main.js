@@ -79,7 +79,7 @@ function lsSet(k, v) { try { localStorage.setItem('andale-ops:' + k, v); } catch
 /* ---------- Estado ---------- */
 const S = {
   me: null, status: 'loading',
-  P: [], C: [], E: [], M: [], A: [], L: JSON.parse(JSON.stringify(DEF)),
+  P: [], C: [], E: [], M: [], A: [], K: null, L: JSON.parse(JSON.stringify(DEF)),
   view: 'inicio', mode: lsGet('mode') || 'lista',
   f: { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true },
   af: { q: '', tipo: '', estado: 'Activo', resp: '' },
@@ -166,11 +166,94 @@ function links(o) {
 const emptyBox = (title, text) => '<div class="empty"><b>' + esc(title) + '</b>' + (text || '') + '</div>';
 // WhatsApp directo (sin API): abre el chat con el teléfono del cliente.
 function waNum(tel) { let d = String(tel || '').replace(/\D/g, ''); if (!d) return ''; if (d.startsWith('00')) d = d.slice(2); if (!d.startsWith('54') && d.length <= 11) d = '549' + d.replace(/^0/, '').replace(/^(\d{2,4})15/, '$1'); return d; }
-function waBtn(c, txt) {
-  const n = waNum(c.tel); if (!n || !integ('whatsapp')) return '';
-  const nom = (c.contacto || '').split(/[,/]/)[0].trim().split(' ')[0];
+function waHref(tel, nombre, txt) {
+  const n = waNum(tel); if (!n || !integ('whatsapp')) return '';
+  const nom = String(nombre || '').split(/[,/]/)[0].trim().split(' ')[0];
   const m = txt || String(integr().cfgGet('whatsapp', 'msg') || '').replace(/\\n/g, '\n').replace(/\{nombre\}/g, nom).replace(/ ,/g, ',');
-  return '<a class="btn" href="https://wa.me/' + n + (m ? '?text=' + encodeURIComponent(m) : '') + '" target="_blank" rel="noopener">WhatsApp</a>';
+  return 'https://wa.me/' + n + (m ? '?text=' + encodeURIComponent(m) : '');
+}
+function waBtn(c, txt) { const h = waHref(c.tel, c.contacto, txt); return h ? '<a class="btn" href="' + h + '" target="_blank" rel="noopener">WhatsApp</a>' : ''; }
+
+// Contactos del cliente (dueña, marketing, administración…). Si la tabla todavía no existe, se usa el contacto cargado en el cliente.
+const ROLES_CONTACTO = ['Dueña/o', 'Gerencia', 'Marketing', 'Comunicación', 'Administración', 'Diseño', 'Ventas', 'RRHH', 'Agencia o proveedor'];
+const conTabla = () => Array.isArray(S.K);
+function contactosDe(nombre) {
+  const c = S.C.find(x => x.nombre === nombre); if (!c) return [];
+  if (conTabla()) return S.K.filter(k => k.cliente === nombre).sort((a, b) => (b.principal - a.principal) || (a.orden - b.orden) || cmp(a.nombre, b.nombre));
+  const mails = String(c.email || '').split(/[,;\s]+/).filter(Boolean);
+  return (c.contacto || mails.length || c.tel) ? [{ _id: '', _virt: true, cliente: nombre, nombre: c.contacto || '', rol: '', email: mails.join(', '), tel: c.tel || '', principal: true, cobros: true, notas: '' }] : [];
+}
+const nomContacto = k => (k.nombre || '').trim() || (k.email || '').split('@')[0] || 'Sin nombre';
+function contactoTxt(c) { const ks = contactosDe(c.nombre); return ks.length ? nomContacto(ks[0]) + (ks.length > 1 ? ' +' + (ks.length - 1) : '') : ''; }
+function contactosBusca(c) { return contactosDe(c.nombre).map(k => [k.nombre, k.rol, k.email].join(' ')).join(' '); }
+function contactosHtml(c) {
+  const ks = contactosDe(c.nombre), can = isStaff() && conTabla();
+  const card = k => '<div class="ctc' + (can ? ' click' : '') + '"' + (can ? ' data-act="kEdit" data-id="' + esc(k._id) + '" data-cliente="' + esc(c.nombre) + '"' : '') + '>' + av(nomContacto(k), '', '') +
+    '<div class="ctc-b"><div class="ctc-t"><b>' + esc(nomContacto(k)) + '</b>' + (k.rol ? '<span class="ctc-rol">' + esc(k.rol) + '</span>' : '') + '</div>' +
+    '<div class="ctc-tags">' + (k.principal ? '<span class="ctag pri">Principal</span>' : '') + (k.cobros ? '<span class="ctag cob">Recibe cobros</span>' : '') + '</div>' +
+    (k.email || k.tel ? '<div class="ctc-l">' + [k.email, k.tel].filter(Boolean).map(esc).join(' · ') + '</div>' : '') +
+    (k.notas ? '<div class="ctc-n">' + esc(k.notas) + '</div>' : '') + '</div>' +
+    '<div class="ctc-a">' + (k.email && isStaff() ? '<button class="btn ghost sm" data-act="mail" data-cliente="' + esc(c.nombre) + '" data-para="' + esc(k.email) + '" title="Escribirle un mail" aria-label="Mail a ' + esc(nomContacto(k)) + '">✉</button><button class="btn ghost sm" data-act="copy" data-v="' + esc(k.email) + '" title="Copiar email" aria-label="Copiar email">⧉</button>' : '') +
+    (waHref(k.tel, k.nombre) ? '<a class="btn ghost sm" href="' + waHref(k.tel, k.nombre) + '" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp a ' + esc(nomContacto(k)) + '">WhatsApp</a>' : '') + '</div></div>';
+  const cob = ks.filter(k => k.cobros && k.email).length;
+  return '<section class="sheet"><div class="sheet-h"><div><h2>Contactos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">' + (ks.length ? ks.length + (ks.length === 1 ? ' persona' : ' personas') + (cob ? ' · ' + cob + ' reciben resúmenes y facturas' : '') : 'Con quién hablamos en ' + esc(c.nombre) + '.') + '</p></div>' + (can ? '<button class="btn sm" data-act="kNuevo" data-cliente="' + esc(c.nombre) + '">+ Contacto</button>' : '') + '</div>' +
+    (ks.length ? '<div class="ctcs">' + ks.map(card).join('') + '</div>' : emptyBox('Sin contactos', can ? 'Sumá a las personas con las que hablamos: dueña, marketing, administración…' : '')) + '</section>';
+}
+function abrirContacto(cliente, id) {
+  const k = id ? (S.K || []).find(x => x._id === id) : null;
+  if (id && !k) { toast('Ese contacto ya no existe'); return; }
+  const primero = !contactosDe(cliente).length;
+  const v = k || { nombre: '', rol: '', email: '', tel: '', principal: primero, cobros: primero, notas: '' };
+  S.form = null; S.kf = { cliente, id: id || null, principal: !!(k && k.principal) };
+  const fld = (n, l, val, type, extra) => '<div class="field' + (extra && extra.full ? ' full' : '') + '"><label for="k-' + n + '">' + l + '</label><input id="k-' + n + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"' + (extra && extra.list ? ' list="' + extra.list + '"' : '') + (extra && extra.ph ? ' placeholder="' + esc(extra.ph) + '"' : '') + '>' + (extra && extra.hint ? '<span class="hint">' + esc(extra.hint) + '</span>' : '') + '<span class="err" id="ke-' + n + '" hidden></span></div>';
+  const p = $('#panel');
+  p.innerHTML = '<form id="kform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(cliente) + '</span><h2 id="panel-title">' + (k ? esc(nomContacto(k)) : 'Nuevo contacto') + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div><div class="panel-b">' +
+    fld('nombre', 'Nombre', v.nombre, 'text', { ph: 'Ej.: Laura Pérez' }) + fld('rol', 'Rol', v.rol, 'text', { list: 'dl-roles', ph: 'Marketing, Dueña, Administración…' }) +
+    '<datalist id="dl-roles">' + ROLES_CONTACTO.map(r => '<option value="' + esc(r) + '">').join('') + '</datalist>' +
+    fld('email', 'Email', v.email, 'email') + fld('tel', 'Teléfono / WhatsApp', v.tel, 'tel') +
+    '<label class="chk full"><input type="checkbox" id="k-principal"' + (v.principal ? ' checked' : '') + (k && k.principal ? ' disabled' : '') + '> <span><b>Contacto principal</b> <span class="muted">· con quien hablamos del día a día. Es el que aparece en la lista de clientes y en el botón de WhatsApp.' + (k && k.principal ? ' Para cambiarlo, marcá a otra persona como principal.' : '') + '</span></span></label>' +
+    '<label class="chk full"><input type="checkbox" id="k-cobros"' + (v.cobros ? ' checked' : '') + '> <span><b>Recibe resúmenes de cuenta y facturas</b> <span class="muted">· le llegan los resúmenes, facturas, invoices y recordatorios de pago.</span></span></label>' +
+    '<div class="field full"><label for="k-notas">Notas</label><textarea id="k-notas" rows="2" placeholder="Ej.: prefiere WhatsApp, no escribirle después de las 19">' + esc(v.notas || '') + '</textarea></div>' +
+    '</div><div class="panel-f"><span id="kdelzone">' + (k ? '<button type="button" class="btn ghost danger" data-act="kDel">Eliminar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="ksave">' + (k ? 'Guardar' : 'Agregar contacto') + '</button></span></div></form>';
+  p.hidden = false; $('#scrim').hidden = false;
+  const f = $('#k-nombre'); if (f && !k) f.focus();
+}
+// Los campos contacto/email/tel del cliente reflejan al contacto principal (lista, búsqueda, WhatsApp, documentos).
+async function sincPrincipal(cliente, k) {
+  const c = S.C.find(x => x.nombre === cliente); if (!c) return;
+  const patch = { contacto: k ? k.nombre : '', email: k ? k.email : '', tel: k ? k.tel : '' };
+  if (patch.contacto !== (c.contacto || '') || patch.email !== (c.email || '') || patch.tel !== (c.tel || '')) await data.update('cliente', c._id, patch);
+}
+async function guardarContacto() {
+  const f = S.kf; if (!f) return;
+  const g = n => ((($('#k-' + n) || {}).value) || '').trim();
+  const row = { nombre: g('nombre'), rol: g('rol'), email: g('email').toLowerCase(), tel: g('tel'), principal: f.principal || $('#k-principal').checked, cobros: $('#k-cobros').checked, notas: g('notas') };
+  document.querySelectorAll('#kform .err').forEach(e => { e.hidden = true; });
+  const err = (n, m) => { const e = $('#ke-' + n); if (e) { e.textContent = m; e.hidden = false; } };
+  if (!row.nombre && !row.email && !row.tel) { err('nombre', 'Poné al menos el nombre, el email o el teléfono'); return; }
+  if (row.email && !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(row.email)) { err('email', 'Ese email no parece válido (uno solo por contacto)'); return; }
+  const otros = contactosDe(f.cliente).filter(x => x._id !== f.id);
+  if (!otros.some(x => x.principal)) row.principal = true;
+  if (row.email && otros.some(x => x.email && x.email.toLowerCase() === row.email)) { err('email', 'Ese email ya está en otro contacto de este cliente'); return; }
+  const btn = $('#ksave'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try {
+    if (f.id) await data.upd('contactos', f.id, row);
+    else await data.ins('contactos', { ...row, cliente_id: data.ids.cliente(f.cliente), orden: otros.length });
+    if (row.principal) { for (const o of otros.filter(x => x.principal)) await data.upd('contactos', o._id, { principal: false }); await sincPrincipal(f.cliente, row); }
+    closeForm(); toast(f.id ? 'Contacto guardado' : 'Contacto agregado'); await reload();
+  } catch (e) { toast(e.message); if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
+}
+async function borrarContacto() {
+  const f = S.kf; if (!f || !f.id) return;
+  try {
+    await data.del('contactos', f.id);
+    if (f.principal) { const sig = contactosDe(f.cliente).find(x => x._id !== f.id); if (sig) await data.upd('contactos', sig._id, { principal: true }); await sincPrincipal(f.cliente, sig || null); }
+    closeForm(); toast('Contacto eliminado'); await reload();
+  } catch (e) { toast(e.message); }
+}
+function fillConQuien() {
+  const dl = $('#dl-conQuien'), cl = ($('#f-cliente') || {}).value; if (!dl) return;
+  dl.innerHTML = contactosDe(cl).filter(k => k.nombre).map(k => '<option value="' + esc(k.nombre) + '">' + esc(k.rol || '') + '</option>').join('');
 }
 // Integraciones simples que se prenden y apagan desde Configuración → Integraciones (lista 'integraciones').
 const INTEG_DEF = ['whatsapp', 'calendario', 'ia', 'email'];
@@ -306,7 +389,6 @@ function vInicio() {
   ].join('');
   let h = '<section class="hero"><div class="hero-t"><span class="hero-f">' + esc(cap1(new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }))) + '</span>' +
     '<h1>' + saludo + ', ' + esc(yo) + '</h1><p>' + (resumen.length ? 'Hoy tenés ' + resumen.join(' · ') + '.' : 'Todo al día.') + '</p></div>' +
-    '<div class="hero-iso" aria-hidden="true">' + ISO + '</div>' +
     (IA ? '<div class="hero-ia">' + IA.inicioHtml() + '</div>' : '') +
     '<div class="hero-q">' + rapidos + '</div></section>';
 
@@ -602,7 +684,7 @@ function ponerHerramientas() {
 function buscar(q) {
   const k = norm(q).trim(); if (k.length < 2) return [];
   const out = [];
-  S.C.filter(c => norm(c.nombre + ' ' + (c.contacto || '')).includes(k)).slice(0, 5).forEach(c => out.push({ g: 'Clientes', h: '<button class="tsr" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + av(c.nombre, c.avatar, 'sq') + '<span><b>' + esc(c.nombre) + '</b><small>' + esc(c.contacto || VER_CL[c.estado] || c.estado || '') + '</small></span></button>' }));
+  S.C.filter(c => norm(c.nombre + ' ' + (c.contacto || '') + ' ' + contactosBusca(c)).includes(k)).slice(0, 5).forEach(c => { const kk = contactosDe(c.nombre).find(x => norm([x.nombre, x.rol, x.email].join(' ')).includes(k)); out.push({ g: 'Clientes', h: '<button class="tsr" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + av(c.nombre, c.avatar, 'sq') + '<span><b>' + esc(c.nombre) + '</b><small>' + esc(kk && !norm(c.nombre).includes(k) ? nomContacto(kk) + (kk.rol ? ' · ' + kk.rol : '') : (contactoTxt(c) || VER_CL[c.estado] || c.estado || '')) + '</small></span></button>' }); });
   S.P.filter(p => norm(p.proyecto + ' ' + p.cliente + ' ' + (p.tipo || '')).includes(k)).sort((a, b) => isOpen(b) - isOpen(a)).slice(0, 6).forEach(p => out.push({ g: 'Proyectos', h: '<button class="tsr" data-act="pver" data-id="' + esc(p._id) + '"><span class="tsr-i" style="--c:var(' + stVar(p.estado) + ')"></span><span><b>' + esc(p.proyecto) + '</b><small>' + esc(p.cliente + ' · ' + p.estado) + '</small></span></button>' }));
   S.P.forEach(p => etapasDe(p).forEach((x, i) => { if (out.filter(o => o.g === 'Tareas').length < 6 && norm(x.n).includes(k)) out.push({ g: 'Tareas', h: '<button class="tsr" data-act="gqTarea" data-id="' + esc(p._id) + '" data-i="' + i + '"><span class="tsr-c' + (x.ok ? ' ok' : '') + '">' + (x.ok ? '✓' : '') + '</span><span><b>' + esc(x.n) + '</b><small>' + esc(p.proyecto + ' · ' + p.cliente + (x.resp ? ' · ' + x.resp : '')) + '</small></span></button>' }); }));
   return out;
@@ -752,7 +834,7 @@ function vClientes() {
   if (isExt()) cf.estado = '';
   const estados = ['', ...S.L.estadosCliente];
   const counts = e => S.C.filter(c => !e || c.estado === e).length;
-  const list = S.C.filter(c => (!cf.estado || c.estado === cf.estado) && (!q || norm(c.nombre + ' ' + (c.contacto || '') + ' ' + (c.servicio || '')).includes(q))).sort((a, b) => cmp(a.nombre, b.nombre));
+  const list = S.C.filter(c => (!cf.estado || c.estado === cf.estado) && (!q || norm(c.nombre + ' ' + (c.contacto || '') + ' ' + contactosBusca(c) + ' ' + (c.servicio || '')).includes(q))).sort((a, b) => cmp(a.nombre, b.nombre));
   let h = '<div class="head"><div><h1>Clientes</h1><p>' + (isExt() ? 'Los clientes de los trabajos que tenés asignados.' : 'El estado se calcula solo con sus abonos y proyectos.') + '</p></div><div class="toolbar">' + addBtn('cliente', 'Cliente') + '</div></div>' +
     '<div class="toolbar"><input class="in" type="search" id="cq" data-bind="cf.q" placeholder="Buscar cliente o contacto" value="' + esc(cf.q) + '">' +
     (isStaff() ? '<div class="seg" role="group" aria-label="Estado">' + estados.map(e => '<button data-act="cfEstado" data-estado="' + esc(e) + '" aria-pressed="' + (cf.estado === e) + '">' + (VER_CL[e] || e || 'Todos') + ' <span class="c">' + counts(e) + '</span></button>').join('') + '</div>' : '') + '</div>';
@@ -762,7 +844,7 @@ function vClientes() {
   const rows = list.map(c => {
     const act = proyectosDe(c.nombre).filter(isOpen).length;
     const est = staff ? estadoSelect(c) : clPill(c.estado);
-    return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name"><span class="who1">' + av(c.nombre, c.avatar, 'sq') + esc(c.nombre) + '</span></td><td>' + est + '</td><td>' + (servPills(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(c.contacto || '') + '</td></tr>';
+    return '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '">' + (staff ? '<td class="sel"><input type="checkbox" aria-label="Seleccionar ' + esc(c.nombre) + '" data-csel="' + esc(c._id) + '"' + (S.csel.has(c._id) ? ' checked' : '') + '></td>' : '') + '<td class="name"><span class="who1">' + av(c.nombre, c.avatar, 'sq') + esc(c.nombre) + '</span></td><td>' + est + '</td><td>' + (servPills(c.nombre) || '<span class="muted">—</span>') + '</td><td>' + (resp(c).length ? whos(resp(c)) : '<span class="muted">—</span>') + '</td><td class="n">' + (act || '<span class="muted">0</span>') + '</td><td>' + esc(contactoTxt(c)) + '</td></tr>';
   }).join('');
   const bulk = staff && S.csel.size ? '<div class="bulkbar" role="region" aria-label="Acción sobre seleccionados"><b>' + S.csel.size + ' seleccionado' + (S.csel.size > 1 ? 's' : '') + '</b><label class="muted" for="cmas">Pasar a</label><select class="in" id="cmas" data-bind="cmasivo">' + optsFrom(S.L.estadosCliente, S.cmasivo, 'Elegí un estado', VER_CL) + opt('__auto', '↺ Automático', S.cmasivo) + '</select><button class="btn primary sm" data-act="cMasivo"' + (S.cmasivo ? '' : ' disabled') + '>Aplicar</button><span class="bulk-sep"></span><button class="btn sm" data-act="mail">✉ Escribir mail a ' + (S.csel.size > 1 ? 'los ' + S.csel.size : 'este cliente') + '</button><button class="btn ghost sm" data-act="cSelNone">Quitar selección</button></div>' : '';
   const allSel = staff && list.length && list.every(c => S.csel.has(c._id));
@@ -804,13 +886,13 @@ function vFicha() {
     (IA ? IA.fichaHtml(c.nombre) : '') +
     '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
-    '<dt>Contacto</dt><dd>' + (c.contacto ? esc(c.contacto) : '<span class="muted">—</span>') + '</dd>' +
+    (conTabla() ? '' : '<dt>Contacto</dt><dd>' + (c.contacto ? esc(c.contacto) : '<span class="muted">—</span>') + '</dd>' +
     '<dt>Email</dt><dd>' + copy(c.email) + '</dd>' +
-    '<dt>Teléfono</dt><dd>' + copy(c.tel) + '</dd>' +
+    '<dt>Teléfono</dt><dd>' + copy(c.tel) + '</dd>') +
     '<dt>Instagram / web</dt><dd>' + link(c.web) + '</dd>' +
     '<dt>Carpeta</dt><dd>' + link(c.carpeta) + '</dd>' +
     '<dt>Notas</dt><dd>' + (c.notas ? '<span style="white-space:pre-wrap">' + esc(c.notas) + '</span>' : '<span class="muted">—</span>') + '</dd>' +
-    '</dl></div></section>' + (isAdmin() && ADM ? ADM.fichaSection(c) : '') + '</div>' +
+    '</dl></div></section>' + (conTabla() && (isStaff() || contactosDe(c.nombre).length) ? contactosHtml(c) : '') + (isAdmin() && ADM ? ADM.fichaSection(c) : '') + '</div>' +
     '<div class="stack">' +
     '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + as.filter(a => a.estado === 'Activo').length + ' activos</span></div>' + (as.length ? '<div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('Sin abonos', '')) + '</section>' +
     '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' +
@@ -997,9 +1079,9 @@ const FORMS = {
     { k: 'nombre', label: 'Cliente', req: 1, full: 1 },
     { k: 'estado', label: 'Estado', type: 'select', html: v => opt('__auto', 'Automático', v) + optsFrom(S.L.estadosCliente, v === '__auto' ? '' : v, undefined, VER_CL), hint: 'Se calcula solo con sus abonos y proyectos. Elegí otro solo si no coincide.' },
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
-    { k: 'contacto', label: 'Contacto (nombre)' },
-    { k: 'email', label: 'Email', type: 'email' },
-    { k: 'tel', label: 'Teléfono / WhatsApp', type: 'tel' },
+    { k: 'contacto', label: 'Contacto principal (nombre)', alta: 1 },
+    { k: 'email', label: 'Email', type: 'email', alta: 1 },
+    { k: 'tel', label: 'Teléfono / WhatsApp', type: 'tel', alta: 1, hint: 'Después sumás más contactos desde la ficha.' },
     { k: 'web', label: 'Instagram / web', ph: 'https:// o @usuario' },
     { k: 'carpeta', label: 'Carpeta del cliente', type: 'url', ph: 'https://' },
     { k: 'notas', label: 'Notas', type: 'textarea', full: 1, hint: 'No guardes contraseñas acá: usá el gestor de contraseñas del equipo.' },
@@ -1018,7 +1100,7 @@ const FORMS = {
     { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
     { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1 },
     { k: 'canal', label: 'Canal', type: 'select', opts: () => S.L.canales, blank: '—' },
-    { k: 'conQuien', label: 'Con quién' },
+    { k: 'conQuien', label: 'Con quién', list: 1 },
     { k: 'resumen', label: 'Resumen', type: 'textarea', full: 1 },
     { k: 'acuerdo', label: 'Acuerdo', type: 'textarea', full: 1, rows: 2 },
     { k: 'proximo', label: 'Próximo paso', full: 1 },
@@ -1047,7 +1129,7 @@ function fieldHtml(f, v, ro) {
   if (f.type === 'textarea') ctl = '<textarea id="' + id + '" rows="' + (f.rows || 3) + '"' + dis + '>' + esc(v || '') + '</textarea>';
   else if (f.type === 'select') ctl = '<select id="' + id + '"' + dis + '>' + (f.html ? f.html(v || '') : optsFrom(f.opts(), v || '', f.blank)) + '</select>';
   else if (f.type === 'month') ctl = '<input id="' + id + '" type="month" value="' + esc(v || '') + '" placeholder="AAAA-MM"' + dis + '>';
-  else ctl = '<input id="' + id + '" type="' + (f.type || 'text') + '" value="' + esc(v || '') + '"' + (f.ph ? ' placeholder="' + esc(f.ph) + '"' : '') + dis + '>';
+  else ctl = '<input id="' + id + '" type="' + (f.type || 'text') + '" value="' + esc(v || '') + '"' + (f.ph ? ' placeholder="' + esc(f.ph) + '"' : '') + (f.list ? ' list="dl-' + f.k + '" autocomplete="off"' : '') + dis + '>' + (f.list ? '<datalist id="dl-' + f.k + '"></datalist>' : '');
   return '<div class="field ' + (f.full ? 'full' : '') + '"><label for="' + id + '">' + esc(f.label) + (f.req ? ' <b>*</b>' : '') + '</label>' + ctl + hint + '<span class="err" id="e-' + f.k + '" hidden></span></div>';
 }
 
@@ -1079,13 +1161,14 @@ function openForm(kind, id, preset) {
   const extra = servBox + adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
   const p = $('#panel');
   p.innerHTML = '<form id="form" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + (rec ? (ro ? 'Ver ' : 'Editar ') + def.title : 'Alta') + '</span><h2 id="panel-title">' + (rec ? esc(def.label(rec) || def.title) : def.nuevo) + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
-    '<div class="panel-b">' + (IA && kind === 'comunicacion' && !rec ? IA.charlaHtml() : '') + def.fields.filter(f => !f.adv).map(f => fieldHtml(f, vals[f.k], ro)).join('') +
+    '<div class="panel-b">' + (IA && kind === 'comunicacion' && !rec ? IA.charlaHtml() : '') + def.fields.filter(f => !f.adv && !(f.alta && rec && conTabla())).map(f => fieldHtml(f, vals[f.k], ro)).join('') +
       (def.fields.some(f => f.adv) ? '<details class="mas full" id="f-mas"' + (rec ? ' open' : '') + '><summary>' + esc(def.masLabel || 'Más opciones') + '</summary><div class="mas-b">' + def.fields.filter(f => f.adv).map(f => fieldHtml(f, vals[f.k], ro)).join('') + '</div></details>' : '') + extra + '</div><div class="panel-f">' + foot + '</div></form>';
   p.hidden = false; $('#scrim').hidden = false;
+  if (kind === 'comunicacion') fillConQuien();
   if (kind === 'proyecto') { S.form.etapas = JSON.parse(JSON.stringify(vals.etapas || [])); if (!S.form.etapas.length && plantilla(vals.tipo).length && !rec) S.form.etapas = plantilla(vals.tipo).map(n => ({ n, ok: false })); renderEtapasField(); }
   if (!rec) { const first = p.querySelector('.panel-b input:not([type=checkbox]):not([disabled]),.panel-b select:not([disabled]),.panel-b textarea:not([disabled])'); if (first) first.focus(); }
 }
-function closeForm() { $('#panel').hidden = true; $('#scrim').hidden = true; S.form = null; S.tkf = null; }
+function closeForm() { $('#panel').hidden = true; $('#scrim').hidden = true; S.form = null; S.tkf = null; S.kf = null; }
 
 async function saveForm() {
   if (!S.form || S.form.ro) return;
@@ -1096,6 +1179,7 @@ async function saveForm() {
     if (f.staffOnly && !isStaff()) continue;
     const el = $('#f-' + f.k);
     if (f.type === 'etapas') { out[f.k] = S.form.etapas || []; continue; }
+    if (!el) continue;
     if (f.type === 'multi') out[f.k] = [...el.querySelectorAll('input:checked')].map(i => i.value);
     else out[f.k] = f.type === 'check' ? el.checked : el.value.trim();
     const e = $('#e-' + f.k); if (e) e.hidden = true;
@@ -1121,7 +1205,10 @@ async function saveForm() {
     const srvAb = kind === 'cliente' && !prev ? [...document.querySelectorAll('[data-srvab]:checked')].map(x => x.dataset.srvab) : [];
     const srvPr = kind === 'cliente' && !prev ? [...document.querySelectorAll('[data-srvpr]:checked')].map(x => x.dataset.srvpr) : [];
     const plan = ($('#f-srvplan') || {}).value || '';
-    await data.save(kind, id, out, prev ? resp(prev) : []);
+    const nid = await data.save(kind, id, out, prev ? resp(prev) : []);
+    if (kind === 'cliente' && !prev && conTabla() && (out.contacto || out.email || out.tel)) {
+      try { await data.ins('contactos', { cliente_id: nid, nombre: out.contacto || '', email: (out.email || '').toLowerCase(), tel: out.tel || '', principal: true, cobros: true, orden: 0 }); } catch (e) { toast(e.message); }
+    }
     if (srvAb.length || srvPr.length) {
       await reload();
       for (const t of srvAb) await data.save('abono', null, { cliente: out.nombre, tipo: t, plan: t === 'Redes' ? plan : '', desde: thisMonth(), estado: 'Activo', responsables: out.responsables || [] }, []);
@@ -1162,6 +1249,11 @@ const ACT = {
   ptab: t => { S.ptab = t.dataset.t; render(); },
   tkGrp: t => { const g = t.dataset.g, k = t.dataset.hecha ? g + ':open' : g; if (S.gcl.has(k)) S.gcl.delete(k); else S.gcl.add(k); lsSet('gcl', JSON.stringify([...S.gcl])); render(); },
   tkAbrir: t => abrirTarea(t.dataset.id, +t.dataset.i),
+  kNuevo: t => abrirContacto(t.dataset.cliente, null),
+  kEdit: t => abrirContacto(t.dataset.cliente, t.dataset.id),
+  kDel: () => { $('#kdelzone').innerHTML = '<span class="muted" style="font-size:13px">¿Seguro?</span> <button type="button" class="btn danger sm" data-act="kDelYes">Sí, eliminar</button> <button type="button" class="btn ghost sm" data-act="kDelNo">No</button>'; },
+  kDelNo: () => { $('#kdelzone').innerHTML = '<button type="button" class="btn ghost danger" data-act="kDel">Eliminar</button>'; },
+  kDelYes: () => borrarContacto(),
   tkNueva: t => abrirTarea(t.dataset.id, -1),
   tkGuardar: () => guardarTareaPanel(),
   tkBorrar: () => { const f = S.tkf; if (!f) return; const p = S.P.find(x => x._id === f.pid); if (!p) return; closeForm(); guardarTareas(p, etapasDe(p).filter((x, i) => i !== f.i), 'Tarea borrada'); },
@@ -1268,6 +1360,7 @@ document.addEventListener('change', async e => {
   if (t.dataset.fet !== undefined && S.form && S.form.etapas) { S.form.etapas[+t.dataset.fet].ok = t.checked; return; }
   if (t.id === 'f-tipo' && S.form && S.form.kind === 'proyecto' && S.form.etapas && !S.form.etapas.length && plantilla(t.value).length) { S.form.etapas = plantilla(t.value).map(n => ({ n, ok: false })); renderEtapasField(); return; }
   if (t.id === 'f-tipo' && S.form && S.form.kind === 'proyecto') { renderEtapasField(); return; }
+  if (t.id === 'f-cliente' && S.form && S.form.kind === 'comunicacion') { fillConQuien(); return; }
   if (t.dataset.csel) { if (t.checked) S.csel.add(t.dataset.csel); else S.csel.delete(t.dataset.csel); render(); return; }
   if (t.dataset.cselall) { const ids = [...document.querySelectorAll('[data-csel]')].map(x => x.dataset.csel); ids.forEach(id => t.checked ? S.csel.add(id) : S.csel.delete(id)); render(); return; }
   if (t.dataset.upd === 'cliente' && t.dataset.field === 'estado') {
@@ -1291,6 +1384,7 @@ document.addEventListener('submit', async e => {
   const f = e.target;
   if (f.id === 'form') { saveForm(); return; }
   if (f.id === 'tkform') { guardarTareaPanel(); return; }
+  if (f.id === 'kform') { guardarContacto(); return; }
   if (f.dataset.tkadd) {
     const p = S.P.find(x => x._id === f.dataset.tkadd), n = f.elements.n.value.trim(); if (!p || !n) return;
     await guardarTareas(p, [...etapasDe(p), { n, ok: false, resp: f.elements.resp.value, fecha: f.elements.fecha.value }]);
@@ -1352,7 +1446,7 @@ async function reload() {
     for (const [k, v] of Object.entries(d.L || {})) if (k.startsWith('etapas:') && Array.isArray(v)) L[k] = [...v];
     L.integraciones = Array.isArray(d.L.integraciones) ? [...d.L.integraciones] : [...INTEG_DEF];
     L.integraciones_cfg = Array.isArray(d.L.integraciones_cfg) ? [...d.L.integraciones_cfg] : [];
-    Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, L, status: 'ok' });
+    Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, K: Array.isArray(d.K) ? d.K : null, L, status: 'ok' });
     if (isAdmin() && ADM) await ADM.load();
     banner('');
   } catch (err) { S.status = 'offline'; banner(esc(err.message), true); }
@@ -1375,15 +1469,15 @@ async function start(sess) {
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
   S.me = me;
   if (me.rol === 'admin' && !ADM) {
-    ADM = initAdmin({ S, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
+    ADM = initAdmin({ S, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
     ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
     Object.assign(ACT, ADM.actions);
   }
   if (isStaff() && !IA) {
-    MAIL = initMails({ S, data, esc, opt, toast, $, closeForm, reload, ISO, marca: () => (ADM && ADM.cfgMarca ? ADM.cfgMarca() : null), servicios: n => serviciosDe(n).map(x => x.tipo).join(', ') });
+    MAIL = initMails({ S, contactos: n => contactosDe(n), data, esc, opt, toast, $, closeForm, reload, ISO, marca: () => (ADM && ADM.cfgMarca ? ADM.cfgMarca() : null), servicios: n => serviciosDe(n).map(x => x.tipo).join(', ') });
     Object.assign(ACT, MAIL.acts);
     Object.assign(ACT, integr().acts);
-    IA = initIA({ S, esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
+    IA = initIA({ S, contactos: n => contactosDe(n), esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
     Object.assign(ACT, IA.actions);
   }
   $('#askbtn').hidden = !IA; $('#askbtn .askbtn-i').innerHTML = ISO; document.querySelectorAll('.askmini').forEach(b => { b.hidden = !IA; b.innerHTML = ISO; });

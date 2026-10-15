@@ -20,10 +20,30 @@ const PLANTILLAS = [
 
 export function initMails(ctx) {
   const { S, data, esc, opt, toast, $ } = ctx;
-  const st = { clientes: [], busy: false };
+  const st = { clientes: [], busy: false, sel: new Set(), modo: 'principal' };
   const cli = n => S.C.find(c => c.nombre === n) || {};
-  const nombreDe = n => ((cli(n).contacto || '').split(/[,/]/)[0].trim().split(' ')[0]) || '';
-  const mailDe = n => (cli(n).email || '').split(/[,;\s]+/).filter(Boolean).join(', ');
+  const pnom = s => String(s || '').split(/[,/]/)[0].trim().split(' ')[0];
+  // Contactos del cliente con email (dueña, marketing, administración…). Sin tabla de contactos, el email del cliente.
+  const conMail = n => {
+    const ks = ctx.contactos ? ctx.contactos(n) : [];
+    if (ks.length) return ks.flatMap(k => String(k.email || '').split(/[,;\s]+/).filter(Boolean).map(e => ({ ...k, email: e.toLowerCase() })));
+    return String(cli(n).email || '').split(/[,;\s]+/).filter(Boolean).map((e, i) => ({ nombre: i ? '' : cli(n).contacto || '', rol: '', email: e.toLowerCase(), principal: !i, cobros: true }));
+  };
+  const lista = v => String(v || '').split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean);
+  // A quién le llega el mail de cada cliente y con qué nombre se saluda.
+  function destino(n) {
+    const ks = conMail(n);
+    let elegidos;
+    if (st.clientes.length === 1) elegidos = ks.filter(k => st.sel.has(k.email));
+    else if (st.modo === 'todos') elegidos = ks;
+    else if (st.modo === 'cobros') { elegidos = ks.filter(k => k.cobros); if (!elegidos.length) elegidos = ks.filter(k => k.principal).slice(0, 1); }
+    else elegidos = (ks.filter(k => k.principal).length ? ks.filter(k => k.principal) : ks).slice(0, 1);
+    const extra = st.clientes.length === 1 ? lista(val('otros')).filter(e => !elegidos.some(k => k.email === e)) : [];
+    const noms = [...new Set(elegidos.map(k => pnom(k.nombre)).filter(x => x && !/^administraci/i.test(x)))];
+    return { para: [...new Set([...elegidos.map(k => k.email), ...extra])], nombre: noms.length === 1 ? noms[0] : noms.length === 2 ? noms.join(' y ') : '' };
+  }
+  const nombreDe = n => (n ? destino(n).nombre : '');
+  const mailDe = n => destino(n).para.join(', ');
   const firma = () => 'Saludos,\n' + (((S.me && (S.me.nombre || S.me.alias)) || '').split(' ')[0] || 'Equipo') + '\nàndale';
   const marca = () => (ctx.marca && ctx.marca()) || MARCA_DEF;
   const personal = (t, n) => String(t || '').replace(/\{nombre\}/g, nombreDe(n) || '').replace(/Hola ,/g, 'Hola,');
@@ -38,30 +58,47 @@ export function initMails(ctx) {
     const b = build(st.clientes[0]);
     f.srcdoc = b.html;
   }
+  function porDefecto(n, para) {
+    const ks = conMail(n), quiero = lista(para), pri = ks.filter(k => k.principal);
+    st.sel = new Set((quiero.length ? ks.filter(k => quiero.includes(k.email)) : (pri.length ? pri : ks.slice(0, 1))).map(k => k.email)); st.selDe = n;
+  }
   function chips() {
     const el = $('#ml-cls'); if (!el) return;
-    el.innerHTML = st.clientes.map(n => '<span class="mlchip' + (mailDe(n) ? '' : ' sin') + '">' + esc(n) + (mailDe(n) ? '' : ' · sin email') + '<button type="button" data-act="mlQuitar" data-n="' + esc(n) + '" aria-label="Quitar ' + esc(n) + '">✕</button></span>').join('') || '<span class="muted">Elegí al menos un cliente.</span>';
-    const uno = st.clientes.length === 1, para = $('#ml-para-w');
-    if (para) { para.hidden = !uno; const i = $('#ml-para'); if (uno && i && !i.dataset.tocado) i.value = mailDe(st.clientes[0]); }
-    const n = $('#ml-n'); if (n) n.textContent = st.clientes.length > 1 ? 'Se manda un mail separado a cada cliente, con su nombre en el saludo.' : '';
+    if (st.clientes.length === 1 && st.selDe !== st.clientes[0]) porDefecto(st.clientes[0]);
+    const uno = st.clientes.length === 1;
+    el.innerHTML = st.clientes.map(n => { const sin = !conMail(n).length; return '<span class="mlchip' + (sin ? ' sin' : '') + '">' + esc(n) + (sin ? ' · sin email' : (!uno && destino(n).para.length > 1 ? ' · ' + destino(n).para.length + ' personas' : '')) + '<button type="button" data-act="mlQuitar" data-n="' + esc(n) + '" aria-label="Quitar ' + esc(n) + '">✕</button></span>'; }).join('') || '<span class="muted">Elegí al menos un cliente.</span>';
+    const para = $('#ml-para-w'), modo = $('#ml-modo-w');
+    if (para) {
+      para.hidden = !uno;
+      const box = $('#ml-ks');
+      if (uno && box) {
+        const ks = conMail(st.clientes[0]);
+        box.innerHTML = ks.length ? ks.map(k => '<label class="mlk"><input type="checkbox" data-mlk="' + esc(k.email) + '"' + (st.sel.has(k.email) ? ' checked' : '') + '><div class="mlk-t"><div class="mlk-n"><strong>' + esc(k.nombre || k.email.split('@')[0]) + '</strong>' + (k.rol ? '<em>' + esc(k.rol) + '</em>' : '') + (k.principal ? '<i class="ctag pri">Principal</i>' : '') + (k.cobros ? '<i class="ctag cob">Cobros</i>' : '') + '</div><div class="mlk-e">' + esc(k.email) + '</div></div></label>').join('') : '<span class="muted">Este cliente no tiene contactos con email. Escribilo abajo' + (ctx.contactos ? ' o sumalo en la ficha' : '') + '.</span>';
+      }
+    }
+    if (modo) modo.hidden = uno || !st.clientes.length;
+    const n = $('#ml-n'); if (n) n.textContent = st.clientes.length > 1 ? 'Se manda un mail separado a cada cliente, con el nombre de su contacto en el saludo.' : '';
     const sv = $('#ml-send'); if (sv) sv.textContent = st.clientes.length > 1 ? 'Enviar ' + st.clientes.length + ' mails' : 'Enviar';
     preview();
   }
 
   function open(o = {}) {
     st.clientes = (o.clientes || []).filter(n => S.C.some(c => c.nombre === n));
+    st.modo = 'principal'; st.sel = new Set(); st.selDe = null;
+    if (st.clientes.length === 1) porDefecto(st.clientes[0], o.para);
     const p = $('#panel');
     const pl = PLANTILLAS.map(([k, l]) => opt(k, l, '')).join('');
     p.innerHTML = '<form id="mlform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">Mail a clientes</span><h2 id="panel-title">Escribir un mail</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b">' +
       '<p class="formnote full">Para novedades, pedidos de material, coordinar o avisar algo. Sale a tu nombre desde la casilla de àndale y las respuestas te llegan a vos. Queda anotado en las charlas del cliente.</p>' +
-      '<div class="field full"><span class="lbl">Para</span><div id="ml-cls" class="mlchips"></div><select class="in" id="ml-add" aria-label="Agregar cliente" style="margin-top:8px">' + opt('', '+ Agregar cliente', '') + opt('__activos', 'Todos los clientes activos', '') + S.C.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(c => opt(c.nombre, c.nombre + (c.email ? '' : ' (sin email)'), '')).join('') + '</select><span class="hint" id="ml-n"></span></div>' +
-      '<div class="field full" id="ml-para-w" hidden><label for="ml-para">Email</label><input id="ml-para" placeholder="cliente@empresa.com" autocomplete="off"><span class="hint">Varios, separados por coma.</span></div>' +
+      '<div class="field full"><span class="lbl">Para</span><div id="ml-cls" class="mlchips"></div><select class="in" id="ml-add" aria-label="Agregar cliente" style="margin-top:8px">' + opt('', '+ Agregar cliente', '') + opt('__activos', 'Todos los clientes activos', '') + S.C.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(c => opt(c.nombre, c.nombre + (conMail(c.nombre).length ? '' : ' (sin email)'), '')).join('') + '</select><span class="hint" id="ml-n"></span></div>' +
+      '<div class="field full" id="ml-para-w" hidden><span class="lbl">A quiénes</span><div id="ml-ks" class="mlks"></div><input id="ml-otros" class="in" style="margin-top:8px" placeholder="Otros emails (opcional, separados por coma)" autocomplete="off"></div>' +
+      '<div class="field full" id="ml-modo-w" hidden><label for="ml-modo">A quién de cada cliente</label><select id="ml-modo">' + opt('principal', 'Al contacto principal', 'principal') + opt('todos', 'A todos sus contactos', 'principal') + opt('cobros', 'A los que reciben resúmenes y facturas', 'principal') + '</select></div>' +
       '<div class="field full iabox"><span class="lbl"><span class="pig" aria-hidden="true">' + (ctx.ISO || '') + '</span> Contale a Mr. Piggy qué querés decir</span><textarea id="ml-idea" rows="2" placeholder="Ej.: pedile a Juan el logo en vector y las fotos del local para la web, que lo necesitamos antes del viernes"></textarea><div class="toolbar"><button type="button" class="btn sm primary" data-act="mlIA">Redactar el mail</button></div></div>' +
       '<div class="field"><label for="ml-tpl">Plantilla</label><select id="ml-tpl">' + pl + '</select></div>' +
       '<div class="field"><label for="ml-asunto">Asunto</label><input id="ml-asunto" value="' + esc(o.asunto || '') + '"></div>' +
       '<div class="field full"><label for="ml-mensaje">Mensaje</label><textarea id="ml-mensaje" rows="9">' + esc(o.mensaje || 'Hola {nombre}, ¿cómo estás?\n\n') + '</textarea>' +
-      '<span class="hint">{nombre} se reemplaza por el nombre del contacto de cada cliente. La firma va sola.</span>' +
+      '<span class="hint">{nombre} se reemplaza por el nombre de quien lo recibe (si son dos, “Laura y Juan”; si son más, queda “Hola,”). La firma va sola.</span>' +
       '<div class="toolbar" style="margin-top:6px"><span class="muted" style="font-size:13px">Mr. Piggy:</span><button type="button" class="btn ghost sm" data-act="mlTxt" data-t="mejorar">Mejorar</button><button type="button" class="btn ghost sm" data-act="mlTxt" data-t="corto">Más corto</button><button type="button" class="btn ghost sm" data-act="mlTxt" data-t="formal">Más formal</button><button type="button" class="btn ghost sm" data-act="mlTxt" data-t="ingles">En inglés</button></div></div>' +
       '<details class="mas full"><summary>Título grande, botón y copia</summary><div class="mas-b">' +
       '<div class="field full"><label for="ml-titulo">Título (opcional)</label><input id="ml-titulo" placeholder="Ej.: Ya está tu nueva web"></div>' +
@@ -101,9 +138,11 @@ export function initMails(ctx) {
     if (!val('asunto')) { toast('Falta el asunto'); $('#ml-asunto').focus(); return; }
     if (!(($('#ml-mensaje') || {}).value || '').trim()) { toast('Falta el mensaje'); return; }
     const uno = st.clientes.length === 1;
-    const destinos = st.clientes.map(n => ({ n, para: uno ? val('para') : mailDe(n) }));
+    const malos = lista(val('otros')).filter(e => !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(e));
+    if (uno && malos.length) { toast('Email inválido: ' + malos.join(', ')); $('#ml-otros').focus(); return; }
+    const destinos = st.clientes.map(n => ({ n, para: mailDe(n) }));
     const sin = destinos.filter(d => !d.para);
-    if (uno && sin.length) { toast('Falta el email del cliente'); $('#ml-para').focus(); return; }
+    if (uno && sin.length) { toast('Elegí a quién mandarlo o escribí un email'); return; }
     st.busy = true; const btn = $('#ml-send'); btn.disabled = true;
     let ok = 0; const errs = [];
     for (const d of destinos.filter(x => x.para)) {
@@ -127,11 +166,12 @@ export function initMails(ctx) {
       add.forEach(n => { if (!st.clientes.includes(n)) st.clientes.push(n); });
       t.value = ''; chips(); return;
     }
+    if (t.dataset && t.dataset.mlk) { if (t.checked) st.sel.add(t.dataset.mlk); else st.sel.delete(t.dataset.mlk); preview(); return; }
+    if (t.id === 'ml-modo') { st.modo = t.value; chips(); return; }
     if (t.id === 'ml-tpl') { const x = PLANTILLAS.find(p => p[0] === t.value); if (x) { if (x[2]) $('#ml-asunto').value = x[2]; $('#ml-mensaje').value = x[3]; preview(); } return; }
   });
   document.addEventListener('input', e => {
     const t = e.target; if (!t.id || !t.id.startsWith('ml-') || t.id === 'ml-idea') return;
-    if (t.id === 'ml-para') t.dataset.tocado = '1';
     clearTimeout(st.tm); st.tm = setTimeout(preview, 250);
   });
   document.addEventListener('submit', e => { if (e.target.id === 'mlform') { e.preventDefault(); e.stopImmediatePropagation(); send(); } }, true);
@@ -142,7 +182,7 @@ export function initMails(ctx) {
       mlQuitar: t => { st.clientes = st.clientes.filter(n => n !== t.dataset.n); chips(); },
       mlIA: t => ia(t),
       mlTxt: t => texto(t),
-      mail: t => open({ clientes: t.dataset.cliente ? [t.dataset.cliente] : [...S.csel].map(id => (S.C.find(c => c._id === id) || {}).nombre).filter(Boolean) }),
+      mail: t => open({ para: t.dataset.para || '', clientes: t.dataset.cliente ? [t.dataset.cliente] : [...S.csel].map(id => (S.C.find(c => c._id === id) || {}).nombre).filter(Boolean) }),
     },
   };
 }

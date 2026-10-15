@@ -101,7 +101,15 @@ export function initAdmin(ctx) {
     const rec = gest.find(g => g.tipo === 'Recordatorio de pago');
     return { cliente, m, res, sug, facs, moneda, total, emitido, cobrado, saldo: emitido - cobrado, gest, rec };
   }
-  const contactoDe = cliente => { const c = S.C.find(x => x.nombre === cliente) || {}; return (c.contacto || '').split(/[,/]/)[0].trim().split(' ')[0]; };
+  // Quién recibe resúmenes, facturas y recordatorios: los contactos marcados "Recibe cobros" (pueden ser varios).
+  // Si nadie está marcado, el email de facturación o el del cliente, como antes.
+  const cobrosDe = cliente => (ctx.contactos ? ctx.contactos(cliente) : []).filter(k => k.cobros && k.email);
+  const pnom = v => String(v || '').split(/[,/]/)[0].trim().split(' ')[0];
+  const contactoDe = cliente => {
+    const ks = cobrosDe(cliente);
+    if (ks.length) { const n = [...new Set(ks.map(k => pnom(k.nombre)).filter(x => x && !/^administraci/i.test(x)))]; return n.length === 1 ? n[0] : n.length === 2 ? n.join(' y ') : ''; }
+    const c = S.C.find(x => x.nombre === cliente) || {}; return pnom(c.contacto);
+  };
 
   /* ---------- carga ---------- */
   async function load() {
@@ -203,8 +211,12 @@ export function initAdmin(ctx) {
   const cfgMarca = () => (AD.AJ && AD.AJ.resumen_pdf) || {};
   const periodoTit = m => cap(monthLabel(m).replace(' de ', ' '));
   const periodoTxt = m => monthLabel(m).replace(' de ', ' ');
-  const contactoFull = cliente => ((S.C.find(x => x.nombre === cliente) || {}).contacto || '').split(/[,/]/)[0].trim();
-  const mailsDe = cliente => { const c = S.C.find(x => x.nombre === cliente) || {}; return (cadm(cliente).email_facturacion || c.email || '').split(/[,;\s]+/).filter(Boolean).join(', '); };
+  const contactoFull = cliente => { const k = cobrosDe(cliente).find(x => x.nombre && !/^administraci/i.test(x.nombre)); return k ? k.nombre.trim() : ((S.C.find(x => x.nombre === cliente) || {}).contacto || '').split(/[,/]/)[0].trim(); };
+  const mailsDe = cliente => {
+    const c = S.C.find(x => x.nombre === cliente) || {}, ks = cobrosDe(cliente);
+    const l = ks.length ? ks.map(k => k.email) : [cadm(cliente).email_facturacion || c.email || ''];
+    return [...new Set(l.flatMap(x => String(x).split(/[,;\s]+/)).map(x => x.trim().toLowerCase()).filter(Boolean))].join(', ');
+  };
   const firma = () => 'Saludos,\n' + (((S.me && (S.me.nombre || S.me.alias)) || '').split(' ')[0] || 'Equipo') + '\nàndale';
   const pdfLib = () => import('./docs.js');
   const estiloDoc = () => ((AD.AJ && AD.AJ.documentos) || {}).estilo || 'editorial';
@@ -212,7 +224,7 @@ export function initAdmin(ctx) {
   const itemsDe = r => r.items.filter(i => i.inc && String(i.concepto || '').trim()).map(i => ({ concepto: String(i.concepto).trim(), monto: parseMonto(i.monto) || 0 }));
   const cfgDocs = () => ({ ...cfgMarca(), emisores: (AD.AJ && AD.AJ.emisores) || {} });
   const datosClienteDoc = cliente => { const c = S.C.find(x => x.nombre === cliente) || {}, a = cadm(cliente) || {};
-    return { razon_social: a.razon_social || '', cuit: a.cuit || '', condicion_iva: a.condicion_iva || '', domicilio: a.domicilio || '', email: (a.email_facturacion || c.email || '').split(/[,;\s]+/).filter(Boolean)[0] || '' }; };
+    return { razon_social: a.razon_social || '', cuit: a.cuit || '', condicion_iva: a.condicion_iva || '', domicilio: a.domicilio || '', email: mailsDe(cliente).split(', ')[0] || '' }; };
   async function pdfResumen(r) { // r: { id?, numero?, cliente, m, moneda, items, nota }
     const { resumenDoc, bytesBase64 } = await pdfLib();
     // El número lo pone la base al guardar: si es el borrador abierto y todavía no se guardó, se guarda antes.
@@ -465,7 +477,7 @@ export function initAdmin(ctx) {
       const c = S.C.find(x => x.nombre === cl) || {}, ca = cadm(cl);
       const [nom, ...ape] = (c.contacto || '').split(' ');
       const servicio = r.items.filter(i => i.inc).map(i => i.concepto + ' ' + money(i.monto, r.moneda)).join('\n');
-      const mails = (ca.email_facturacion || c.email || '').split(/[,;\s]+/).filter(Boolean);
+      const mails = mailsDe(cl).split(', ').filter(Boolean);
       (mails.length ? mails : ['']).forEach(mail => rows.push([nom || '', ape.join(' '), cl, cap(monthLabel(m)), servicio, mail, money(r.total, r.moneda), r.link_pdf || '']));
     });
     if (rows.length === 1) { toast('No hay resúmenes guardados este mes para exportar'); return; }
@@ -694,7 +706,7 @@ export function initAdmin(ctx) {
       '<dt>CUIT</dt><dd>' + (ca.cuit ? esc(ca.cuit) + (ca.condicion_iva ? ' · ' + esc(ca.condicion_iva) : '') : '<span class="muted">—</span>') + '</dd>' +
       '<dt>Domicilio</dt><dd>' + (ca.domicilio ? esc(ca.domicilio) : '<span class="muted">—</span>') + '</dd>' +
       '<dt>Cómo se factura</dt><dd>' + esc(verTipo(ca.comprobante_default || 'Factura ARCA')) + (ca.emisor_default ? ' · la hace ' + esc(ca.emisor_default) : '') + ' · ' + esc(ca.moneda || 'ARS') + '</dd>' +
-      '<dt>Email de facturación</dt><dd>' + (ca.email_facturacion ? esc(ca.email_facturacion) : '<span class="muted">—</span>') + '</dd>' +
+      '<dt>Resúmenes y facturas a</dt><dd>' + (mailsDe(c.nombre) ? esc(mailsDe(c.nombre)) + (cobrosDe(c.nombre).length ? '' : ' <span class="muted">(email de facturación)</span>') : '<span class="muted">Nadie. Marcá en Contactos quién los recibe.</span>') + '</dd>' +
       '<dt>Carpeta</dt><dd>' + (ca.carpeta_admin ? '<a href="' + esc(ca.carpeta_admin) + '" target="_blank" rel="noopener">Carpeta de administración</a>' : '<span class="muted">—</span>') + '</dd>' +
       '<dt>Falta cobrar</dt><dd><span class="money">' + esc(multi(sal)) + '</span></dd></dl></div>' +
       (facs.length ? '<div class="rows" style="border-top:1px solid var(--line)">' + facs.slice(0, 8).map(f => '<button class="row" data-act="aFactura" data-id="' + esc(f.id) + '"><span class="d">' + fmt(f.fecha) + '</span><span class="t"><b>' + esc(verTipo(f.tipo) + ' ' + (f.numero || 'sin número')) + '</b><span class="money">' + money(f.monto, f.moneda) + '</span></span>' + efPill(f) + '</button>').join('') + '</div>' : '') +
@@ -918,7 +930,7 @@ export function initAdmin(ctx) {
         { k: 'comprobante_default', label: 'Factura habitual', type: 'select', html: v => TIPOS_COMP.map(t => opt(t, verTipo(t), v)).join('') },
         { k: 'emisor_default', label: 'Factura habitualmente', type: 'select', opts: EMISORES, blank: '—' },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
-        { k: 'email_facturacion', label: 'Email(s) de facturación', hint: 'Separados por coma. Ahí se mandan los resúmenes y las facturas.' },
+        { k: 'email_facturacion', label: 'Email(s) de facturación (respaldo)', hint: 'Se usan solo si ningún contacto tiene marcado “Recibe resúmenes y facturas”. Lo ideal es manejarlo desde Contactos, en la ficha del cliente.' },
         { k: 'carpeta_admin', label: 'Carpeta de administración (Drive)', type: 'url', full: 1, ph: 'https://drive.google.com/...' },
         { k: 'notas', label: 'Notas administrativas', type: 'textarea', full: 1, rows: 2 },
       ],
