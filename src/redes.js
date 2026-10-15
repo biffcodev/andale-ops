@@ -98,7 +98,7 @@ export function initRedes(ctx) {
       '<span class="rm-resp">' + (m.resp ? av(m.resp, fotoDe(m.resp)) : '') + (can ? '<select class="in sm" data-rmupd="resp" data-id="' + esc(m._id) + '" aria-label="Responsable del mes">' + opt('', 'Sin responsable', m.resp) + personas().map(a => opt(a, a, m.resp)).join('') + '</select>' : esc(m.resp || '')) + '</span>' +
       (can ? '<label class="rm-portal sw"><input type="checkbox" data-rmupd="visible" data-id="' + esc(m._id) + '"' + (m.visible ? ' checked' : '') + '><span></span><b>Visible en el portal</b></label>' : '') +
       (m.aprobadoAt ? '<span class="pzst" style="--c:var(--s-entregado)">Aprobado por ' + esc(m.aprobadoPor || 'el cliente') + '</span>' : '') +
-      (can ? '<label class="rm-hs">Horas del mes <input class="in sm" type="number" min="0" step="0.5" data-rmupd="horas" data-id="' + esc(m._id) + '" value="' + esc(m.horas) + '" placeholder="—"></label>' : '') + '</div>' +
+      '</div>' +
       '<div class="rm-plan">' + barras(m, lista) + (can ? '<button class="btn ghost sm" data-act="rmPlan" data-id="' + esc(m._id) + '">Editar plan</button>' : '') + '</div>' +
       '<nav class="pf-tabs">' + tabs.map(([k, l]) => '<button data-act="rmTab" data-t="' + k + '"' + (tab === k ? ' aria-current="page"' : '') + '>' + l + (k === 'planilla' && lista.length ? ' <span class="muted">' + lista.length + '</span>' : '') + '</button>').join('') + '</nav></div>';
     if (!ps) return h + '<section class="sheet">' + emptyBox('Cargando piezas…', '') + '</section>';
@@ -109,7 +109,7 @@ export function initRedes(ctx) {
     else if (tab === 'conv') h += '<div class="pf-grid"><div>' + hil().html('mes', m._id, { cliente: m.cliente, titulo: 'Conversación del mes', publico: true, vacio: 'Lo que se habla de las redes de ' + m.cliente + ' este mes. Marcá “Visible al cliente” para que lo lea en el portal.' }) + '</div><aside class="pf-side"><section class="pf-card"><h3>Notas del mes</h3><textarea class="in" rows="8" data-rmupd="notas" data-id="' + esc(m._id) + '" placeholder="Fechas especiales, promos, lo que pidió el cliente…"' + (can ? '' : ' disabled') + '>' + esc(m.notas) + '</textarea></section></aside></div>';
     return h;
   }
-  const carpetaBtn = m => m.carpetaUrl ? '<a class="btn" href="' + esc(m.carpetaUrl) + '" target="_blank" rel="noopener" title="' + esc(m.carpeta) + '">Carpeta ↗</a><button class="btn ghost sm" data-act="rmContar" data-id="' + esc(m._id) + '" title="Contar los archivos de la carpeta">↻</button>' : '<button class="btn" data-act="rmCarpeta" data-id="' + esc(m._id) + '">Crear carpetas en Dropbox</button>';
+  const carpetaBtn = m => m.carpetaUrl ? '<a class="btn" href="' + esc(m.carpetaUrl) + '" target="_blank" rel="noopener" title="' + esc(m.carpeta) + '">Carpeta ↗</a><button class="btn ghost sm" data-act="rmContar" data-id="' + esc(m._id) + '" title="Contar los archivos de la carpeta">↻</button>' : cfgGet && cfgGet('dropbox', 'crear') === 'si' ? '<button class="btn" data-act="rmCarpeta" data-id="' + esc(m._id) + '">Crear carpetas en Dropbox</button>' : '';
   function enviarBtn(m, ps) {
     const listas = ps.filter(z => z.estado === 'Revisión interna').length;
     return '<button class="btn primary" data-act="rmEnviar" data-id="' + esc(m._id) + '"' + (listas ? '' : ' title="Pasa al cliente las piezas en Revisión interna"') + '>Enviar al cliente' + (listas ? ' (' + listas + ')' : '') + '</button>';
@@ -194,7 +194,7 @@ export function initRedes(ctx) {
       '<div class="field full"><label for="pz-copy">Copy</label><textarea id="pz-copy" rows="6"' + d + '>' + esc(z.copy) + '</textarea>' + (can ? '<div class="toolbar" style="margin-top:6px"><span class="muted" style="font-size:13px">Mr. Piggy:</span><button type="button" class="btn ghost sm" data-act="rmCopyUno">' + (z.copy ? 'Mejorar' : 'Escribir') + ' el copy</button></div>' : '') + '</div>' +
       '<div class="field full"><label for="pz-hashtags">Hashtags</label><input id="pz-hashtags" value="' + esc(z.hashtags) + '"' + d + '></div>' +
       '<div class="field"><label for="pz-fijo">Se repite cada</label><select id="pz-fijo"' + d + '>' + opt('', 'No se repite', z.fijo) + DIAS.map(x => opt(x, x, z.fijo)).join('') + '</select><span class="hint">Al arrancar el mes siguiente se crea sola en ese día.</span></div>' +
-      '<div class="field"><label for="pz-horas">Horas</label><input id="pz-horas" type="number" min="0" step="0.25" value="' + esc(z.horas) + '" placeholder="Opcional"' + d + '></div>' +
+
       '<label class="chk full"><input type="checkbox" id="pz-extra"' + (z.extra ? ' checked' : '') + d + '> Extra (fuera del plan)</label>' +
       '<div class="field full"><span class="lbl">Arte</span><div class="pz-artes">' + (artes || '<span class="muted">Sin arte todavía.</span>') + '</div>' + (can ? '<label class="btn sm" style="margin-top:8px;justify-self:start">Subir arte a Dropbox<input type="file" hidden data-rmup="' + esc(z._id) + '" multiple accept="image/*,video/*,application/pdf"></label>' : '') + '</div>' +
       '<div class="full">' + hil().html('pieza', z._id, { cliente: m.cliente, titulo: 'Comentarios', compacto: true, publico: true }) + '</div>' +
@@ -204,7 +204,7 @@ export function initRedes(ctx) {
   async function guardarPieza() {
     const f = st.fpz; if (!f) return;
     const g = k => ($('#pz-' + k) || {}).value;
-    const u = { fecha: g('fecha') || '', hora: g('hora') || '', formato: g('formato'), red: g('red'), estado: g('estado'), resp: g('resp') || '', tema: (g('tema') || '').trim(), copy: (g('copy') || '').trim(), hashtags: (g('hashtags') || '').trim(), fijo: g('fijo') || '', horas: (g('horas') || '').trim(), extra: $('#pz-extra').checked };
+    const u = { fecha: g('fecha') || '', hora: g('hora') || '', formato: g('formato'), red: g('red'), estado: g('estado'), resp: g('resp') || '', tema: (g('tema') || '').trim(), copy: (g('copy') || '').trim(), hashtags: (g('hashtags') || '').trim(), fijo: g('fijo') || '', extra: $('#pz-extra').checked };
     try { await data.piezasUpd([f.id], u); local(f.mesId, [f.id], u); ctx.closeForm(); toast('Pieza guardada'); render(); }
     catch (e) { toast(e.message); }
   }
@@ -227,7 +227,7 @@ export function initRedes(ctx) {
     }
     const ins = nuevas.length ? await data.piezasIns(m, nuevas) : [];
     P.set(m._id, ins);
-    data.dropbox({ accion: 'carpeta_mes', mes_id: m._id }).then(r => { m.carpeta = r.carpeta; m.carpetaUrl = r.carpeta_url; render(); }, () => {});
+    if (cfgGet && cfgGet('dropbox', 'crear') === 'si') data.dropbox({ accion: 'carpeta_mes', mes_id: m._id }).then(r => { m.carpeta = r.carpeta; m.carpetaUrl = r.carpeta_url; render(); }, () => {});
     return m;
   }
   async function contar(m, silencio) {

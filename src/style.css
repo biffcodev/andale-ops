@@ -1501,3 +1501,39 @@ input[type=search].in{padding-left:34px;background:var(--surface) url("data:imag
 .mt-reset .sx-i{background:color-mix(in srgb,var(--crit) 12%,var(--surface));color:var(--crit)}
 .mt-reset .in{width:200px}
 .mt-pre{white-space:pre-wrap;font-size:12px;max-height:200px;overflow:auto;margin:6px 0 0}
+/* Reloj de horas (barra de arriba) */
+.tbellw{display:flex;align-items:center;gap:2px}
+.trelw{position:relative}
+.treloj{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;color:var(--muted)}
+.treloj:hover,.treloj[aria-expanded="true"]{color:var(--fg)}
+.treloj .tr-t{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.treloj.con{color:var(--fg)}
+.treloj.con svg{color:var(--ok)}
+.trelojpop{position:absolute;right:0;top:calc(100% + 8px);width:min(440px,94vw);max-height:78vh;overflow:auto;background:var(--surface);border-radius:16px;box-shadow:var(--shadow);z-index:46;padding:16px;display:grid;gap:12px}
+.rl-h{display:grid;gap:4px}
+.rl-h b{font-size:16px;letter-spacing:-.01em}
+.rl-dia{display:flex;align-items:center;gap:2px;font-size:13px;color:var(--muted)}
+.rl-dia .btn{padding:2px 8px;min-height:0}
+.rl-filas{display:grid;gap:10px}
+.rl-f{display:grid;gap:6px;padding:12px;border-radius:12px;background:color-mix(in srgb,var(--fg) 3%,var(--surface))}
+.rl-f .in{width:100%;height:38px;margin:0}
+.rl-f select:disabled{opacity:.55}
+.rl-l{display:flex;gap:6px;align-items:center}
+.rl-l select{flex:0 0 130px;width:130px}
+.rl-nb{color:var(--muted)}
+.rl-x{margin-left:auto;color:var(--muted)}
+.rl-acc{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rl-hechos{border-top:1px solid var(--line);padding-top:10px;display:grid;gap:4px}
+.rl-ht{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:2px}
+.rl-ht b{color:var(--fg);font-size:13px}
+.rl-hi{display:flex;align-items:center;gap:8px;font-size:13.5px;padding:4px 0}
+.rl-hn{flex:1;min-width:0}
+.rl-hn small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rl-hm{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rl-hi .btn{color:var(--muted);padding:2px 6px}
+.rl-vacio{font-size:14px;color:var(--muted)}
+@media (max-width:760px){.trelojpop{position:fixed;left:8px;right:8px;top:58px;width:auto}}
+@media print{.trelw{display:none!important}}
+@media (max-width:960px){.topbar{position:relative;z-index:30}}
+@media (max-width:760px){.trelojpop{position:absolute;left:auto;right:-8px;top:calc(100% + 8px);width:calc(100vw - 16px)}}
+@media (max-width:760px){.tbellw,.trelw{position:static}.trelojpop{left:8px;right:8px;width:auto;top:calc(100% + 6px)}}

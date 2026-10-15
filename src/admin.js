@@ -691,6 +691,7 @@ export function initAdmin(ctx) {
   // Horas: las que carga el equipo (opcional) al cerrar tareas, en piezas, en el mes de redes y en tickets.
   // Costo de la hora: el que pongan las socias o, si no hay, sueldos del año ÷ horas disponibles del equipo (140 h por persona por mes).
   const cfgRent = () => (AD.AJ && AD.AJ.rentabilidad) || {};
+  window.addEventListener('horas-cargadas', () => { AD.HR = null; });
   function costoHoraEstimado(y) {
     const meses = y === thisMonth().slice(0, 4) ? +thisMonth().slice(5, 7) : 12;
     const lab = AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.cuenta === 'Costo Laboral' && v.moneda === 'ARS').reduce((a, v) => a + v.egreso, 0);
@@ -699,7 +700,7 @@ export function initAdmin(ctx) {
   }
   function filasHoras(y) {
     const hr = AD.HR, ch = +cfgRent().costo_hora || costoHoraEstimado(y), out = new Map();
-    const fila = c => { if (!out.has(c)) out.set(c, { cliente: c, ing: 0, ingUsd: 0, hT: 0, hP: 0, hM: 0, hK: 0, extras: 0, prov: 0, proyectos: new Set() }); return out.get(c); };
+    const fila = c => { if (!out.has(c)) out.set(c, { cliente: c, ing: 0, ingUsd: 0, hT: 0, hP: 0, hM: 0, hK: 0, hR: 0, extras: 0, prov: 0, proyectos: new Set() }); return out.get(c); };
     const cliMov = v => v.cliente || ((S.C.find(c => c.nombre === v.contraparte) || {}).nombre) || '';
     AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.ingreso > 0 && /^Venta/.test(v.cuenta) && cliMov(v)).forEach(v => { const f = fila(cliMov(v)); if (v.moneda === 'ARS') f.ing += v.ingreso; else if (v.moneda === 'USD') f.ingUsd += v.ingreso; else if (v.usd) f.ingUsd += +v.usd; });
     S.P.forEach(p => (p.etapas || []).forEach(t => { if (t.horas && (!t.hechaAt || String(t.hechaAt).startsWith(y))) { const f = fila(p.cliente); f.hT += +t.horas; f.proyectos.add(p.proyecto); } }));
@@ -707,9 +708,10 @@ export function initAdmin(ctx) {
       hr.piezas.forEach(z => { if (!z.cliente) return; const f = fila(z.cliente); f.hP += z.horas; if (z.extra) f.extras++; });
       hr.meses.forEach(m => { if (m.cliente) fila(m.cliente).hM += m.horas; });
       hr.pedidos.forEach(t => { if (t.cliente) fila(t.cliente).hK += t.horas; });
+      (hr.registro || []).forEach(r => { if (r.cliente) fila(r.cliente).hR += r.horas; });
     }
     AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (!mv || !(mv.fecha || '').startsWith(y) || mv.moneda !== 'ARS') return; const a = x.abono_id ? S.A.find(z => z._id === x.abono_id) : null, p = x.proyecto_id ? S.P.find(z => z._id === x.proyecto_id) : null; const c = (a && a.cliente) || (p && p.cliente); if (c) fila(c).prov += x.monto; });
-    return { ch, filas: [...out.values()].map(f => { const horas = f.hT + f.hP + f.hM + f.hK, costo = horas * ch, queda = f.ing - costo - f.prov; return { ...f, horas, costo, queda, pct: f.ing ? Math.round(queda / f.ing * 100) : null, vh: horas && f.ing ? Math.round(f.ing / horas) : null }; }).filter(f => f.ing || f.horas).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999)) };
+    return { ch, filas: [...out.values()].map(f => { const horas = Math.round((f.hT + f.hP + f.hM + f.hK + f.hR) * 100) / 100, costo = horas * ch, queda = f.ing - costo - f.prov; return { ...f, horas, costo, queda, pct: f.ing ? Math.round(queda / f.ing * 100) : null, vh: horas && f.ing ? Math.round(f.ing / horas) : null }; }).filter(f => f.ing || f.horas).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999)) };
   }
   function rentHoras(y) {
     if (!AD.HR || AD.HR.y !== y) { if (!AD.hrCargando) { AD.hrCargando = true; data.horasAnio(y).then(r => { AD.HR = r; }, () => { AD.HR = { y, piezas: [], meses: [], pedidos: [] }; }).finally(() => { AD.hrCargando = false; ctx.render(); }); } return '<section class="sheet">' + emptyBox('Juntando las horas del año…', '') + '</section>'; }
@@ -721,10 +723,10 @@ export function initAdmin(ctx) {
       '<div class="sx-n"><b>' + esc(M(ch)) + '</b><span>Costo de la hora</span><small>' + (cfg.costo_hora ? 'el que pusieron ustedes' : est ? 'estimado con los sueldos del año' : 'cargalo abajo') + '</small></div></div>' +
       '<div class="sx-panel rt-ch"><label for="rt-ch">Costo de la hora del equipo</label><input class="in" id="rt-ch" type="number" min="0" step="100" value="' + esc(cfg.costo_hora || '') + '" placeholder="' + esc(est ? String(est) : 'Ej.: 9000') + '"><button class="btn sm" data-act="aRtCh">Guardar</button>' +
       '<span class="muted">' + (est ? 'Estimado: ' + esc(M(est)) + ' (sueldos del año ÷ 140 h por persona por mes). ' : '') + 'Si lo dejan vacío se usa el estimado.</span></div>' +
-      (totH ? '' : '<div class="sx-panel"><p class="sx-lead" style="margin:0"><b>Todavía no hay horas cargadas.</b> Se cargan (opcional) al cerrar una tarea, en cada pieza, en el mes de redes y en los tickets. Con unas semanas de datos esto empieza a decir algo; mientras tanto, los números son orientativos.</p></div>') +
+      (totH ? '' : '<div class="sx-panel"><p class="sx-lead" style="margin:0"><b>Todavía no hay horas cargadas.</b> Cada uno las anota con el reloj de arriba (“¿En qué estuviste trabajando?”). Con unas semanas de datos esto empieza a decir algo; mientras tanto, los números son orientativos.</p></div>') +
       (filas.length ? '<div class="tbl sx-tbl"><table><thead><tr><th>Cliente</th><th class="r">Ingresó</th><th class="r">Horas</th><th class="r">Costo del tiempo</th><th class="r">Proveedores</th><th class="r">Queda</th><th class="r">Valor hora real</th><th class="r">Extras</th></tr></thead><tbody>' +
         filas.map(f => '<tr><td><span class="sx-cl">' + (ctx.av ? ctx.av(f.cliente, (S.C.find(x => x.nombre === f.cliente) || {}).avatar, 'sq') : '') + '<span><b>' + esc(f.cliente) + '</b>' + (f.ingUsd ? '<span class="sub">+ ' + esc(money(f.ingUsd, 'USD')) + ' en dólares (no suma acá)</span>' : '') + '</span></span></td><td class="r">' + esc(M(f.ing)) + '</td>' +
-          '<td class="r" title="' + esc('Tareas ' + f.hT + ' · piezas ' + f.hP + ' · mes de redes ' + f.hM + ' · tickets ' + f.hK) + '">' + (f.horas ? esc(f.horas.toLocaleString('es-AR')) + ' h' : '<span class="muted">—</span>') + '</td><td class="r">' + (f.horas ? esc(M(f.costo)) : '—') + '</td><td class="r">' + (f.prov ? esc(M(f.prov)) : '—') + '</td>' +
+          '<td class="r" title="' + esc('Reloj ' + Math.round(f.hR * 10) / 10 + ' h' + (f.hT + f.hP + f.hM + f.hK ? ' · cargadas antes en tareas, piezas y tickets ' + Math.round((f.hT + f.hP + f.hM + f.hK) * 10) / 10 + ' h' : '')) + '">' + (f.horas ? esc(f.horas.toLocaleString('es-AR')) + ' h' : '<span class="muted">—</span>') + '</td><td class="r">' + (f.horas ? esc(M(f.costo)) : '—') + '</td><td class="r">' + (f.prov ? esc(M(f.prov)) : '—') + '</td>' +
           '<td class="r"><b class="sx-big' + (f.queda < 0 ? ' neg' : '') + '">' + esc(M(f.queda)) + '</b>' + (f.pct != null ? '<span class="sub">' + f.pct + '%</span>' : '') + '</td><td class="r">' + (f.vh != null ? '<span class="' + (ch && f.vh < ch ? 'neg' : '') + '">' + esc(M(f.vh)) + '</span>' : '—') + '</td><td class="r">' + (f.extras || '—') + '</td></tr>').join('') + '</tbody></table></div>' : '') +
       '</section>';
     // Lectura de Mr. Piggy
@@ -1258,7 +1260,9 @@ export function initAdmin(ctx) {
       const pedido = (($('#rt-pre-t') || {}).value || '').trim(), tipo = ($('#rt-pre-tipo') || {}).value || '';
       if (!pedido) { toast('Contá qué trabajo hay que presupuestar'); return; }
       const ch = +cfgRent().costo_hora || costoHoraEstimado(AD.rt.anio);
-      const historial = S.P.filter(p => (p.etapas || []).some(t => t.horas)).map(p => { const f = AD.PFZ.get(p._id); return { proyecto: p.proyecto, cliente: p.cliente, tipo: p.tipo, estado: p.estado, horas: (p.etapas || []).reduce((a, t) => a + (+t.horas || 0), 0), tareas: (p.etapas || []).length, presupuesto: f ? f.presupuesto : null, moneda: f ? f.moneda : null, inicio: p.inicio || '', entrega: p.entregaReal || p.entrega || '' }; });
+      const reg = new Map(); ((AD.HR && AD.HR.registro) || []).forEach(r => { if (r.proyectoId) reg.set(r.proyectoId, (reg.get(r.proyectoId) || 0) + r.horas); });
+      const hsP = p => (p.etapas || []).reduce((a, t) => a + (+t.horas || 0), 0) + (reg.get(p._id) || 0);
+      const historial = S.P.filter(p => hsP(p) > 0).map(p => { const f = AD.PFZ.get(p._id); return { proyecto: p.proyecto, cliente: p.cliente, tipo: p.tipo, estado: p.estado, horas: Math.round(hsP(p) * 10) / 10, tareas: (p.etapas || []).length, presupuesto: f ? f.presupuesto : null, moneda: f ? f.moneda : null, inicio: p.inicio || '', entrega: p.entregaReal || p.entrega || '' }; });
       AD.rtPre = { pedido, tipo, r: AD.rtPre && AD.rtPre.r }; AD.rtPreBusy = true; ctx.render();
       try { AD.rtPre.r = await data.ia({ modo: 'presupuesto', texto: (tipo ? 'Tipo: ' + tipo + '\n' : '') + pedido, contexto: { costo_hora: ch, moneda: 'ARS', proyectos_con_horas: historial, aclaracion: historial.length < 3 ? 'Hay muy pocos proyectos con horas cargadas: dalo como rango amplio y decilo.' : '' } }); }
       catch (err) { toast(err.message); }

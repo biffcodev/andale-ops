@@ -15,6 +15,7 @@ import { initRedes } from './redes.js';
 import { initTickets } from './tickets.js';
 import { initEntregas } from './entregas.js';
 import { initInformes } from './informes.js';
+import { initReloj } from './reloj.js';
 import * as E from './emails.js';
 initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
@@ -553,8 +554,7 @@ function abrirTarea(pid, i) {
     '<div class="field"><label for="tk-prio">Prioridad</label><select id="tk-prio"' + ro + '>' + opt('', 'Sin prioridad', x.prio || '') + PRIOS.map(v => opt(v, v, x.prio || '')).join('') + '</select></div>' +
     '<div class="field"><label for="tk-resp">Responsable</label><select id="tk-resp"' + ro + '>' + opt('', 'Sin asignar', x.resp || '') + [...new Set([...personas(), x.resp].filter(Boolean))].map(a => opt(a, a, x.resp || '')).join('') + '</select></div>' +
     '<div class="field"><label for="tk-fecha">Para cuándo</label><input id="tk-fecha" type="date" value="' + esc(x.fecha || '') + '"' + ro + '></div>' +
-    (S.T ? (() => { const ets = etapasProyecto(p); return (ets.length ? '<div class="field"><label for="tk-etapa">Etapa</label><select id="tk-etapa"' + ro + '>' + opt('', 'Sin etapa', x.etapa || '') + ets.map(e => opt(e, e, x.etapa || '')).join('') + '</select></div>' : '') +
-      '<div class="field"><label for="tk-horas">Horas que llevó</label><input id="tk-horas" type="number" min="0" step="0.25" inputmode="decimal" placeholder="Opcional" value="' + esc(x.horas ?? '') + '"' + ro + '><span class="hint">Aproximado. Sirve para saber cuánto cuesta cada trabajo.</span></div>'; })() : '') +
+    (S.T ? (() => { const ets = etapasProyecto(p); return (ets.length ? '<div class="field"><label for="tk-etapa">Etapa</label><select id="tk-etapa"' + ro + '>' + opt('', 'Sin etapa', x.etapa || '') + ets.map(e => opt(e, e, x.etapa || '')).join('') + '</select></div>' : ''); })() : '') +
     '<div class="field full"><label for="tk-nota">Notas</label><textarea id="tk-nota" rows="6" placeholder="Detalles, links, lo que pidió el cliente…"' + ro + '>' + esc(x.nota || '') + '</textarea></div>' +
     (x.fecha && integ('calendario') ? '<div class="toolbar full">' + calBtn(x.n + ' · ' + p.proyecto, x.fecha, 'Tarea del proyecto ' + p.proyecto + ' (' + p.cliente + ')', 'sm') + '</div>' : '') +
     (x.hechaPor ? '<p class="formnote full">Hecha por ' + esc(x.hechaPor) + (x.hechaAt ? ' el ' + fmt(x.hechaAt.slice(0, 10)) : '') + '</p>' : '') +
@@ -1032,6 +1032,8 @@ let INTEGR = null;
 const integr = () => INTEGR || (INTEGR = initIntegraciones({ S, esc, opt, toast, $, data, render, isAdmin, isStaff, closeForm, ISO, emptyBox, DEF: INTEG_DEF }));
 const vIntegraciones = () => integr().view();
 const trab = () => TRAB || (TRAB = initTrabajo({ S, esc, opt, toast, data, render, isStaff, personas }));
+let RLJ = null;
+const rlj = () => RLJ || (RLJ = initReloj({ S, esc, opt, toast, data, $, today, cmp }));
 let INF = null;
 const inf = () => INF || (INF = initInformes({ S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
 const red = () => RED || (RED = initRedes({ avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
@@ -1493,7 +1495,7 @@ document.addEventListener('change', async e => {
     const p = S.P.find(x => x._id === t.dataset.etoggle); if (!p) return;
     const ti = +t.dataset.i, next = etapasDe(p).map((x, i) => i === ti ? { ...x, ok: t.checked, est: t.checked ? '' : x.est } : x);
     S.openPick = 'etapa:' + p._id;
-    if (S.T) { guardarTareas(p, next); if (t.checked) pedirHoras(p, next[ti]); }
+    if (S.T) guardarTareas(p, next);
     else { p.etapas = next; if (S.view === 'mis' || S.view === 'inicio' || S.pficha) render(); upd('proyecto', p._id, { etapas: next }, null, true); }
     if (next.length && next.every(x => x.ok) && isOpen(p)) toast('Todas las tareas listas. ¿Lo pasás a Entregado?');
     return;
@@ -1648,7 +1650,8 @@ async function start(sess) {
     IA = initIA({ S, contactos: n => contactosDe(n), esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
     Object.assign(ACT, IA.actions);
   }
-  if (!ACT.flEditar) { Object.assign(ACT, trab().acts); Object.assign(ACT, hil().acts); Object.assign(ACT, red().acts); Object.assign(ACT, tk().acts); Object.assign(ACT, ent().acts); Object.assign(ACT, inf().acts); }
+  if (!ACT.flEditar) { Object.assign(ACT, trab().acts); Object.assign(ACT, hil().acts); Object.assign(ACT, red().acts); Object.assign(ACT, tk().acts); Object.assign(ACT, ent().acts); Object.assign(ACT, inf().acts); Object.assign(ACT, rlj().acts); }
+  rlj().iniciar();
   $('#askbtn').hidden = !IA; $('#askbtn .askbtn-i').innerHTML = ISO; document.querySelectorAll('.askmini').forEach(b => { b.hidden = !IA; b.innerHTML = ISO; });
   $('#top').hidden = false;
   $('#hoy').textContent = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });

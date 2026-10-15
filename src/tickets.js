@@ -9,6 +9,7 @@ const ORIGEN = { portal: 'Portal', equipo: 'Equipo', whatsapp: 'WhatsApp', mail:
 export function initTickets(ctx) {
   const { S, esc, opt, toast, data, render, $, av, fotoDe, personas, fmt, fmtShort, today, thisMonth, isStaff, isAdmin, cmp, norm, emptyBox, hil, clienteOpts, closeForm, reload, ISO, money } = ctx;
   const st = { f: { estado: 'abiertos', cliente: '', resp: '', cobro: '' }, abierto: null, bf: { estado: 'Nuevo' }, brief: null };
+  window.addEventListener('horas-cargadas', () => { st.hp = null; if (S.view === 'tickets') render(); });
   const tks = () => S.PD || [];
   const abierto = t => !['Hecho', 'Descartado'].includes(t.estado);
   const pillTk = e => '<span class="pzst" style="--c:var(' + (TK_COLOR[e] || '--muted') + ')">' + esc(e) + '</span>';
@@ -22,7 +23,9 @@ export function initTickets(ctx) {
     if (S.PD === null) return h + '<section class="sheet">' + emptyBox('Falta un paso en la base de datos', 'Para usar Tickets hay que correr la migración 0016 en Supabase.') + '</section>';
     const ab = tks().filter(abierto), sinResp = ab.filter(t => !t.resp), m = thisMonth();
     const delMes = tks().filter(t => String(t.cerrado || t.creado || '').slice(0, 7) === m);
-    const hs = delMes.reduce((a, t) => a + (+t.horas || 0), 0);
+    if (!st.hp && !st.hpCargando) { st.hpCargando = true; data.horasPorPedido().then(mp => { st.hp = mp || new Map(); st.hpCargando = false; render(); }); }
+    const minDe = t => (st.hp && st.hp.get(t._id)) || 0;
+    const hs = delMes.reduce((a, t) => a + minDe(t), 0) / 60 + delMes.reduce((a, t) => a + (+t.horas || 0), 0);
     const aFac = tks().filter(t => t.cobro === 'A facturar' && !t.facturado && t.estado !== 'Descartado');
     const porMon = {}; aFac.forEach(t => { if (t.monto !== '') porMon[t.moneda] = (porMon[t.moneda] || 0) + (+t.monto || 0); });
     h += '<section class="hks">' + kpi('Abiertos', ab.length, ab.filter(t => t.estado === 'Nuevo').length + ' nuevos', '', ' data-act="tkF" data-k="estado" data-v="abiertos"') +
@@ -46,7 +49,7 @@ export function initTickets(ctx) {
       '<td class="name"><b>' + esc(t.titulo) + '</b><span class="sub">' + esc(t.cliente) + (t.autor ? ' · ' + esc(t.autor) : '') + ' · ' + esc(ORIGEN[t.origen] || t.origen) + (t.prio ? ' · ⚑ ' + esc(t.prio) : '') + '</span></td>' +
       '<td>' + (can ? '<select class="cellsel st" style="--c:var(' + (TK_COLOR[t.estado] || '--muted') + ')" data-tkupd="estado" data-id="' + esc(t._id) + '" aria-label="Estado">' + ESTADOS_TK.map(e => opt(e, e, t.estado)).join('') + '</select>' : pillTk(t.estado)) + '</td>' +
       '<td>' + (can ? '<select class="in sm" data-tkupd="resp" data-id="' + esc(t._id) + '" aria-label="Responsable">' + opt('', '—', t.resp) + [...new Set([...personas(), t.resp].filter(Boolean))].map(a => opt(a, a, t.resp)).join('') + '</select>' : esc(t.resp || '—')) + '</td>' +
-      '<td>' + (can ? '<input class="in sm tk-h" type="number" min="0" step="0.25" value="' + esc(t.horas) + '" data-tkupd="horas" data-id="' + esc(t._id) + '" aria-label="Horas" placeholder="—">' : horasTxt(t.horas)) + '</td>' +
+      '<td class="muted">' + (horasTxt(Math.round((minDe(t) / 60 + (+t.horas || 0)) * 100) / 100 || '') || '—') + '</td>' +
       '<td><span class="tk-cob' + (t.cobro === 'A facturar' && !t.facturado ? ' fac' : '') + '">' + esc(t.cobro) + (t.cobro === 'A facturar' ? (t.facturado ? ' ✓' : t.monto !== '' ? ' · ' + mon(t.monto, t.moneda) : '') : '') + '</span></td>' +
       '<td class="mono">' + (t.creado ? fmtShort(t.creado.slice(0, 10)) : '') + (t.paraCuando && abierto(t) ? '<span class="sub">para ' + fmtShort(t.paraCuando) + '</span>' : '') + '</td></tr>').join('') + '</tbody></table></div><div class="count">' + lista.length + ' tickets</div></section>';
     return h;
@@ -69,7 +72,7 @@ export function initTickets(ctx) {
       '<div class="field"><label for="tp-estado">Estado</label><select id="tp-estado"' + d + '>' + ESTADOS_TK.map(e => opt(e, e, v.estado)).join('') + '</select></div>' +
       '<div class="field"><label for="tp-resp">Responsable</label><select id="tp-resp"' + d + '>' + opt('', 'Sin asignar', v.resp) + [...new Set([...personas(), v.resp].filter(Boolean))].map(a => opt(a, a, v.resp)).join('') + '</select></div>' +
       '<div class="field"><label for="tp-para">Para cuándo</label><input id="tp-para" type="date" value="' + esc(v.paraCuando) + '"' + d + '></div>' +
-      '<div class="field"><label for="tp-horas">Horas</label><input id="tp-horas" type="number" min="0" step="0.25" value="' + esc(v.horas) + '" placeholder="Aproximado"' + d + '></div>' +
+
       '<div class="field"><label for="tp-cobro">¿Se cobra?</label><select id="tp-cobro"' + d + '>' + COBROS.map(c => opt(c, c, v.cobro)).join('') + '</select></div>' +
       '<div class="field tp-mon"' + (v.cobro === 'A facturar' ? '' : ' hidden') + '><label for="tp-monto">Monto</label><span style="display:flex;gap:6px"><input id="tp-monto" type="number" min="0" step="1" value="' + esc(v.monto) + '"' + d + '><select id="tp-moneda" style="width:90px"' + d + '>' + (S.L.monedas || ['ARS', 'USD']).map(m => opt(m, m, v.moneda)).join('') + '</select></span></div>' +
       (t && t.facturado ? '<p class="formnote full">✓ Ya se incluyó en un resumen de cuenta.</p>' : '') +
@@ -82,7 +85,7 @@ export function initTickets(ctx) {
   }
   async function guardar() {
     const g = k => (($('#tp-' + k) || {}).value || '').trim();
-    const u = { cliente: g('cliente'), titulo: g('titulo'), detalle: g('detalle'), origen: g('origen'), prio: g('prio'), estado: g('estado'), resp: g('resp'), paraCuando: g('para'), horas: g('horas'), cobro: g('cobro'), monto: g('cobro') === 'A facturar' ? g('monto') : '', moneda: g('moneda') || 'ARS', respuesta: g('resp-cli') };
+    const u = { cliente: g('cliente'), titulo: g('titulo'), detalle: g('detalle'), origen: g('origen'), prio: g('prio'), estado: g('estado'), resp: g('resp'), paraCuando: g('para'), cobro: g('cobro'), monto: g('cobro') === 'A facturar' ? g('monto') : '', moneda: g('moneda') || 'ARS', respuesta: g('resp-cli') };
     if (!u.cliente || !u.titulo) { toast('Completá el cliente y qué pidió'); return; }
     try { await data.pedidoGuardar(st.abierto, u); closeForm(); toast(st.abierto ? 'Ticket guardado' : 'Ticket creado'); await reload(); } catch (e) { toast(e.message); }
   }

@@ -154,19 +154,40 @@ export async function piezasIns(mes, lista) {
 export async function piezasUpd(ids, u) { const r = piezaRow(u); if (!Object.keys(r).length || !ids.length) return; check(await sb.from('piezas').update(r).in('id', ids)); }
 export async function piezasDel(ids) { if (ids.length) check(await sb.from('piezas').delete().in('id', ids)); }
 
+/* ---------- Registro de horas (el reloj de arriba) ---------- */
+const horaUI = x => ({ _id: x.id, fecha: x.fecha, persona: idx.personaAlias.get(x.persona_id) || '', personaId: x.persona_id, cliente: idx.clienteName.get(x.cliente_id) || '', clienteId: x.cliente_id,
+  proyectoId: x.proyecto_id, abonoId: x.abono_id, pedidoId: x.pedido_id, minutos: +x.minutos || 0, nota: x.nota || '', creado: x.created_at });
+// Lo mío de un día. null si todavía no se corrió el SQL 0017.
+export async function horasDia(personaId, fecha) {
+  const r = await tolerante(sb.from('horas').select('*').eq('persona_id', personaId).eq('fecha', fecha).order('created_at'));
+  return r ? r.map(horaUI) : null;
+}
+export async function horasCargar(filas) {
+  const rows = filas.map(f => ({ fecha: f.fecha, cliente_id: f.cliente ? (idx.clienteId.get(f.cliente) || null) : null, proyecto_id: f.proyectoId || null, abono_id: f.abonoId || null, pedido_id: f.pedidoId || null, minutos: Math.round(f.minutos), nota: String(f.nota || '').slice(0, 1000) }));
+  if (rows.length) check(await sb.from('horas').insert(rows));
+}
+export async function horaBorrar(id) { check(await sb.from('horas').delete().eq('id', id)); }
+// Minutos por ticket (para la columna de Tickets).
+export async function horasPorPedido() {
+  const r = await tolerante(sb.from('horas').select('pedido_id, minutos').not('pedido_id', 'is', null).limit(20000));
+  if (!r) return null; const m = new Map(); r.forEach(x => m.set(x.pedido_id, (m.get(x.pedido_id) || 0) + (+x.minutos || 0))); return m;
+}
+
 /* ---------- Horas del año (para saber cuánto deja cada cliente de verdad) ---------- */
 // Tareas vienen con los proyectos; acá van piezas, meses de redes y tickets. Tolerante: si falta una tabla, viene vacía.
 export async function horasAnio(y) {
   const d = y + '-01-01', h = (+y + 1) + '-01-01', cn = id => idx.clienteName.get(id) || '';
-  const [pz, rm, pd] = await Promise.all([
+  const [pz, rm, pd, hh] = await Promise.all([
     tolerante(sb.from('piezas').select('cliente_id, horas, extra').gte('created_at', d).lt('created_at', h).limit(50000)),
     tolerante(sb.from('redes_meses').select('cliente_id, horas, mes').gte('mes', d).lt('mes', h)),
     tolerante(sb.from('pedidos').select('cliente_id, horas, cobro, created_at').gte('created_at', d).lt('created_at', h)),
+    tolerante(sb.from('horas').select('cliente_id, proyecto_id, abono_id, pedido_id, persona_id, minutos, fecha').gte('fecha', d).lt('fecha', h).limit(50000)),
   ]);
   return { y,
     piezas: (pz || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, extra: !!x.extra })),
     meses: (rm || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, mes: String(x.mes).slice(0, 7) })),
-    pedidos: (pd || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, cobro: x.cobro })) };
+    pedidos: (pd || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, cobro: x.cobro })),
+    registro: (hh || []).map(x => ({ cliente: cn(x.cliente_id), proyectoId: x.proyecto_id, abonoId: x.abono_id, pedidoId: x.pedido_id, persona: idx.personaAlias.get(x.persona_id) || '', horas: (+x.minutos || 0) / 60, fecha: x.fecha })) };
 }
 
 /* ---------- Informes de redes ---------- */
@@ -286,7 +307,7 @@ export const TABLAS_BACKUP = ['personas', 'listas', 'ajustes', 'plan_cuentas', '
   'clientes', 'clientes_admin', 'contactos', 'cliente_responsables', 'abonos', 'abono_responsables', 'abono_finanzas', 'precios_abono',
   'proyectos', 'proyecto_responsables', 'proyecto_finanzas', 'proyecto_facturacion', 'tareas', 'comunicaciones', 'propuestas',
   'resumenes', 'facturas', 'movimientos', 'imputaciones', 'liquidaciones', 'comprobantes_pago', 'gestiones', 'drive_archivos', 'emails',
-  'redes_meses', 'piezas', 'entregas', 'sitios', 'pedidos', 'briefs', 'informes_redes', 'comentarios'];
+  'redes_meses', 'piezas', 'entregas', 'sitios', 'pedidos', 'briefs', 'informes_redes', 'comentarios', 'horas'];
 export async function backup(onProg) {
   const out = {};
   for (const [i, t] of TABLAS_BACKUP.entries()) {
