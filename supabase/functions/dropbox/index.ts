@@ -16,7 +16,7 @@ const FORMATOS_DEF = ['Historias', 'Reels', 'Posts y carruseles'];
 const IMG = /\.(jpe?g|png|gif|webp|tiff?|bmp|heic)$/i;
 const limpio = (s: string) => String(s || '').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'Sin nombre';
 // Los encabezados de Dropbox van en ASCII: los acentos se escapan.
-const argHdr = (o: unknown) => JSON.stringify(o).replace(/[\u007f-￿]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+const argHdr = (o: unknown) => JSON.stringify(o).replace(/[\u007f-\uffff]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 
 let tokenCache: { t: string; exp: number; raiz: string; root: string | null; key: string } | null = null;
 async function conexion(svc: any) {

@@ -14,7 +14,7 @@ class Aviso extends Error { status: number; constructor(m: string, s = 400) { su
 const API = 'https://api.tally.so';
 const FN_URL = () => Deno.env.get('SUPABASE_URL')!.replace(/\/$/, '') + '/functions/v1/tally';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const norm = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const norm = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const EMAIL_RE = /[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+/;
 
 async function cred(svc: any, n: string) {
