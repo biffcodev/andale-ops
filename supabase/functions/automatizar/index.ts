@@ -21,7 +21,7 @@ const sumarDias = (iso: string, n: number) => { const d = new Date(iso + 'T12:00
 const difDias = (a: string, b: string) => Math.round((new Date(a + 'T12:00:00Z').getTime() - new Date(b + 'T12:00:00Z').getTime()) / 86400_000);
 const mesSig = (iso: string) => { const [y, m] = iso.split('-').map(Number); return m === 12 ? (y + 1) + '-01-01' : y + '-' + String(m + 1).padStart(2, '0') + '-01'; };
 const diasDelMes = (iso: string) => { const [y, m] = iso.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); };
-const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 const plata = (n: number, mon: string) => (mon === 'USD' ? 'US$ ' : mon === 'EUR' ? '€ ' : mon === 'GBP' ? '£ ' : '$ ') + Math.round(n).toLocaleString('es-AR');
 const num = (v: unknown, def: number, min: number, max: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def; };
 
