@@ -2072,3 +2072,69 @@ svg line,svg path[fill="none"],svg polyline{vector-effect:non-scaling-stroke}
 .stc.tinta .t-crit{color:#FF8A8A}
 .stc.neg b{text-decoration:underline wavy rgba(255,255,255,.5)}
 @media (max-width:860px){.stc3{grid-template-columns:1fr}}
+
+/* ---------- Franjas de números como tarjetas (estilo "Hoy y lo que viene") ----------
+   Cada dato es su propia tarjeta: etiqueta arriba, número grande, detalle abajo.
+   La primera va en azul (lo principal), la última en tinta si hay 3 o más, el resto en blanco. */
+.kpis,.hks,.sheet.kqs{background:transparent!important;box-shadow:none!important;border:0!important;padding:0!important;overflow:visible;gap:14px!important;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.kpis>.kpi,.hks>.hk,.sheet.kqs>.kq{all:unset;box-sizing:border-box;display:grid!important;align-content:start;justify-items:start;text-align:left;gap:6px;padding:20px 22px 18px;border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow-md);color:var(--fg);min-width:0;position:relative;transition:transform .12s,box-shadow .12s}
+.kpis>.kpi::before,.hks>.hk::before,.kq+.kq{content:none!important;border:0!important}
+.kpis>button.kpi,.hks>button.hk,.sheet.kqs>.kq.click{cursor:pointer}
+.kpis>button.kpi:hover,.hks>button.hk:hover,.sheet.kqs>.kq.click:hover{transform:translateY(-2px);box-shadow:0 2px 4px rgba(17,24,39,.05),0 14px 30px -12px rgba(17,24,39,.22);background:var(--surface)}
+.kpis>.kpi:focus-visible,.hks>.hk:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Orden: etiqueta, número, detalle */
+.kpis>.kpi .eyebrow{order:0;font-size:14px!important;font-weight:650!important;color:inherit!important;opacity:1!important;text-transform:none!important;letter-spacing:0!important}
+.kpis>.kpi b{order:1;font-size:clamp(26px,2.6vw,36px)!important;line-height:1.05;font-weight:800;letter-spacing:-.03em;color:inherit}
+.kpis>.kpi>span:not(.eyebrow){order:2;font-size:13px;color:var(--muted)}
+.kpis>.kpi:not(:has(.eyebrow))>span{order:0;font-size:14px;font-weight:650;color:inherit}
+.hks>.hk .hk-t{display:grid;justify-items:start;gap:6px;width:100%}
+.hks>.hk .hk-l{order:0;font-size:14px;font-weight:650;color:inherit;opacity:1}
+.hks>.hk b{order:1;font-size:clamp(26px,2.6vw,36px);line-height:1.05;font-weight:800;letter-spacing:-.03em;color:inherit}
+.hks>.hk .hk-s{order:2;font-size:13px;color:var(--muted)}
+.hks>.hk .hk-bar{order:3;width:min(160px,90%);margin-top:4px}
+.sheet.kqs>.kq .kq-l{font-size:14px;font-weight:650;color:inherit}
+.sheet.kqs>.kq .kq-r b{font-size:clamp(22px,2.2vw,30px);font-weight:800;letter-spacing:-.03em}
+/* Acentos */
+.kpis>.kpi:first-child,.hks>.hk:first-child,.sheet.kqs>.kq:first-child{background:var(--accent);color:#fff}
+.kpis>.kpi:last-child:nth-child(n+3),.hks>.hk:last-child:nth-child(n+3),.sheet.kqs>.kq:last-child:nth-child(n+3){background:#1E1E1E;color:#fff}
+:is(.kpis>.kpi,.hks>.hk,.sheet.kqs>.kq):is(:first-child,:last-child:nth-child(n+3)) :is(.hk-s,.kq-s,span:not(.eyebrow):not(.kq-c):not(.pill-n):not(.pill-s):not(.hk-l):not(.hk-t)){color:rgba(255,255,255,.82)!important}
+:is(.kpis>.kpi,.hks>.hk,.sheet.kqs>.kq):is(:first-child,:last-child:nth-child(n+3)) b{color:#fff!important}
+:is(.kpis>.kpi,.hks>.hk,.sheet.kqs>.kq):is(:first-child,:last-child:nth-child(n+3)):hover{background:var(--accent-dark)}
+:is(.kpis>.kpi,.hks>.hk,.sheet.kqs>.kq):last-child:nth-child(n+3):hover{background:#000}
+:is(.kpis>.kpi,.hks>.hk,.sheet.kqs>.kq):is(:first-child,:last-child:nth-child(n+3)) .kq-c{background:rgba(255,255,255,.18);color:#fff}
+:is(.kpis>.kpi,.hks>.hk,.sheet.kqs>.kq):is(:first-child,:last-child:nth-child(n+3)) .hk-bar{background:rgba(255,255,255,.22)}
+:is(.kpis>.kpi,.hks>.hk,.sheet.kqs>.kq):is(:first-child,:last-child:nth-child(n+3)) :is(.pill-n,.pill-s){background:rgba(255,255,255,.18);color:#fff}
+:is(.kpis>.kpi,.hks>.hk,.sheet.kqs>.kq):is(:first-child,:last-child:nth-child(n+3)) .btn.link{color:#fff}
+/* Alertas en tarjetas blancas: el número lleva el color del estado */
+.kpis>.kpi.alert:not(:first-child):not(:last-child:nth-child(n+3)) b,.hks>.hk.alert:not(:first-child):not(:last-child:nth-child(n+3)) b{color:var(--crit)!important}
+.kpis>.kpi.warn:not(:first-child):not(:last-child:nth-child(n+3)) b,.hks>.hk.warn:not(:first-child):not(:last-child:nth-child(n+3)) b{color:var(--att)!important}
+.kq-r b.neg{color:var(--neg)}
+/* Estadísticas: "En números" también en tarjetas */
+.sheet.sx:has(>.sx-ns){background:transparent;box-shadow:none}
+.sheet.sx:has(>.sx-ns)>.sx-h{padding:4px 2px 12px}
+.sheet.sx:has(>.sx-ns)>.sx-h .sx-i{background:var(--surface)}
+.sx-ns{border-top:0!important;padding:0!important;gap:14px!important}
+.sx-ns>.sx-n{justify-items:start;text-align:left;padding:20px 22px 18px;border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow-md);gap:6px}
+.sx-ns>.sx-n>span{order:0;font-size:14px;font-weight:650;opacity:1}
+.sx-ns>.sx-n>b{order:1}
+.sx-ns>.sx-n>small,.sx-ns>.sx-n>.sx-d{order:2}
+.sx-ns>.sx-n:first-child{background:var(--accent);color:#fff}
+.sx-ns>.sx-n:last-child:nth-child(n+3){background:#1E1E1E;color:#fff}
+.sx-ns>.sx-n:is(:first-child,:last-child:nth-child(n+3)) :is(b,span){color:#fff!important}
+.sx-ns>.sx-n:is(:first-child,:last-child:nth-child(n+3)) small{color:rgba(255,255,255,.8)}
+.sx-ns>.sx-n:is(:first-child,:last-child:nth-child(n+3)) .sx-d{background:rgba(255,255,255,.18);color:#fff}
+@media (max-width:760px){.kpis,.hks,.sheet.kqs,.sx-ns{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media (max-width:480px){.kpis,.hks,.sheet.kqs,.sx-ns{grid-template-columns:1fr!important}}
+/* Montos con varias monedas: siempre apilados (moneda arriba, número abajo), igual en todas las tarjetas */
+.sheet.kqs>.kq .kq-r,.kqs-in>.kq .kq-r{flex-direction:column;align-items:flex-start;gap:2px}
+/* Dentro de un bloque (ficha del cliente): mismas tarjetas, sin sombra */
+.kqs-in{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px!important;padding:6px 18px 4px!important}
+.kqs-in>.kq{display:grid;gap:6px;padding:18px 20px 16px;border-radius:var(--r-lg);background:var(--surface-2);border:0!important}
+.kqs-in>.kq .kq-l{font-size:14px;font-weight:650;color:inherit}
+.kqs-in>.kq .kq-r b{font-size:clamp(22px,2.2vw,30px);font-weight:800;letter-spacing:-.03em}
+.kqs-in>.kq:first-child{background:var(--accent);color:#fff}
+.kqs-in>.kq:last-child:nth-child(n+3){background:#1E1E1E;color:#fff}
+.kqs-in>.kq:is(:first-child,:last-child:nth-child(n+3)) b{color:#fff!important}
+.kqs-in>.kq:is(:first-child,:last-child:nth-child(n+3)) .kq-s{color:rgba(255,255,255,.82)}
+.kqs-in>.kq:is(:first-child,:last-child:nth-child(n+3)) :is(.kq-c,.pill-n,.pill-s){background:rgba(255,255,255,.18);color:#fff}
+.kqs-in{padding-bottom:14px!important}
