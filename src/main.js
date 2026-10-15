@@ -40,7 +40,7 @@ const DEF = {
   planes: ['SMALL', 'MEDIUM', 'PREMIUM', 'LARGE', 'SMALL+ADS', 'PACK RRSS', 'ESPECIAL'],
   rubros: ['Ads', 'Programación', 'Fotografía', 'Audiovisual', 'Contenido', 'Diseño', 'Contable', 'Otro'],
   monedas: ['ARS', 'USD', 'EUR', 'GBP'],
-  formatosRedes: ['Historias', 'Reels', 'Posts y carruseles'],
+  formatosRedes: ['Reels', 'Posts', 'Historias', 'Carruseles'],
 };
 const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores', monedas: 'Monedas (código de 3 letras: ARS, USD, EUR, GBP…)', formatosRedes: 'Formatos de redes (son también las carpetas de cada mes en Dropbox)' };
 const ESTADOS_ABONO = ['Activo', 'Pausado', 'Baja'];

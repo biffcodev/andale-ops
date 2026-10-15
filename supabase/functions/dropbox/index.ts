@@ -12,7 +12,7 @@ const CORS = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 class Aviso extends Error { status: number; constructor(m: string, s = 400) { super(m); this.status = s; } }
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-const FORMATOS_DEF = ['Historias', 'Reels', 'Posts y carruseles'];
+const FORMATOS_DEF = ['Reels', 'Posts', 'Historias', 'Carruseles'];
 const IMG = /\.(jpe?g|png|gif|webp|tiff?|bmp|heic)$/i;
 const limpio = (s: string) => String(s || '').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'Sin nombre';
 // Los encabezados de Dropbox van en ASCII: los acentos se escapan.

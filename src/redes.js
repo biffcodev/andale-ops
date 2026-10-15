@@ -6,7 +6,7 @@ export const ESTADOS_MES = ['Planificación', 'Producción', 'Revisión interna'
 export const PZ_COLOR = { 'Idea': '--s-empezar', 'En diseño': '--s-curso', 'Revisión interna': '--s-confirmar', 'Para el cliente': '--s-revision', 'Cambios': '--s-cancelado', 'Aprobada': '--s-entregado', 'Programada': '--s-presup', 'Publicada': '--s-entregado' };
 const MES_COLOR = { 'Planificación': '--s-empezar', 'Producción': '--s-curso', 'Revisión interna': '--s-confirmar', 'Con el cliente': '--s-revision', 'Aprobado': '--s-entregado', 'Programado': '--s-presup', 'Cerrado': '--s-pausado' };
 const REDES = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X'];
-const FORMATOS_DEF = ['Historias', 'Reels', 'Posts y carruseles'];
+const FORMATOS_DEF = ['Reels', 'Posts', 'Historias', 'Carruseles'];
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 import { vistaSel, vistaDe, filtrosMenu } from './ui.js';
 import { confirmar } from './dialogo.js';
