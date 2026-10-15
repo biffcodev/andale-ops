@@ -112,7 +112,7 @@ export function initEquipo(ctx, k) {
       return '<tr class="click" data-act="pgColab" ' + attr + ' data-g="eq"' + (activoI(x) ? '' : ' style="opacity:.55"') + '>' +
         '<td><span class="who1">' + (p && ctx.avEditable ? ctx.avEditable('persona', p._id, alias, p.avatar, '', false) : ctx.av ? ctx.av(alias || nombreI(x), p ? p.avatar : '') : '') + '<b>' + esc(alias || nombreI(x)) + '</b></span><span class="sub">' + esc([nombreI(x) !== alias ? nombreI(x) : '', p && p.puesto].filter(Boolean).join(' · ')) + '</span></td>' +
         '<td>' + (c ? esc(c.tipo) + '<span class="sub">' + esc([c.vinculo, c.ingreso ? 'desde ' + fmt(c.ingreso.slice(0, 7)) : ''].filter(Boolean).join(' · ')) + '</span>' : '<span class="muted">sin completar</span>') + '</td>' +
-        '<td class="r">' + (rs.length ? '<span class="money">' + esc(multi(lr.acc)) + '</span><span class="sub">' + (lr.ex.length ? esc([...rs.map(r => r.concepto + ' ' + money(r.monto, r.moneda)), ...lr.ex.map(x => x.concepto + ' ' + money(x.monto, x.moneda))].join(' + ')) : 'sin extras') + (mr > thisMonth() ? ' · desde ' + fmt(mr) : '') + '</span>' : '<span class="pill" style="--c:var(--s-revision)">Cargar sueldo</span>') + '</td>' +
+        '<td class="r"' + (lr.ex.length ? ' title="' + esc([...rs, ...lr.ex].map(x => x.concepto + ': ' + money(x.monto, x.moneda)).join(' · ')) + '"' : '') + '>' + (rs.length ? '<span class="money">' + esc(multi(lr.acc)) + '</span><span class="sub">' + esc(rs.map(r => r.concepto + ' ' + money(r.monto, r.moneda)).join(' + ') + (lr.ex.length ? ' + ' + (lr.ex.length === 1 ? lr.ex[0].concepto.toLowerCase() : lr.ex.length + ' extras') : '') + (mr > thisMonth() ? ' · desde ' + fmt(mr) : '')) + '</span>' : '<span class="pill" style="--c:var(--s-revision)">Cargar sueldo</span>') + '</td>' +
         '<td>' + (p && p.email && p.activo !== false ? pill(ROLES[p.rol] || p.rol, ROL_COLOR[p.rol] || '--muted') + '<span class="sub">' + esc(p.email) + '</span>' : '<span class="muted">sin acceso</span>') + '</td>' +
         '<td class="r num">' + (ab || pr ? esc([ab ? ab + ' redes' : '', pr ? pr + ' proyectos' : ''].filter(Boolean).join(' · ')) : '<span class="muted">—</span>') + '</td></tr>';
     }).join('');
@@ -234,12 +234,12 @@ export function initEquipo(ctx, k) {
     const hist = c ? histRem(c.id) : [], ex = c ? AD.CF.filter(x => x.colaborador_id === c.id).sort((a, b) => cmp(a.concepto, b.concepto)) : [], pagos = c ? pagosDe(c.id).slice(0, 12) : [];
     const box = (titulo, inner, btn) => '<div class="field full"><span class="lbl" style="display:flex;justify-content:space-between;align-items:center">' + titulo + (btn || '') + '</span>' + inner + '</div>';
     const lista = rows => rows.length ? '<div class="rows" style="border:1px solid var(--line);border-radius:8px">' + rows.join('') + '</div>' : '<span class="muted">Nada cargado.</span>';
-    const remRows = hist.map(r => { const a = remAnterior(r), pc = pctDe(r, a); return '<div class="row" style="cursor:default"><span class="d">' + fmt(r.desde) + '</span><span class="t"><b class="money">' + money(r.monto, r.moneda) + '</b><span>' + esc([r.concepto, pc != null ? pctTxt(pc) : '', r.motivo].filter(Boolean).join(' · ')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgRemDel" data-id="' + esc(r.id) + '" aria-label="Borrar">✕</button></div>'; });
+    const remRows = hist.map(r => { const a = remAnterior(r), pc = pctDe(r, a); return '<div class="row" data-act="pgRemEdit" data-id="' + esc(r.id) + '" title="Corregir" style="cursor:pointer"><span class="d">' + fmt(r.desde) + '</span><span class="t"><b class="money">' + money(r.monto, r.moneda) + '</b><span>' + esc([r.concepto, pc != null ? pctTxt(pc) : '', r.motivo].filter(Boolean).join(' · ')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgRemDel" data-id="' + esc(r.id) + '" aria-label="Borrar">✕</button></div>'; });
     const pagRows = pagos.map(v => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b class="money">' + money(v.egreso, v.moneda) + '</b><span>' + esc(v.detalle || v.subcuenta) + '</span></span><span></span></div>');
     const extra = !c ? '<p class="formnote" style="grid-column:1/-1">Después de guardar vas a poder cargar ' + (esP ? 'su honorario fijo (si tiene) y sus pagos.' : 'el sueldo, los aumentos y los extras.') + '</p>' : esP
       ? box('Honorario fijo por mes', lista(remRows) + '<span class="hint">Solo si cobra lo mismo todos los meses. Si cobra por trabajo, dejalo vacío y cargá cada trabajo en Pagos del mes.</span>', '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">+ Honorario</button>') + box('Últimos pagos', lista(pagRows))
       : (remVig(c.id, mesRef(c)).length ? box('Por mes se le transfiere', '<div><b class="money" style="font-size:20px">' + esc(multi(lineaRem(c, mesRef(c)).acc)) + '</b> <span class="muted">sueldo + extras' + (mesRef(c) > thisMonth() ? ', desde ' + fmt(mesRef(c)) : ' vigentes') + '</span></div>') : '') + box('Sueldo', lista(remRows), '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">' + (hist.length ? '+ Aumento' : '+ Sueldo') + '</button>') +
-        box('Extras fijos', lista(ex.map(x => '<div class="row" style="cursor:default"><span class="d">' + (x.desde ? fmt(x.desde) : 'siempre') + '</span><span class="t"><b>' + esc(x.concepto) + ' · <span class="money">' + money(x.monto, x.moneda) + '</span></b><span>' + esc((x.hasta ? 'hasta ' + fmt(x.hasta) : 'sin fecha de fin') + (x.notas ? ' · ' + x.notas : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgExtraDel" data-id="' + esc(x.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgExtra" data-id="' + esc(c.id) + '">+ Extra</button>') +
+        box('Extras fijos', lista(ex.map(x => '<div class="row" data-act="pgExtra" data-id="' + esc(c.id) + '" data-x="' + esc(x.id) + '" title="Editar" style="cursor:pointer"><span class="d">' + (x.desde ? fmt(x.desde) : 'siempre') + '</span><span class="t"><b>' + esc(x.concepto) + ' · <span class="money">' + money(x.monto, x.moneda) + '</span></b><span>' + esc((x.hasta ? 'hasta ' + fmt(x.hasta) : 'sin fecha de fin') + (x.notas ? ' · ' + x.notas : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgExtraDel" data-id="' + esc(x.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgExtra" data-id="' + esc(c.id) + '">+ Extra</button>') +
         box('Últimos pagos', lista(pagRows));
     const rolOpts = esP ? ['externo', 'equipo'] : ['equipo', 'admin'];
     const fRol = { k: 'rol', label: 'Qué ve en la app', type: 'select', html: v => rolOpts.map(r => opt(r, ROLES[r] + (r === 'externo' ? ' (solo lo suyo)' : r === 'admin' ? ' (todo, con la plata)' : ' (todo menos la plata)'), v)).join('') };
@@ -315,14 +315,37 @@ export function initEquipo(ctx, k) {
       } : null,
     });
   }
+  // Corregir un sueldo u honorario ya cargado (monto, mes, motivo), sin crear un aumento.
+  function formRemEdit(rid) {
+    const r = AD.RM.find(x => x.id === rid), c = r && colab(r.colaborador_id); if (!c) return;
+    openPanel({
+      title: c.nombre, eyebrow: 'Corregir ' + r.concepto.toLowerCase(), saveLabel: 'Guardar',
+      intro: 'Cambia este monto tal cual, sin sumar un aumento al historial. Para un aumento usá “+ Aumento”.',
+      values: { concepto: r.concepto, desde: r.desde, monto: String(r.monto).replace('.', ','), moneda: r.moneda, motivo: r.motivo || '' },
+      fields: [
+        { k: 'concepto', label: 'Concepto', type: 'select', opts: ['Sueldo', 'Honorario'] },
+        { k: 'desde', label: 'Desde qué mes', type: 'month', month: 1, req: 1 },
+        { k: 'monto', label: 'Monto mensual', num: 1, req: 1 },
+        { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
+        { k: 'motivo', label: 'Motivo', full: 1 },
+      ],
+      onSave: async v => {
+        if (AD.RM.some(x => x.id !== rid && x.colaborador_id === c.id && x.concepto === v.concepto && x.desde === v.desde)) throw new Error('Ya hay un ' + v.concepto.toLowerCase() + ' cargado desde ' + fmt(v.desde) + '. Cambiá ese o elegí otro mes.');
+        await data.upd('remuneraciones', rid, { concepto: v.concepto, desde: v.desde + '-01', monto: v.monto, moneda: v.moneda, motivo: v.motivo || '' });
+        toast('Corregido: ' + money(v.monto, v.moneda) + ' desde ' + fmt(v.desde));
+        AD.postSave = () => formColaborador(c.id);
+      },
+      deleteLabel: 'Borrar', onDelete: async () => { await data.del('remuneraciones', rid); toast('Borrado'); AD.postSave = () => formColaborador(c.id); },
+    });
+  }
   function formRem(cid, desde) {
     const c = colab(cid); if (!c) return;
-    const concepto = c.tipo === 'Proveedor' ? 'Honorario' : 'Sueldo';
-    const cur = remVig(cid, thisMonth()).find(r => r.concepto === concepto);
+    const concepto = c.tipo === 'Proveedor' ? 'Honorario' : (histRem(cid)[0] || {}).concepto || 'Sueldo';
+    const cur = remVig(cid, mesRef(c)).find(r => r.concepto === concepto);
     openPanel({
       title: c.nombre, eyebrow: cur ? (concepto === 'Sueldo' ? 'Aumento de sueldo' : 'Nuevo honorario') : (concepto === 'Sueldo' ? 'Sueldo' : 'Honorario fijo'), saveLabel: 'Guardar',
       intro: cur ? 'Vigente: <b class="money">' + esc(money(cur.monto, cur.moneda)) + '</b> desde ' + esc(fmt(cur.desde)) + '. Se guarda como monto nuevo sin perder el anterior. Podés poner el porcentaje y se calcula solo.' : 'El monto que se paga cada mes desde el mes indicado.',
-      values: { concepto, desde: cur ? addMonth(thisMonth(), cur.desde >= thisMonth() ? 1 : 0) : thisMonth(), monto: '', pct: '', moneda: cur ? cur.moneda : 'ARS', motivo: cur ? '' : 'Inicial' },
+      values: { concepto, desde: cur ? addMonth(cur.desde > thisMonth() ? cur.desde : thisMonth(), 1) : thisMonth(), monto: '', pct: '', moneda: cur ? cur.moneda : 'ARS', motivo: cur ? '' : 'Inicial' },
       fields: [
         { k: 'concepto', label: 'Concepto', type: 'select', opts: ['Sueldo', 'Honorario'] },
         { k: 'desde', label: 'Desde qué mes', type: 'month', month: 1, req: 1 },
@@ -340,12 +363,13 @@ export function initEquipo(ctx, k) {
       },
     });
   }
-  function formExtra(cid) {
+  function formExtra(cid, xid) {
     const c = colab(cid); if (!c) return;
+    const x = xid ? AD.CF.find(y => y.id === xid) : null;
     openPanel({
-      title: c.nombre, eyebrow: 'Extra fijo', saveLabel: 'Agregar',
-      intro: 'Se suma a los pagos de cada mes mientras esté vigente (bondi, Adobe, internet…).',
-      values: { concepto: '', monto: '', moneda: 'ARS', desde: thisMonth(), hasta: '', notas: '' },
+      title: c.nombre, eyebrow: x ? 'Editar extra' : 'Extra fijo', saveLabel: x ? 'Guardar' : 'Agregar',
+      intro: x ? 'Si el monto cambia desde un mes en adelante, poné “Hasta” en este y cargá uno nuevo; así queda el historial. Si fue un error, corregilo acá.' : 'Se suma a los pagos de cada mes mientras esté vigente (bondi, Adobe, internet…).',
+      values: x ? { concepto: x.concepto, monto: String(x.monto).replace('.', ','), moneda: x.moneda, desde: x.desde || '', hasta: x.hasta || '', notas: x.notas || '' } : { concepto: '', monto: '', moneda: 'ARS', desde: mesRef(c), hasta: '', notas: '' },
       fields: [
         { k: 'concepto', label: 'Concepto', req: 1, ph: 'Bondi' },
         { k: 'monto', label: 'Monto mensual', num: 1, req: 1 },
@@ -355,7 +379,8 @@ export function initEquipo(ctx, k) {
         { k: 'notas', label: 'Notas', full: 1 },
       ],
       extra: '<datalist id="dl-extras">' + ['Bondi', 'Adobe', 'Internet', 'Monotributo', 'Capacitación'].map(s => '<option value="' + s + '">').join('') + '</datalist>',
-      onSave: async v => { await data.ins('conceptos_fijos', { colaborador_id: cid, concepto: v.concepto, monto: v.monto, moneda: v.moneda, desde: v.desde ? v.desde + '-01' : null, hasta: v.hasta ? v.hasta + '-01' : null, notas: v.notas }); toast('Extra agregado'); AD.postSave = () => formColaborador(cid); },
+      onSave: async v => { const row = { colaborador_id: cid, concepto: v.concepto, monto: v.monto, moneda: v.moneda, desde: v.desde ? v.desde + '-01' : null, hasta: v.hasta ? v.hasta + '-01' : null, notas: v.notas }; if (x) await data.upd('conceptos_fijos', x.id, row); else await data.ins('conceptos_fijos', row); toast(x ? 'Extra actualizado' : 'Extra agregado'); AD.postSave = () => formColaborador(cid); },
+      ...(x ? { deleteLabel: 'Borrar', onDelete: async () => { await data.del('conceptos_fijos', x.id); toast('Extra borrado'); AD.postSave = () => formColaborador(cid); } } : {}),
     });
     const el = $('#af-concepto'); if (el) el.setAttribute('list', 'dl-extras');
   }
@@ -459,8 +484,9 @@ export function initEquipo(ctx, k) {
     pgMes: t => { const n = +t.dataset.d; AD.pg.mes = n ? addMonth(AD.pg.mes, n) : thisMonth(); ctx.render(); },
     pgColab: t => formColaborador(t.dataset.id || null, t.dataset.pid || null, t.dataset.g === 'prov' ? true : t.dataset.g === 'eq' ? false : null),
     pgRem: t => formRem(t.dataset.id, t.dataset.from),
+    pgRemEdit: t => formRemEdit(t.dataset.id),
     pgRemDel: async t => { const r = AD.RM.find(x => x.id === t.dataset.id); try { await data.del('remuneraciones', t.dataset.id); await ctx.reload(); if (r) formColaborador(r.colaborador_id); } catch (err) { toast(err.message); } },
-    pgExtra: t => formExtra(t.dataset.id),
+    pgExtra: t => formExtra(t.dataset.id, t.dataset.x || null),
     pgExtraDel: async t => { const x = AD.CF.find(y => y.id === t.dataset.id); try { await data.del('conceptos_fijos', t.dataset.id); await ctx.reload(); if (x) formColaborador(x.colaborador_id); } catch (err) { toast(err.message); } },
     pgItem: t => formItem(t.dataset.id || null, t.dataset.colab || null, t.dataset.g === 'prov' ? true : t.dataset.g === 'eq' ? false : null),
     pgPagar: t => formPagar(t.dataset.id),
