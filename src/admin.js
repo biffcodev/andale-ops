@@ -154,7 +154,7 @@ export function initAdmin(ctx) {
     h += AS.pendientesHtml(m);
     const step = (ok, txt, warn) => pill(txt, ok ? '--s-entregado' : warn ? '--crit' : '--s-empezar');
     const tr = rows.map(r => {
-      const resTxt = r.res ? (r.res.estado === 'Enviado' ? step(true, 'Enviado ' + fmt(r.res.enviado_el || '').slice(0, 5)) : step(false, 'Preparado')) : step(false, 'Sin preparar');
+      const resTxt = r.res ? (r.res.estado === 'Enviado' ? step(true, 'Enviado ' + fmt(r.res.enviado_el || '').slice(0, 5)) + vistoChip(mailDe(r.cliente, 'Resumen de cuenta', m)) : step(false, 'Preparado')) : step(false, 'Sin preparar');
       const compTxt = r.facs.length ? step(true, r.facs.map(f => (f.tipo === 'Invoice' ? 'Factura al exterior ' : 'Factura ') + (f.numero || 'sin número') + (f.emisor ? ' · ' + f.emisor : '')).join(', ')) : step(false, 'Sin facturar');
       const venc = r.facs.some(f => estadoFactura(f) === 'Vencida');
       const cobTxt = !r.facs.length ? '<span class="muted">—</span>' : r.saldo <= 0.009 ? step(true, 'Cobrado') : step(false, (r.cobrado > 0 ? 'Debe ' : 'Pendiente ') + money(r.saldo, r.moneda), venc);
@@ -826,10 +826,24 @@ export function initAdmin(ctx) {
   }
 
   /* ---------- Sección en la ficha del cliente ---------- */
+  // Seguimiento de mails: si el cliente lo abrió (y cuándo) o hizo clic. Los mails anteriores a esta función no tienen seguimiento.
+  const SEG_DESDE = '2026-10-15T16:00:00Z';
+  const hora = iso => { const d = new Date(iso); return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }); };
+  function segMail(x) {
+    if (x.estado !== 'Enviado') return pill(x.estado, '--crit');
+    const sg = AD.SEGM && AD.SEGM.get(x.id);
+    if (sg && sg.abierto) return '<span class="seg-ps"><span class="seg-p on" title="La primera vez: ' + esc(hora(sg.primera)) + '">' + ICON.ojo + 'Abierto' + (sg.abierto > 1 ? ' ×' + sg.abierto : '') + ' · ' + esc(hora(sg.ultima)) + '</span>' + (sg.clics ? '<span class="seg-p clic">' + ICON.enlace + (sg.clics > 1 ? sg.clics + ' clics' : 'Hizo clic') + '</span>' : '') + '</span>';
+    if (sg && sg.clics) return '<span class="seg-p clic">' + ICON.enlace + 'Hizo clic</span>';
+    if (String(x.created_at) < SEG_DESDE) return '<span class="seg-p">Enviado</span>';
+    return '<span class="seg-p no">Sin abrir todavía</span>';
+  }
+  // ¿Abrió el mail de este tipo y mes? (para marcar "visto" en Cobros)
+  const mailDe = (cliente, tipo, per) => { const cid = data.ids.cliente(cliente); return AD.EM.find(x => x.cliente_id === cid && x.tipo === tipo && (!per || String(x.periodo || '').slice(0, 7) === per) && x.estado === 'Enviado'); };
+  const vistoChip = m => { const sg = m && AD.SEGM && AD.SEGM.get(m.id); return sg && sg.abierto ? ' <span class="seg-p on sm" title="Lo abrió ' + esc(hora(sg.ultima)) + '">' + ICON.ojo + 'Visto</span>' : ''; };
   function emailsDe(cliente) {
     const cid = data.ids.cliente(cliente), es = AD.EM.filter(x => x.cliente_id === cid).slice(0, 10);
     if (!es.length) return '';
-    return '<div class="sheet-b" style="border-top:1px solid var(--line);display:grid;gap:6px"><b>Emails enviados</b><div class="rows">' + es.map(x => '<div class="row" style="cursor:default"><span class="d">' + fmt(String(x.created_at).slice(0, 10)) + '</span><span class="t"><b>' + esc(x.asunto) + '</b><span>' + esc(x.tipo + ' · ' + (x.para || []).join(', ') + (x.adjuntos && x.adjuntos.length ? ' · 📎 ' + x.adjuntos.join(', ') : '')) + (x.error ? ' · ' + esc(x.error) : '') + '</span></span>' + pill(x.estado, x.estado === 'Enviado' ? '--s-entregado' : '--s-cancelado') + '</div>').join('') + '</div></div>';
+    return '<div class="sheet-b" style="border-top:1px solid var(--line);display:grid;gap:6px"><b>Emails enviados</b><div class="rows">' + es.map(x => '<div class="row" style="cursor:default"><span class="d">' + fmt(String(x.created_at).slice(0, 10)) + '</span><span class="t"><b>' + esc(x.asunto) + '</b><span>' + esc(x.tipo + ' · ' + (x.para || []).join(', ') + (x.adjuntos && x.adjuntos.length ? ' · 📎 ' + x.adjuntos.join(', ') : '')) + (x.error ? ' · ' + esc(x.error) : '') + '</span></span>' + segMail(x) + '</div>').join('') + '</div></div>';
   }
   // Estado de cuenta de un cliente: lo facturado (cargos) y lo cobrado (pagos), con el saldo que va quedando.
   function estadoCuenta(cliente, R) {
@@ -1273,7 +1287,7 @@ export function initAdmin(ctx) {
     const movs = AD.MV.filter(v => v.moneda === mon && v.cuenta !== 'Saldo Inicial');
     const hist = R.grupos.map(gr => { const xs = movs.filter(v => (v.fecha || '') >= gr.d && (v.fecha || '').slice(0, 10) <= gr.h); const entro = xs.reduce((a2, v) => a2 + v.ingreso, 0), salio = xs.reduce((a2, v) => a2 + v.egreso, 0); return { l: gr.l, d: gr.d, h: gr.h, entro, salio, quedo: entro - salio }; });
     const tE = hist.reduce((a2, r) => a2 + r.entro, 0), tS = hist.reduce((a2, r) => a2 + r.salio, 0);
-    const pill = (v, txt) => '<span class="pill-n ' + (v < 0 ? 'neg' : 'pos') + '">' + esc(txt || M(v)) + '</span>';
+    const pill = (v, txt) => '<span class="pill-n ' + (v < -0.004 ? 'neg' : v > 0.004 ? 'pos' : 'cero') + '">' + esc(txt || M(v)) + '</span>';
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.barras + '</span><h2>Cómo venimos <span class="sx-sub">(' + esc(R.label) + ')</span></h2><div class="sx-der toolbar">' + selector(PP, anios, esc, today(), 'plper') + '<button class="btn sm ghost" data-act="go" data-view="gastos">Ver movimientos</button></div></div>' +
       '<div class="pl-res"><div><span class="lbl">Entró</span><b class="money">' + esc(M(tE)) + '</b></div><div><span class="lbl">Salió</span><b>' + esc(M(tS)) + '</b></div><div><span class="lbl">Quedó</span>' + pill(tE - tS) + '</div></div>' +
       grafBarras(hist.map(r => ({ l: r.l, a: r.entro, b: r.salio, v: r.quedo })), M, { linea: 'Quedó', titulo: 'Cómo venimos' }) +
@@ -1286,13 +1300,13 @@ export function initAdmin(ctx) {
   // filas = [{ l, a, b, v? }]  a = entra, b = sale, v = valor de la línea
   function grafBarras(filas, M, { linea = 'Queda en las cuentas', titulo = 'Entra y sale' } = {}) {
     const n = filas.length; if (!n) return '';
-    const W = 680, H = 230, L = 52, R = 14, T = 22, B = 30, iw = W - L - R, ih = H - T - B;
+    const W = 1000, H = 290, L = 60, R = 14, T = 24, B = 32, iw = W - L - R, ih = H - T - B;
     const conLinea = filas.some(f => f.v != null);
     const vals = filas.flatMap(f => [f.a || 0, f.b || 0, ...(conLinea ? [f.v || 0] : [])]);
     const top = Math.max(1, ...vals), bot = Math.min(0, ...vals);
     const paso = (x => { const p = Math.pow(10, Math.floor(Math.log10(x))); const f = x / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; })((top - bot) / 4 || 1);
     const yMax = Math.ceil(top / paso) * paso, yMin = Math.floor(bot / paso) * paso, rangoY = yMax - yMin || 1;
-    const Y = v => T + ih - ((v - yMin) / rangoY) * ih, col = iw / n, bw = Math.max(6, Math.min(22, col * 0.22));
+    const Y = v => T + ih - ((v - yMin) / rangoY) * ih, col = iw / n, bw = Math.max(6, Math.min(24, col * 0.2));
     const corto = v => { const a = Math.abs(v), sg = v < 0 ? '−' : ''; return sg + (a >= 1e6 ? (a / 1e6).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' M' : a >= 1e3 ? Math.round(a / 1e3).toLocaleString('es-AR') + ' k' : Math.round(a).toLocaleString('es-AR')); };
     let g = '';
     for (let v = yMin; v <= yMax + 1e-9; v += paso) { const y = Y(v).toFixed(1); g += '<line class="' + (Math.abs(v) < 1e-9 ? 'bl' : 'gl') + '" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text class="ax" x="' + (L - 8) + '" y="' + (+y + 4) + '" text-anchor="end">' + esc(corto(v)) + '</text>'; }
@@ -1307,8 +1321,8 @@ export function initAdmin(ctx) {
       g += '<rect class="hz" x="' + (L + col * k).toFixed(1) + '" y="' + T + '" width="' + col.toFixed(1) + '" height="' + ih + '"><title>' + esc(f.l + ' · entra ' + M(f.a || 0) + ' · sale ' + M(f.b || 0) + (f.v != null ? ' · ' + linea.toLowerCase() + ' ' + M(f.v) : '')) + '</title></rect>';
     });
     if (pts.length) {
-      g += '<path d="' + pts.map((p, k) => (k ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('') + '" fill="none" stroke="var(--g-line)" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="' + (n > 8 ? '0' : '4 3') + '"/>';
-      pts.forEach(p => { g += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3.5" fill="var(--surface)" stroke="var(--g-line)" stroke-width="1.5"/>'; if (n <= 8 && Math.abs(p[2]) > 0.5) g += '<text class="pl-lab" x="' + p[0].toFixed(1) + '" y="' + (p[1] - 9).toFixed(1) + '" text-anchor="middle">' + esc(corto(p[2])) + '</text>'; });
+      g += '<path d="' + pts.map((p, k) => (k ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('') + '" fill="none" stroke="var(--g-line)" stroke-opacity=".75" stroke-width="1.25" stroke-linejoin="round" stroke-linecap="round"/>';
+      pts.forEach(p => { g += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3" fill="var(--surface)" stroke="var(--g-line)" stroke-width="1.25"/>'; if (n <= 8 && Math.abs(p[2]) > 0.5) g += '<text class="pl-lab" x="' + p[0].toFixed(1) + '" y="' + (p[1] - 9).toFixed(1) + '" text-anchor="middle">' + esc(corto(p[2])) + '</text>'; });
     }
     return '<div class="sx-chart pl-chart"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(titulo) + '">' + g + '</svg></div>' +
       '<table class="sr-only" data-titulo="' + esc(titulo) + '"><thead><tr><th>Período</th><th>Entra</th><th>Sale</th>' + (conLinea ? '<th>' + esc(linea) + '</th>' : '') + '</tr></thead><tbody>' + filas.map(f => '<tr><td>' + esc(f.l) + '</td><td>' + esc(M(f.a || 0)) + '</td><td>' + esc(M(f.b || 0)) + '</td>' + (conLinea ? '<td>' + esc(M(f.v || 0)) + '</td>' : '') + '</tr>').join('') + '</tbody></table>';

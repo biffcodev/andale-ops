@@ -289,7 +289,7 @@ export function initAsistente(ctx, k) {
   }
 
   /* ---------- Vista ---------- */
-  const dot = (ok, n) => ok ? '<span class="days" style="color:var(--ok);min-width:26px">✓</span>' : '<span class="days late" style="min-width:26px">' + (n || '!') + '</span>';
+  const dot = (ok, n) => ok ? '<span class="days" style="color:var(--ok);min-width:26px">✓</span>' : '<span class="days pend" style="min-width:26px">' + (n || '!') + '</span>';
   function item(ok, n, titulo, sub, btn) { return '<div class="row" style="cursor:default;grid-template-columns:34px minmax(0,1fr) auto">' + dot(ok, n) + '<span class="t"><b style="white-space:normal">' + titulo + '</b>' + (sub ? '<span>' + sub + '</span>' : '') + '</span><span class="toolbar">' + (ok ? '' : btn || '') + '</span></div>'; }
   const pl = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
   const lista = (arr, n = 5) => esc(arr.slice(0, n).join(', ') + (arr.length > n ? ' y ' + (arr.length - n) + ' más' : ''));

@@ -408,25 +408,21 @@ export async function informeDoc(i) {
   const inf = i.inf || {}, d = inf.datos || {};
   const met = (d.metricas || []).filter(x => x && x.nombre && String(x.nombre).trim());
   const dst = (d.destacadas || []).filter(x => x && x.titulo && String(x.titulo).trim()), rec = (d.recomendaciones || []).filter(Boolean);
-  const D = await nuevoDoc('Informe de redes ' + i.mesLabel + ' ' + i.cliente, { margen: 40, footH: 30, alPie: numeroPagina });
+  const D = await nuevo('Informe de redes ' + i.mesLabel + ' ' + i.cliente);
   const { F } = D, M = D.M, CW = D.cw, WHITE = rgb(1, 1, 1);
   const mix = (h, k) => { const c = [1, 3, 5].map(j => parseInt(h.slice(j, j + 2), 16) / 255); return rgb(...c.map(v => v * k + (1 - k))); };
   const dark = (h, k) => { const c = [1, 3, 5].map(j => parseInt(h.slice(j, j + 2), 16) / 255); return rgb(...c.map(v => v * k)); };
-  const UP = hex('#4F7A00'), DOWN = hex('#D9363B'), PREV = hex('#E4E6EC');
+  const UP = hex('#1F6F99'), DOWN = hex('#B4570F'), PREV = hex('#E4E6EC');
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
   D.addPage();
-  // Encabezado de color
-  const HH = 168;
-  D.page.drawRectangle({ x: 0, y: H - HH, width: W, height: HH, color: hex('#FF595E') });
-  D.page.drawCircle({ x: W - 70, y: H - 10, size: 150, color: hex('#FF924C') });
-  D.page.drawCircle({ x: W - 10, y: H - HH + 10, size: 90, color: hex('#FFCA3A'), opacity: 0.55 });
-  D.logo(W - M - 74, H - 34, 74, WHITE);
-  D.text('INFORME DE REDES', M, H - 56, F.b, 9, WHITE);
-  D.text(cap(i.mesLabel), M, H - 96, F.d, 34, WHITE);
-  D.text(i.cliente || '', M, H - 122, F.s, 14, WHITE);
+  // Encabezado y pie de todos los documentos de àndale; el color va en el contenido.
+  cabecera(D, 'Informe de redes', cap(i.mesLabel), i.emitido ? 'Emitido ' + i.emitido : '');
+  D.y -= 30;
+  D.text('Informe de redes · ' + cap(i.mesLabel), M, D.y, F.s, 10, hex('#1F6F99'));
+  D.y -= 30; D.text(i.cliente || '', M, D.y, F.d, 26, COL.ink);
   const conAnt = met.filter(x => variacion(x) != null), sub = conAnt.filter(x => variacion(x) > 0).length;
-  if (conAnt.length) { const t = sub + ' de ' + conAnt.length + ' métricas crecieron contra el mes anterior', w = D.wid(t, F.s, 9) + 20; D.rect(M, H - 152, w, 18, mix('#FFFFFF', 1), 9); D.text(t, M + 10, H - 146, F.s, 9, hex('#D9363B')); }
-  D.y = H - HH - 24;
+  if (conAnt.length) { D.y -= 24; const t = sub + ' de ' + conAnt.length + ' métricas crecieron contra el mes anterior', w = D.wid(t, F.s, 9) + 20; D.rect(M, D.y - 5, w, 18, mix('#3399CC', 0.14), 9); D.text(t, M + 10, D.y + 1, F.s, 9, hex('#1F6F99')); }
+  D.y -= 18; D.hline(D.y, M, W - M, COL.line); D.y -= 18;
   const titulo = (t, extra) => { D.need(40); D.y -= 18; D.text(t, M, D.y, F.b, 12.5, COL.ink); if (extra) D.text(extra, M + D.wid(t, F.b, 12.5) + 8, D.y, F.s, 9.5, COL.muted); D.y -= 12; };
   // Números
   if (met.length) {

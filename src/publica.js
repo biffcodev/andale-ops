@@ -43,6 +43,7 @@ async function cargar() {
   document.title = (P.titulo || (pre ? 'Presupuesto' : 'Propuesta')) + ' · àndale';
   $('#doc').innerHTML = propuestaHTML(P, P.marca || {});
   $('#bar').hidden = false;
+  evento('propuesta_abierta');
   respuesta();
 }
 function respuesta() {
@@ -68,15 +69,17 @@ document.addEventListener('click', async e => {
     if (error) { b.disabled = false; avisar('No se pudo registrar la respuesta: ' + error.message); return; }
     P.respuesta = { accion: b.dataset.r, nombre, comentario }; respuesta();
   }
-  if (e.target.id === 'imp') window.print();
+  if (e.target.id === 'imp') { evento('propuesta_pdf'); window.print(); }
   if (e.target.id === 'pdf') {
     e.target.disabled = true; e.target.textContent = 'Preparando…';
     try {
       const { propuestaDoc, abrirPdf } = await import('./docs.js');
-      const bytes = await propuestaDoc(P, P.marca || {});
+      const bytes = await propuestaDoc(P, P.marca || {}); evento('propuesta_pdf');
       abrirPdf(bytes, PAL.charAt(0).toUpperCase() + PAL.slice(1) + ' ' + (P.numero || '') + ' ' + (P.cliente || ''));
     } catch (err) { avisar('No se pudo generar el PDF'); }
     e.target.disabled = false; e.target.textContent = 'Descargar PDF';
   }
 });
+// Seguimiento: el equipo ve si abrieron el link o bajaron el PDF (si falta el SQL 0020, no pasa nada).
+function evento(tipo) { sb.rpc('propuesta_evento', { t: token, p_tipo: tipo }).then(() => {}, () => {}); }
 cargar();

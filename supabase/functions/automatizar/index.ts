@@ -114,10 +114,17 @@ async function redesRecordar(svc: any, cfg: any) {
     const texto = 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás?\n\nTenés ' + count + (count > 1 ? ' piezas' : ' pieza') + ' de ' + mesTxt + ' esperando tu aprobación. Las podés ver, aprobar o pedir cambios desde tu portal.\n\n¡Gracias!';
     const html = '<div style="font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.6;color:#17181F;max-width:560px">' + esc(texto).replace(/\n/g, '<br>') +
       '<p style="margin:24px 0"><a href="' + APP + 'portal" style="background:#FF4655;color:#fff;padding:11px 18px;border-radius:8px;text-decoration:none;font-weight:600">Ver las piezas</a></p><p style="color:#6B6E7B;font-size:13px">àndale · branding y comunicación</p></div>';
+    // Con seguimiento: imagen invisible (abrió) y el botón pasa por /seguimiento (hizo clic).
+    const eid = crypto.randomUUID(), base = Deno.env.get('SUPABASE_URL') + '/functions/v1/seguimiento?e=' + eid;
+    const dest = APP + 'portal', k = await crypto.subtle.importKey('raw', new TextEncoder().encode(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const sg = [...new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(eid + '|' + dest))).slice(0, 12)].map(x => x.toString(16).padStart(2, '0')).join('');
+    const htmlT = html.replace('href="' + APP + 'portal"', 'href="' + base + '&amp;l=0&amp;u=' + encodeURIComponent(dest) + '&amp;s=' + sg + '"') + '<img src="' + base + '" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0" />';
     const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: para, reply_to: replyTo, subject: asunto, html, text: texto }) });
+      body: JSON.stringify({ from, to: para, reply_to: replyTo, subject: asunto, html: htmlT, text: texto }) });
     const o = await r.json().catch(() => ({}));
-    await svc.from('emails').insert({ cliente_id: m.cliente_id, tipo: 'Mensaje', periodo: m.mes, para, asunto, cc: [], adjuntos: [], estado: r.ok ? 'Enviado' : 'Error', proveedor_id: o.id || null, error: r.ok ? null : String(o.message || r.status) });
+    const fila = { id: eid, cliente_id: m.cliente_id, tipo: 'Mensaje', periodo: m.mes, para, asunto, cc: [], adjuntos: [], estado: r.ok ? 'Enviado' : 'Error', proveedor_id: o.id || null, error: r.ok ? null : String(o.message || r.status) };
+    const { error: eLog } = await svc.from('emails').insert({ ...fila, links: [APP + 'portal'] });
+    if (eLog) await svc.from('emails').insert(fila);
     if (r.ok) enviados++;
   }
   return enviados ? 'Recordatorio a ' + enviados + ' cliente' + (enviados > 1 ? 's' : '') : 'Nadie tenía piezas esperando hace más de ' + dias + ' días';

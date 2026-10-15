@@ -61,7 +61,7 @@ export function initStats(ctx, k) {
   const grande = (valor, label, extra, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(valor) + '</b><span>' + esc(label) + '</span>' + (extra || '') + '</div>';
 
   // Curva suave (monótona: no inventa picos ni baja de cero) con área y comparación gris.
-  function curva(main0, prev0, etiquetas, mon, { W = 640, H = 230, color = 'var(--c1)', nombre = '', nombrePrev = '' } = {}) {
+  function curva(main0, prev0, etiquetas, mon, { W = 600, H = 230, color = 'var(--c1)', nombre = '', nombrePrev = '' } = {}) {
     const n0 = etiquetas.length;
     // Arranca en el primer mes con datos (de este año o del anterior), así no se pierde medio gráfico en ceros.
     let d0 = 0; while (d0 < n0 - 2 && !(main0[d0] || (prev0 && prev0[d0]))) d0++;
@@ -81,10 +81,10 @@ export function initStats(ctx, k) {
     for (let t = 0; t <= 4; t++) { const v = mx * t / 4, yy = Y(v).toFixed(1); g += '<line class="' + (t ? 'gl' : 'bl') + '" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax" x="' + (L - 8) + '" y="' + (+yy + 4) + '" text-anchor="end">' + esc(compact(v, mon).replace(/^(US)?\$ |^[€£] /, '')) + '</text>'; }
     for (let i = 0; i < n; i++) g += '<text class="ax" x="' + X(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="' + (n > 1 && i === 0 ? 'start' : n > 1 && i === n - 1 ? 'end' : 'middle') + '">' + MS[i] + '</text>';
     const pm = path(main);
-    if (prev && prev.some(v => v)) g += '<path d="' + path(prev) + '" fill="none" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.6"/>';
+    if (prev && prev.some(v => v)) g += '<path d="' + path(prev) + '" fill="none" stroke="var(--muted)" stroke-opacity=".5" stroke-width="1.25" stroke-dasharray="3 3"/>';
     if (n > 1) g += '<path d="' + pm + 'L' + X(n - 1).toFixed(1) + ',' + Y(0) + 'L' + L + ',' + Y(0) + 'Z" fill="url(#' + id + ')"/>';
-    g += '<path d="' + pm + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round"/>';
-    const last = main[n - 1] || 0; g += '<circle cx="' + X(n - 1).toFixed(1) + '" cy="' + Y(last).toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2"/>';
+    g += '<path d="' + pm + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linecap="round"/>';
+    const last = main[n - 1] || 0; g += '<circle cx="' + X(n - 1).toFixed(1) + '" cy="' + Y(last).toFixed(1) + '" r="3.5" fill="' + color + '" stroke="var(--surface)" stroke-width="1.5"/>';
     // Zonas para el tooltip, una por mes.
     const band = n > 1 ? iw / (n - 1) : iw;
     for (let i = 0; i < n; i++) g += '<rect class="hz" x="' + Math.max(L, X(i) - band / 2).toFixed(1) + '" y="' + T + '" width="' + band.toFixed(1) + '" height="' + ih + '"' + tip(MS[i], nombre + ': ' + money(main[i] || 0, mon) + (prev && prev.some(v => v) ? ' · ' + nombrePrev + ': ' + money(prev[i] || 0, mon) : '')) + '/>';
@@ -116,7 +116,7 @@ export function initStats(ctx, k) {
 
   /* ---------- vista ---------- */
   function vStats() {
-    const st = AD.st, r = rango(AD.per, hoy()), b = base(r), prev = base(r.prev, r.prev.grupos.length === r.grupos.length ? r.prev.grupos : null), C1 = 'var(--g-in-ink)', C2 = 'var(--g-out)', C3 = 'var(--c1)';
+    const st = AD.st, r = rango(AD.per, hoy()), b = base(r), prev = base(r.prev, r.prev.grupos.length === r.grupos.length ? r.prev.grupos : null), C1 = 'var(--g-in)', C2 = 'var(--g-out)', C3 = 'var(--c4)';
     const anios = [...new Set(AD.MV.map(v => (v.fecha || '').slice(0, 4)))].filter(Boolean).sort().reverse();
     const ti = sum(b.ingMes), te = sum(b.egMes), res = ti - te, lab = sum(b.labMes), meses = r.meses;
     const pi = sum(prev.ingMes), pe = sum(prev.egMes), pl = sum(prev.labMes);

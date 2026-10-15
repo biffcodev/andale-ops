@@ -1015,6 +1015,52 @@ function vClientes() {
 }
 
 // Servicios de un cliente: salen solos de sus proyectos y abonos (lo vigente resaltado).
+/* ---------- Seguimiento: qué abrió, miró o bajó el cliente ---------- */
+const SEG_T = {
+  mail_abierto: ['ojo', 'Abrió el mail', 'mail'], mail_click: ['enlace', 'Hizo clic en el mail', 'mail'],
+  portal_entro: ['inicio', 'Entró al portal', 'portal'], portal_vio: ['ojo', 'Miró', 'portal'],
+  pdf_descargado: ['descargar', 'Descargó', 'pdf'], pdf_abierto: ['doc', 'Abrió', 'pdf'],
+  propuesta_abierta: ['propuestas', 'Abrió el presupuesto', 'prop'], propuesta_pdf: ['descargar', 'Descargó el presupuesto en PDF', 'prop'],
+};
+// Se vuelve a pedir si pasó más de un minuto, así lo que hace el cliente aparece sin recargar la página.
+function segDe(cliente) {
+  S.SEG = S.SEG || new Map();
+  const x = S.SEG.get(cliente);
+  if (!x || (!x.pidiendo && Date.now() - x.t > 60_000)) {
+    S.SEG.set(cliente, { r: x ? x.r : undefined, t: Date.now(), pidiendo: true });
+    data.seguimientoDe(cliente).then(r => { S.SEG.set(cliente, { r, t: Date.now() }); render(); }).catch(e => { S.SEG.set(cliente, { r: [], t: Date.now() }); toast(e.message); });
+  }
+  return (S.SEG.get(cliente) || {}).r;
+}
+const haceTxt = iso => { const m = Math.round((Date.now() - new Date(iso)) / 60000); if (m < 1) return 'recién'; if (m < 60) return 'hace ' + m + ' min'; const h = Math.round(m / 60); if (h < 24) return 'hace ' + h + ' h'; const d = Math.round(h / 24); return d < 7 ? 'hace ' + d + (d === 1 ? ' día' : ' días') : fmt(String(iso).slice(0, 10)); };
+function segHtml(c) {
+  const ev = segDe(c.nombre);
+  if (ev === undefined) return '<section class="sheet">' + emptyBox('Cargando…', '') + '</section>';
+  if (ev === null) return '<section class="sheet">' + emptyBox('Falta un paso en la base de datos', 'Para ver el seguimiento hay que correr el SQL 0020 en Supabase.') + '</section>';
+  const AD = ADM && ADM.AD, asunto = id => { const m = AD && (AD.EM || []).find(x => x.id === id); return m ? '“' + m.asunto + '”' : ''; };
+  const n = t => ev.filter(e => e.tipo === t).length, ult = t => (ev.find(e => e.tipo === t) || {}).created_at;
+  const mailsAb = new Set(ev.filter(e => e.tipo === 'mail_abierto').map(e => e.email_id)).size;
+  const pill = (ic, txt, cls) => '<span class="seg-p ' + (cls || '') + '">' + (ICON[ic] || '') + txt + '</span>';
+  let h = '<section class="sheet"><div class="sheet-h"><div><h2>Seguimiento</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Lo que abrió, miró o descargó ' + esc(c.nombre) + ': mails, portal, PDFs y presupuestos.</p></div></div>' +
+    '<div class="sheet-b"><div class="svsum">' +
+    pill('mail', mailsAb + (mailsAb === 1 ? ' mail abierto' : ' mails abiertos'), mailsAb ? 'on' : '') +
+    (n('mail_click') ? pill('enlace', n('mail_click') + (n('mail_click') === 1 ? ' clic' : ' clics') + ' en mails', 'clic') : '') +
+    pill('inicio', n('portal_entro') ? 'Entró al portal ' + n('portal_entro') + (n('portal_entro') === 1 ? ' vez' : ' veces') + ' · ' + haceTxt(ult('portal_entro')) : 'Todavía no entró al portal', n('portal_entro') ? 'on' : 'no') +
+    (n('pdf_descargado') + n('pdf_abierto') ? pill('descargar', (n('pdf_descargado') + n('pdf_abierto')) + ' PDF vistos o descargados', 'pdf') : '') +
+    (n('propuesta_abierta') ? pill('propuestas', 'Abrió presupuestos ' + n('propuesta_abierta') + (n('propuesta_abierta') === 1 ? ' vez' : ' veces'), 'clic') : '') + '</div>' +
+    '<p class="muted" style="margin:10px 0 0;font-size:12.5px">“Abrió el mail” es aproximado: algunos correos (como Apple Mail) cargan las imágenes solos y otros las bloquean. Los clics, el portal y las descargas son exactos.</p></div></section>';
+  if (!ev.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay movimientos', 'Cuando abra un mail, entre al portal o baje un PDF, aparece acá.') + '</section>';
+  // Agrupado por día; los eventos iguales seguidos se juntan (×n).
+  const dias = new Map();
+  ev.forEach(e => { const d = String(e.created_at).slice(0, 10), arr = dias.get(d) || dias.set(d, []).get(d), k = e.tipo + '|' + (e.email_id || '') + '|' + e.ref, prev = arr[arr.length - 1]; if (prev && prev.k === k) prev.n++; else arr.push({ ...e, k, n: 1 }); });
+  h += '<section class="sheet"><div class="seg-tl">' + [...dias.entries()].map(([d, arr]) => '<div class="seg-dia"><span class="seg-fecha">' + (d === today() ? 'Hoy' : esc(fmt(d))) + '</span><div class="seg-evs">' + arr.map(e => {
+    const [ic, txt, cl] = SEG_T[e.tipo] || ['ojo', e.tipo, ''];
+    const que = e.tipo.startsWith('mail') ? asunto(e.email_id) : e.detalle ? (e.tipo === 'propuesta_abierta' || e.tipo === 'propuesta_pdf' ? (e.detalle ? 'N.º ' + e.detalle : '') : e.detalle) : '';
+    const hh = new Date(e.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    return '<div class="seg-ev ' + cl + '"><span class="seg-ic">' + (ICON[ic] || '') + '</span><span class="seg-tx"><b>' + esc(txt) + (que ? ' ' : '') + '</b>' + esc(que) + (e.n > 1 ? ' <span class="muted">×' + e.n + '</span>' : '') + '<small>' + esc(hh) + (e.quien ? ' · ' + esc(e.quien) : '') + '</small></span></div>';
+  }).join('') + '</div></div>').join('') + '</div></section>';
+  return h;
+}
 function serviciosDe(nombre) {
   const m = new Map();
   const sumar = (tipo, desde, hasta, vigente) => { if (!tipo) return; const x = m.get(tipo) || { tipo, desde: desde || '', hasta: hasta || '', vigente: false }; if (desde && (!x.desde || desde < x.desde)) x.desde = desde; if (hasta && hasta > x.hasta) x.hasta = hasta; x.vigente = x.vigente || vigente; m.set(tipo, x); };
@@ -1045,7 +1091,7 @@ function vFicha() {
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   const pendN = ms.filter(m => m.proximo && !m.hecho).length;
   const tabs = [['resumen', 'Resumen'], ...(isAdmin() && ADM ? [['cuenta', 'Facturación']] : []), ['trabajos', 'Trabajos'], ...(isStaff() ? [['marca', 'Marca y voz' + (c.marca && Object.values(c.marca).some(Boolean) ? '' : ' <span class="tab-dot" title="Sin completar"></span>')]] : []),
-    ['charlas', 'Charlas' + (pendN ? ' <span class="snav-n hot">' + pendN + '</span>' : '')], ...(conTabla() && (isStaff() || contactosDe(c.nombre).length) ? [['contactos', 'Contactos']] : [])];
+    ['charlas', 'Charlas' + (pendN ? ' <span class="snav-n hot">' + pendN + '</span>' : '')], ...(conTabla() && (isStaff() || contactosDe(c.nombre).length) ? [['contactos', 'Contactos']] : []), ...(isStaff() ? [['seguimiento', 'Seguimiento']] : [])];
   const tab = tabs.some(t => t[0] === S.ctab) ? S.ctab : 'resumen';
   const acciones = isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button>' + waBtn(c) + '<button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' +
     masMenu([{ act: 'edit', label: 'Editar cliente', attrs: ' data-kind="cliente" data-id="' + esc(c._id) + '"', icon: 'clientes' }, { act: 'new', label: 'Anotar charla', attrs: ' data-kind="comunicacion" data-preset="' + preset + '"', icon: 'charla' }, { act: 'new', label: 'Sumar a Redes', attrs: ' data-kind="abono" data-preset="' + preset + '"', icon: 'abonos' }])
@@ -1070,6 +1116,7 @@ function vFicha() {
         (ms.length ? (pend.length ? '<div class="sheet-b" style="padding-bottom:0"><span class="eyebrow">Pendiente</span></div><div class="timeline">' + pend.map(m => comItem(m, true)).join('') + '</div>' : '') + (resto.length ? (pend.length ? '<div class="sheet-b" style="padding-bottom:0"><span class="eyebrow">Historial</span></div>' : '') + '<div class="timeline">' + resto.map(m => comItem(m, true)).join('') + '</div>' : '')
           : emptyBox('Todavía no hay charlas anotadas', 'Anotá reuniones, llamadas o WhatsApps. Si pegás el chat, Mr. Piggy completa todo.')) + '</section>'; })() + '';
   else if (tab === 'contactos') body = contactosHtml(c);
+  else if (tab === 'seguimiento') body = segHtml(c);
   else if (tab === 'cuenta') body = ADM.fichaSection(c) || '<section class="sheet">' + emptyBox('Sin datos de cuenta', '') + '</section>';
   return back +
     '<div class="head"><div class="head-av">' + (isStaff() ? avEditable('cliente', c._id, c.nombre, c.avatar, 'xl sq') : av(c.nombre, c.avatar, 'xl sq')) + '<div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + servPills(c.nombre) + '</p></div></div>' +
@@ -1146,7 +1193,7 @@ const fm = () => FM || (FM = initFichaMarca({ S, esc, toast, data, render, empty
 let RLJ = null;
 const rlj = () => RLJ || (RLJ = initReloj({ S, esc, opt, toast, data, $, today, cmp }));
 let INF = null;
-const inf = () => INF || (INF = initInformes({ marcaCtx: (c, ps) => fm().contexto(c, ps), S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], cfgMarca: () => (ADM && ADM.cfgMarca ? ADM.cfgMarca() : null), avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
+const inf = () => INF || (INF = initInformes({ marcaCtx: (c, ps) => fm().contexto(c, ps), S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], cfgMarca: () => (ADM && ADM.cfgMarca ? ADM.cfgMarca() : null), segDe: c => segDe(c), avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
 const red = () => RED || (RED = initRedes({ servChips: (c, o) => servChips(c, o), servAb: c => servicioRedes(c).redes, autoBtn: p => aut().boton(p), toastAccion, masMenu, marcaCtx: (c, ps) => fm().contexto(c, ps), avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
   cfgGet: (k, c) => integr().cfgGet(k, c), servicios: n => serviciosDe(n).map(x => x.tipo).join(', '),
   irMes: id => { S.view = 'redes'; S.rmFicha = id || null; S.ficha = null; S.pficha = null; try { history.replaceState(null, '', '#redes' + (id ? '/' + id : '')); } catch (e) { } render(); window.scrollTo(0, 0); } }));

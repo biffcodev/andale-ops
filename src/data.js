@@ -212,6 +212,13 @@ export async function informeGuardar(id, u, cliente, mes) {
   if (id) { check(await sb.from('informes_redes').update(r).eq('id', id)); return id; }
   return check(await sb.from('informes_redes').upsert({ cliente_id: idx.clienteId.get(cliente), mes: mes + '-01', ...r }, { onConflict: 'cliente_id,mes' }).select('id').single()).id;
 }
+// Seguimiento de un cliente: mails abiertos y clics, visitas al portal, PDFs vistos o bajados, presupuestos abiertos.
+export async function seguimientoDe(cliente) {
+  const cid = idx.clienteId.get(cliente); if (!cid) return [];
+  const { data, error } = await sb.from('seguimiento').select('id, created_at, tipo, ref, detalle, quien, email_id').eq('cliente_id', cid).order('created_at', { ascending: false }).limit(300);
+  if (error) { if (/PGRST205|42P01|does not exist|Could not find/i.test(error.code + ' ' + error.message)) return null; throw new Error(error.message); }
+  return data || [];
+}
 export async function informeDel(id) { check(await sb.from('informes_redes').delete().eq('id', id)); }
 
 /* ---------- Tickets, briefs, entregas y sitios ---------- */
@@ -391,12 +398,13 @@ const opcional = p => p.catch(e => { if (/PGRST205|42P01|Could not find the tabl
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
   const desdeMes = new Date(); desdeMes.setDate(1); desdeMes.setHours(0, 0, 0, 0);
-  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il, prop] = await Promise.all([
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il, prop, seg] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
     all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })), all('proyecto_finanzas'), all('abono_finanzas'), all('imputaciones'),
     opcional(all('colaboradores', q => q.order('nombre'))), opcional(all('remuneraciones')), opcional(all('conceptos_fijos')), opcional(all('liquidaciones')), opcional(all('drive_archivos', q => q.order('modificado', { ascending: false, nullsFirst: false }))),
     opcional(all('ia_log', q => q.gte('created_at', desdeMes.toISOString()))),
     opcional(all('propuestas', q => q.order('fecha', { ascending: false }))),
+    opcional(all('seguimiento', q => q.not('email_id', 'is', null))),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
@@ -410,6 +418,8 @@ export async function loadAdmin() {
     MV: mv.map(r => ({ ...r, cliente: cn(r.cliente_id), persona: idx.personaAlias.get(r.persona_id) || '', ingreso: num(r.ingreso) || 0, egreso: num(r.egreso) || 0 })),
     AJ: Object.fromEntries(aj.map(r => [r.clave, r.valor])),
     EM: em,
+    // Seguimiento de cada mail: { abierto: n, primera, ultima, clics }
+    SEGM: seg.reduce((m, r) => { const x = m.get(r.email_id) || { abierto: 0, clics: 0, primera: null, ultima: null }; if (r.tipo === 'mail_abierto') { x.abierto++; if (!x.primera || r.created_at < x.primera) x.primera = r.created_at; if (!x.ultima || r.created_at > x.ultima) x.ultima = r.created_at; } else x.clics++; m.set(r.email_id, x); return m; }, new Map()),
     PFZ: new Map(pfz.map(r => [r.proyecto_id, { ...r, presupuesto: num(r.presupuesto), inicio_cobro: month(r.inicio_cobro) }])),
     ABF: new Map(abf.map(r => [r.abono_id, { ...r, inversion: num(r.inversion) }])),
     IMP: imp.map(r => ({ ...r, monto: num(r.monto) || 0 })),

@@ -81,9 +81,29 @@ function cambiar(nodo) {
     t.parentNode.replaceChild(f, t);
   });
 }
+// Botones con ícono según lo que dicen, así todas las acciones se reconocen igual en toda la plataforma.
+const BTN_IC = [
+  [/^(descargar|exportar|bajar)/i, 'descargar'], [/^imprimir/i, 'imprimir'],
+  [/recordatorio/i, 'campana'], [/(por )?e-?mail|^enviar|^mandar|^avisar/i, 'mail'],
+  [/con ia|mr\.? piggy|^armar|cierre en un clic|^volver a armar/i, 'ia'],
+  [/^(cargar|cambiar) precio|^cargar pauta|^precios?\b/i, 'plata'],
+  [/^prepar|resumen|^ver (el )?resumen/i, 'doc'], [/^publicar|^despublicar/i, 'externo'],
+  [/^guardar/i, 'check'], [/^(editar|cambiar)/i, 'editar'], [/^(borrar|eliminar)/i, 'borrar'],
+  [/^ver (el mes|movimientos|cuentas|todo|quién|mes)/i, 'ojo'], [/^arrancar/i, 'calendario'],
+  [/^(sumar|agregar|nuevo|nueva)\b/i, 'sumar'], [/^copiar/i, 'copiar'], [/^conectar/i, 'enlace'],
+];
+const BTN_NO = '.link,.seg button,.subnav button,.ic-only,[data-noic],.dlg-b button';
+function iconoBoton(b) {
+  if (b.dataset.ic === '1' || b.querySelector('svg,img,.ici') || b.matches(BTN_NO) || b.closest('td,.rows,.tbl,.mas-m,.fmenu')) return;
+  const t = (b.textContent || '').trim(); if (!t || t.length > 42 || /^[+←→✕×]/.test(t)) return;
+  const hit = BTN_IC.find(([rx]) => rx.test(t)); if (!hit || !ICON[hit[1]]) return;
+  b.dataset.ic = '1'; const sp = document.createElement('span'); sp.className = 'ici ici-b'; sp.setAttribute('aria-hidden', 'true'); sp.innerHTML = ICON[hit[1]]; b.prepend(sp);
+}
+function botones(n) { if (n.nodeType !== 1) return; if (n.matches && n.matches('button.btn,a.btn')) iconoBoton(n); n.querySelectorAll && n.querySelectorAll('button.btn,a.btn').forEach(iconoBoton); }
 export function iconizar(raiz) {
   const r = raiz || document.body; if (!r || typeof document === 'undefined') return;
-  cambiar(r);
+  cambiar(r); botones(r);
+  new MutationObserver(ms => { for (const m of ms) m.addedNodes.forEach(botones); }).observe(r, { childList: true, subtree: true });
   new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') { if (RX.test(m.target.nodeValue) && m.target.parentNode) cambiar(m.target.parentNode); } else m.addedNodes.forEach(n => { if (n.nodeType === 1) cambiar(n); else if (n.nodeType === 3 && RX.test(n.nodeValue) && n.parentNode) cambiar(n.parentNode); }); } })
     .observe(r, { childList: true, subtree: true, characterData: true });
 }
@@ -97,4 +117,11 @@ Object.assign(ICON, {
   marca: s('<path d="M12 3.5 3.5 8 12 12.5 20.5 8z"/><path d="m3.5 12 8.5 4.5 8.5-4.5"/><path d="m3.5 16 8.5 4.5 8.5-4.5"/>'),
   campana: s('<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6.5 2 6.5H4S6 14 6 9"/><path d="M10 19.5a2 2 0 0 0 4 0"/>'),
   salir: s('<path d="M14 4.5h4.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="m10 8-4 4 4 4"/><path d="M6 12h10"/>'),
+  editar: s('<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
+  borrar: s('<path d="M4.5 7h15"/><path d="M10 11v6M14 11v6"/><path d="M6.5 7l.8 11.5a2 2 0 0 0 2 1.5h5.4a2 2 0 0 0 2-1.5L17.5 7"/><path d="M9.5 7V4.5h5V7"/>'),
+  ojo: s('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>'),
+  sumar: s('<path d="M12 5v14M5 12h14"/>'),
+  copiar: s('<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>'),
+  enlace: s('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
+  seguimiento: s('<path d="M3.5 12h3l2.5-6 4 12 2.5-6h5"/>'),
 });

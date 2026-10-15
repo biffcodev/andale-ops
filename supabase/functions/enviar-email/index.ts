@@ -17,6 +17,24 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const TIPOS = ['Resumen de cuenta', 'Factura enviada', 'Recordatorio de pago', 'Aviso de aumento', 'Invoice', 'Mensaje', 'Otro'];
 const EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
 const lista = (v: unknown) => (Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/)).map(x => String(x).trim().toLowerCase()).filter(Boolean);
+// Seguimiento: imagen invisible para saber si se abrió y links que pasan por /seguimiento para saber si hicieron clic.
+// Cada link lleva su destino firmado, así la redirección funciona siempre y solo a links que salieron en el mail.
+async function firma(t: string) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return [...new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(t))).slice(0, 12)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+async function rastrear(html: string, eid: string) {
+  const base = Deno.env.get('SUPABASE_URL') + '/functions/v1/seguimiento?e=' + eid;
+  const links: string[] = [], vistos = new Map<string, string>();
+  for (const m of html.matchAll(/href="(https?:\/\/[^"]+)"/gi)) {
+    const raw = m[1]; if (vistos.has(raw) || links.length >= 40) continue;
+    const u = raw.replace(/&amp;/g, '&'); links.push(u);
+    vistos.set(raw, base + '&amp;l=' + (links.length - 1) + '&amp;u=' + encodeURIComponent(u) + '&amp;s=' + await firma(eid + '|' + u));
+  }
+  const out = html.replace(/href="(https?:\/\/[^"]+)"/gi, (all, raw) => vistos.has(raw) ? 'href="' + vistos.get(raw) + '"' : all);
+  const px = '<img src="' + base + '" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0" />';
+  return { html: /<\/body>/i.test(out) ? out.replace(/<\/body>/i, px + '</body>') : out + px, links };
+}
 const hoyAR = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Cordoba' });
 
 // Cuentas cargadas desde la app (Configuración → Integraciones, cifradas en Vault). Si no hay, se usan los secretos de Supabase.
@@ -72,20 +90,23 @@ Deno.serve(async req => {
     if (p && p.email && EMAIL_RE.test(p.email)) replyTo = p.email;
   }
   const copia = b.copia === false ? [] : [replyTo];
+  const eid = crypto.randomUUID(), tr = await rastrear(String(b.html), eid);
+  const enviar = (o: Record<string, unknown>) => fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(o) });
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to: para, cc: cc.length ? cc : undefined, bcc: copia.length ? copia : undefined, reply_to: replyTo, subject: asunto, html: b.html, text: b.texto || undefined, attachments: adjuntos.length ? adjuntos : undefined }),
-  });
+  // Al cliente va con seguimiento; la copia para àndale sale aparte y sin seguimiento, así abrirla no cuenta como "lo abrió el cliente".
+  const res = await enviar({ from, to: para, cc: cc.length ? cc : undefined, reply_to: replyTo, subject: asunto, html: tr.html, text: b.texto || undefined, attachments: adjuntos.length ? adjuntos : undefined });
   const out = await res.json().catch(() => ({}));
   const ok = res.ok && out && out.id;
   const error = ok ? null : (out && (out.message || out.error)) || ('Resend respondió ' + res.status);
+  if (ok && copia.length) {
+    const c = { from, to: copia, reply_to: replyTo, subject: asunto, html: b.html, text: b.texto || undefined, attachments: adjuntos.length ? adjuntos : undefined };
+    try { let r2 = await enviar(c); if (r2.status === 429) { await new Promise(r => setTimeout(r, 1100)); r2 = await enviar(c); } } catch (_) { /* la copia es un extra */ }
+  }
 
-  const { data: log } = await adm.from('emails').insert({
-    persona_id: yo.id, cliente_id: b.cliente_id || null, factura_id: b.factura_id || null, tipo, periodo: b.periodo || null,
-    para, cc, asunto, adjuntos: adjuntos.map((a: any) => a.filename), estado: ok ? 'Enviado' : 'Error', proveedor_id: ok ? out.id : null, error,
-  }).select('id').single();
+  const fila = { id: eid, persona_id: yo.id, cliente_id: b.cliente_id || null, factura_id: b.factura_id || null, tipo, periodo: b.periodo || null,
+    para, cc, asunto, adjuntos: adjuntos.map((a: any) => a.filename), estado: ok ? 'Enviado' : 'Error', proveedor_id: ok ? out.id : null, error };
+  let { data: log, error: eLog } = await adm.from('emails').insert({ ...fila, links: tr.links }).select('id').single();
+  if (eLog) ({ data: log } = await adm.from('emails').insert(fila).select('id').single()); // sin la columna links (falta el SQL 0020)
 
   if (ok && b.cliente_id && b.registrar !== false && tipo === 'Mensaje') {
     await adm.from('comunicaciones').insert({

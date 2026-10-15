@@ -52,7 +52,14 @@ async function cargar(silencio) {
   const ms = S.d.meses || [];
   if (!S.mes || !ms.some(m => m.id === S.mes)) S.mes = (ms.find(m => m.mes.slice(0, 7) === new Date().toISOString().slice(0, 7)) || ms[0] || {}).id || null;
   pedirArchivos();
+  seg('portal_entro');
   render();
+}
+// Seguimiento: el equipo ve cuándo entró, qué miró y qué bajó (una vez por cosa en cada visita).
+const visto = new Set();
+function seg(tipo, ref, detalle) {
+  const k = S.c.cliente_id + '|' + tipo + '|' + (ref || ''); if (tipo !== 'pdf_descargado' && tipo !== 'pdf_abierto' && visto.has(k)) return; visto.add(k);
+  sb.rpc('portal_evento', { p_cliente: S.c.cliente_id, p_tipo: tipo, p_ref: ref || '', p_detalle: detalle || '' }).then(() => {}, () => {});
 }
 // Miniaturas y links de Dropbox (de a lotes; las URLs duran unas horas).
 async function pedirArchivos() {
@@ -186,15 +193,17 @@ function vInformes() {
   const is = S.d.informes || [], sel = is.find(i => i.id === S.inf) || is[0];
   if (!sel) return '<section class="po-sec"><h1>Informes de redes</h1><p class="muted">Todavía no hay informes.</p></section>';
   const btn = '<button type="button" class="btn" data-act="infPdf" data-id="' + esc(sel.id) + '">' + ICON.descargar + 'Descargar PDF</button>';
+  seg('portal_vio', sel.id, 'Informe de redes ' + mesTxt(sel.mes));
   return '<section class="po-sec po-infs">' + (is.length > 1 ? '<div class="po-inf-meses" role="tablist" aria-label="Elegí el mes">' + is.map(i => '<button role="tab" data-act="infVer" data-id="' + esc(i.id) + '" aria-selected="' + (i === sel) + '">' + esc(cap(mesTxt(i.mes))) + '</button>').join('') + '</div>' : '') +
     informeVista({ inf: sel, cliente: S.d.cliente.nombre, mesLabel: mesTxt(sel.mes), piezas: (mesDeInforme(sel) || {}).piezas, descargar: btn }) + '</section>';
 }
 function vCuenta() {
   const c = S.d.cuenta || {}, fs = c.facturas || [], rs = c.resumenes || [];
+  seg('portal_vio', 'cuenta', 'Mi cuenta');
   const deuda = {}; fs.forEach(f => { if (+f.saldo > 0.009) deuda[f.moneda] = (deuda[f.moneda] || 0) + +f.saldo; });
   return '<section class="po-sec"><h1>Mi cuenta</h1>' + (Object.keys(deuda).length ? '<div class="po-deuda">Saldo pendiente: <b>' + Object.entries(deuda).map(([m, n]) => plata(n, m)).join(' · ') + '</b></div>' : '<div class="po-deuda ok">✓ No tenés saldo pendiente.</div>') +
-    (rs.length ? '<h2>Resúmenes de cuenta</h2><div class="po-tbl">' + rs.map(r => '<div class="po-tr"><span>' + esc(cap(mesTxt(r.periodo))) + (r.numero ? ' · ' + esc(r.numero) : '') + '</span><b>' + plata(r.total, r.moneda) + '</b>' + (r.link_pdf ? '<a href="' + esc(r.link_pdf) + '" target="_blank" rel="noopener">PDF ↗</a>' : '<span></span>') + '</div>').join('') + '</div>' : '') +
-    (fs.length ? '<h2>Facturas</h2><div class="po-tbl">' + fs.map(f => '<div class="po-tr"><span>' + esc(f.tipo === 'Invoice' ? 'Invoice' : 'Factura') + ' ' + esc(f.numero || '') + ' · ' + fecha(f.fecha) + '</span><b>' + plata(f.monto, f.moneda) + '</b>' + (+f.saldo > 0.009 ? '<span class="po-sal">Pendiente ' + plata(f.saldo, f.moneda) + '</span>' : '<span class="po-pag">Pagada</span>') + (f.link_pdf ? '<a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener">PDF ↗</a>' : '') + '</div>').join('') + '</div>' : '') + '</section>';
+    (rs.length ? '<h2>Resúmenes de cuenta</h2><div class="po-tbl">' + rs.map(r => '<div class="po-tr"><span>' + esc(cap(mesTxt(r.periodo))) + (r.numero ? ' · ' + esc(r.numero) : '') + '</span><b>' + plata(r.total, r.moneda) + '</b>' + (r.link_pdf ? '<a href="' + esc(r.link_pdf) + '" target="_blank" rel="noopener" data-seg="' + esc(r.id) + '" data-segd="' + esc('Resumen de cuenta ' + mesTxt(r.periodo) + (r.numero ? ' · ' + r.numero : '')) + '">PDF ↗</a>' : '<span></span>') + '</div>').join('') + '</div>' : '') +
+    (fs.length ? '<h2>Facturas</h2><div class="po-tbl">' + fs.map(f => '<div class="po-tr"><span>' + esc(f.tipo === 'Invoice' ? 'Invoice' : 'Factura') + ' ' + esc(f.numero || '') + ' · ' + fecha(f.fecha) + '</span><b>' + plata(f.monto, f.moneda) + '</b>' + (+f.saldo > 0.009 ? '<span class="po-sal">Pendiente ' + plata(f.saldo, f.moneda) + '</span>' : '<span class="po-pag">Pagada</span>') + (f.link_pdf ? '<a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener" data-seg="' + esc(f.id) + '" data-segd="' + esc((f.tipo === 'Invoice' ? 'Invoice ' : 'Factura ') + (f.numero || '')) + '">PDF ↗</a>' : '') + '</div>').join('') + '</div>' : '') + '</section>';
 }
 
 /* ---------- Acciones ---------- */
@@ -217,6 +226,7 @@ const ACT = {
     const txt = t.innerHTML; t.disabled = true; t.textContent = 'Preparando…';
     try {
       const { informeDoc, abrirPdf } = await import('./docs.js');
+      seg('pdf_descargado', i.id, 'Informe de redes ' + mesTxt(i.mes) + ' (PDF)');
       abrirPdf(await informeDoc({ cliente: S.d.cliente.nombre, mesLabel: mesTxt(i.mes), inf: i, piezas: (mesDeInforme(i) || {}).piezas }), 'Informe de redes ' + mesTxt(i.mes) + ' ' + S.d.cliente.nombre);
     } catch (e) { toast('No se pudo armar el PDF'); }
     t.disabled = false; t.innerHTML = txt;
@@ -275,3 +285,6 @@ document.addEventListener('submit', async e => {
   setInterval(() => { if (S.c && document.visibilityState === 'visible') cargar(true); }, 120000);
   window.addEventListener('focus', () => { if (S.c) cargar(true); });
 })();
+
+// Abrir el PDF de una factura o un resumen desde Mi cuenta.
+document.addEventListener('click', e => { const a = e.target.closest && e.target.closest('a[data-seg]'); if (a && S.c) seg('pdf_abierto', a.dataset.seg, a.dataset.segd || ''); }, true);
