@@ -90,13 +90,15 @@ export function initEquipo(ctx, k) {
   const mesNav = () => '<div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(AD.pg.mes))) + '</h2><button class="btn sm" data-act="pgMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="pgMes" data-d="0">Este mes</button><button class="btn sm" data-act="pgMes" data-d="1" aria-label="Mes siguiente">→</button></div>';
   const stc = (cls, big, lab, sub) => '<div class="stc ' + cls + '"><span class="stc-l">' + lab + '</span><b>' + esc(big) + '</b><small>' + sub + '</small></div>';
   const verInact = () => '<label class="chk"><input type="checkbox" data-pgk="inact"' + (AD.pg.inact ? ' checked' : '') + '> Ver inactivos</label>';
-  const costoMensual = cs => cs.reduce((acc, c) => { const { rs, ex } = lineaRem(c, thisMonth()); [...rs, ...ex].forEach(x => add(acc, x.moneda, x.monto)); return acc; }, {});
+  // Mes de referencia: hoy, o el primer mes con sueldo si todavía no arrancó (ej. cargado desde noviembre).
+  const mesRef = c => { const m = thisMonth(); if (remVig(c.id, m).length) return m; const fut = AD.RM.filter(r => r.colaborador_id === c.id && r.desde > m).map(r => r.desde).sort()[0]; return fut || m; };
+  const costoMensual = cs => cs.reduce((acc, c) => { const { rs, ex } = lineaRem(c, mesRef(c)); [...rs, ...ex].forEach(x => add(acc, x.moneda, x.monto)); return acc; }, {});
 
   /* ---------- Equipo › Personas ---------- */
   function vPersonas() {
     const todos = integrantes(false), act = todos.filter(activoI);
     const list = todos.filter(x => AD.pg.inact || activoI(x)).sort((a, b) => (activoI(b) - activoI(a)) || ((a.c ? (a.c.tipo === 'Socio' ? 0 : 1) : 2) - (b.c ? (b.c.tipo === 'Socio' ? 0 : 1) : 2)) || cmp(nombreI(a), nombreI(b)));
-    const sinSueldo = act.filter(x => !x.c || !remVig(x.c.id, thisMonth()).length);
+    const sinSueldo = act.filter(x => !x.c || !remVig(x.c.id, mesRef(x.c)).length);
     let h = '<div class="head"><div><h1>Equipo</h1><p>Socias y empleados: datos, sueldo y acceso a la app, todo en la ficha de cada persona. Los proveedores están en Finanzas › Proveedores.</p></div><div class="toolbar">' + verInact() + '<button class="btn primary" data-act="pgColab" data-g="eq">+ Persona</button></div></div>';
     h += '<section class="stc3" aria-label="Resumen del equipo">' +
       stc('azul', String(act.length), 'Personas en el equipo', esc([pl(act.filter(x => x.c && x.c.tipo === 'Socio').length, 'socio', 'socios'), pl(act.filter(x => x.c && x.c.tipo !== 'Socio').length, 'empleado', 'empleados'), act.filter(x => !x.c).length ? act.filter(x => !x.c).length + ' sin completar' : ''].filter(Boolean).join(' · '))) +
@@ -104,13 +106,13 @@ export function initEquipo(ctx, k) {
       stc('tinta', String(sinSueldo.length), 'Sin sueldo cargado', sinSueldo.length ? esc(sinSueldo.map(x => x.p ? x.p.persona : nombreI(x)).join(', ')) : 'todos con sueldo') + '</section>';
     const rows = list.map(x => {
       const { c, p } = x, alias = p ? p.persona : '';
-      const lr = c ? lineaRem(c, thisMonth()) : { rs: [], ex: [], acc: {} }, rs = lr.rs;
+      const mr = c ? mesRef(c) : thisMonth(), lr = c ? lineaRem(c, mr) : { rs: [], ex: [], acc: {} }, rs = lr.rs;
       const ab = alias ? S.A.filter(a => a.estado === 'Activo' && (a.responsables || []).includes(alias)).length : 0, pr = alias ? S.P.filter(q => abiertoP(q) && (q.responsables || []).includes(alias)).length : 0;
       const attr = c ? 'data-id="' + esc(c.id) + '"' : 'data-pid="' + esc(p._id) + '"';
       return '<tr class="click" data-act="pgColab" ' + attr + ' data-g="eq"' + (activoI(x) ? '' : ' style="opacity:.55"') + '>' +
         '<td><span class="who1">' + (p && ctx.avEditable ? ctx.avEditable('persona', p._id, alias, p.avatar, '', false) : ctx.av ? ctx.av(alias || nombreI(x), p ? p.avatar : '') : '') + '<b>' + esc(alias || nombreI(x)) + '</b></span><span class="sub">' + esc([nombreI(x) !== alias ? nombreI(x) : '', p && p.puesto].filter(Boolean).join(' · ')) + '</span></td>' +
         '<td>' + (c ? esc(c.tipo) + '<span class="sub">' + esc([c.vinculo, c.ingreso ? 'desde ' + fmt(c.ingreso.slice(0, 7)) : ''].filter(Boolean).join(' · ')) + '</span>' : '<span class="muted">sin completar</span>') + '</td>' +
-        '<td class="r">' + (rs.length ? '<span class="money">' + esc(multi(lr.acc)) + '</span><span class="sub">' + (lr.ex.length ? esc([...rs.map(r => r.concepto + ' ' + money(r.monto, r.moneda)), ...lr.ex.map(x => x.concepto + ' ' + money(x.monto, x.moneda))].join(' + ')) : 'sueldo, sin extras') + '</span>' : '<span class="pill" style="--c:var(--s-revision)">Cargar sueldo</span>') + '</td>' +
+        '<td class="r">' + (rs.length ? '<span class="money">' + esc(multi(lr.acc)) + '</span><span class="sub">' + (lr.ex.length ? esc([...rs.map(r => r.concepto + ' ' + money(r.monto, r.moneda)), ...lr.ex.map(x => x.concepto + ' ' + money(x.monto, x.moneda))].join(' + ')) : 'sin extras') + (mr > thisMonth() ? ' · desde ' + fmt(mr) : '') + '</span>' : '<span class="pill" style="--c:var(--s-revision)">Cargar sueldo</span>') + '</td>' +
         '<td>' + (p && p.email && p.activo !== false ? pill(ROLES[p.rol] || p.rol, ROL_COLOR[p.rol] || '--muted') + '<span class="sub">' + esc(p.email) + '</span>' : '<span class="muted">sin acceso</span>') + '</td>' +
         '<td class="r num">' + (ab || pr ? esc([ab ? ab + ' redes' : '', pr ? pr + ' proyectos' : ''].filter(Boolean).join(' · ')) : '<span class="muted">—</span>') + '</td></tr>';
     }).join('');
@@ -144,12 +146,12 @@ export function initEquipo(ctx, k) {
       stc('', delAnio.length ? pctTxt(Math.round(delAnio.reduce((a, v) => a + v, 0) / delAnio.length * 10) / 10) : '—', 'Aumento promedio ' + esc(y), delAnio.length ? pl(delAnio.length, 'aumento', 'aumentos') + ' en el año' : 'sin aumentos este año') +
       stc('tinta', ult ? fmt(ult.r.desde) : '—', 'Último aumento', ult ? esc(((colab(ult.r.colaborador_id) || {}).nombre || '') + ' · ' + (pctDe(ult.r, ult.ant) != null ? pctTxt(pctDe(ult.r, ult.ant)) : '') + (ult.r.motivo ? ' · ' + ult.r.motivo : '')) : 'todavía ninguno') + '</section>';
     const filas = gente.map(c => {
-      const r = remVig(c.id, m).find(x => x.concepto === 'Sueldo') || remVig(c.id, m)[0];
+      const mc = mesRef(c), r = remVig(c.id, mc).find(x => x.concepto === 'Sueldo') || remVig(c.id, mc)[0];
       const a = r ? remAnterior(r) : null, ini = r ? (remVig(c.id, y + '-01').find(x => x.concepto === r.concepto) || null) : null;
-      const prog = AD.RM.filter(x => x.colaborador_id === c.id && x.desde > m).sort((p, q) => p.desde.localeCompare(q.desde))[0];
+      const prog = AD.RM.filter(x => x.colaborador_id === c.id && x.desde > mc).sort((p, q) => p.desde.localeCompare(q.desde))[0];
       const acum = r && ini && ini !== r ? pctDe(r, ini) : null;
       return '<tr><td class="name"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button><span class="sub">' + esc(c.tipo) + '</span></td>' +
-        '<td class="r">' + (r ? '<span class="money">' + money(r.monto, r.moneda) + '</span><span class="sub">desde ' + fmt(r.desde) + (extrasVig(c.id, m).length ? ' · con extras ' + esc(multi(lineaRem(c, m).acc)) : '') + '</span>' : '<span class="muted">sin cargar</span>') + '</td>' +
+        '<td class="r">' + (r ? '<span class="money">' + money(r.monto, r.moneda) + '</span><span class="sub">desde ' + fmt(r.desde) + (extrasVig(c.id, mc).length ? ' · con extras ' + esc(multi(lineaRem(c, mc).acc)) : '') + '</span>' : '<span class="muted">sin cargar</span>') + '</td>' +
         '<td>' + (r && a ? '<b>' + esc(pctDe(r, a) != null ? pctTxt(pctDe(r, a)) : '') + '</b><span class="sub">' + esc(fmt(r.desde) + (r.motivo ? ' · ' + r.motivo : '')) + '</span>' : '<span class="muted">' + (r ? 'sueldo inicial' : '—') + '</span>') + '</td>' +
         '<td class="r">' + (acum != null ? '<b>' + esc(pctTxt(acum)) + '</b>' : '<span class="muted">—</span>') + '</td>' +
         '<td>' + (prog ? '<span class="money">' + money(prog.monto, prog.moneda) + '</span><span class="sub">desde ' + fmt(prog.desde) + '</span>' : '<span class="muted">—</span>') + '</td>' +
@@ -195,7 +197,7 @@ export function initEquipo(ctx, k) {
     let h = '';
     if (falt.length) h += '<section class="callout"><p><b>' + falt.length + ' pagos por calcular</b> en ' + esc(monthLabel(m)) + ' según ' + (prov ? 'los honorarios fijos' : 'los sueldos y extras') + ' cargados' + (falt.some(f => f.tipo === 'Aguinaldo') ? ' (incluye aguinaldo)' : '') + ': ' + esc([...new Set(falt.map(f => (colab(f.colaborador_id) || {}).nombre))].join(', ')) + '.</p><button class="btn primary" data-act="pgGenerar" data-g="' + g + '">' + (lq.length ? 'Calcular los que faltan' : 'Calcular los pagos del mes') + '</button></section>';
     if (!prov) {
-      const sinRem = AD.CO.filter(c => activoEn(c, m) && !esProv(c) && !remVig(c.id, m).length);
+      const sinRem = AD.CO.filter(c => activoEn(c, m) && !esProv(c) && !remVig(c.id, m).length && !AD.RM.some(r => r.colaborador_id === c.id && r.desde > m));
       if (sinRem.length) h += '<section class="callout"><p>Sin sueldo cargado: <b>' + esc(sinRem.map(c => c.nombre).join(', ')) + '</b>. Cargalo en su ficha para que se calcule solo cada mes.</p><button class="btn" data-act="go" data-view="equipo">Ver equipo</button></section>';
     }
     const grupos = new Map(); lq.forEach(l => { if (!grupos.has(l.colaborador_id)) grupos.set(l.colaborador_id, []); grupos.get(l.colaborador_id).push(l); });
@@ -236,7 +238,7 @@ export function initEquipo(ctx, k) {
     const pagRows = pagos.map(v => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b class="money">' + money(v.egreso, v.moneda) + '</b><span>' + esc(v.detalle || v.subcuenta) + '</span></span><span></span></div>');
     const extra = !c ? '<p class="formnote" style="grid-column:1/-1">Después de guardar vas a poder cargar ' + (esP ? 'su honorario fijo (si tiene) y sus pagos.' : 'el sueldo, los aumentos y los extras.') + '</p>' : esP
       ? box('Honorario fijo por mes', lista(remRows) + '<span class="hint">Solo si cobra lo mismo todos los meses. Si cobra por trabajo, dejalo vacío y cargá cada trabajo en Pagos del mes.</span>', '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">+ Honorario</button>') + box('Últimos pagos', lista(pagRows))
-      : (remVig(c.id, thisMonth()).length ? box('Por mes se le transfiere', '<div><b class="money" style="font-size:20px">' + esc(multi(lineaRem(c, thisMonth()).acc)) + '</b> <span class="muted">sueldo + extras vigentes</span></div>') : '') + box('Sueldo', lista(remRows), '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">' + (hist.length ? '+ Aumento' : '+ Sueldo') + '</button>') +
+      : (remVig(c.id, mesRef(c)).length ? box('Por mes se le transfiere', '<div><b class="money" style="font-size:20px">' + esc(multi(lineaRem(c, mesRef(c)).acc)) + '</b> <span class="muted">sueldo + extras' + (mesRef(c) > thisMonth() ? ', desde ' + fmt(mesRef(c)) : ' vigentes') + '</span></div>') : '') + box('Sueldo', lista(remRows), '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">' + (hist.length ? '+ Aumento' : '+ Sueldo') + '</button>') +
         box('Extras fijos', lista(ex.map(x => '<div class="row" style="cursor:default"><span class="d">' + (x.desde ? fmt(x.desde) : 'siempre') + '</span><span class="t"><b>' + esc(x.concepto) + ' · <span class="money">' + money(x.monto, x.moneda) + '</span></b><span>' + esc((x.hasta ? 'hasta ' + fmt(x.hasta) : 'sin fecha de fin') + (x.notas ? ' · ' + x.notas : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgExtraDel" data-id="' + esc(x.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgExtra" data-id="' + esc(c.id) + '">+ Extra</button>') +
         box('Últimos pagos', lista(pagRows));
     const rolOpts = esP ? ['externo', 'equipo'] : ['equipo', 'admin'];
