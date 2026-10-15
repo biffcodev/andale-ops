@@ -39,6 +39,7 @@ export function initTickets(ctx) {
       (!q || norm(t.titulo + ' ' + t.cliente + ' ' + t.detalle + ' #' + t.numero).includes(q)))
       .sort((a, b) => (abierto(b) - abierto(a)) || (b.creado || '').localeCompare(a.creado || ''));
     h += '<div class="toolbar fbar2"><input class="in" type="search" id="tk-q" placeholder="Buscar ticket, cliente o #número" value="' + esc(f.q || '') + '">' +
+      (isStaff() ? '<button class="btn mio' + (f.resp === S.me.alias ? ' on' : '') + '" data-act="tkMio" aria-pressed="' + (f.resp === S.me.alias) + '">Solo lo mío</button>' : '') +
       (tablero ? '' : '<select class="in" data-tkf="estado" aria-label="Estado">' + [['abiertos', 'Abiertos'], ['cerrados', 'Cerrados'], ['todos', 'Todos']].map(([v, l]) => opt(v, l, f.estado)).join('') + '</select>') +
       '<select class="in" data-tkf="cliente" aria-label="Cliente">' + clienteOpts(f.cliente, 'Todos los clientes') + '</select>' +
       filtrosMenu('tickets', '<label class="lbl">Responsable</label><select class="in" data-tkf="resp" aria-label="Responsable">' + opt('', 'Todo el equipo', f.resp) + opt('__nadie', 'Sin responsable', f.resp) + personas().map(a => opt(a, a, f.resp)).join('') + '</select>' +
@@ -206,6 +207,7 @@ export function initTickets(ctx) {
     try { await data.pedidoGuardar(x._id, { estado: v }); toast('Ticket #' + x.numero + ' → ' + v); } catch (er) { x.estado = antes; render(); toast(er.message); }
   });
   const acts = {
+    tkMio: () => { st.f.resp = st.f.resp === S.me.alias ? '' : S.me.alias; render(); },
     tkNuevo: t => abrir(null, t.dataset.cliente ? { cliente: t.dataset.cliente } : null),
     tkVer: t => abrir(t.dataset.id),
     tkF: t => { st.f = { estado: 'todos', cliente: '', resp: '', cobro: '' }; st.f[t.dataset.k] = t.dataset.v; if (t.dataset.k === 'resp') st.f.estado = 'abiertos'; render(); },
