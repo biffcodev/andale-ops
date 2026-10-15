@@ -38,6 +38,18 @@ export function initAdmin(ctx) {
   const add = (acc, cur, n) => { if (n) acc[cur || 'ARS'] = (acc[cur || 'ARS'] || 0) + n; return acc; };
   const multi = acc => { const e = Object.entries(acc).filter(([, v]) => Math.abs(v) > 0.004); return e.length ? e.map(([c, v]) => money(v, c)).join(' + ') : money(0, 'ARS'); };
   const lock = ''; // la barra lateral ya agrupa Administración
+  // Lo que suma a "hay en las cuentas": desde el saldo inicial de cada cuenta en adelante.
+  // Lo cargado con fecha anterior (cobros y gastos viejos) queda como historial y no se cuenta dos veces.
+  let cortesC = null, cortesMV = null, cortesCJ = null;
+  function cortes() {
+    if (cortesC && cortesMV === AD.MV && cortesCJ === AD.CJ) return cortesC;
+    const caja = new Map(), mon = new Map();
+    AD.CJ.forEach(c => { if (c.saldo_inicial_fecha) caja.set(c.id, c.saldo_inicial_fecha); });
+    AD.MV.forEach(v => { if (v.cuenta === 'Saldo Inicial' && v.caja_id && v.fecha) caja.set(v.caja_id, v.fecha); });
+    AD.CJ.forEach(c => { const k = caja.get(c.id); if (k && (!mon.has(c.moneda) || k < mon.get(c.moneda))) mon.set(c.moneda, k); });
+    cortesMV = AD.MV; cortesCJ = AD.CJ; return (cortesC = { caja, mon });
+  }
+  const enSaldo = v => { if (v.cuenta === 'Saldo Inicial') return true; const c = cortes(), k = v.caja_id ? c.caja.get(v.caja_id) : c.mon.get(v.moneda); return !k || (v.fecha || '') >= k; };
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
   // Tarjeta de número con varias monedas: una fila por moneda, con su píldora, y una línea de contexto.
   const MON_L = { ARS: 'Pesos', USD: 'Dólares', EUR: 'Euros', GBP: 'Libras' };
@@ -145,6 +157,8 @@ export function initAdmin(ctx) {
     const env = rows.filter(r => r.res && r.res.estado === 'Enviado').length, conComp = rows.filter(r => r.facs.length).length;
     let h = '<div class="head"><div>' + lock + '<h1>Cobros del mes</h1><p>Para cada cliente: resumen, factura y cobro.</p></div>' +
       '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aMes" data-d="0">Este mes</button><button class="btn sm" data-act="aMes" data-d="1" aria-label="Mes siguiente">→</button></div>' + (ctx.autoBtn ? ctx.autoBtn('cobros') : '') + '</div></div>';
+    // A fin de mes se arman los resúmenes del mes que viene (se pagan del 1 al 5): atajo para no quedarse en el mes equivocado.
+    if (m === thisMonth() && +today().slice(8, 10) >= 20) { const sig = addMonth(m, 1); h += '<section class="callout"><p><b>¿Armando los resúmenes de ' + esc(monthLabel(sig).split(' ')[0]) + '?</b> Los que se mandan a fin de mes son del mes que viene.</p><button class="btn primary" data-act="aMes" data-d="1">Ir a ' + esc(monthLabel(sig).split(' ')[0]) + '</button></section>'; }
     h += '<section class="kpis">' +
       '<div class="kpi"><span class="eyebrow">A facturar</span><b style="font-size:22px;color:var(--money)">' + esc(multi(aFacturar)) + '</b><span>' + cl.length + ' clientes</span></div>' +
       '<div class="kpi"><span class="eyebrow">Resúmenes enviados</span><b>' + env + '</b><span>de ' + cl.length + '</span></div>' +
@@ -1219,7 +1233,7 @@ export function initAdmin(ctx) {
   function flujo(mon, nMeses) {
     const m0 = thisMonth(), meses = Array.from({ length: nMeses }, (_, k) => addMonth(m0, k));
     const ult = meses[meses.length - 1];
-    const hay = AD.MV.filter(v => v.moneda === mon).reduce((a, v) => a + v.ingreso - v.egreso, 0);
+    const hay = AD.MV.filter(v => v.moneda === mon && enSaldo(v)).reduce((a, v) => a + v.ingreso - v.egreso, 0);
     const F = meses.map(m => ({ m, ent: { fact: 0, venc: 0, porFacturar: 0 }, sal: { sueldos: 0, gastos: 0 }, det: { fact: [], porFacturar: [], sueldos: [] } }));
     const de = m => F.find(x => x.m === m);
     // Entradas 1: facturas hechas que faltan cobrar, en el mes que vencen (las vencidas, este mes).
@@ -1355,7 +1369,7 @@ export function initAdmin(ctx) {
     const finMes = mm => { const [yy, mo] = mm.split('-').map(Number); return new Date(Date.UTC(yy, mo, 0)).toISOString().slice(0, 10); };
     const R = P.k === 'm' ? { desde: m + '-01', hasta: finMes(m), label: monthLabel(m) } : rango(P, today());
     const y = R.hasta.slice(0, 4);
-    const saldo = {}; AD.MV.forEach(x => add(saldo, x.moneda, x.ingreso - x.egreso));
+    const saldo = {}; AD.MV.filter(enSaldo).forEach(x => add(saldo, x.moneda, x.ingreso - x.egreso));
     const delMes = AD.MV.filter(x => enRango(x.fecha, R));
     const ingM = {}, egM = {}; delMes.forEach(x => { if (x.cuenta !== 'Saldo Inicial') { add(ingM, x.moneda, x.ingreso); add(egM, x.moneda, x.egreso); } });
     const deuda = AD.MV.filter(x => x.reintegro_a && !x.reintegrado && x.egreso > 0);
@@ -1650,7 +1664,7 @@ export function initAdmin(ctx) {
   /* ---------- Bancos y datos de pago ---------- */
   // Dos cosas distintas: dónde está la plata (cuentas de banco y efectivo, con su saldo) y los datos que ven los clientes para pagar.
   const CAMPOS_PAGO = ['Alias', 'CBU', 'CVU', 'Nombre del banco', 'Nombre del beneficiario', 'CUIT', 'Tipo de cuenta', 'Número de cuenta', 'Dirección del banco', 'Enrutamiento de ABA', 'IBAN', 'BIC / SWIFT'];
-  const saldoCaja = c => AD.MV.filter(v => v.caja_id === c.id).reduce((a, v) => a + v.ingreso - v.egreso, 0);
+  const saldoCaja = c => AD.MV.filter(v => v.caja_id === c.id && enSaldo(v)).reduce((a, v) => a + v.ingreso - v.egreso, 0);
   const movsCaja = c => AD.MV.filter(v => v.caja_id === c.id).length;
   function vBancos() {
     const cfg = cfgMarca(), cs = cfg.cuentas || [];
@@ -1675,8 +1689,8 @@ export function initAdmin(ctx) {
         { k: 'nombre', label: 'Nombre', req: 1, full: 1, ph: 'Ej.: Galicia pesos, Mercado Pago, Efectivo' },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: ['ARS', 'USD', 'EUR', 'GBP'] },
         { k: 'activa', label: 'En uso (aparece al cargar gastos e ingresos)', type: 'check' },
-        { k: 'ini', label: 'Plata que tenía al empezar', hint: 'El saldo el día que empezaron a cargar movimientos. Vacío si no corresponde.', ph: 'Ej.: 1250000' },
-        { k: 'fini', label: 'A qué fecha', type: 'date' },
+        { k: 'ini', label: 'Plata que tenía al empezar', hint: 'Lo que decía el banco al empezar ese día. Vacío si no corresponde.', ph: 'Ej.: 1250000' },
+        { k: 'fini', label: 'A qué fecha', type: 'date', hint: 'Desde ese día suman los movimientos. Lo cargado antes queda como historial y no cambia el saldo.' },
       ],
       onDelete: c ? async () => { if (n - (ini ? 1 : 0) > 0) throw new Error('Tiene movimientos: desactivala en vez de borrarla, así no se pierde el historial.'); if (ini) await data.del('movimientos', ini.id); await data.del('cajas', c.id); toast('Cuenta borrada'); } : null,
       deleteLabel: 'Borrar cuenta',
