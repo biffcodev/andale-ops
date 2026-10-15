@@ -236,3 +236,16 @@ export function live(onChange, onStatus) {
   return sb.channel('ops').on('postgres_changes', { event: '*', schema: 'public' }, () => { clearTimeout(t); t = setTimeout(onChange, 350); })
     .subscribe(s => onStatus && onStatus(s));
 }
+
+// Cuentas de las integraciones (solo admins). Las claves van al servidor y nunca vuelven: solo cuenta y últimos caracteres.
+export async function credenciales(payload) {
+  const { data, error } = await sb.functions.invoke('credenciales', { body: payload });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { }
+    if (/Failed to send a request|fetch/i.test(msg)) msg = 'No se pudo conectar con el servidor. Revisá tu conexión.';
+    throw new Error(msg);
+  }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}

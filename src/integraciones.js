@@ -23,9 +23,9 @@ const ESF = { 1: 'Rápida', 2: 'Media', 3: 'Grande' };
 // k, nombre, categoría, logo, estado, qué hace (1 línea), detalle (viñetas), qué hace falta, esfuerzo (1-3), config (solo 'tog')
 const CAT = [
   // Clientes y comunicación
-  { k: 'email', n: 'Email', cat: 'clientes', mono: '@', color: '#FC4855', st: 'on', que: 'Mails a clientes, resúmenes de cuenta, recordatorios e invoices con la estética de àndale.', det: ['Sale desde administracion@weareandale.com con el nombre de quien escribe.', 'Las respuestas le llegan a esa persona.', 'Cada mail queda anotado en las charlas del cliente.'], falta: 'Ya está conectado (Resend).' },
+  { k: 'email', n: 'Email', cat: 'clientes', mono: '@', color: '#FC4855', st: 'on', cred: 'email', que: 'Mails a clientes, resúmenes de cuenta, recordatorios e invoices con la estética de àndale.', det: ['Sale desde administracion@weareandale.com con el nombre de quien escribe.', 'Las respuestas le llegan a esa persona.', 'Cada mail queda anotado en las charlas del cliente.'], falta: 'Ya está conectado (Resend).' },
   { k: 'whatsapp', n: 'WhatsApp', cat: 'clientes', ic: siWhatsapp, st: 'tog', que: 'Botón en cada cliente que abre el chat con su número y un saludo listo.', det: ['Abre WhatsApp Web o la app con el número del cliente.', 'El mensaje inicial se configura acá ({nombre} se reemplaza solo).', 'Para pegar una charla de WhatsApp como charla, usá “Anotar charla”.'], falta: 'Nada: funciona con links directos.', cfg: [{ c: 'msg', l: 'Mensaje inicial', tipo: 'textarea', def: 'Hola {nombre}, ¿cómo estás?' }] },
-  { k: 'whatsapp_api', n: 'WhatsApp Business', cat: 'clientes', ic: siWhatsapp, st: 'prox', esf: 3, que: 'Mandar resúmenes, recordatorios y avisos por WhatsApp de forma automática.', det: ['Resumen de cuenta y recordatorio de pago por WhatsApp, además del mail.', 'Respuestas del cliente anotadas como charla.', 'Avisos de entregas listas.'], falta: 'Cuenta de WhatsApp Business API (Meta) con un número propio y plantillas aprobadas.' },
+  { k: 'whatsapp_api', n: 'WhatsApp Business', cat: 'clientes', ic: siWhatsapp, st: 'prox', esf: 3, cred: 'whatsapp', que: 'Mandar resúmenes, recordatorios y avisos por WhatsApp de forma automática.', det: ['Resumen de cuenta y recordatorio de pago por WhatsApp, además del mail.', 'Respuestas del cliente anotadas como charla.', 'Avisos de entregas listas.'], falta: 'Cuenta de WhatsApp Business API (Meta) con un número propio y plantillas aprobadas.' },
   { k: 'gmail', n: 'Gmail', cat: 'clientes', ic: siGmail, st: 'prox', esf: 2, que: 'Ver los mails con cada cliente en su ficha y anotarlos como charla con un clic.', det: ['Hilos de mail por cliente en la ficha.', 'Mr. Piggy resume el hilo y propone el próximo paso.'], falta: 'Autorizar las casillas de Google Workspace de cada persona.' },
   { k: 'calendly', n: 'Calendly', cat: 'clientes', ic: siCalendly, st: 'prox', esf: 1, que: 'Las reuniones que agendan los clientes quedan como charla con fecha.', det: ['Reunión agendada → charla pendiente en la ficha del cliente.', 'Recordatorio al responsable.'], falta: 'Cuenta de Calendly y un webhook.' },
   { k: 'meet', n: 'Google Meet y Zoom', cat: 'clientes', ic: siGooglemeet, st: 'prox', esf: 2, que: 'Link de reunión al anotar una charla y resumen automático con Mr. Piggy.', det: ['Crear la reunión desde la ficha del cliente.', 'La transcripción se convierte en charla con acuerdos y próximos pasos.'], falta: 'Google Workspace o Zoom con transcripciones activadas.' },
@@ -42,7 +42,7 @@ const CAT = [
   { k: 'pinterest', n: 'Pinterest', cat: 'redes', ic: siPinterest, st: 'prox', esf: 2, que: 'Métricas de tableros de clientes.', det: ['Impresiones y guardados.'], falta: 'Autorización de cada cuenta.' },
 
   // Diseño y archivos
-  { k: 'drive', n: 'Google Drive', cat: 'diseno', ic: siGoogledrive, st: 'on', que: 'Lee las facturas de la carpeta de administración y las carga solas.', det: ['En Cobros → Asistente.', 'Links de carpeta en cada cliente y proyecto.'], falta: 'Ya está conectado.' },
+  { k: 'drive', n: 'Google Drive', cat: 'diseno', ic: siGoogledrive, st: 'on', cred: 'google', que: 'Lee las facturas de la carpeta de administración y las carga solas.', det: ['En Cobros → Asistente.', 'Links de carpeta en cada cliente y proyecto.'], falta: 'Ya está conectado.' },
   { k: 'drive_carpetas', n: 'Carpetas automáticas en Drive', cat: 'diseno', ic: siGoogledrive, st: 'prox', esf: 2, que: 'Al crear un cliente o proyecto, se crea su carpeta con la estructura de àndale.', det: ['Cliente / Proyecto / Brief, Diseño, Entregables.', 'El link queda guardado solo.'], falta: 'Permiso de escritura en la unidad compartida.' },
   { k: 'canva', n: 'Canva', cat: 'diseno', ic: siCanva, st: 'prox', esf: 2, que: 'Diseños del proyecto con vista previa desde la ficha.', det: ['Ver y abrir los diseños de cada cliente.', 'Exportar piezas al entregar.'], falta: 'Canva para equipos y la app de Canva Connect.' },
   { k: 'figma', n: 'Figma', cat: 'diseno', ic: siFigma, st: 'prox', esf: 2, que: 'Archivos y prototipos de cada proyecto, con miniatura.', det: ['Ver la última versión sin abrir Figma.', 'Comentarios del cliente como tareas.'], falta: 'Token de Figma del equipo.' },
@@ -78,17 +78,41 @@ const CAT = [
   { k: 'mailchimp', n: 'Mailchimp y Brevo', cat: 'ventas', ic: siMailchimp, st: 'prox', esf: 2, que: 'Newsletters de clientes: aperturas y clics en el informe.', det: ['Métricas de campañas de email.'], falta: 'Token de la cuenta de cada cliente.' },
 
   // IA y automatización
-  { k: 'ia', n: 'Mr. Piggy', cat: 'ia', pig: 1, st: 'on', que: 'Responde preguntas, redacta mails, arma tareas, carga gastos y charlas.', det: ['Funciona con Claude.', 'Nada se guarda sin que lo revises.'], falta: 'Ya está conectado.' },
+  { k: 'ia', n: 'Mr. Piggy', cat: 'ia', pig: 1, st: 'on', cred: 'anthropic', que: 'Responde preguntas, redacta mails, arma tareas, carga gastos y charlas.', det: ['Funciona con Claude.', 'Nada se guarda sin que lo revises.'], falta: 'Ya está conectado.' },
   { k: 'zapier', n: 'Zapier y Make', cat: 'ia', ic: siZapier, st: 'prox', esf: 2, que: 'Conectar cualquier otra app sin programar.', det: ['“Cuando pase X en àndale, hacé Y en otra app” y al revés.'], falta: 'Cuenta de Zapier o Make y los webhooks de la app.' },
   { k: 'n8n', n: 'n8n', cat: 'ia', ic: siN8n, st: 'prox', esf: 2, que: 'Automatizaciones propias más complejas, en servidor de àndale.', det: ['Flujos a medida con IA.'], falta: 'Un servidor de n8n.' },
   { k: 'webhooks', n: 'Webhooks', cat: 'ia', mono: '{ }', color: '#4B5563', st: 'prox', esf: 1, que: 'Avisar a otra app cuando pasa algo: proyecto entregado, cobro, presupuesto aceptado.', det: ['La base para Slack, Zapier y cualquier otra.'], falta: 'Nada del lado de ustedes.' },
 ];
+// Cuentas que se cambian desde la app (las claves se guardan cifradas en el servidor y no se vuelven a mostrar).
+const CREDS = {
+  anthropic: { titulo: 'Cuenta de Anthropic (la IA)', campos: [
+    { c: 'key', l: 'Clave de la API', tipo: 'password', ph: 'sk-ant-…' },
+    { c: 'cuenta', l: 'Nombre para reconocerla', ph: 'Ej.: àndale' },
+    { c: 'modelo', l: 'Modelo preciso (opcional)', ph: 'claude-sonnet-5-5' },
+    { c: 'modelo_rapido', l: 'Modelo rápido (opcional)', ph: 'claude-haiku-5-5' }],
+    pasos: ['Entrá a console.anthropic.com con el email de la agencia y creá la organización “àndale”.', 'En Billing cargá saldo (se paga por uso).', 'En API Keys tocá “Create Key”, ponele de nombre “andale-ops” y copiala.', 'Pegala acá y tocá “Guardar y probar”. Desde ese momento Mr. Piggy usa la cuenta de la agencia.'] },
+  google: { titulo: 'Cuenta de Google (Drive)', campos: [
+    { c: 'service_account', l: 'Archivo .json de la cuenta de servicio', tipo: 'textarea', ph: '{ "type": "service_account", "project_id": … }' }],
+    pasos: ['Entrá a console.cloud.google.com con el Google de la agencia y creá un proyecto “andale-ops”.', 'En “APIs y servicios” habilitá Google Drive API.', 'En IAM → Cuentas de servicio creá una (“andale-ops”), entrá a Claves → Agregar clave → JSON. Se descarga un archivo.', 'Abrí el archivo con el Bloc de notas, copiá todo y pegalo acá.', 'En Drive compartí la carpeta de administración (y la de presupuestos) con el email que aparece como “client_email”, como Lector.'] },
+  email: { titulo: 'Cuenta de envío de mails (Resend)', campos: [
+    { c: 'key', l: 'Clave de la API', tipo: 'password', ph: 're_…' },
+    { c: 'from', l: 'Remitente', ph: 'àndale <administracion@weareandale.com>' },
+    { c: 'reply_to', l: 'Las respuestas van a (opcional)', ph: 'administracion@weareandale.com' }],
+    pasos: ['Entrá a resend.com con el email de la agencia.', 'En Domains agregá weareandale.com y cargá los registros DNS que te muestra donde está el dominio.', 'Cuando el dominio diga “Verified”, en API Keys creá una clave con permiso de envío.', 'Pegala acá con el remitente y tocá “Guardar y probar”.'] },
+  whatsapp: { titulo: 'Número de WhatsApp de àndale', campos: [
+    { c: 'numero', l: 'Número (como se ve)', ph: '+54 9 351 …' },
+    { c: 'phone_id', l: 'Phone number ID', ph: 'Número largo que da Meta' },
+    { c: 'waba_id', l: 'WhatsApp Business Account ID', ph: 'Opcional' },
+    { c: 'token', l: 'Token de acceso permanente', tipo: 'password', ph: 'EAA…' }],
+    pasos: ['Conseguí un número nuevo solo para àndale: un chip prepago o una línea que pueda recibir SMS o llamada. No tiene que estar usado en WhatsApp.', 'En business.facebook.com verificá la empresa (te pide CUIT y una constancia).', 'En developers.facebook.com creá una app tipo “Business” y agregale el producto WhatsApp.', 'En WhatsApp → Configuración de la API agregá el número nuevo y verificalo con el código que llega.', 'En el Business Manager creá un “usuario del sistema”, generá un token permanente con permisos whatsapp_business_messaging y whatsapp_business_management.', 'Copiá acá el Phone number ID, el ID de la cuenta y el token. Con eso armamos los envíos automáticos.'] },
+};
+
 // Variantes que comparten logo con otra marca (para no repetir en la grilla queda el principal).
 const EXTRA = { meta: siMeta, meet: siZoom, stripe: siPaypal, importar: siTrello, webs: siWebflow, horas: siToggl, zapier: siMake, programacion: siHootsuite };
 
 export function initIntegraciones(ctx) {
   const { S, esc, opt, toast, $, data, render, isAdmin, isStaff, closeForm, ISO } = ctx;
-  const st = { cat: '', q: '', ver: '' };
+  const st = { cat: '', q: '', ver: '', est: null, cargando: false };
   const L = () => S.L.integraciones || ctx.DEF;
   const CFG = () => S.L.integraciones_cfg || [];
   const cfgGet = (k, c) => { const p = k + '.' + c + '='; const v = CFG().find(x => x.startsWith(p)); const d = ((CAT.find(x => x.k === k) || {}).cfg || []).find(x => x.c === c); return v != null ? v.slice(p.length) : (d ? d.def : ''); };
@@ -108,13 +132,61 @@ export function initIntegraciones(ctx) {
   async function guardar(k, arr, msg) { const prev = S.L[k]; S.L[k] = arr; render(); try { await data.saveLista(k, arr); if (msg) toast(msg); } catch (e) { S.L[k] = prev; render(); toast(e.message); } }
   function setCfg(k, c, v) { const p = k + '.' + c + '='; return [...CFG().filter(x => !x.startsWith(p)), ...(v ? [p + v] : [])]; }
 
+  async function cargarEstado(forzar) {
+    if (!isAdmin() || st.cargando || (st.est && !forzar)) return;
+    st.cargando = true;
+    try { st.est = await data.credenciales({ accion: 'estado' }); } catch (e) { st.est = { error: e.message, cuentas: {} }; }
+    st.cargando = false; if (S.view === 'integraciones') render(); if (st.abierto && $('#igform') && !$('#panel').hidden) panel(st.abierto);
+  }
+  const cuentaDe = x => { const e = x.cred && st.est && st.est.cuentas ? st.est.cuentas[x.cred] : null; return e || null; };
+  function lineaCuenta(x) {
+    const e = cuentaDe(x); if (!e) return '';
+    if (e.cuenta) return '<span class="ig-cta' + (e.ok === false ? ' mal' : '') + '">' + (e.ok === false ? '⚠ ' : '● ') + esc(e.cuenta) + '</span>';
+    if (e.secreto_viejo) return '<span class="ig-cta viejo">● Cuenta cargada a mano en Supabase</span>';
+    return x.st === 'prox' ? '' : '<span class="ig-cta mal">Sin cuenta conectada</span>';
+  }
+  function credHtml(x) {
+    const def = CREDS[x.cred]; if (!def || !isAdmin()) return '';
+    const e = cuentaDe(x);
+    let est = st.cargando && !st.est ? '<p class="muted">Consultando…</p>' : '';
+    if (st.est && st.est.error) est = '<p class="ig-warn">' + esc(st.est.error) + '</p>';
+    else if (e && e.cuenta) est = '<div class="ig-acc"><b>' + esc(e.cuenta) + '</b><span>' + esc([e.pista ? 'clave ' + e.pista : '', e.por ? 'cargada por ' + e.por : '', e.actualizado ? new Date(e.actualizado).toLocaleDateString('es-AR') : ''].filter(Boolean).join(' · ')) + '</span>' + (e.ok_detalle ? '<span class="' + (e.ok ? 'ok' : 'mal') + '">' + (e.ok ? '✓ ' : '⚠ ') + esc(e.ok_detalle) + '</span>' : '') + '</div>';
+    else if (e && e.secreto_viejo) est = '<div class="ig-acc"><b>Cuenta cargada a mano en Supabase</b><span>La que se configuró al principio. Si cargás una nueva acá, pasa a usarse esa.</span></div>';
+    else if (st.est) est = '<div class="ig-acc"><b>Todavía no hay ninguna cuenta conectada.</b></div>';
+    const campos = def.campos.map(f => '<div class="field' + (f.tipo === 'textarea' ? ' full' : '') + '"><label for="cr-' + f.c + '">' + esc(f.l) + '</label>' + (f.tipo === 'textarea' ? '<textarea id="cr-' + f.c + '" rows="5" placeholder="' + esc(f.ph || '') + '" spellcheck="false" autocomplete="off"></textarea>' : '<input id="cr-' + f.c + '" type="' + (f.tipo === 'password' ? 'password' : 'text') + '" placeholder="' + esc(f.ph || '') + '" autocomplete="off" spellcheck="false">') + '</div>').join('');
+    return '<div class="ig-cred full"><div class="ig-cred-h"><span class="lbl">' + esc(def.titulo) + '</span>' + (e && (e.cuenta || e.secreto_viejo) ? '<button type="button" class="btn ghost sm" data-act="igCredProbar" data-n="' + x.cred + '">Probar conexión</button>' : '') + '</div>' + est +
+      '<details class="mas"' + (e && (e.cuenta || e.secreto_viejo) ? '' : ' open') + '><summary>' + (e && (e.cuenta || e.secreto_viejo) ? 'Cambiar de cuenta' : 'Conectar una cuenta') + '</summary><div class="mas-b">' +
+      '<ol class="ig-pasos full">' + def.pasos.map(p => '<li>' + esc(p) + '</li>').join('') + '</ol>' + campos +
+      '<p class="hint full">🔒 La clave se guarda cifrada en el servidor. Nadie la vuelve a ver: la app solo muestra la cuenta y los últimos 4 caracteres.</p>' +
+      '<div class="toolbar full"><button type="button" class="btn primary sm" data-act="igCredGuardar" data-n="' + x.cred + '">Guardar y probar</button>' + (e && e.cuenta ? '<button type="button" class="btn ghost sm danger" data-act="igCredBorrar" data-n="' + x.cred + '">Desconectar</button>' : '') + '</div>' +
+      '</div></details></div>';
+  }
+  async function credGuardar(t) {
+    const n = t.dataset.n, def = CREDS[n]; if (!def) return;
+    const datos = {}; def.campos.forEach(f => { const el = $('#cr-' + f.c); datos[f.c] = el ? el.value.trim() : ''; });
+    if (!Object.values(datos).some(Boolean)) { toast('Completá los datos de la cuenta'); return; }
+    t.disabled = true; t.textContent = 'Probando la conexión…';
+    try {
+      let r = await data.credenciales({ accion: 'guardar', nombre: n, datos });
+      if (!r.guardado) {
+        if (!window.confirm('La prueba falló: ' + r.detalle + '\n\n¿La guardo igual?')) { t.disabled = false; t.textContent = 'Guardar y probar'; toast(r.detalle); return; }
+        r = await data.credenciales({ accion: 'guardar', nombre: n, datos, forzar: true });
+      }
+      toast((r.ok ? '✓ ' : '⚠ ') + r.detalle);
+      def.campos.forEach(f => { const el = $('#cr-' + f.c); if (el) el.value = ''; });
+      await cargarEstado(true);
+    } catch (e) { toast(e.message); t.disabled = false; t.textContent = 'Guardar y probar'; }
+  }
+
   function card(x) {
+
     const pie = x.st === 'tog' ? (isAdmin() ? '<label class="sw"><input type="checkbox" data-integ="' + x.k + '"' + (on(x) ? ' checked' : '') + '><span></span><b>' + (on(x) ? 'Prendida' : 'Apagada') + '</b></label>' : '<span class="muted">' + (on(x) ? 'Prendida' : 'Apagada') + '</span>')
       : x.st === 'prox' ? '<span class="ig-esf">' + (x.esf ? 'Esfuerzo: ' + ESF[x.esf] : '') + '</span>' : '<span class="muted">Funcionando</span>';
-    return '<article class="ig' + (x.st === 'prox' ? ' prox' : '') + '"><button class="ig-x" data-act="igVer" data-k="' + x.k + '" aria-label="Ver ' + esc(x.n) + '"></button><div class="ig-h">' + logo(x) + badge(x) + '</div><h3>' + esc(x.n) + '</h3><p>' + esc(x.que) + '</p><div class="ig-f">' + pie + '<span class="ig-mas">' + (x.st === 'tog' && isAdmin() ? 'Configurar' : 'Ver más') + ' →</span></div></article>';
+    return '<article class="ig' + (x.st === 'prox' ? ' prox' : '') + '"><button class="ig-x" data-act="igVer" data-k="' + x.k + '" aria-label="Ver ' + esc(x.n) + '"></button><div class="ig-h">' + logo(x) + badge(x) + '</div><h3>' + esc(x.n) + '</h3><p>' + esc(x.que) + '</p>' + lineaCuenta(x) + '<div class="ig-f">' + pie + '<span class="ig-mas">' + ((x.st === 'tog' || x.cred) && isAdmin() ? 'Configurar' : 'Ver más') + ' →</span></div></article>';
   }
 
   function view() {
+    if (isAdmin() && !st.est && !st.cargando) setTimeout(() => cargarEstado(), 0);
     const all = CAT, nOn = all.filter(x => x.st === 'on').length, nTog = all.filter(x => x.st === 'tog' && on(x)).length, nPed = all.filter(x => x.st === 'prox' && quiere(x.k)).length, nProx = all.filter(x => x.st === 'prox').length;
     const q = st.q.toLowerCase();
     const filtro = x => (!st.cat || x.cat === st.cat) && (!q || (x.n + ' ' + x.que + ' ' + (x.det || []).join(' ')).toLowerCase().includes(q)) &&
@@ -159,9 +231,10 @@ export function initIntegraciones(ctx) {
       '<div class="panel-b"><div class="full">' + badge(x) + '</div>' +
       '<p class="formnote full">' + esc(x.que) + '</p>' +
       '<div class="field full"><span class="lbl">Qué hace en àndale</span><ul class="ig-ul">' + (x.det || []).map(d => '<li>' + esc(d) + '</li>').join('') + '</ul></div>' +
-      '<div class="field full"><span class="lbl">' + (x.st === 'prox' ? 'Qué hace falta para conectarla' : 'Conexión') + '</span><p style="margin:0">' + esc(x.falta) + '</p></div>' + cfg + '</div>' +
+      '<div class="field full"><span class="lbl">' + (x.st === 'prox' ? 'Qué hace falta para conectarla' : 'Conexión') + '</span><p style="margin:0">' + esc(x.falta) + '</p></div>' + credHtml(x) + cfg + '</div>' +
       '<div class="panel-f"><span></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">' + (puede ? 'Cancelar' : 'Cerrar') + '</button>' + (puede ? '<button type="submit" class="btn primary">Guardar</button>' : '') + '</span></div></form>';
     $('#panel').hidden = false; $('#scrim').hidden = false; st.abierto = k;
+    if (x.cred && isAdmin() && !st.est) cargarEstado();
   }
   async function guardarPanel() {
     const k = st.abierto, x = CAT.find(y => y.k === k); if (!x) return;
@@ -191,6 +264,9 @@ export function initIntegraciones(ctx) {
     acts: {
       igVer: t => panel(t.dataset.k),
       igCat: t => { st.cat = t.dataset.v; render(); },
+      igCredGuardar: t => credGuardar(t),
+      igCredProbar: async t => { t.disabled = true; t.textContent = 'Probando…'; try { const r = await data.credenciales({ accion: 'probar', nombre: t.dataset.n }); toast((r.ok ? '✓ ' : '⚠ ') + r.detalle); await cargarEstado(true); } catch (e) { toast(e.message); } t.disabled = false; t.textContent = 'Probar conexión'; },
+      igCredBorrar: async t => { if (!window.confirm('¿Desconectar esta cuenta? Si había una cargada a mano en Supabase, vuelve a usarse esa.')) return; try { await data.credenciales({ accion: 'borrar', nombre: t.dataset.n }); toast('Cuenta desconectada'); await cargarEstado(true); } catch (e) { toast(e.message); } },
       igVerF: t => { st.ver = st.ver === t.dataset.v ? '' : t.dataset.v; render(); },
     },
   };

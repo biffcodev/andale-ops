@@ -32,20 +32,31 @@ const mesTxt = (m: string) => MESES[+m.slice(5, 7) - 1] + ' ' + m.slice(0, 4);
 const num = (v: unknown) => (v === null || v === undefined || v === '' ? 0 : Number(v));
 const chk = <T>(r: { data: T; error: any }): T => { if (r.error) throw new Error(r.error.message); return r.data; };
 
+// Cuentas cargadas desde la app (Configuración → Integraciones, cifradas en Vault). Si no hay, se usan los secretos de Supabase.
+const credCache: Record<string, { v: any; t: number }> = {};
+async function cred(n: string) {
+  const c = credCache[n]; if (c && Date.now() - c.t < 60_000) return c.v;
+  let v: any = null;
+  try { const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } }); const { data } = await svc.rpc('cred_leer', { n }); if (data) v = JSON.parse(data); } catch { v = null; }
+  credCache[n] = { v, t: Date.now() }; return v;
+}
+
 function encodeBase64(u: Uint8Array) { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); }
 
 type Ctx = { sb: SupabaseClient; personaId: string | null };
 
 /* ================= IA ================= */
 async function claude(ctx: Ctx, accion: string, o: { system: string; content: unknown[]; tool: Record<string, unknown>; maxTokens?: number }) {
-  const key = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!key) throw new Aviso('La IA no está configurada: falta ANTHROPIC_API_KEY en los secretos de Supabase.', 503);
+  const cfgIA = await cred('anthropic');
+  const key = (cfgIA && cfgIA.key) || Deno.env.get('ANTHROPIC_API_KEY');
+  if (!key) throw new Aviso('La IA no está configurada. Conectala en Configuración → Integraciones → Mr. Piggy.', 503);
+  const modelo = RAPIDAS.includes(accion) ? ((cfgIA && cfgIA.modelo_rapido) || modeloDe(accion)) : ((cfgIA && cfgIA.modelo) || modeloDe(accion));
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     // Sin tool_choice forzado: los modelos nuevos no lo aceptan. Se pide por instrucción y hay plan B con JSON en texto.
     body: JSON.stringify({
-      model: modeloDe(accion), max_tokens: o.maxTokens || 4096,
+      model: modelo, max_tokens: o.maxTokens || 4096,
       system: o.system + '\n\nRespondé únicamente llamando una vez a la herramienta ' + o.tool.name + ', sin texto antes ni después.',
       messages: [{ role: 'user', content: o.content }],
       tools: [o.tool],
@@ -53,7 +64,7 @@ async function claude(ctx: Ctx, accion: string, o: { system: string; content: un
   });
   const out = await res.json().catch(() => ({}));
   const err = res.ok ? null : (out?.error?.message || 'La API respondió ' + res.status);
-  await ctx.sb.from('ia_log').insert({ persona_id: ctx.personaId, accion, modelo: modeloDe(accion), tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err });
+  await ctx.sb.from('ia_log').insert({ persona_id: ctx.personaId, accion, modelo, tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err });
   if (err) throw new Aviso('IA: ' + err, 502);
   const tu = (out.content || []).find((c: any) => c.type === 'tool_use' && c.name === o.tool.name);
   let input: any = tu ? tu.input : null;
@@ -72,14 +83,15 @@ const fileBlock = (b64: string, mime: string) => (mime.startsWith('image/') ? im
 
 /* ================= Google Drive ================= */
 const b64url = (s: string | Uint8Array) => (typeof s === 'string' ? btoa(unescape(encodeURIComponent(s))) : encodeBase64(s)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
-function cuentaServicio() {
+async function cuentaServicio() {
+  const c = await cred('google'); if (c && c.service_account) { try { return JSON.parse(c.service_account); } catch { /* sigue con el secreto */ } }
   const raw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT'); if (!raw) return null;
   try { const t = raw.trim(); return JSON.parse(t.startsWith('{') ? t : atob(t)); } catch { throw new Aviso('GOOGLE_SERVICE_ACCOUNT no es un JSON válido. Pegá el archivo .json completo.', 500); }
 }
-let tokenCache: { t: string; exp: number } | null = null;
+let tokenCache: { t: string; exp: number; cuenta: string } | null = null;
 async function googleToken() {
-  if (tokenCache && tokenCache.exp > Date.now() + 60_000) return tokenCache.t;
-  const sa = cuentaServicio(); if (!sa) throw new Aviso('Drive no está configurado: falta GOOGLE_SERVICE_ACCOUNT en los secretos de Supabase.', 503);
+  const sa = await cuentaServicio(); if (!sa) throw new Aviso('Drive no está configurado. Conectalo en Configuración → Integraciones → Google Drive.', 503);
+  if (tokenCache && tokenCache.exp > Date.now() + 60_000 && tokenCache.cuenta === sa.client_email) return tokenCache.t;
   const now = Math.floor(Date.now() / 1000);
   const unsigned = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) + '.' + b64url(JSON.stringify({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/drive.readonly', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 }));
   const der = Uint8Array.from(atob(String(sa.private_key).replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')), c => c.charCodeAt(0));
@@ -88,7 +100,7 @@ async function googleToken() {
   const res = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + unsigned + '.' + b64url(sig) });
   const out = await res.json().catch(() => ({}));
   if (!res.ok || !out.access_token) throw new Aviso('Google rechazó la cuenta de servicio: ' + (out.error_description || out.error || res.status), 502);
-  tokenCache = { t: out.access_token, exp: Date.now() + (out.expires_in || 3600) * 1000 };
+  tokenCache = { t: out.access_token, exp: Date.now() + (out.expires_in || 3600) * 1000, cuenta: sa.client_email };
   return tokenCache.t;
 }
 async function gdrive(path: string) {
@@ -169,7 +181,7 @@ const TOOL_FACTURA = {
       receptor_condicion_iva: { type: ['string', 'null'] },
       concepto: { type: ['string', 'null'], description: 'descripción breve de lo facturado' },
       periodo_desde: { type: ['string', 'null'] }, periodo_hasta: { type: ['string', 'null'] },
-      moneda: { type: 'string', enum: ['ARS', 'USD', 'EUR'] },
+      moneda: { type: 'string', enum: ['ARS', 'USD', 'EUR', 'GBP'] },
       total: { type: ['number', 'null'] },
       cae: { type: ['string', 'null'] },
       confianza: { type: 'string', enum: ['alta', 'media', 'baja'] },
@@ -414,11 +426,12 @@ async function enviarCierre(ctx: Ctx, m: string, soloA?: string[]) {
   const mails = admins.map(a => String(a.email).toLowerCase()).filter(Boolean);
   const para = soloA && soloA.length ? soloA.map(x => String(x).toLowerCase()).filter(x => mails.includes(x)) : mails;
   if (!para.length) throw new Aviso('No hay administradores con email cargado.');
-  const key = Deno.env.get('RESEND_API_KEY'); if (!key) throw new Aviso('Falta RESEND_API_KEY.', 503);
+  const cfgMail = await cred('email');
+  const key = (cfgMail && cfgMail.key) || Deno.env.get('RESEND_API_KEY'); if (!key) throw new Aviso('El email no está conectado (Configuración → Integraciones → Email).', 503);
   const { html, texto } = emailCierre(m, b);
   const asunto = 'Cierre de ' + mesTxt(m) + ' · ' + b.titular.slice(0, 70);
   const res = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: Deno.env.get('EMAIL_FROM') || 'àndale <administracion@weareandale.com>', to: para, subject: asunto, html, text: texto }) });
+    body: JSON.stringify({ from: (cfgMail && cfgMail.from) || Deno.env.get('EMAIL_FROM') || 'àndale <administracion@weareandale.com>', to: para, subject: asunto, html, text: texto }) });
   const out = await res.json().catch(() => ({}));
   await ctx.sb.from('emails').insert({ persona_id: ctx.personaId, tipo: 'Otro', periodo: m + '-01', para, cc: [], asunto, adjuntos: [], estado: res.ok ? 'Enviado' : 'Error', proveedor_id: out?.id || null, error: res.ok ? null : (out?.message || String(res.status)) });
   if (!res.ok) throw new Aviso('No se pudo enviar el resumen: ' + (out?.message || res.status), 502);
@@ -429,7 +442,7 @@ async function enviarCierre(ctx: Ctx, m: string, soloA?: string[]) {
 /* ================= Propuestas: redactar y sugerir precio ================= */
 const PLANES = ['Contado', '50/50', '3 cuotas', '4 cuotas', '6 cuotas', 'Personalizado'];
 async function referenciasDrive(cfg: any, tipo: string, cliente: string) {
-  if (!cfg.carpeta_propuestas || !cuentaServicio()) return { bloques: [] as any[], nombres: [] as string[] };
+  if (!cfg.carpeta_propuestas || !(await cuentaServicio())) return { bloques: [] as any[], nombres: [] as string[] };
   const { files } = await listarCarpeta(cfg.carpeta_propuestas).catch(() => ({ files: [] as any[] }));
   const docs = await (async () => { // también Google Docs (listarCarpeta solo trae PDFs)
     try {
@@ -526,8 +539,10 @@ Deno.serve(async req => {
     const ctx: Ctx = { sb, personaId: yo.id };
     switch (b.accion) {
       case 'estado': {
-        let sa = null; try { sa = cuentaServicio(); } catch (e) { return json({ ia: !!Deno.env.get('ANTHROPIC_API_KEY'), drive: false, drive_error: (e as Error).message, modelo: MODEL() }); }
-        return json({ ia: !!Deno.env.get('ANTHROPIC_API_KEY'), drive: !!sa, drive_email: sa ? sa.client_email : null, modelo: MODEL(), email: !!Deno.env.get('RESEND_API_KEY') });
+        const [ci, cm] = [await cred('anthropic'), await cred('email')];
+        const ia = !!((ci && ci.key) || Deno.env.get('ANTHROPIC_API_KEY')), email = !!((cm && cm.key) || Deno.env.get('RESEND_API_KEY')), modelo = (ci && ci.modelo) || MODEL();
+        let sa = null; try { sa = await cuentaServicio(); } catch (e) { return json({ ia, drive: false, drive_error: (e as Error).message, modelo, email }); }
+        return json({ ia, drive: !!sa, drive_email: sa ? sa.client_email : null, modelo, email });
       }
       case 'drive_sync': return json(await driveSync(ctx));
       case 'drive_descargar': {

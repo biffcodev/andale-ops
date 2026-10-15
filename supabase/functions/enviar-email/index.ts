@@ -19,6 +19,15 @@ const EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
 const lista = (v: unknown) => (Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/)).map(x => String(x).trim().toLowerCase()).filter(Boolean);
 const hoyAR = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Cordoba' });
 
+// Cuentas cargadas desde la app (Configuración → Integraciones, cifradas en Vault). Si no hay, se usan los secretos de Supabase.
+const credCache: Record<string, { v: any; t: number }> = {};
+async function cred(n: string) {
+  const c = credCache[n]; if (c && Date.now() - c.t < 60_000) return c.v;
+  let v: any = null;
+  try { const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } }); const { data } = await svc.rpc('cred_leer', { n }); if (data) v = JSON.parse(data); } catch { v = null; }
+  credCache[n] = { v, t: Date.now() }; return v;
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405);
@@ -31,8 +40,9 @@ Deno.serve(async req => {
   const yo = Array.isArray(yoData) ? yoData[0] : yoData;
   if (!yo || !['admin', 'equipo'].includes(yo.rol)) return json({ error: 'No tenés permiso para enviar emails.' }, 403);
 
-  const key = Deno.env.get('RESEND_API_KEY');
-  if (!key) return json({ error: 'Falta configurar RESEND_API_KEY en los secretos de la función.' }, 500);
+  const cfgMail = await cred('email');
+  const key = (cfgMail && cfgMail.key) || Deno.env.get('RESEND_API_KEY');
+  if (!key) return json({ error: 'El email no está conectado. Conectalo en Configuración → Integraciones → Email.' }, 500);
 
   let b: Record<string, any>;
   try { b = await req.json(); } catch { return json({ error: 'Pedido inválido' }, 400); }
@@ -51,8 +61,8 @@ Deno.serve(async req => {
   // El registro lo hace la función (el equipo no tiene acceso directo a la tabla de emails).
   const adm = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 
-  let from = Deno.env.get('EMAIL_FROM') || 'àndale <administracion@weareandale.com>';
-  let replyTo = Deno.env.get('EMAIL_REPLY_TO') || 'administracion@weareandale.com';
+  let from = (cfgMail && cfgMail.from) || Deno.env.get('EMAIL_FROM') || 'àndale <administracion@weareandale.com>';
+  let replyTo = (cfgMail && cfgMail.reply_to) || Deno.env.get('EMAIL_REPLY_TO') || ((from.match(/<([^>]+)>/) || [, from])[1]) || 'administracion@weareandale.com';
   if (tipo === 'Mensaje') {
     // Sale con el nombre de quien escribe y las respuestas le llegan a esa persona.
     const { data: p } = await adm.from('personas').select('alias, nombre, email').eq('id', yo.id).maybeSingle();

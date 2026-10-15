@@ -890,3 +890,18 @@ select.tk-prio option{color:var(--fg);background:var(--surface)}
 .row .t .lg{display:grid;font-size:inherit;color:#fff}
 .row .t .lg.mono{font-size:14px;color:#fff}
 .row .t .lg span,.ig-road .t>span>span{display:block}
+.ig-cta{font-size:12.5px;font-weight:600;color:var(--s-entregado);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ig-cta.viejo{color:var(--muted)}
+.ig-cta.mal{color:var(--crit)}
+.ig-cred{border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:10px;background:color-mix(in srgb,var(--surface-2) 35%,var(--surface))}
+.ig-cred-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ig-acc{display:grid;gap:3px;font-size:13.5px}
+.ig-acc span{color:var(--muted);font-size:12.5px}
+.ig-acc .ok{color:var(--s-entregado)}
+.ig-acc .mal,.ig-warn{color:var(--crit)}
+.ig-pasos{margin:0;padding-left:20px;display:grid;gap:5px;font-size:13.5px;color:var(--fg)}
+.ig-cred .mas-b{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ig-cred .mas-b .full{grid-column:1/-1}
+.ig-cred textarea{font-family:var(--f-mono);font-size:12px}
+.panel-b>.full,.panel-b .ig-cred{grid-column:1/-1;min-width:0}
+.ig-cred .mas-b>*{min-width:0}

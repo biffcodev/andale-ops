@@ -17,14 +17,25 @@ const MODEL = () => Deno.env.get('IA_MODEL_RAPIDO') || 'claude-haiku-5-5';
 const hoyAR = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Cordoba' });
 const diaAR = () => new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Cordoba', weekday: 'long' });
 
+// Cuentas cargadas desde la app (Configuración → Integraciones, cifradas en Vault). Si no hay, se usan los secretos de Supabase.
+const credCache: Record<string, { v: any; t: number }> = {};
+async function cred(n: string) {
+  const c = credCache[n]; if (c && Date.now() - c.t < 60_000) return c.v;
+  let v: any = null;
+  try { const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } }); const { data } = await svc.rpc('cred_leer', { n }); if (data) v = JSON.parse(data); } catch { v = null; }
+  credCache[n] = { v, t: Date.now() }; return v;
+}
+
 async function claude(sb: SupabaseClient, personaId: string | null, accion: string, o: { system: string; texto: string; tool: Record<string, unknown>; maxTokens?: number }) {
-  const key = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!key) throw new Aviso('La IA no está configurada todavía.', 503);
+  const cfg = await cred('anthropic');
+  const key = (cfg && cfg.key) || Deno.env.get('ANTHROPIC_API_KEY');
+  if (!key) throw new Aviso('La IA no está configurada todavía. Conectala en Configuración → Integraciones → Mr. Piggy.', 503);
+  const modelo = (cfg && cfg.modelo_rapido) || MODEL();
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: MODEL(), max_tokens: o.maxTokens || 2000,
+      model: modelo, max_tokens: o.maxTokens || 2000,
       system: o.system + '\n\nRespondé únicamente llamando una vez a la herramienta ' + o.tool.name + ', sin texto antes ni después.',
       messages: [{ role: 'user', content: [{ type: 'text', text: o.texto }] }],
       tools: [o.tool],
@@ -33,7 +44,7 @@ async function claude(sb: SupabaseClient, personaId: string | null, accion: stri
   const out = await res.json().catch(() => ({}));
   const err = res.ok ? null : (out?.error?.message || 'La API respondió ' + res.status);
   // El registro de uso no demora la respuesta.
-  const log = sb.from('ia_log').insert({ persona_id: personaId, accion, modelo: MODEL(), tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err }).then(() => {}, () => {});
+  const log = sb.from('ia_log').insert({ persona_id: personaId, accion, modelo, tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err }).then(() => {}, () => {});
   const er = (globalThis as any).EdgeRuntime; if (er && er.waitUntil) er.waitUntil(log); else await log;
   if (err) throw new Aviso('IA: ' + err, 502);
   const tu = (out.content || []).find((c: any) => c.type === 'tool_use' && c.name === o.tool.name);
