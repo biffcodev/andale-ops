@@ -61,13 +61,14 @@ const SECCIONES = [
   ['inicio', 'Inicio', 'inicio', ['inicio']],
   ['trabajo', 'Trabajo', 'tarea', ['mis', 'proyectos', 'redes', 'tickets']],
   ['clientes', 'Clientes', 'clientes', ['clientes', 'propuestas', 'briefs', 'comunicaciones']],
-  ['finanzas', 'Finanzas', 'plata', ['plata', 'cuentas', 'cobros', 'gastos', 'pagos', 'precios', 'numeros']],
-  ['config', 'Configuración', 'ajustes', ['equipo', 'listas', 'integraciones', 'ajustes']],
+  ['equipo', 'Equipo', 'mis', ['equipo', 'sueldos', 'aumentos']],
+  ['finanzas', 'Finanzas', 'plata', ['plata', 'cuentas', 'cobros', 'gastos', 'proveedores', 'precios', 'numeros']],
+  ['config', 'Configuración', 'ajustes', ['listas', 'integraciones', 'ajustes']],
 ];
-const TAB_LABEL = { mis: 'Mis trabajos', plata: 'Hoy y lo que viene', cuentas: 'Saldos de clientes', propuestas: 'Presupuestos', pagos: 'Sueldos y proveedores', listas: 'Opciones', comunicaciones: 'Charlas', precios: 'Precios y aumentos' };
+const TAB_LABEL = { mis: 'Mis trabajos', plata: 'Hoy y lo que viene', cuentas: 'Saldos de clientes', propuestas: 'Presupuestos', equipo: 'Personas', sueldos: 'Sueldos del mes', precios: 'Precios a clientes', listas: 'Opciones', comunicaciones: 'Charlas' };
 const seccionDe = v => (SECCIONES.find(x => x[3].includes(v)) || SECCIONES[0])[0];
 // Pantallas que ahora viven como pestañas de otra (los links viejos y los emails siguen funcionando).
-const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], abonos: ['redes', 'planes'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
+const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], abonos: ['redes', 'planes'], pagos: ['sueldos', 'mes'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
 const resolver = v => { const a = ALIAS[v]; if (!a) return v; S.tab[a[0]] = a[1]; return a[0]; };
 /** Pestañas de una pantalla: [[clave, rótulo, cantidad?], ...] */
 function subnav(hub, tabs) {
@@ -1142,8 +1143,9 @@ function comItem(m, inFicha) {
 }
 
 function vEquipo() {
+  if (isAdmin() && ADM && ADM.equipoView) return ADM.equipoView();
   const list = [...S.E].sort((a, b) => (b.activo !== false) - (a.activo !== false) || cmp(a.persona, b.persona));
-  let h = '<div class="head"><div><h1>Equipo</h1><p>Quién entra a la app y qué ve cada uno.</p></div><div class="toolbar">' + addBtn('persona', 'Persona') + '</div></div>';
+  let h = '<div class="head"><div><h1>Equipo</h1><p>Quién es quién en àndale y en qué está cada uno.</p></div><div class="toolbar">' + addBtn('persona', 'Persona') + '</div></div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay personas cargadas', '') + '</section>';
   const rows = list.map(e => {
     const ab = S.A.filter(a => a.estado === 'Activo' && hasResp(a, e.persona)).length, pr = S.P.filter(p => isOpen(p) && hasResp(p, e.persona)).length;
@@ -1861,7 +1863,7 @@ async function start(sess) {
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
   S.me = me;
   if (me.rol === 'admin' && !ADM) {
-    ADM = initAdmin({ autoBtn: p => aut().boton(p), autoVista: () => aut().vista(), S, av, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
+    ADM = initAdmin({ autoBtn: p => aut().boton(p), autoVista: () => aut().vista(), S, av, avEditable, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
     ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
     Object.assign(ACT, ADM.actions);
   }

@@ -25,7 +25,7 @@ export function initMantenimiento(ctx, k) {
       ['integraciones', 'Conexiones (IA, Drive, email, Slack, Dropbox, Tally)', !!(st && st.ia && st.drive && st.email), st ? [st.ia ? 'IA ✓' : 'IA falta', st.drive ? 'Drive ✓' : 'Drive falta', st.email ? 'Email ✓' : 'Email falta'].join(' · ') + ' · el resto en Integraciones' : 'revisalas en Integraciones', 'integraciones'],
       ['listas', 'Flujos de trabajo y planes de redes', (S.FL || []).length > 0 && planes > 0, ((S.FL || []).length ? (S.FL || []).length + ' flujos guardados' : 'flujos sugeridos sin revisar') + ' · ' + planes + ' planes con piezas', 'listas'],
       ['cajas', 'Cuentas de banco con su saldo inicial', AD.CJ.length > 0 && AD.CJ.every(c => saldoIni.has(c.id)), AD.CJ.length + ' cuentas · ' + AD.CJ.filter(c => saldoIni.has(c.id)).length + ' con saldo inicial', 'ajustes'],
-      ['pagos', 'Sueldos, honorarios y proveedores', AD.CO.length > 0, AD.CO.length + ' cargados', 'pagos'],
+      ['pagos', 'Sueldo de cada persona del equipo', AD.CO.some(c => c.tipo !== 'Proveedor'), AD.CO.filter(c => c.tipo !== 'Proveedor').length + ' con ficha · ' + AD.CO.filter(c => c.tipo === 'Proveedor').length + ' proveedores', 'equipo'],
       ['clientes', 'Clientes activos (con logo)', act.length > 0, act.length + ' activos · ' + act.filter(c => c.avatar).length + ' con logo', 'clientes'],
       ['contactos', 'Contacto que recibe cobros en cada cliente', act.length > 0 && conCobros.length === act.length, conCobros.length + ' de ' + act.length + ' clientes activos', 'clientes'],
       ['abonos', 'Redes y Ads con su precio vigente', abAct.length > 0 && conPrecio.length === abAct.length, conPrecio.length + ' de ' + abAct.length + ' servicios activos', 'precios'],

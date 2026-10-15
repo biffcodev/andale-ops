@@ -732,7 +732,9 @@ export function initAdmin(ctx) {
   function costoHoraEstimado(R) {
     const meses = R.meses;
     const lab = AD.MV.filter(v => enRango(v.fecha, R) && v.cuenta === 'Costo Laboral' && v.moneda === 'ARS').reduce((a, v) => a + v.egreso, 0);
-    const gente = Math.max(1, S.E.filter(e => e.activo !== false && e.rol !== 'externo').length);
+    // La gente que cobra sueldo (Equipo); si todavía no hay fichas, los usuarios del equipo.
+    const conFicha = AD.CO.filter(c => c.activo && c.tipo !== 'Proveedor').length;
+    const gente = Math.max(1, conFicha || S.E.filter(e => e.activo !== false && e.rol !== 'externo').length);
     return lab ? Math.round(lab / (meses * gente * 140)) : 0;
   }
   function filasHoras(R) {
@@ -795,7 +797,7 @@ export function initAdmin(ctx) {
     const pct = parseMonto(pp.pct);
     const sel = ab.filter(a => pp.sel.has(a._id));
     const sinAum = a => { const cur = precioEn(a._id, m); const ref = cur ? cur.desde : (a.desde || ''); return mesesEntre(ref, pp.desde || m); };
-    let h = '<div class="head"><div>' + lock + '<h1>Precios y aumentos</h1><p>Lo que paga cada cliente por Redes (y Ads, si lo suma), los aumentos y el historial. Elegí a quiénes les aplicás cada aumento.</p></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Precios a clientes</h1><p>Lo que paga cada cliente por Redes (y Ads, si lo suma), los aumentos y el historial. Elegí a quiénes les aplicás cada aumento.</p></div>' +
       (AD.PR.some(p => p.desde > m && !p.aviso_enviado) ? '<div class="toolbar"><button class="btn primary" data-act="aAvisos">Avisar aumentos por email</button></div>' : '') + '</div>';
     h += '<section class="sheet"><div class="sheet-h"><h2>Aplicar aumento</h2><span class="muted">' + sel.length + (sel.length === 1 ? ' elegido' : ' elegidos') + '</span></div><div class="sheet-b" style="display:grid;gap:12px"><div class="toolbar" style="align-items:flex-end">' +
       '<div class="field"><label for="pp-pct">Aumento %</label><input class="in" id="pp-pct" data-app="pct" inputmode="decimal" value="' + esc(pp.pct) + '" placeholder="4" style="width:90px"></div>' +
@@ -1273,7 +1275,7 @@ export function initAdmin(ctx) {
     h += '<section class="stc3" aria-label="Hoy">' +
       stc('azul', M(fl.hay), 'Hay en las cuentas', 'en ' + (mon === 'ARS' ? 'pesos' : mon) + ' · <button class="btn link" data-act="go" data-view="ajustes" data-tab="bancos">ver cuentas</button>', fl.hay < 0) +
       stc('', M(debeTot), 'Nos deben', vencTot > 0.009 ? '<span class="t-crit">' + esc(M(vencTot)) + ' vencido</span> · <button class="btn link" data-act="go" data-view="cuentas">ver quién</button>' : 'nada vencido') +
-      stc('tinta', M(x0.sal.sueldos), 'Falta pagar este mes', 'sueldos, honorarios y extras · <button class="btn link" data-act="go" data-view="pagos">ver</button>') + '</section>';
+      stc('tinta', M(x0.sal.sueldos), 'Falta pagar este mes', 'sueldos, honorarios y extras · <button class="btn link" data-act="go" data-view="sueldos">sueldos</button> · <button class="btn link" data-act="go" data-view="proveedores">proveedores</button>') + '</section>';
     // Lo que viene
     const max = Math.max(1, ...fl.F.map(x => Math.max(x.entra, x.sale)), ...fl.F.map(x => Math.abs(x.saldo)), Math.abs(fl.hay));
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.calendario + '</span><h2>Lo que viene</h2><div class="sx-der">' + leyenda([['Entra', 'var(--g-in)'], ['Sale', 'var(--g-out)'], ['Queda en las cuentas', 'var(--g-line)']]) + '</div></div>' +
@@ -1341,7 +1343,7 @@ export function initAdmin(ctx) {
       fila('Facturas por cobrar', x.ent.fact, x.det.fact.filter(d => !d[2]).length ? quien(x.det.fact.filter(d => !d[2])) : '') +
       fila('Por facturar', x.ent.porFacturar, x.det.porFacturar.length ? quien(x.det.porFacturar) + (x.det.porFacturar.some(d => d[2]) ? ' · * estimado con el abono' : '') : 'nada') + '</div>' +
       '<div><span class="lbl">Sale</span>' + fila('Sueldos, honorarios y extras', x.sal.sueldos, '') + fila('Gastos habituales', x.sal.gastos, k === 0 ? 'lo que falta para llegar al promedio' : 'promedio de los últimos 3 meses') + '</div></div>' +
-      '<div class="toolbar" style="margin-top:10px"><button class="btn sm" data-act="plCobros" data-m="' + x.m + '">Cobros de ' + esc(cap(monthLabel(x.m).split(' ')[0])) + '</button><button class="btn sm ghost" data-act="go" data-view="pagos">Sueldos y proveedores</button></div>';
+      '<div class="toolbar" style="margin-top:10px"><button class="btn sm" data-act="plCobros" data-m="' + x.m + '">Cobros de ' + esc(cap(monthLabel(x.m).split(' ')[0])) + '</button><button class="btn sm ghost" data-act="go" data-view="sueldos">Sueldos</button><button class="btn sm ghost" data-act="go" data-view="proveedores">Proveedores</button></div>';
   }
 
 
@@ -1749,8 +1751,9 @@ export function initAdmin(ctx) {
       propuesta: preset => actions.pzNueva({ dataset: { clase: preset.clase || 'Presupuesto', preset: JSON.stringify(preset) } }),
     },
     contexto: () => contextoIA(),
-    views: [['plata', 'Hoy y lo que viene', vPlata], ['cuentas', 'Saldos de clientes', vCuentas], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Estadísticas', vNumeros], ['ajustes', 'Ajustes', vAjustes],
-      ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios y aumentos', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
+    views: [['plata', 'Hoy y lo que viene', vPlata], ['cuentas', 'Saldos de clientes', vCuentas], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['sueldos', 'Sueldos', EQ.vSueldos], ['aumentos', 'Aumentos', EQ.vAumentos], ['proveedores', 'Proveedores', EQ.vProveedores], ['numeros', 'Estadísticas', vNumeros], ['ajustes', 'Ajustes', vAjustes],
+      ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios a clientes', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
+    equipoView: () => EQ.vPersonas(),
     counts: () => (AD.ok ? { cobros: AD.F.filter(f => estadoFactura(f) === 'Vencida').length + AS.count() } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; PZ.reset(); },
   };

@@ -1,4 +1,5 @@
-// Sueldos y pagos: equipo, socias y proveedores. Sueldo u honorario con historial, extras fijos,
+// Equipo (socias y empleados: sueldos y aumentos) y Proveedores (honorarios y trabajos puntuales), por separado.
+// Sueldos y pagos: Sueldo u honorario con historial, extras fijos,
 // aguinaldo, liquidación mensual y pago (que queda como egreso en Caja). Solo administradores.
 import * as data from './data.js';
 
@@ -63,98 +64,238 @@ export function initEquipo(ctx, k) {
     const [p, ...rest] = items.filter(i => i.tipo !== 'Aguinaldo');
     return (['Sueldo', 'Honorario'].includes(p.tipo) ? p.concepto + ' ' + mesCorto(m) : p.concepto + ' ' + mesCorto(m)) + rest.map(i => ' + ' + i.concepto).join('');
   }
-  const lineaRem = c => { const rs = remVig(c.id, AD.pg.mes), ex = extrasVig(c.id, AD.pg.mes); return { rs, ex, acc: [...rs, ...ex].reduce((acc, x) => add(acc, x.moneda, x.monto), {}) }; };
+  const lineaRem = (c, m = AD.pg.mes) => { const rs = remVig(c.id, m), ex = extrasVig(c.id, m); return { rs, ex, acc: [...rs, ...ex].reduce((acc, x) => add(acc, x.moneda, x.monto), {}) }; };
 
-  /* ---------- vista ---------- */
-  function vPagos() {
-    const pg = AD.pg, m = pg.mes, y = m.slice(0, 4);
-    const lq = liqMes(m), falt = faltantes(m);
-    const pend = {}, pag = {}; lq.forEach(l => add(l.movimiento_id ? pag : pend, l.moneda, l.monto));
-    const laboral = {}, prov = {}; AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.egreso > 0).forEach(v => { if (v.cuenta === 'Costo Laboral') add(laboral, v.moneda, v.egreso); else if (v.cuenta === 'Proveedores') add(prov, v.moneda, v.egreso); });
-    let h = '<div class="head"><div>' + lock + '<h1>Sueldos y proveedores</h1><p>Sueldos, honorarios, extras y aguinaldo. Al pagar, el gasto queda en Gastos e ingresos.</p></div>' +
-      '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="pgMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="pgMes" data-d="0">Este mes</button><button class="btn sm" data-act="pgMes" data-d="1" aria-label="Mes siguiente">→</button></div></div></div>';
-    h += '<section class="kpis">' +
-      '<div class="kpi ' + (Object.keys(pend).length ? 'warn' : '') + '"><span class="eyebrow">Falta pagar en ' + esc(monthLabel(m).split(' ')[0]) + '</span><b style="font-size:22px">' + esc(multi(pend)) + '</b><span>' + lq.filter(l => !l.movimiento_id).length + ' pagos</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Pagado en el mes</span><b style="font-size:22px;color:var(--money)">' + esc(multi(pag)) + '</b><span>' + lq.filter(l => l.movimiento_id).length + ' pagos</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Sueldos ' + esc(y) + '</span><b style="font-size:20px">' + esc(multi(laboral)) + '</b><span>equipo, socias y aguinaldos</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Proveedores ' + esc(y) + '</span><b style="font-size:20px">' + esc(multi(prov)) + '</b><span>según Gastos e ingresos</span></div></section>';
-    h += '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['liquidacion', 'Pagos del mes'], ['equipo', 'Personas y proveedores']].map(([kk, l]) => '<button data-act="pgVer" data-v="' + kk + '" aria-pressed="' + (pg.ver === kk) + '">' + l + '</button>').join('') + '</div></div>';
-    return h + (pg.ver === 'equipo' ? vEquipo(m, y) : vLiquidacion(m, lq, falt));
+  /* ---------- quién es quién ---------- */
+  // Equipo = socias y empleados (cobran sueldo). Proveedores = freelancers y empresas (cobran por trabajo u honorario).
+  // Comparten la tabla de colaboradores; quien entra a la app además tiene su usuario (personas), unido por persona_id.
+  const esProv = c => c.tipo === 'Proveedor';
+  const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
+  const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
+  const persona = id => (id ? S.E.find(e => e._id === id) : null) || null;
+  const colabDePersona = pid => AD.CO.find(c => c.persona_id === pid);
+  function integrantes(prov) {
+    const out = AD.CO.filter(c => esProv(c) === prov).map(c => ({ c, p: persona(c.persona_id) }));
+    S.E.filter(p => !colabDePersona(p._id) && (prov ? p.rol === 'externo' : p.rol !== 'externo')).forEach(p => out.push({ c: null, p }));
+    return out;
+  }
+  const activoI = x => x.c ? !!x.c.activo : x.p.activo !== false;
+  const nombreI = x => x.c ? x.c.nombre : (x.p.nombre || x.p.persona);
+  const deGrupo = prov => l => { const c = colab(l.colaborador_id); return !!c && esProv(c) === prov; };
+  const pl = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
+  const pctTxt = n => (n > 0 ? '+' : '') + String(n).replace('.', ',') + '%';
+  const pctDe = (a, b) => a && b && a.moneda === b.moneda && b.monto ? Math.round((a.monto / b.monto - 1) * 1000) / 10 : null;
+  const remAnterior = r => AD.RM.filter(x => x.colaborador_id === r.colaborador_id && x.concepto === r.concepto && x.desde < r.desde).sort((a, b) => b.desde.localeCompare(a.desde))[0] || null;
+  const abiertoP = p => !['Entregado', 'Cancelado'].includes(p.estado);
+  const mesNav = () => '<div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(AD.pg.mes))) + '</h2><button class="btn sm" data-act="pgMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="pgMes" data-d="0">Este mes</button><button class="btn sm" data-act="pgMes" data-d="1" aria-label="Mes siguiente">→</button></div>';
+  const stc = (cls, big, lab, sub) => '<div class="stc ' + cls + '"><span class="stc-l">' + lab + '</span><b>' + esc(big) + '</b><small>' + sub + '</small></div>';
+  const verInact = () => '<label class="chk"><input type="checkbox" data-pgk="inact"' + (AD.pg.inact ? ' checked' : '') + '> Ver inactivos</label>';
+  const costoMensual = cs => cs.reduce((acc, c) => { const { rs, ex } = lineaRem(c, thisMonth()); [...rs, ...ex].forEach(x => add(acc, x.moneda, x.monto)); return acc; }, {});
+
+  /* ---------- Equipo › Personas ---------- */
+  function vPersonas() {
+    const todos = integrantes(false), act = todos.filter(activoI);
+    const list = todos.filter(x => AD.pg.inact || activoI(x)).sort((a, b) => (activoI(b) - activoI(a)) || ((a.c ? (a.c.tipo === 'Socio' ? 0 : 1) : 2) - (b.c ? (b.c.tipo === 'Socio' ? 0 : 1) : 2)) || cmp(nombreI(a), nombreI(b)));
+    const sinSueldo = act.filter(x => !x.c || !remVig(x.c.id, thisMonth()).length);
+    let h = '<div class="head"><div><h1>Equipo</h1><p>Socias y empleados: datos, sueldo y acceso a la app, todo en la ficha de cada persona. Los proveedores están en Finanzas › Proveedores.</p></div><div class="toolbar">' + verInact() + '<button class="btn primary" data-act="pgColab" data-g="eq">+ Persona</button></div></div>';
+    h += '<section class="stc3" aria-label="Resumen del equipo">' +
+      stc('azul', String(act.length), 'Personas en el equipo', esc([pl(act.filter(x => x.c && x.c.tipo === 'Socio').length, 'socio', 'socios'), pl(act.filter(x => x.c && x.c.tipo !== 'Socio').length, 'empleado', 'empleados'), act.filter(x => !x.c).length ? act.filter(x => !x.c).length + ' sin completar' : ''].filter(Boolean).join(' · '))) +
+      stc('', multi(costoMensual(act.filter(x => x.c).map(x => x.c))), 'Costo mensual', 'sueldos y extras vigentes · <button class="btn link" data-act="go" data-view="aumentos">aumentos</button>') +
+      stc('tinta', String(sinSueldo.length), 'Sin sueldo cargado', sinSueldo.length ? esc(sinSueldo.map(x => x.p ? x.p.persona : nombreI(x)).join(', ')) : 'todos con sueldo') + '</section>';
+    const rows = list.map(x => {
+      const { c, p } = x, alias = p ? p.persona : '';
+      const rs = c ? remVig(c.id, thisMonth()) : [];
+      const ab = alias ? S.A.filter(a => a.estado === 'Activo' && (a.responsables || []).includes(alias)).length : 0, pr = alias ? S.P.filter(q => abiertoP(q) && (q.responsables || []).includes(alias)).length : 0;
+      const attr = c ? 'data-id="' + esc(c.id) + '"' : 'data-pid="' + esc(p._id) + '"';
+      return '<tr class="click" data-act="pgColab" ' + attr + ' data-g="eq"' + (activoI(x) ? '' : ' style="opacity:.55"') + '>' +
+        '<td><span class="who1">' + (p && ctx.avEditable ? ctx.avEditable('persona', p._id, alias, p.avatar, '', false) : ctx.av ? ctx.av(alias || nombreI(x), p ? p.avatar : '') : '') + '<b>' + esc(alias || nombreI(x)) + '</b></span><span class="sub">' + esc([nombreI(x) !== alias ? nombreI(x) : '', p && p.puesto].filter(Boolean).join(' · ')) + '</span></td>' +
+        '<td>' + (c ? esc(c.tipo) + '<span class="sub">' + esc([c.vinculo, c.ingreso ? 'desde ' + fmt(c.ingreso.slice(0, 7)) : ''].filter(Boolean).join(' · ')) + '</span>' : '<span class="muted">sin completar</span>') + '</td>' +
+        '<td class="r">' + (rs.length ? rs.map(r => '<span class="money">' + money(r.monto, r.moneda) + '</span><span class="sub">desde ' + fmt(r.desde) + '</span>').join('') : '<span class="pill" style="--c:var(--s-revision)">Cargar sueldo</span>') + '</td>' +
+        '<td>' + (p && p.email && p.activo !== false ? pill(ROLES[p.rol] || p.rol, ROL_COLOR[p.rol] || '--muted') + '<span class="sub">' + esc(p.email) + '</span>' : '<span class="muted">sin acceso</span>') + '</td>' +
+        '<td class="r num">' + (ab || pr ? esc([ab ? ab + ' redes' : '', pr ? pr + ' proyectos' : ''].filter(Boolean).join(' · ')) : '<span class="muted">—</span>') + '</td></tr>';
+    }).join('');
+    return h + '<section class="sheet">' + (rows ? '<div class="tbl"><table><thead><tr><th>Persona</th><th>Relación</th><th class="r">Sueldo</th><th>Acceso a la app</th><th class="r">A cargo</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : emptyBox('Todavía no hay nadie en el equipo', 'Sumá a cada persona con “+ Persona”.')) + '</section>';
   }
 
-  function vLiquidacion(m, lq, falt) {
-    let h = '';
-    if (falt.length) h += '<section class="callout"><p><b>' + falt.length + ' pagos por calcular</b> en ' + esc(monthLabel(m)) + ' según los sueldos, honorarios y extras cargados' + (falt.some(f => f.tipo === 'Aguinaldo') ? ' (incluye aguinaldo)' : '') + ': ' + esc([...new Set(falt.map(f => (colab(f.colaborador_id) || {}).nombre))].join(', ')) + '.</p><button class="btn primary" data-act="pgGenerar">' + (lq.length ? 'Calcular los que faltan' : 'Calcular los pagos del mes') + '</button></section>';
-    const sinRem = AD.CO.filter(c => activoEn(c, m) && c.tipo !== 'Proveedor' && !remVig(c.id, m).length);
-    if (sinRem.length) h += '<section class="callout"><p>Sin sueldo cargado: <b>' + esc(sinRem.map(c => c.nombre).join(', ')) + '</b>. Cargalo en su ficha para que se calcule solo cada mes.</p><button class="btn" data-act="pgVer" data-v="equipo">Ver equipo</button></section>';
-    const grupos = new Map(); lq.forEach(l => { if (!grupos.has(l.colaborador_id)) grupos.set(l.colaborador_id, []); grupos.get(l.colaborador_id).push(l); });
-    const orden = [...grupos.keys()].map(colab).filter(Boolean).sort((a, b) => TIPOS.indexOf(a.tipo) - TIPOS.indexOf(b.tipo) || cmp(a.nombre, b.nombre));
-    const cards = orden.map(c => {
-      const its = grupos.get(c.id).sort((a, b) => ['Sueldo', 'Honorario', 'Extra', 'Aguinaldo', 'Otro'].indexOf(a.tipo) - ['Sueldo', 'Honorario', 'Extra', 'Aguinaldo', 'Otro'].indexOf(b.tipo));
-      const tot = {}; its.forEach(i => add(tot, i.moneda, i.monto));
-      const pend = its.filter(i => !i.movimiento_id), movs = [...new Set(its.filter(i => i.movimiento_id).map(i => i.movimiento_id))].map(movDe).filter(Boolean);
-      const estado = !pend.length ? '<span class="days" style="color:var(--ok)">✓ Pagado ' + esc(movs.map(v => fmt(v.fecha).slice(0, 5)).join(', ')) + '</span>' : '<button class="btn sm primary" data-act="pgPagar" data-id="' + esc(c.id) + '">Pagar ' + esc(multi(pend.reduce((acc, i) => add(acc, i.moneda, i.monto), {}))) + '</button>';
-      return '<section class="sheet"><div class="sheet-h"><h2 style="font-size:17px"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button> <span class="muted" style="font-size:13px;font-weight:500">' + esc([c.tipo, c.rubro].filter(Boolean).join(' · ')) + '</span></h2><span class="toolbar">' + estado + '<button class="btn ghost sm" data-act="pgRecibo" data-id="' + esc(c.id) + '" title="Comprobante de pago en PDF">Recibo</button>' + (c.email ? '<button class="btn ghost sm" data-act="pgReciboMail" data-id="' + esc(c.id) + '" title="Mandar el comprobante de pago por email">Enviar</button>' : '') + '</span></div><div class="rows">' +
-        its.map(i => '<div class="row" style="cursor:default"><span class="d">' + esc(i.tipo) + '</span><span class="t"><b>' + esc(i.concepto) + '</b>' + (i.notas ? '<span>' + esc(i.notas) + '</span>' : '') + '</span><span class="toolbar"><span class="money">' + money(i.monto, i.moneda) + '</span>' + (i.movimiento_id ? '<span class="days" style="color:var(--ok)">✓</span>' : '<button class="btn ghost sm" data-act="pgItem" data-id="' + esc(i.id) + '">Editar</button>') + '</span></div>').join('') +
-        '</div><div class="count" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Total <b class="money">' + esc(multi(tot)) + '</b></span><button class="btn ghost sm" data-act="pgItem" data-colab="' + esc(c.id) + '">+ Agregar pago</button></div></section>';
+  /* ---------- Equipo › Sueldos del mes ---------- */
+  function vSueldos() {
+    const m = AD.pg.mes, y = m.slice(0, 4), lq = liqMes(m).filter(deGrupo(false)), falt = faltantes(m).filter(deGrupo(false));
+    const pend = {}, pag = {}; lq.forEach(l => add(l.movimiento_id ? pag : pend, l.moneda, l.monto));
+    const laboral = {}; AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.egreso > 0 && v.cuenta === 'Costo Laboral').forEach(v => add(laboral, v.moneda, v.egreso));
+    let h = '<div class="head"><div><h1>Sueldos</h1><p>Lo que se le paga al equipo cada mes: sueldo, extras y aguinaldo. Al pagar, queda como gasto en Gastos e ingresos.</p></div><div class="toolbar">' + mesNav() + '</div></div>';
+    h += '<section class="stc3" aria-label="Sueldos del mes">' +
+      stc('azul', multi(pend), 'Falta pagar en ' + esc(monthLabel(m).split(' ')[0]), pl(lq.filter(l => !l.movimiento_id).length, 'pago pendiente', 'pagos pendientes')) +
+      stc('', multi(pag), 'Pagado en el mes', pl(lq.filter(l => l.movimiento_id).length, 'pago', 'pagos')) +
+      stc('tinta', multi(laboral), 'Sueldos ' + esc(y), 'equipo, socias y aguinaldos') + '</section>';
+    return h + vLiquidacion(m, lq, falt, false);
+  }
+
+  /* ---------- Equipo › Aumentos ---------- */
+  function vAumentos() {
+    const m = thisMonth(), y = m.slice(0, 4);
+    const gente = AD.CO.filter(c => !esProv(c) && c.activo).sort((a, b) => cmp(a.nombre, b.nombre));
+    const cambios = AD.RM.filter(r => { const c = colab(r.colaborador_id); return c && !esProv(c) && r.concepto !== 'Honorario'; }).sort((a, b) => b.desde.localeCompare(a.desde) || cmp((colab(a.colaborador_id) || {}).nombre, (colab(b.colaborador_id) || {}).nombre));
+    const aumentos = cambios.map(r => ({ r, ant: remAnterior(r) })).filter(x => x.ant);
+    const delAnio = aumentos.filter(x => x.r.desde.startsWith(y) && x.r.desde <= m).map(x => pctDe(x.r, x.ant)).filter(v => v != null);
+    const ult = aumentos.find(x => x.r.desde <= m);
+    let h = '<div class="head"><div><h1>Aumentos</h1><p>Cuánto cobra cada persona del equipo y cómo fue cambiando. Cada aumento guarda el monto anterior, así queda el historial.</p></div><div class="toolbar"><button class="btn primary" data-act="pgAumento">Aumento general</button></div></div>';
+    h += '<section class="stc3" aria-label="Aumentos">' +
+      stc('azul', multi(costoMensual(gente)), 'Costo mensual hoy', pl(gente.length, 'persona', 'personas') + ' con sueldo') +
+      stc('', delAnio.length ? pctTxt(Math.round(delAnio.reduce((a, v) => a + v, 0) / delAnio.length * 10) / 10) : '—', 'Aumento promedio ' + esc(y), delAnio.length ? pl(delAnio.length, 'aumento', 'aumentos') + ' en el año' : 'sin aumentos este año') +
+      stc('tinta', ult ? fmt(ult.r.desde) : '—', 'Último aumento', ult ? esc(((colab(ult.r.colaborador_id) || {}).nombre || '') + ' · ' + (pctDe(ult.r, ult.ant) != null ? pctTxt(pctDe(ult.r, ult.ant)) : '') + (ult.r.motivo ? ' · ' + ult.r.motivo : '')) : 'todavía ninguno') + '</section>';
+    const filas = gente.map(c => {
+      const r = remVig(c.id, m).find(x => x.concepto === 'Sueldo') || remVig(c.id, m)[0];
+      const a = r ? remAnterior(r) : null, ini = r ? (remVig(c.id, y + '-01').find(x => x.concepto === r.concepto) || null) : null;
+      const prog = AD.RM.filter(x => x.colaborador_id === c.id && x.desde > m).sort((p, q) => p.desde.localeCompare(q.desde))[0];
+      const acum = r && ini && ini !== r ? pctDe(r, ini) : null;
+      return '<tr><td class="name"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button><span class="sub">' + esc(c.tipo) + '</span></td>' +
+        '<td class="r">' + (r ? '<span class="money">' + money(r.monto, r.moneda) + '</span><span class="sub">desde ' + fmt(r.desde) + '</span>' : '<span class="muted">sin cargar</span>') + '</td>' +
+        '<td>' + (r && a ? '<b>' + esc(pctDe(r, a) != null ? pctTxt(pctDe(r, a)) : '') + '</b><span class="sub">' + esc(fmt(r.desde) + (r.motivo ? ' · ' + r.motivo : '')) + '</span>' : '<span class="muted">' + (r ? 'sueldo inicial' : '—') + '</span>') + '</td>' +
+        '<td class="r">' + (acum != null ? '<b>' + esc(pctTxt(acum)) + '</b>' : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (prog ? '<span class="money">' + money(prog.monto, prog.moneda) + '</span><span class="sub">desde ' + fmt(prog.desde) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+        '<td class="r"><button class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '" data-from="aum">' + (r ? 'Aumento' : 'Cargar sueldo') + '</button></td></tr>';
     }).join('');
-    h += '<div class="toolbar"><button class="btn" data-act="pgItem">+ Pago a proveedor o extra</button><span class="muted">Un trabajo puntual (fotos, web, una pauta) se carga acá y se paga igual.</span></div>';
-    h += cards ? '<div class="grid2">' + cards + '</div>' : '<section class="sheet">' + emptyBox('Todavía no hay pagos calculados para ' + monthLabel(m), falt.length ? 'Tocá “Calcular los pagos del mes”: se arma con los sueldos, honorarios y extras vigentes.' : 'Cargá el sueldo u honorario de cada persona en “Personas y proveedores”.') + '</section>';
+    h += '<section class="sheet"><div class="sheet-h"><h2>Sueldo de cada uno</h2></div>' + (filas ? '<div class="tbl"><table><thead><tr><th>Persona</th><th class="r">Sueldo hoy</th><th>Último aumento</th><th class="r">En ' + esc(y) + '</th><th>Programado</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div>' : emptyBox('Todavía no hay sueldos cargados', 'Cargalos desde la ficha de cada persona en Equipo › Personas.')) + '</section>';
+    if (cambios.length) h += '<section class="sheet"><div class="sheet-h"><h2>Historial</h2><span class="muted">' + cambios.length + ' cambios</span></div><div class="tbl"><table><thead><tr><th>Desde</th><th>Persona</th><th class="r">Antes</th><th class="r">Ahora</th><th class="r">Aumento</th><th>Motivo</th></tr></thead><tbody>' +
+      cambios.slice(0, 80).map(r => { const a = remAnterior(r), pc = pctDe(r, a); return '<tr><td class="mono">' + fmt(r.desde) + (r.desde > m ? ' <span class="tag">programado</span>' : '') + '</td><td>' + esc((colab(r.colaborador_id) || {}).nombre || '') + '</td><td class="r">' + (a ? '<span class="money">' + money(a.monto, a.moneda) + '</span>' : '<span class="muted">—</span>') + '</td><td class="r"><span class="money">' + money(r.monto, r.moneda) + '</span></td><td class="r">' + (pc != null ? '<b>' + esc(pctTxt(pc)) + '</b>' : '<span class="muted">' + (a ? '—' : 'inicial') + '</span>') + '</td><td>' + esc(r.motivo || '') + '</td></tr>'; }).join('') + '</tbody></table></div></section>';
     return h;
   }
 
-  function vEquipo(m, y) {
-    const list = AD.CO.filter(c => AD.pg.inact || c.activo).sort((a, b) => TIPOS.indexOf(a.tipo) - TIPOS.indexOf(b.tipo) || cmp(a.nombre, b.nombre));
-    const rows = list.map(c => {
-      const { rs, ex } = lineaRem(c), pagos = pagosDe(c.id, y), ult = pagos[0], tot = {}; pagos.forEach(v => add(tot, v.moneda, v.egreso));
-      return '<tr class="click" data-act="pgColab" data-id="' + esc(c.id) + '"><td class="name">' + esc(c.nombre) + (c.persona && c.persona !== c.nombre ? ' <span class="tag">' + esc(c.persona) + '</span>' : '') + '<span class="sub">' + esc([c.tipo, c.rubro, c.vinculo].filter(Boolean).join(' · ')) + (c.activo ? '' : ' · inactivo') + '</span></td>' +
-        '<td class="r">' + (rs.length ? rs.map(r => '<span class="money">' + money(r.monto, r.moneda) + '</span><span class="sub">' + esc(r.concepto) + ' desde ' + fmt(r.desde) + '</span>').join('') : '<span class="muted">' + (c.tipo === 'Proveedor' ? 'por trabajo' : 'sin cargar') + '</span>') + '</td>' +
-        '<td>' + (ex.length ? '<div class="tags">' + ex.map(x => '<span class="tag">' + esc(x.concepto) + ' ' + esc(money(x.monto, x.moneda)) + '</span>').join('') + '</div>' : '<span class="muted">—</span>') + '</td>' +
-        '<td class="r">' + (pagos.length ? '<span class="money">' + esc(multi(tot)) + '</span><span class="sub">' + pagos.length + ' pagos</span>' : '<span class="muted">—</span>') + '</td>' +
-        '<td>' + (ult ? '<span class="mono">' + fmt(ult.fecha) + '</span><span class="sub">' + esc(money(ult.egreso, ult.moneda)) + ' · ' + esc((ult.detalle || '').slice(0, 40)) + '</span>' : '<span class="muted">—</span>') + '</td></tr>';
+  /* ---------- Finanzas › Proveedores ---------- */
+  function vProveedores() {
+    const t = S.tab.proveedores === 'lista' ? 'lista' : 'pagos', m = AD.pg.mes, y = m.slice(0, 4);
+    const lq = liqMes(m).filter(deGrupo(true)), falt = faltantes(m).filter(deGrupo(true));
+    const pend = {}, pag = {}; lq.forEach(l => add(l.movimiento_id ? pag : pend, l.moneda, l.monto));
+    const anio = {}; AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.egreso > 0 && v.cuenta === 'Proveedores').forEach(v => add(anio, v.moneda, v.egreso));
+    let h = '<div class="head"><div><h1>Proveedores</h1><p>Freelancers y empresas que trabajan para àndale: trabajos puntuales, honorarios fijos y cuánto se les pagó. El equipo y sus sueldos están en Equipo.</p></div><div class="toolbar">' + (t === 'pagos' ? mesNav() : verInact() + '<button class="btn primary" data-act="pgColab" data-g="prov">+ Proveedor</button>') + '</div></div>';
+    h += ctx.subnav('proveedores', [['pagos', 'Pagos del mes', lq.filter(l => !l.movimiento_id).length || ''], ['lista', 'Proveedores']]);
+    h += '<section class="stc3" aria-label="Proveedores">' +
+      stc('azul', multi(pend), 'Falta pagar en ' + esc(monthLabel(m).split(' ')[0]), pl(lq.filter(l => !l.movimiento_id).length, 'pago pendiente', 'pagos pendientes')) +
+      stc('', multi(pag), 'Pagado en el mes', pl(lq.filter(l => l.movimiento_id).length, 'pago', 'pagos')) +
+      stc('tinta', multi(anio), 'Proveedores ' + esc(y), 'según Gastos e ingresos') + '</section>';
+    if (t === 'pagos') return h + vLiquidacion(m, lq, falt, true);
+    const list = integrantes(true).filter(x => AD.pg.inact || activoI(x)).sort((a, b) => (activoI(b) - activoI(a)) || cmp(nombreI(a), nombreI(b)));
+    const rows = list.map(x => {
+      const { c, p } = x, pagos = c ? pagosDe(c.id, y) : [], ult = pagos[0], tot = {}; pagos.forEach(v => add(tot, v.moneda, v.egreso));
+      const rs = c ? remVig(c.id, thisMonth()) : [];
+      const attr = c ? 'data-id="' + esc(c.id) + '"' : 'data-pid="' + esc(p._id) + '"';
+      return '<tr class="click" data-act="pgColab" ' + attr + ' data-g="prov"' + (activoI(x) ? '' : ' style="opacity:.55"') + '><td class="name">' + esc(nombreI(x)) + '<span class="sub">' + esc([c && c.rubro, c && c.vinculo].filter(Boolean).join(' · ') || (c ? '' : 'sin completar')) + '</span></td>' +
+        '<td class="r">' + (rs.length ? rs.map(r => '<span class="money">' + money(r.monto, r.moneda) + '</span><span class="sub">fijo por mes</span>').join('') : '<span class="muted">por trabajo</span>') + '</td>' +
+        '<td class="r">' + (pagos.length ? '<span class="money">' + esc(multi(tot)) + '</span><span class="sub">' + pl(pagos.length, 'pago', 'pagos') + '</span>' : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (ult ? '<span class="mono">' + fmt(ult.fecha) + '</span><span class="sub">' + esc(money(ult.egreso, ult.moneda)) + ' · ' + esc((ult.detalle || '').slice(0, 40)) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (p && p.email && p.activo !== false ? pill(ROLES[p.rol] || p.rol, ROL_COLOR[p.rol] || '--muted') : '<span class="muted">no entra</span>') + '</td></tr>';
     }).join('');
-    return '<section class="sheet"><div class="sheet-h"><h2>Personas y proveedores</h2><div class="toolbar"><label class="chk"><input type="checkbox" data-pgk="inact"' + (AD.pg.inact ? ' checked' : '') + '> Ver inactivos</label><button class="btn sm" data-act="pgAumento">Aumento a todos</button><button class="btn sm primary" data-act="pgColab">+ Persona o proveedor</button></div></div>' +
-      (rows ? '<div class="tbl"><table><thead><tr><th>Nombre</th><th class="r">Sueldo / honorario</th><th>Extras fijos</th><th class="r">Pagado en ' + esc(y) + '</th><th>Último pago</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : emptyBox('Sin personas cargadas', 'Agregá al equipo y a los proveedores con “+ Persona o proveedor”.')) +
-      '<div class="count">Los pagos salen de Gastos e ingresos (sueldos y proveedores). Para que un pago viejo cuente, el nombre tiene que coincidir con el de la persona o con alguno de sus apodos.</div></section>';
+    return h + '<section class="sheet">' + (rows ? '<div class="tbl"><table><thead><tr><th>Proveedor</th><th class="r">Honorario</th><th class="r">Pagado en ' + esc(y) + '</th><th>Último pago</th><th>App</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : emptyBox('Todavía no hay proveedores', 'Sumalos con “+ Proveedor”: rubro, CUIT y datos para transferirles.')) +
+      '<div class="count">Para que un pago viejo de Gastos e ingresos cuente, el nombre tiene que coincidir con el del proveedor o con alguno de sus apodos.</div></section>';
+  }
+
+  /* ---------- pagos del mes (equipo o proveedores) ---------- */
+  function vLiquidacion(m, lq, falt, prov) {
+    const g = prov ? 'prov' : 'eq';
+    let h = '';
+    if (falt.length) h += '<section class="callout"><p><b>' + falt.length + ' pagos por calcular</b> en ' + esc(monthLabel(m)) + ' según ' + (prov ? 'los honorarios fijos' : 'los sueldos y extras') + ' cargados' + (falt.some(f => f.tipo === 'Aguinaldo') ? ' (incluye aguinaldo)' : '') + ': ' + esc([...new Set(falt.map(f => (colab(f.colaborador_id) || {}).nombre))].join(', ')) + '.</p><button class="btn primary" data-act="pgGenerar" data-g="' + g + '">' + (lq.length ? 'Calcular los que faltan' : 'Calcular los pagos del mes') + '</button></section>';
+    if (!prov) {
+      const sinRem = AD.CO.filter(c => activoEn(c, m) && !esProv(c) && !remVig(c.id, m).length);
+      if (sinRem.length) h += '<section class="callout"><p>Sin sueldo cargado: <b>' + esc(sinRem.map(c => c.nombre).join(', ')) + '</b>. Cargalo en su ficha para que se calcule solo cada mes.</p><button class="btn" data-act="go" data-view="equipo">Ver equipo</button></section>';
+    }
+    const grupos = new Map(); lq.forEach(l => { if (!grupos.has(l.colaborador_id)) grupos.set(l.colaborador_id, []); grupos.get(l.colaborador_id).push(l); });
+    const orden = [...grupos.keys()].map(colab).filter(Boolean).sort((a, b) => TIPOS.indexOf(a.tipo) - TIPOS.indexOf(b.tipo) || cmp(a.nombre, b.nombre));
+    const ORD = ['Sueldo', 'Honorario', 'Extra', 'Aguinaldo', 'Otro'];
+    const cards = orden.map(c => {
+      const its = grupos.get(c.id).sort((a, b) => ORD.indexOf(a.tipo) - ORD.indexOf(b.tipo));
+      const tot = {}; its.forEach(i => add(tot, i.moneda, i.monto));
+      const pend = its.filter(i => !i.movimiento_id), movs = [...new Set(its.filter(i => i.movimiento_id).map(i => i.movimiento_id))].map(movDe).filter(Boolean);
+      const estado = !pend.length ? '<span class="days" style="color:var(--ok)">✓ Pagado ' + esc(movs.map(v => fmt(v.fecha).slice(0, 5)).join(', ')) + '</span>' : '<button class="btn sm primary" data-act="pgPagar" data-id="' + esc(c.id) + '">Pagar ' + esc(multi(pend.reduce((acc, i) => add(acc, i.moneda, i.monto), {}))) + '</button>';
+      return '<section class="sheet"><div class="sheet-h"><h2 style="font-size:17px"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button> <span class="muted" style="font-size:13px;font-weight:500">' + esc([prov ? c.rubro : (c.tipo)].filter(Boolean).join(' · ')) + '</span></h2><span class="toolbar">' + estado + '<button class="btn ghost sm" data-act="pgRecibo" data-id="' + esc(c.id) + '" title="Comprobante de pago en PDF">Recibo</button>' + (c.email ? '<button class="btn ghost sm" data-act="pgReciboMail" data-id="' + esc(c.id) + '" title="Mandar el comprobante de pago por email">Enviar</button>' : '') + '</span></div><div class="rows">' +
+        its.map(i => '<div class="row" style="cursor:default"><span class="d">' + esc(i.tipo) + '</span><span class="t"><b>' + esc(i.concepto) + '</b>' + (i.notas ? '<span>' + esc(i.notas) + '</span>' : '') + '</span><span class="toolbar"><span class="money">' + money(i.monto, i.moneda) + '</span>' + (i.movimiento_id ? '<span class="days" style="color:var(--ok)">✓</span>' : '<button class="btn ghost sm" data-act="pgItem" data-id="' + esc(i.id) + '">Editar</button>') + '</span></div>').join('') +
+        '</div><div class="count" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Total <b class="money">' + esc(multi(tot)) + '</b></span><button class="btn ghost sm" data-act="pgItem" data-colab="' + esc(c.id) + '" data-g="' + g + '">+ Agregar pago</button></div></section>';
+    }).join('');
+    h += '<div class="toolbar" style="justify-content:space-between"><span class="muted">' + (prov ? 'Un trabajo puntual (fotos, web, una pauta) se carga acá y se paga igual.' : 'Un bono, un reintegro o algo fuera del sueldo se carga acá.') + '</span><button class="btn" data-act="pgItem" data-g="' + g + '">' + (prov ? '+ Pago a proveedor' : '+ Extra o pago puntual') + '</button></div>';
+    h += cards ? '<div class="grid2">' + cards + '</div>' : '<section class="sheet">' + emptyBox('Todavía no hay pagos ' + (prov ? 'a proveedores' : 'de sueldos') + ' para ' + monthLabel(m), falt.length ? 'Tocá “Calcular los pagos del mes”.' : prov ? 'Cargá cada trabajo con “+ Pago a proveedor”, o el honorario fijo en la ficha del proveedor.' : 'Cargá el sueldo de cada persona en su ficha (Equipo › Personas).') + '</section>';
+    return h;
   }
 
   /* ---------- formularios ---------- */
-  function formColaborador(id) {
-    const c = id ? colab(id) : null;
-    const vals = c ? { ...c, otros_nombres: (c.otros_nombres || []).join(', ') } : { tipo: 'Proveedor', activo: true, aguinaldo: false };
+  // Una sola ficha por persona: datos, cómo se le paga y si entra a la app.
+  const COLS = ['nombre', 'tipo', 'rubro', 'cuit', 'alias_cbu', 'cbu', 'banco', 'email', 'tel', 'activo', 'vinculo', 'ingreso', 'egreso', 'aguinaldo', 'contrato', 'notas'];
+  function formColaborador(id, pid, prov) {
+    const c = id ? colab(id) : null, p = persona(c ? c.persona_id : pid);
+    const esP = c ? esProv(c) : (prov != null ? prov : !!(p && p.rol === 'externo'));
+    const enApp = !!(p && p.activo !== false);
+    const vals = {
+      ...(c || {}), otros_nombres: c ? (c.otros_nombres || []).join(', ') : '',
+      nombre: c ? c.nombre : (p ? (p.nombre || p.persona) : ''), tipo: c ? c.tipo : (esP ? 'Proveedor' : 'Empleado'),
+      email: c ? (c.email || '') : (p ? p.email : ''), tel: c ? (c.tel || '') : (p ? (p.tel || '') : ''),
+      activo: c ? c.activo : (p ? p.activo !== false : true), aguinaldo: c ? c.aguinaldo : !esP, notas: c ? c.notas : (p ? p.notas : ''),
+      alias: p ? p.persona : '', puesto: p ? (p.puesto || '') : '', app: enApp, acceso: !!(p && p.email && p.activo !== false), email_acceso: p ? (p.email || '') : '', rol: p ? p.rol : (esP ? 'externo' : 'equipo'),
+    };
     const hist = c ? histRem(c.id) : [], ex = c ? AD.CF.filter(x => x.colaborador_id === c.id).sort((a, b) => cmp(a.concepto, b.concepto)) : [], pagos = c ? pagosDe(c.id).slice(0, 12) : [];
     const box = (titulo, inner, btn) => '<div class="field full"><span class="lbl" style="display:flex;justify-content:space-between;align-items:center">' + titulo + (btn || '') + '</span>' + inner + '</div>';
     const lista = rows => rows.length ? '<div class="rows" style="border:1px solid var(--line);border-radius:8px">' + rows.join('') + '</div>' : '<span class="muted">Nada cargado.</span>';
-    const extra = c ? box('Sueldo u honorario', lista(hist.map(r => '<div class="row" style="cursor:default"><span class="d">' + fmt(r.desde) + '</span><span class="t"><b class="money">' + money(r.monto, r.moneda) + '</b><span>' + esc(r.concepto + (r.motivo ? ' · ' + r.motivo : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgRemDel" data-id="' + esc(r.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">+ Sueldo o aumento</button>') +
-      box('Extras fijos', lista(ex.map(x => '<div class="row" style="cursor:default"><span class="d">' + (x.desde ? fmt(x.desde) : 'siempre') + '</span><span class="t"><b>' + esc(x.concepto) + ' · <span class="money">' + money(x.monto, x.moneda) + '</span></b><span>' + esc((x.hasta ? 'hasta ' + fmt(x.hasta) : 'sin fecha de fin') + (x.notas ? ' · ' + x.notas : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgExtraDel" data-id="' + esc(x.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgExtra" data-id="' + esc(c.id) + '">+ Extra</button>') +
-      box('Últimos pagos', lista(pagos.map(v => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b class="money">' + money(v.egreso, v.moneda) + '</b><span>' + esc(v.detalle || v.subcuenta) + '</span></span><span></span></div>'))) : '<p class="formnote" style="grid-column:1/-1">Después de guardar vas a poder cargar el sueldo u honorario y los extras.</p>';
+    const remRows = hist.map(r => { const a = remAnterior(r), pc = pctDe(r, a); return '<div class="row" style="cursor:default"><span class="d">' + fmt(r.desde) + '</span><span class="t"><b class="money">' + money(r.monto, r.moneda) + '</b><span>' + esc([r.concepto, pc != null ? pctTxt(pc) : '', r.motivo].filter(Boolean).join(' · ')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgRemDel" data-id="' + esc(r.id) + '" aria-label="Borrar">✕</button></div>'; });
+    const pagRows = pagos.map(v => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b class="money">' + money(v.egreso, v.moneda) + '</b><span>' + esc(v.detalle || v.subcuenta) + '</span></span><span></span></div>');
+    const extra = !c ? '<p class="formnote" style="grid-column:1/-1">Después de guardar vas a poder cargar ' + (esP ? 'su honorario fijo (si tiene) y sus pagos.' : 'el sueldo, los aumentos y los extras.') + '</p>' : esP
+      ? box('Honorario fijo por mes', lista(remRows) + '<span class="hint">Solo si cobra lo mismo todos los meses. Si cobra por trabajo, dejalo vacío y cargá cada trabajo en Pagos del mes.</span>', '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">+ Honorario</button>') + box('Últimos pagos', lista(pagRows))
+      : box('Sueldo', lista(remRows), '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">' + (hist.length ? '+ Aumento' : '+ Sueldo') + '</button>') +
+        box('Extras fijos', lista(ex.map(x => '<div class="row" style="cursor:default"><span class="d">' + (x.desde ? fmt(x.desde) : 'siempre') + '</span><span class="t"><b>' + esc(x.concepto) + ' · <span class="money">' + money(x.monto, x.moneda) + '</span></b><span>' + esc((x.hasta ? 'hasta ' + fmt(x.hasta) : 'sin fecha de fin') + (x.notas ? ' · ' + x.notas : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgExtraDel" data-id="' + esc(x.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgExtra" data-id="' + esc(c.id) + '">+ Extra</button>') +
+        box('Últimos pagos', lista(pagRows));
+    const rolOpts = esP ? ['externo', 'equipo'] : ['equipo', 'admin'];
+    const fRol = { k: 'rol', label: 'Qué ve en la app', type: 'select', html: v => rolOpts.map(r => opt(r, ROLES[r] + (r === 'externo' ? ' (solo lo suyo)' : r === 'admin' ? ' (todo, con la plata)' : ' (todo menos la plata)'), v)).join('') };
+    const fAcceso = [{ k: 'acceso', label: 'Entra a la app con su email', type: 'check' }, { k: 'email_acceso', label: 'Email para entrar', type: 'email', hint: 'Vacío = usa el email de arriba.' }, fRol];
+    const fBanco = [{ k: 'cuit', label: 'CUIT / CUIL' }, { k: 'alias_cbu', label: 'Alias para transferirle' }, { k: 'cbu', label: 'CBU / CVU' }, { k: 'banco', label: 'Banco' }];
+    const fComunes = [{ k: 'ingreso', label: esP ? 'Trabaja con nosotros desde' : 'Fecha de ingreso', type: 'date', adv: 1 }, { k: 'egreso', label: 'Fecha de baja', type: 'date', adv: 1 },
+      { k: 'contrato', label: 'Contrato o legajo (link)', type: 'url', full: 1, ph: 'https://drive.google.com/...', adv: 1 },
+      { k: 'otros_nombres', label: 'Apodos (para reconocer pagos en el banco)', full: 1, hint: 'Separados por coma. Ej.: Vale, Valentina R.', adv: 1 },
+      { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2, adv: 1 }];
+    const fields = esP ? [
+      { k: 'nombre', label: 'Nombre o empresa', req: 1, full: 1 },
+      { k: 'rubro', label: 'Rubro', type: 'select', html: v => opt('', '—', v) + [...new Set([...((S.L && S.L.rubros) || RUBROS), v].filter(Boolean))].map(r => opt(r, r, v)).join(''), hint: 'Los rubros se cambian en Configuración › Opciones.' },
+      { k: 'vinculo', label: 'Cómo factura', type: 'select', opts: VINCULOS, blank: '—' },
+      ...fBanco,
+      { k: 'email', label: 'Email', type: 'email' }, { k: 'tel', label: 'Teléfono' },
+      { k: 'activo', label: 'Activo', type: 'check', full: 1 },
+      { k: 'app', label: 'Trabaja en la app (le asignamos tareas o redes)', type: 'check', full: 1, adv: 1 },
+      { k: 'alias', label: 'Cómo le decimos en la app', adv: 1 }, ...fAcceso.map(f => ({ ...f, adv: 1 })),
+      { k: 'tipo', label: 'Es', type: 'select', opts: TIPOS, adv: 1, hint: 'Si pasa a ser del equipo, cambialo a Empleado o Socio.' },
+      ...fComunes,
+    ] : [
+      { k: 'nombre', label: 'Nombre completo', req: 1, full: 1 },
+      { k: 'alias', label: 'Cómo le decimos', req: 1, hint: 'Así aparece como responsable en proyectos y redes.' },
+      { k: 'puesto', label: 'Puesto', ph: 'Diseñadora, community manager…' },
+      { k: 'tipo', label: 'Es', type: 'select', opts: ['Socio', 'Empleado', 'Proveedor'] },
+      { k: 'vinculo', label: 'Vínculo', type: 'select', opts: VINCULOS, blank: '—' },
+      { k: 'email', label: 'Email', type: 'email' }, { k: 'tel', label: 'Teléfono' },
+      ...fAcceso,
+      { k: 'activo', label: 'Activa/o (si no, deja de cobrar y pierde el acceso)', type: 'check', full: 1 },
+      ...fBanco.map(f => ({ ...f, adv: 1 })),
+      { k: 'aguinaldo', label: 'Cobra aguinaldo (junio y diciembre)', type: 'check', adv: 1 },
+      ...fComunes,
+    ];
     openPanel({
-      masLabel: 'Vínculo, fechas, usuario de la app y más',
-      title: c ? c.nombre : 'Nueva persona o proveedor', eyebrow: c ? (c.tipo + (c.rubro ? ' · ' + c.rubro : '')) : 'Sueldos y proveedores',
-      values: vals,
-      fields: [
-        { k: 'nombre', label: 'Nombre', req: 1, full: 1 },
-        { k: 'tipo', label: 'Tipo', type: 'select', opts: TIPOS },
-        { k: 'rubro', label: 'Rubro', type: 'select', html: v => opt('', '—', v) + [...new Set([...((S.L && S.L.rubros) || RUBROS), v].filter(Boolean))].map(r => opt(r, r, v)).join(''), hint: 'Los rubros se cambian en Configuración → Opciones.' },
-        { k: 'cuit', label: 'CUIT / CUIL' },
-        { k: 'alias_cbu', label: 'Alias para transferirle' },
-        { k: 'cbu', label: 'CBU / CVU' },
-        { k: 'banco', label: 'Banco' },
-        { k: 'email', label: 'Email', type: 'email' },
-        { k: 'tel', label: 'Teléfono' },
-        { k: 'activo', label: 'Activo', type: 'check' },
-        { k: 'vinculo', label: 'Vínculo', type: 'select', opts: VINCULOS, blank: '—', adv: 1 },
-        { k: 'persona_id', label: 'Usuario de la app', type: 'select', html: v => opt('', 'No usa la app', v) + S.E.map(e => opt(e._id, e.persona, v)).join(''), adv: 1 },
-        { k: 'ingreso', label: 'Fecha de ingreso', type: 'date', adv: 1 },
-        { k: 'egreso', label: 'Fecha de baja', type: 'date', adv: 1 },
-        { k: 'aguinaldo', label: 'Cobra aguinaldo (junio y diciembre)', type: 'check', adv: 1 },
-        { k: 'contrato', label: 'Contrato o legajo (link)', type: 'url', full: 1, ph: 'https://drive.google.com/...', adv: 1 },
-        { k: 'otros_nombres', label: 'Apodos (para reconocer pagos en el banco)', full: 1, hint: 'Separados por coma. Ej.: Vale, Valentina R.', adv: 1 },
-        { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2, adv: 1 },
-      ],
-      extra,
+      masLabel: esP ? 'Acceso a la app, fechas y más' : 'Datos para pagarle, fechas y más',
+      title: c ? c.nombre : p ? (p.nombre || p.persona) : (esP ? 'Nuevo proveedor' : 'Nueva persona del equipo'),
+      eyebrow: esP ? 'Proveedor' + (c && c.rubro ? ' · ' + c.rubro : '') : 'Equipo' + (c ? ' · ' + (c.tipo) : ''),
+      values: vals, fields, extra,
       onSave: async v => {
-        const row = { ...v, persona_id: v.persona_id || null, ingreso: v.ingreso || null, egreso: v.egreso || null, otros_nombres: String(v.otros_nombres || '').split(',').map(s => s.trim()).filter(Boolean) };
+        const quiereApp = 'app' in v ? !!v.app : true;
+        let pid2 = p ? p._id : null;
+        if (quiereApp) {
+          const alias = String(v.alias || String(v.nombre).split(/\s+/)[0] || '').trim();
+          if (!pid2) { const mismo = S.E.find(e => norm(e.persona) === norm(alias) && !colabDePersona(e._id)); if (mismo) pid2 = mismo._id; }
+          if (S.E.some(e => norm(e.persona) === norm(alias) && e._id !== pid2)) throw new Error('Ya hay alguien que en la app se llama “' + alias + '”. Poné otro nombre corto.');
+          const mail = v.acceso ? String(v.email_acceso || v.email || '').trim() : '';
+          if (v.acceso && !mail) throw new Error('Para entrar a la app necesita un email');
+          if (mail && S.E.some(e => e.email && norm(e.email) === norm(mail) && e._id !== pid2)) throw new Error('Ese email ya lo usa otra persona para entrar');
+          if (S.me && pid2 === S.me.id && (v.rol !== 'admin' || !mail || !v.activo)) throw new Error('No podés quitarte el acceso de administrador a vos mismo');
+          const ui = { persona: alias, nombre: v.nombre, email: mail, tel: v.tel || '', rol: v.rol || (esP ? 'externo' : 'equipo'), activo: !!v.activo };
+          if ('puesto' in v) ui.puesto = v.puesto || ''; else if (!pid2) ui.puesto = v.rubro ? 'Proveedor · ' + v.rubro : 'Proveedor';
+          pid2 = await data.save('persona', pid2, ui);
+        } else if (pid2) {
+          if (S.me && pid2 === S.me.id) throw new Error('No podés quitarte el acceso a vos mismo');
+          await data.save('persona', pid2, { email: '', activo: false });
+        }
+        const row = {}; COLS.forEach(k2 => { if (k2 in v) row[k2] = v[k2]; });
+        Object.assign(row, { persona_id: pid2 || null, ingreso: v.ingreso || null, egreso: v.egreso || null, otros_nombres: String(v.otros_nombres || '').split(',').map(s => s.trim()).filter(Boolean) });
         let cid = c && c.id;
         if (c) await data.upd('colaboradores', c.id, row); else cid = (await data.ins('colaboradores', row)).id;
         // Vincular pagos de Caja que todavía no tienen persona
@@ -164,15 +305,20 @@ export function initEquipo(ctx, k) {
         toast((c ? 'Datos guardados' : 'Agregado') + (sueltos.length ? ' · ' + sueltos.length + ' pagos anteriores reconocidos' : ''));
         if (!c) AD.postSave = () => formColaborador(cid);
       },
-      onDelete: c ? async () => { await data.del('colaboradores', c.id); toast('Borrado. Sus pagos siguen en Gastos e ingresos.'); } : null,
+      onDelete: c ? async () => {
+        if (c.persona_id && S.me && c.persona_id === S.me.id) throw new Error('No podés borrarte a vos mismo');
+        await data.del('colaboradores', c.id);
+        if (c.persona_id) await data.save('persona', c.persona_id, { email: '', activo: false });
+        toast('Borrado. Sus pagos siguen en Gastos e ingresos.');
+      } : null,
     });
   }
-  function formRem(cid) {
+  function formRem(cid, desde) {
     const c = colab(cid); if (!c) return;
     const concepto = c.tipo === 'Proveedor' ? 'Honorario' : 'Sueldo';
     const cur = remVig(cid, thisMonth()).find(r => r.concepto === concepto);
     openPanel({
-      title: c.nombre, eyebrow: cur ? 'Aumento o nuevo monto' : 'Sueldo u honorario', saveLabel: 'Guardar',
+      title: c.nombre, eyebrow: cur ? (concepto === 'Sueldo' ? 'Aumento de sueldo' : 'Nuevo honorario') : (concepto === 'Sueldo' ? 'Sueldo' : 'Honorario fijo'), saveLabel: 'Guardar',
       intro: cur ? 'Vigente: <b class="money">' + esc(money(cur.monto, cur.moneda)) + '</b> desde ' + esc(fmt(cur.desde)) + '. Se guarda como monto nuevo sin perder el anterior. Podés poner el porcentaje y se calcula solo.' : 'El monto que se paga cada mes desde el mes indicado.',
       values: { concepto, desde: cur ? addMonth(thisMonth(), cur.desde >= thisMonth() ? 1 : 0) : thisMonth(), monto: '', pct: '', moneda: cur ? cur.moneda : 'ARS', motivo: cur ? '' : 'Inicial' },
       fields: [
@@ -188,7 +334,7 @@ export function initEquipo(ctx, k) {
         if (!monto) throw new Error('Poné el monto o el porcentaje');
         await data.upsert('remuneraciones', { colaborador_id: cid, concepto: v.concepto, desde: v.desde + '-01', monto, moneda: v.moneda, motivo: v.motivo || (v.pct ? 'Aumento ' + String(v.pct).replace('.', ',') + '%' : '') }, 'colaborador_id,concepto,desde');
         toast('Guardado: ' + money(monto, v.moneda) + ' desde ' + fmt(v.desde));
-        AD.postSave = () => formColaborador(cid);
+        if (desde !== 'aum') AD.postSave = () => formColaborador(cid);
       },
     });
   }
@@ -211,15 +357,15 @@ export function initEquipo(ctx, k) {
     });
     const el = $('#af-concepto'); if (el) el.setAttribute('list', 'dl-extras');
   }
-  function formItem(id, colabId) {
+  function formItem(id, colabId, prov) {
     const it = id ? AD.LQ.find(l => l.id === id) : null, m = AD.pg.mes;
     openPanel({
       title: it ? it.concepto : 'Nuevo pago', eyebrow: 'Pagos de ' + monthLabel(it ? it.periodo : m),
-      values: it ? { ...it } : { colaborador_id: colabId || '', tipo: colabId && (colab(colabId) || {}).tipo !== 'Proveedor' ? 'Extra' : 'Honorario', concepto: '', monto: '', moneda: 'ARS', notas: '' },
+      values: it ? { ...it } : { colaborador_id: colabId || '', tipo: prov ? 'Honorario' : 'Extra', concepto: '', monto: '', moneda: 'ARS', notas: '' },
       fields: [
-        { k: 'colaborador_id', label: 'Para', type: 'select', req: 1, full: 1, html: v => opt('', 'Elegí', v) + AD.CO.filter(c => c.activo || c.id === v).map(c => opt(c.id, c.nombre + ' · ' + c.tipo, v)).join('') },
+        { k: 'colaborador_id', label: 'Para', type: 'select', req: 1, full: 1, html: v => opt('', 'Elegí', v) + AD.CO.filter(c => (c.activo && (it || prov == null || esProv(c) === prov)) || c.id === v).map(c => opt(c.id, c.nombre + ' · ' + (c.tipo === 'Proveedor' ? (c.rubro || 'Proveedor') : c.tipo), v)).join('') },
         { k: 'tipo', label: 'Tipo', type: 'select', opts: ['Sueldo', 'Honorario', 'Extra', 'Aguinaldo', 'Otro'] },
-        { k: 'concepto', label: 'Concepto', req: 1, ph: 'Fotos Casa Ceibo' },
+        { k: 'concepto', label: 'Concepto', req: 1, ph: prov ? 'Fotos Casa Ceibo' : 'Bono fin de año' },
         { k: 'monto', label: 'Monto', num: 1, req: 1 },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
         { k: 'notas', label: 'Notas', full: 1 },
@@ -275,8 +421,8 @@ export function initEquipo(ctx, k) {
     const objetivo = AD.CO.filter(c => c.activo && c.tipo !== 'Proveedor' && remVig(c.id, thisMonth()).some(r => r.concepto === 'Sueldo'));
     if (!objetivo.length) { toast('Primero cargá los sueldos vigentes'); return; }
     openPanel({
-      title: 'Aumento de sueldos', eyebrow: 'Sueldos y proveedores', saveLabel: 'Aplicar',
-      intro: 'Se guarda un sueldo nuevo para cada persona tildada, desde el mes indicado, sin perder el historial.',
+      title: 'Aumento general', eyebrow: 'Equipo · Aumentos', saveLabel: 'Aplicar',
+      intro: 'Se guarda un sueldo nuevo para cada persona tildada, desde el mes indicado, sin perder el historial. Los proveedores no entran: su honorario se cambia en su ficha.',
       values: { pct: '', desde: addMonth(thisMonth(), 1), motivo: '' },
       fields: [{ k: 'pct', label: 'Aumento %', num: 1, req: 1 }, { k: 'desde', label: 'Desde qué mes', type: 'month', month: 1, req: 1 }, { k: 'motivo', label: 'Motivo', ph: 'Paritaria', full: 1 }],
       extra: '<div class="field full"><span class="lbl">A quiénes</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + objetivo.map(c => { const r = remVig(c.id, thisMonth()).find(x => x.concepto === 'Sueldo'); return '<label class="row" style="cursor:pointer"><input type="checkbox" data-pgaum="' + esc(c.id) + '" checked><span class="t"><b>' + esc(c.nombre) + '</b><span>' + esc(c.tipo) + '</span></span><span class="money">' + money(r.monto, r.moneda) + '</span></label>'; }).join('') + '</div></div>',
@@ -309,13 +455,12 @@ export function initEquipo(ctx, k) {
   /* ---------- acciones ---------- */
   const actions = {
     pgMes: t => { const n = +t.dataset.d; AD.pg.mes = n ? addMonth(AD.pg.mes, n) : thisMonth(); ctx.render(); },
-    pgVer: t => { AD.pg.ver = t.dataset.v; ctx.render(); },
-    pgColab: t => formColaborador(t.dataset.id || null),
-    pgRem: t => formRem(t.dataset.id),
+    pgColab: t => formColaborador(t.dataset.id || null, t.dataset.pid || null, t.dataset.g === 'prov' ? true : t.dataset.g === 'eq' ? false : null),
+    pgRem: t => formRem(t.dataset.id, t.dataset.from),
     pgRemDel: async t => { const r = AD.RM.find(x => x.id === t.dataset.id); try { await data.del('remuneraciones', t.dataset.id); await ctx.reload(); if (r) formColaborador(r.colaborador_id); } catch (err) { toast(err.message); } },
     pgExtra: t => formExtra(t.dataset.id),
     pgExtraDel: async t => { const x = AD.CF.find(y => y.id === t.dataset.id); try { await data.del('conceptos_fijos', t.dataset.id); await ctx.reload(); if (x) formColaborador(x.colaborador_id); } catch (err) { toast(err.message); } },
-    pgItem: t => formItem(t.dataset.id || null, t.dataset.colab || null),
+    pgItem: t => formItem(t.dataset.id || null, t.dataset.colab || null, t.dataset.g === 'prov' ? true : t.dataset.g === 'eq' ? false : null),
     pgPagar: t => formPagar(t.dataset.id),
     pgRecibo: async t => { const w = window.open('', '_blank'); try { const { abrirPdf } = await import('./docs.js'); const p = await reciboPdf(t.dataset.id); abrirPdf(p.bytes, p.nombre.replace(/\.pdf$/, ''), w); } catch (err) { if (w) w.close(); toast(err.message); } },
     pgReciboMail: async t => {
@@ -327,8 +472,8 @@ export function initEquipo(ctx, k) {
         build: v => E.libreEmail({ cfg: k.cfgMarca(), contacto: p.c.nombre, cuenta: p.c.nombre, titulo: 'Comprobante de ' + p.periodo, mensaje: v.mensaje, firma: k.firma(), asunto: v.asunto }) });
     },
     pgAumento: () => formAumento(),
-    pgGenerar: async () => {
-      const m = AD.pg.mes, rows = faltantes(m).map(p => ({ ...p, periodo: m + '-01' }));
+    pgGenerar: async t => {
+      const m = AD.pg.mes, g = t && t.dataset ? t.dataset.g : '', rows = faltantes(m).filter(x => !g || deGrupo(g === 'prov')(x)).map(p => ({ ...p, periodo: m + '-01' }));
       if (!rows.length) { toast('No falta nada'); return; }
       try { await data.insMany('liquidaciones', rows); toast(rows.length + ' pagos calculados'); await ctx.reload(); } catch (err) { toast(err.message); }
     },
@@ -337,5 +482,5 @@ export function initEquipo(ctx, k) {
 
   // Para el asistente y la Caja
   const colabPorNombre = nombre => { const n = norm((nombre || '').trim()); return n ? AD.CO.find(c => norm(c.nombre) === n || (c.otros_nombres || []).some(o => norm(o) === n)) : null; };
-  return { actions, view: vPagos, faltantes, liqMes, colabPorNombre };
+  return { actions, view: vSueldos, vSueldos, vAumentos, vProveedores, vPersonas, faltantes, liqMes, colabPorNombre };
 }
