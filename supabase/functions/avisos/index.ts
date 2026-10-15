@@ -39,10 +39,22 @@ async function slackDM(token: string, canal: string, texto: string, link?: strin
   if (!o.ok) throw new Error(o.error || 'Slack ' + r.status);
 }
 
+// Preferencias de cada persona (Mi perfil): Slack por tipo de aviso, horario y resumen diario.
+async function prefsDe(svc: any) {
+  const { data } = await svc.from('personas').select('id, prefs');
+  return new Map((data || []).map((p: any) => [p.id, p.prefs || {}]));
+}
+const enHorario = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Cordoba' })); const h = d.getHours(), wd = d.getDay(); return wd >= 1 && wd <= 5 && h >= 9 && h < 19; };
+
 async function cola(svc: any) {
   const sl = await cred(svc, 'slack');
+  const prefs = await prefsDe(svc);
+  // Quien pidió "Slack solo en horario de trabajo" no recibe fuera de horario: sus avisos esperan a la próxima vuelta.
+  const silencio = enHorario() ? [] : [...prefs.entries()].filter(([, p]: any) => p.horario).map(([id]) => id);
   // Se "toman" los avisos pendientes de una vez, así dos disparos juntos no mandan duplicados.
-  const { data: rows } = await svc.from('notificaciones').update({ slack: sl ? 'enviada' : 'omitida' }).eq('slack', 'pendiente').gte('created_at', new Date(Date.now() - 86400_000).toISOString()).select('id, persona_id, tipo, titulo, cuerpo, link');
+  let q = svc.from('notificaciones').update({ slack: sl ? 'enviada' : 'omitida' }).eq('slack', 'pendiente').gte('created_at', new Date(Date.now() - 86400_000).toISOString());
+  if (silencio.length) q = q.not('persona_id', 'in', '(' + silencio.join(',') + ')');
+  const { data: rows } = await q.select('id, persona_id, tipo, titulo, cuerpo, link');
   // Tickets nuevos y respuestas de clientes también van al canal general, si hay uno configurado (una vez cada uno).
   if (sl && sl.canal && rows) {
     const vistos = new Set<string>();
@@ -56,7 +68,9 @@ async function cola(svc: any) {
   const { data: ps } = await svc.from('personas').select('id, email').in('id', ids);
   const mail = new Map((ps || []).map((p: any) => [p.id, p.email]));
   let ok = 0; const fallidos: string[] = [];
+  const omitidos: string[] = [];
   for (const r of rows) {
+    if (((prefs.get(r.persona_id) || {}) as any).slack?.[r.tipo] === false) { omitidos.push(r.id); continue; }
     try {
       const em = mail.get(r.persona_id); const uid = em ? await slackId(sl.token, em) : null;
       if (!uid) { fallidos.push(r.id); continue; }
@@ -65,6 +79,7 @@ async function cola(svc: any) {
     } catch { fallidos.push(r.id); }
   }
   if (fallidos.length) await svc.from('notificaciones').update({ slack: 'error' }).in('id', fallidos);
+  if (omitidos.length) await svc.from('notificaciones').update({ slack: 'omitida' }).in('id', omitidos);
   return { enviados: ok, sin_slack: fallidos.length };
 }
 
@@ -74,7 +89,7 @@ async function diario(svc: any, soloPersona?: string) {
   const sl = await cred(svc, 'slack'), em = await cred(svc, 'email');
   const emailKey = (em && em.key) || Deno.env.get('RESEND_API_KEY');
   const from = (em && em.from) || Deno.env.get('EMAIL_FROM') || 'àndale <administracion@weareandale.com>';
-  let q = svc.from('personas').select('id, alias, nombre, email, rol').eq('activo', true).not('email', 'is', null);
+  let q = svc.from('personas').select('id, alias, nombre, email, rol, prefs').eq('activo', true).not('email', 'is', null);
   if (soloPersona) q = q.eq('id', soloPersona);
   const { data: ps } = await q;
   const enSemana = new Date(Date.now() + 6 * 86400_000).toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Cordoba' });
@@ -83,6 +98,8 @@ async function diario(svc: any, soloPersona?: string) {
   const { data: nots } = await svc.from('notificaciones').select('persona_id').eq('leida', false);
   let enviados = 0;
   for (const p of ps || []) {
+    const pr = p.prefs || {};
+    if (pr.diario === false && !soloPersona) continue;
     const mias = (tks || []).filter((t: any) => t.responsable_id === p.id && !['Entregado', 'Cancelado'].includes(t.proyectos?.estado));
     const atras = mias.filter((t: any) => t.fecha < hoy), deHoy = mias.filter((t: any) => t.fecha === hoy), prox = mias.filter((t: any) => t.fecha > hoy);
     const pm = (peds || []).filter((x: any) => x.responsable_id === p.id);
@@ -98,9 +115,9 @@ async function diario(svc: any, soloPersona?: string) {
     const nombre = (p.nombre || p.alias || '').split(' ')[0];
     const texto = 'Buen día, ' + nombre + ' 🐷\n\n' + (partes.length ? partes.join('\n\n') : 'Hoy no tenés nada vencido ni para hoy. ¡Buen día!');
     try {
-      const uid = sl ? await slackId(sl.token, p.email) : null;
+      const uid = sl && pr.diario_canal !== 'mail' ? await slackId(sl.token, p.email) : null;
       if (uid) { await slackDM(sl.token, uid, texto, '#mis', 'Ver mis trabajos'); enviados++; continue; }
-      if (emailKey) {
+      if (emailKey && pr.diario_canal !== 'slack') {
         const html = '<div style="font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.55;color:#17181F;max-width:560px">' +
           esc(texto).replace(/\*([^*]+)\*/g, '<b>$1</b>').replace(/\n/g, '<br>') + '<p style="margin-top:22px"><a href="' + APP + '#mis" style="background:#FF4655;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600">Ver mis trabajos</a></p></div>';
         const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + emailKey, 'Content-Type': 'application/json' },

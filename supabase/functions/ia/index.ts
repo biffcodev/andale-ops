@@ -3,7 +3,7 @@
 // Equipo y admins. verify_jwt apagado: se valida el usuario con rpc('yo').
 //
 // Secretos: ANTHROPIC_API_KEY (el mismo del asistente) · IA_MODEL_RAPIDO opcional (default claude-haiku-5-5, el más rápido)
-// POST { modo: 'comando' | 'cliente' | 'charla' | 'tareas' | 'mail' | 'texto' | 'redes_ideas' | 'redes_copys' | 'redes_chat' | 'informe_redes' | 'rentabilidad' | 'presupuesto' | 'brief', texto?, contexto, tarea?, imagenes? }
+// POST { modo: 'comando' | 'cliente' | 'charla' | 'tareas' | 'mail' | 'texto' | 'redes_ideas' | 'redes_copys' | 'redes_chat' | 'informe_redes' | 'rentabilidad' | 'presupuesto' | 'brief' | 'marca', texto?, contexto, tarea?, imagenes? }
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const CORS = {
@@ -204,16 +204,16 @@ const PIEZA_PROPS = {
 };
 const TOOL_IDEAS = { name: 'proponer_piezas', description: 'Piezas propuestas para el mes.', input_schema: { type: 'object', required: ['piezas'], properties: {
   piezas: { type: 'array', items: { type: 'object', required: ['formato', 'tema'], properties: PIEZA_PROPS } } } } };
-const SYS_IDEAS = QUIENES + ' Sos community manager de la agencia. Proponés el contenido de un mes de redes para un cliente: temas concretos, variados y propios de su rubro, aprovechando fechas especiales de Argentina que tengan sentido para la marca. ' +
+const SYS_IDEAS = QUIENES + ' Si el contexto trae MARCA (ficha de marca y voz), es la regla: escribí como esa marca y no como la agencia, con su tono, su trato (vos, tú o usted), su uso de emojis, las palabras que usa, sus pilares y su público, y nunca lo que figura en “lo que nunca dice ni hace”. Usá los copys_aprobados como ejemplo de cómo suena. Si no hay ficha, escribí neutro y sin inventar datos de la marca.  Sos community manager de la agencia. Proponés el contenido de un mes de redes para un cliente: temas concretos, variados y propios de su rubro, aprovechando fechas especiales de Argentina que tengan sentido para la marca. ' +
   'Respetá la cantidad por formato que te piden, repartí las fechas en el mes (sin amontonar), no repitas lo que ya está cargado ni lo del mes anterior. Copys breves, tono de la marca, con llamado a la acción cuando corresponda. No inventes precios, promociones ni datos que no te pasen.';
 const TOOL_COPYS = { name: 'escribir_copys', description: 'Copys para las piezas.', input_schema: { type: 'object', required: ['piezas'], properties: {
   piezas: { type: 'array', items: { type: 'object', required: ['id', 'copy'], properties: { id: { type: 'string' }, copy: { type: 'string' }, hashtags: { type: 'string' } } } } } } };
-const SYS_COPYS = QUIENES + ' Escribís copys de redes para las piezas que te pasan (cada una con su id y su tema). Tono de la marca, claros, con emoji solo si va con la marca, llamado a la acción cuando sirve. Devolvé el mismo id. No inventes precios ni promociones.';
+const SYS_COPYS = QUIENES + ' Si el contexto trae MARCA (ficha de marca y voz), es la regla: escribí como esa marca y no como la agencia, con su tono, su trato (vos, tú o usted), su uso de emojis, las palabras que usa, sus pilares y su público, y nunca lo que figura en “lo que nunca dice ni hace”. Usá los copys_aprobados como ejemplo de cómo suena. Si no hay ficha, escribí neutro y sin inventar datos de la marca.  Escribís copys de redes para las piezas que te pasan (cada una con su id y su tema). Tono de la marca, claros, con emoji solo si va con la marca, llamado a la acción cuando sirve. Devolvé el mismo id. No inventes precios ni promociones.';
 const TOOL_CHATRED = { name: 'repartir_chat', description: 'Lo que pidió el cliente, pieza por pieza.', input_schema: { type: 'object', required: ['cambios'], properties: {
   cambios: { type: 'array', items: { type: 'object', required: ['id', 'accion'], properties: { id: { type: 'string', description: 'id exacto de la pieza' }, accion: { type: 'string', enum: ['aprobada', 'cambios', 'nota'] }, detalle: { type: 'string', description: 'qué pidió, en una o dos líneas' } } } },
   nuevas: { type: 'array', description: 'piezas nuevas que pidió el cliente', items: { type: 'object', required: ['formato', 'tema'], properties: PIEZA_PROPS } },
   resumen: { type: 'string', description: 'resumen en una línea de la respuesta del cliente' } } } };
-const SYS_CHATRED = QUIENES + ' Te pegan un chat (WhatsApp o mail) donde el cliente opina sobre las piezas de redes del mes. Relacioná cada comentario con la pieza correcta (por fecha, formato o tema) y decí si la aprueba, pide cambios o solo es una nota. Si pide algo nuevo, ponelo en nuevas. No inventes: si no se puede saber a qué pieza se refiere, no la incluyas.';
+const SYS_CHATRED = QUIENES + ' Si el contexto trae MARCA (ficha de marca y voz), es la regla: escribí como esa marca y no como la agencia, con su tono, su trato (vos, tú o usted), su uso de emojis, las palabras que usa, sus pilares y su público, y nunca lo que figura en “lo que nunca dice ni hace”. Usá los copys_aprobados como ejemplo de cómo suena. Si no hay ficha, escribí neutro y sin inventar datos de la marca.  Te pegan un chat (WhatsApp o mail) donde el cliente opina sobre las piezas de redes del mes. Relacioná cada comentario con la pieza correcta (por fecha, formato o tema) y decí si la aprueba, pide cambios o solo es una nota. Si pide algo nuevo, ponelo en nuevas. No inventes: si no se puede saber a qué pieza se refiere, no la incluyas.';
 
 /* ---------- Informe mensual de redes ---------- */
 const TOOL_INFORME = { name: 'informe_redes', description: 'Informe mensual para el cliente.', input_schema: { type: 'object', required: ['metricas', 'texto'], properties: {
@@ -223,7 +223,7 @@ const TOOL_INFORME = { name: 'informe_redes', description: 'Informe mensual para
   destacadas: { type: 'array', description: 'las 1 a 3 publicaciones que mejor funcionaron', items: { type: 'object', required: ['titulo', 'por_que'], properties: { titulo: { type: 'string' }, por_que: { type: 'string' } } } },
   texto: { type: 'string', description: 'resumen para el cliente en 2 o 3 párrafos cortos: cómo fue el mes, qué funcionó y por qué. Cercano y claro, sin tecnicismos.' },
   recomendaciones: { type: 'array', items: { type: 'string' }, description: '2 a 4 cosas concretas para probar el mes que viene' } } } };
-const SYS_INFORME = QUIENES + ' Armás el informe mensual de redes para un cliente a partir de los datos exportados de Meta (CSV, números pegados o capturas) y lo que se publicó. ' +
+const SYS_INFORME = QUIENES + ' Si el contexto trae MARCA (ficha de marca y voz), es la regla: escribí como esa marca y no como la agencia, con su tono, su trato (vos, tú o usted), su uso de emojis, las palabras que usa, sus pilares y su público, y nunca lo que figura en “lo que nunca dice ni hace”. Usá los copys_aprobados como ejemplo de cómo suena. Si no hay ficha, escribí neutro y sin inventar datos de la marca.  Armás el informe mensual de redes para un cliente a partir de los datos exportados de Meta (CSV, números pegados o capturas) y lo que se publicó. ' +
   'Usá solo números que estén en los datos: si una métrica no está, no la pongas. Compará con el mes anterior solo si está el dato. Explicá en lenguaje simple, sin prometer resultados.';
 
 /* ---------- Rentabilidad y presupuesto ---------- */
@@ -237,6 +237,17 @@ const TOOL_PRESU = { name: 'estimar_presupuesto', description: 'Estimación de h
   horas: { type: 'number' }, horas_min: { type: 'number' }, horas_max: { type: 'number' }, precio_sugerido: { type: 'number' }, moneda: { type: 'string' },
   explicacion: { type: 'string', description: 'en 2 o 3 frases: en qué proyectos parecidos te basaste y por qué' } } } };
 const SYS_PRESU = QUIENES + ' Ayudás a presupuestar un trabajo nuevo usando lo que tardaron proyectos parecidos de la agencia (horas reales cargadas) y el valor hora. Si hay pocos datos, decilo y dá un rango más amplio. No inventes proyectos.';
+
+/* ---------- Ficha de marca y voz ---------- */
+const TOOL_MARCA = { name: 'ficha_marca', description: 'Ficha de marca y voz del cliente.', input_schema: { type: 'object', properties: {
+  rubro: { type: 'string', description: 'qué hace o vende la marca, en una o dos líneas' }, publico: { type: 'string', description: 'a quién le habla' },
+  tono: { type: 'string', description: 'cómo habla, en 2 o 3 frases concretas (no adjetivos vacíos)' }, trato: { type: 'string', enum: ['', 'Vos', 'Tú', 'Usted'] },
+  emojis: { type: 'string', enum: ['', 'Sí, con ganas', 'Pocos y puntuales', 'No usa'] }, palabras_si: { type: 'string', description: 'palabras, muletillas o frases propias que usa' },
+  palabras_no: { type: 'string', description: 'lo que no dice ni hace (temas, palabras, estilos)' }, pilares: { type: 'string', description: '3 a 6 pilares de contenido, uno por renglón' },
+  hashtags: { type: 'string' }, fechas: { type: 'string', description: 'fechas importantes del rubro o la marca' }, referencias: { type: 'string' },
+  ejemplos: { type: 'string', description: '2 o 3 copys reales que mejor representan la voz, copiados tal cual de los aprobados (vacío si no hay)' } } } };
+const SYS_MARCA = QUIENES + ' Armás la ficha de marca y voz de un cliente de la agencia para que el equipo y vos escriban como la marca. Usá el brief, las notas, los servicios y sobre todo los copys ya aprobados (de ahí sacás el tono, el trato, los emojis y las palabras). ' +
+  'No inventes: si un dato no surge de lo que te pasan, dejalo vacío. Si ya hay una ficha, mantené lo que tiene y completá o corregí solo con evidencia.';
 
 /* ---------- Brief del cliente (Tally) ---------- */
 const TOOL_BRIEF = { name: 'leer_brief', description: 'Lo importante del brief.', input_schema: { type: 'object', required: ['resumen'], properties: {
@@ -292,6 +303,7 @@ Deno.serve(async req => {
       }
       case 'rentabilidad': return json(await claude(sb, yo.id, 'rentabilidad', { system: SYS_RENTA, tool: TOOL_RENTA, maxTokens: 2500, texto: hoy + '\n\nDATOS:\n' + ctxTxt(b.contexto) }));
       case 'presupuesto': return json(await claude(sb, yo.id, 'presupuesto', { system: SYS_PRESU, tool: TOOL_PRESU, maxTokens: 1500, texto: hoy + '\n\nHISTORIAL Y VALOR HORA:\n' + ctxTxt(b.contexto) + '\n\nTRABAJO NUEVO:\n' + texto }));
+      case 'marca': return json(await claude(sb, yo.id, 'marca', { system: SYS_MARCA, tool: TOOL_MARCA, maxTokens: 2500, texto: hoy + '\n\nCLIENTE:\n' + ctxTxt(b.contexto) }));
       case 'brief': {
         if (!texto.trim()) throw new Aviso('El brief está vacío.');
         return json(await claude(sb, yo.id, 'brief', { system: SYS_BRIEF, tool: TOOL_BRIEF, maxTokens: 2000, texto: hoy + '\n\nCLIENTE:\n' + ctxTxt(b.contexto) + '\n\nRESPUESTAS:\n' + texto }));

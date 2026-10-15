@@ -5,6 +5,7 @@ import * as E from './emails.js';
 import { initEquipo } from './equipo.js';
 import { initAsistente } from './asistente.js';
 import { initStats } from './stats.js';
+import { masMenu } from './ui.js';
 import { ICON } from './iconos.js';
 import { initMantenimiento } from './mantenimiento.js';
 import { initPropuestas } from './propuestas.js';
@@ -133,7 +134,7 @@ export function initAdmin(ctx) {
     const pendientes = {}; rows.forEach(r => r.facs.forEach(f => add(pendientes, f.moneda, f.saldo)));
     const env = rows.filter(r => r.res && r.res.estado === 'Enviado').length, conComp = rows.filter(r => r.facs.length).length;
     let h = '<div class="head"><div>' + lock + '<h1>Cobros del mes</h1><p>Para cada cliente: resumen, factura y cobro.</p></div>' +
-      '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aMes" data-d="0">Este mes</button><button class="btn sm" data-act="aMes" data-d="1" aria-label="Mes siguiente">→</button></div></div></div>';
+      '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aMes" data-d="0">Este mes</button><button class="btn sm" data-act="aMes" data-d="1" aria-label="Mes siguiente">→</button></div>' + (ctx.autoBtn ? ctx.autoBtn('cobros') : '') + '</div></div>';
     h += '<section class="kpis">' +
       '<div class="kpi"><span class="eyebrow">A facturar</span><b style="font-size:22px;color:var(--money)">' + esc(multi(aFacturar)) + '</b><span>' + cl.length + ' clientes</span></div>' +
       '<div class="kpi"><span class="eyebrow">Resúmenes enviados</span><b>' + env + '</b><span>de ' + cl.length + '</span></div>' +
@@ -150,7 +151,7 @@ export function initAdmin(ctx) {
       const recTxt = r.rec ? '<span class="muted">' + fmt(r.rec.fecha) + '</span>' : (venc ? '<span class="days late">Mandar</span>' : '<span class="muted">—</span>');
       return '<tr class="click" data-act="aCuenta" data-cliente="' + esc(r.cliente) + '"><td class="name">' + esc(r.cliente) + '</td><td class="r"><span class="money"' + (r.res ? '' : ' style="opacity:.7"') + '>' + money(r.total, r.moneda) + '</span>' + (r.res ? '' : '<span class="sub">estimado</span>') + '</td><td>' + resTxt + '</td><td>' + compTxt + '</td><td>' + cobTxt + '</td><td>' + recTxt + '</td></tr>';
     }).join('');
-    h += '<section class="sheet"><div class="sheet-h"><h2>Clientes del mes</h2><div class="toolbar"><select class="in" id="a-otro" aria-label="Otro cliente">' + clienteOpts('', 'Cuenta de otro cliente…') + '</select><button class="btn sm" data-act="aCuentaOtro">Abrir</button><button class="btn sm primary" data-act="aMailResumenes">Enviar resúmenes por email</button><button class="btn sm" data-act="aCSV" title="Los clientes del mes en una planilla">Descargar planilla (CSV)</button></div></div>' +
+    h += '<section class="sheet"><div class="sheet-h"><h2>Clientes del mes</h2><div class="toolbar"><button class="btn sm primary" data-act="aMailResumenes">Enviar resúmenes por email</button>' + masMenu(['<div class="mm-otro"><label class="lbl" for="a-otro">Cuenta de otro cliente</label><span style="display:flex;gap:6px"><select class="in" id="a-otro" aria-label="Otro cliente">' + clienteOpts('', 'Elegí un cliente…') + '</select><button class="btn sm" data-act="aCuentaOtro">Abrir</button></span></div>', { act: 'aCSV', label: 'Descargar planilla (CSV)', icon: 'csv' }]) + '</div></div>' +
       (tr ? '<div class="tbl"><table><thead><tr><th>Cliente</th><th class="r">Total</th><th>Resumen</th><th>Factura</th><th>Cobro</th><th>Recordatorio</th></tr></thead><tbody>' + tr + '</tbody></table></div>' : emptyBox('Nada para facturar en ' + monthLabel(m), 'Cargá precios en los abonos activos o meses de cobro en los proyectos.')) + '</section>';
     return h;
   }
@@ -1126,8 +1127,8 @@ export function initAdmin(ctx) {
     let h = '<div class="head"><div>' + lock + '<h1>Gastos e ingresos</h1><p>Lo que entra y sale, con las categorías de siempre. Los cobros de facturas se cargan solos.</p></div>' +
       '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aCjMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aCjMes" data-d="0">Este mes</button><button class="btn sm" data-act="aCjMes" data-d="1" aria-label="Mes siguiente">→</button></div><button class="btn primary" data-act="aMov">+ Cargar gasto o ingreso</button></div></div>';
     h += '<section class="kpis">' +
-      '<div class="kpi"><span class="eyebrow">Hay en pesos</span><b style="font-size:24px;color:var(--money)">' + money(saldo.ARS || 0, 'ARS') + '</b><span>hoy, todas las cuentas</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Hay en dólares</span><b style="font-size:24px;color:var(--money)">' + money(saldo.USD || 0, 'USD') + '</b><span>' + (saldo.EUR ? money(saldo.EUR, 'EUR') + ' en euros' : 'hoy, todas las cuentas') + '</span></div>' +
+      '<div class="kpi"><span class="eyebrow">Hay en pesos</span><b style="color:var(' + ((saldo.ARS || 0) < 0 ? '--crit' : '--money') + ')">' + money(saldo.ARS || 0, 'ARS') + '</b><span>hoy, todas las cuentas</span></div>' +
+      '<div class="kpi"><span class="eyebrow">Hay en dólares</span><b style="color:var(' + ((saldo.USD || 0) < 0 ? '--crit' : '--money') + ')">' + money(saldo.USD || 0, 'USD') + '</b><span>' + (saldo.EUR ? money(saldo.EUR, 'EUR') + ' en euros' : 'hoy, todas las cuentas') + '</span></div>' +
       '<div class="kpi"><span class="eyebrow">Ingresos del mes</span><b style="font-size:20px">' + esc(multi(ingM)) + '</b><span>' + delMes.filter(x => x.ingreso > 0).length + ' ingresos</span></div>' +
       '<div class="kpi"><span class="eyebrow">Gastos del mes</span><b style="font-size:20px">' + esc(multi(egM)) + '</b><span>' + delMes.filter(x => x.egreso > 0).length + ' gastos</span></div></section>';
     if (deuda.length) h += '<section class="sheet"><div class="sheet-h"><div><h2>Se les debe a los socios</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Gastos de àndale que una socia pagó con su plata o su tarjeta. Cuando se lo devuelvan, tocá “Ya se lo devolvimos”.</p></div><span class="muted">' + Object.entries(porSocio).map(([s, acc]) => esc(s) + ': <b class="money">' + esc(multi(acc)) + '</b>').join(' · ') + '</span></div><div class="rows">' +
@@ -1404,6 +1405,11 @@ export function initAdmin(ctx) {
     const tabs = ctx.subnav('gastos', [['movs', 'Movimientos'], ['banco', 'Resumen del banco']]);
     return tabs + ((S.tab.gastos || 'movs') === 'banco' ? AS.bancoView() : vCaja());
   }
+  function vAjustes() {
+    const tabs = ctx.subnav('ajustes', [['conexiones', 'Conexiones y facturación'], ['auto', 'Automatizaciones'], ['carga', 'Carga inicial'], ['datos', 'Copia y datos']]);
+    const t = S.tab.ajustes || 'conexiones';
+    return tabs + (t === 'auto' && ctx.autoVista ? ctx.autoVista() : t === 'carga' ? MT.html('carga') : t === 'datos' ? MT.html('datos') : AS.ajustes());
+  }
   function vNumeros() {
     const tabs = ctx.subnav('numeros', [['stats', 'Cómo venimos'], ['rent', 'Qué deja cada cliente']]);
     return tabs + ((S.tab.numeros || 'stats') === 'rent' ? vRent() : ST.view());
@@ -1419,7 +1425,7 @@ export function initAdmin(ctx) {
       propuesta: preset => actions.pzNueva({ dataset: { clase: preset.clase || 'Presupuesto', preset: JSON.stringify(preset) } }),
     },
     contexto: () => contextoIA(),
-    views: [['plata', 'Plata hoy', vPlata], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Números', vNumeros], ['ajustes', 'Ajustes', () => AS.ajustes() + MT.html()],
+    views: [['plata', 'Plata hoy', vPlata], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Números', vNumeros], ['ajustes', 'Ajustes', vAjustes],
       ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
     counts: () => (AD.ok ? { cobros: AD.F.filter(f => estadoFactura(f) === 'Vencida').length + AS.count() } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; PZ.reset(); },

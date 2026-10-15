@@ -87,3 +87,14 @@ export function iconizar(raiz) {
   new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') { if (RX.test(m.target.nodeValue) && m.target.parentNode) cambiar(m.target.parentNode); } else m.addedNodes.forEach(n => { if (n.nodeType === 1) cambiar(n); else if (n.nodeType === 3 && RX.test(n.nodeValue) && n.parentNode) cambiar(n.parentNode); }); } })
     .observe(r, { childList: true, subtree: true, characterData: true });
 }
+Object.assign(ICON, {
+  mas: s('<circle cx="5.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor"/>'),
+  grilla: s('<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>'),
+  tablero: s('<rect x="3.5" y="4" width="5" height="16" rx="1.5"/><rect x="9.5" y="4" width="5" height="11" rx="1.5"/><rect x="15.5" y="4" width="5" height="7" rx="1.5"/>'),
+  filtro: s('<path d="M4 5.5h16l-6.2 7.3v5.2l-3.6 1.8v-7z"/>'),
+  rayo: s('<path d="M13 3 5 13.5h6l-1 7.5 8-10.5h-6z"/>'),
+  deshacer: s('<path d="M9 7.5 4.5 12 9 16.5"/><path d="M4.5 12H15a4.5 4.5 0 0 1 0 9h-2"/>'),
+  marca: s('<path d="M12 3.5 3.5 8 12 12.5 20.5 8z"/><path d="m3.5 12 8.5 4.5 8.5-4.5"/><path d="m3.5 16 8.5 4.5 8.5-4.5"/>'),
+  campana: s('<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6.5 2 6.5H4S6 14 6 9"/><path d="M10 19.5a2 2 0 0 0 4 0"/>'),
+  salir: s('<path d="M14 4.5h4.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="m10 8-4 4 4 4"/><path d="M6 12h10"/>'),
+});

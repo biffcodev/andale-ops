@@ -88,8 +88,8 @@ export async function loadAll() {
   const meta = r => ({ creado: r.created_at, actualizado: r.updated_at });
 
   return {
-    E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, avatar: p.avatar_url || '', ...meta(p) })),
-    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', responsables: rc.get(c.id) || [], ...meta(c) })),
+    E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, avatar: p.avatar_url || '', prefs: p.prefs || {}, ...meta(p) })),
+    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', marca: 'marca' in c ? (c.marca || {}) : undefined, responsables: rc.get(c.id) || [], ...meta(c) })),
     A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, responsables: ra.get(a.id) || [], ...meta(a) })),
     P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: trows ? (tks.get(p.id) || []) : (Array.isArray(p.etapas) ? p.etapas : []), etapaActual: p.etapa_actual || '', prioridad: p.prioridad || '', responsables: rp.get(p.id) || [], ...meta(p) })),
     M: d.comunicaciones.map(m => ({ _id: m.id, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
@@ -189,6 +189,9 @@ export async function horasAnio(y) {
     pedidos: (pd || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, cobro: x.cobro })),
     registro: (hh || []).map(x => ({ cliente: cn(x.cliente_id), proyectoId: x.proyecto_id, abonoId: x.abono_id, pedidoId: x.pedido_id, persona: idx.personaAlias.get(x.persona_id) || '', horas: (+x.minutos || 0) / 60, fecha: x.fecha })) };
 }
+
+export async function perfilGuardar(u) { const { error } = await sb.rpc('mi_perfil_guardar', { p_nombre: u.nombre || '', p_puesto: u.puesto || '', p_tel: u.tel || '', p_prefs: u.prefs || {} }); if (error) throw new Error(error.message); }
+export async function marcaGuardar(id, marca) { check(await sb.from('clientes').update({ marca }).eq('id', id)); }
 
 /* ---------- Informes de redes ---------- */
 export function informeUI(x) {
@@ -512,5 +515,13 @@ async function invocar(fn, payload, sinConexion) {
   return data;
 }
 export const avisosFn = payload => invocar('avisos', payload);
+// Automatizaciones (0018): reglas prendidas/apagadas y su configuración. null = falta el SQL.
+export async function autoLista() {
+  const { data, error } = await sb.from('automatizaciones').select('clave, activa, config, ultima_corrida, ultimo_resultado');
+  if (error) { if (/automatizaciones|relation|schema cache/i.test(error.message)) return null; throw new Error(error.message); }
+  return data || [];
+}
+export async function autoGuardar(clave, activa, config) { check(await sb.from('automatizaciones').upsert({ clave, activa: !!activa, config: config || {} }, { onConflict: 'clave' })); }
+export const autoProbar = clave => invocar('automatizar', { accion: 'probar', clave }, 'No se pudo correr la automatización.');
 export const dropbox = payload => invocar('dropbox', payload, 'No se pudo conectar con Dropbox. Revisá tu conexión.');
 export const tally = payload => invocar('tally', payload, 'No se pudo conectar con Tally. Revisá tu conexión.');

@@ -101,7 +101,7 @@ export function initInformes(ctx) {
     const imgs = arr.filter(a => a.tipo === 'img').map(a => ({ tipo: 'image/jpeg', base64: a.base64 }));
     if (!texto && !imgs.length) { toast('Subí el CSV o capturas de Meta, o pegá los números'); return; }
     const prev = anterior(m), inf = delMes(m);
-    const contexto = { cliente: m.cliente, mes: monthLabel(m.mes), plan: m.plan, publicado: (ps || []).filter(z => ['Programada', 'Publicada', 'Aprobada'].includes(z.estado)).map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })),
+    const contexto = { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, ps) : {}), mes: monthLabel(m.mes), plan: m.plan, publicado: (ps || []).filter(z => ['Programada', 'Publicada', 'Aprobada'].includes(z.estado)).map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })),
       metricas_mes_anterior: prev ? (prev.datos.metricas || []) : null };
     st.busy = true; render();
     try {

@@ -1,6 +1,7 @@
 // Tickets: pedidos chicos de los clientes (desde el portal o cargados por el equipo desde un WhatsApp o un mail).
 // Cada uno tiene número, responsable, horas y si se cobra; los "A facturar" aparecen al armar el resumen del mes.
 // Briefs: lo que completan los clientes en Tally, con resumen de Mr. Piggy y asignación a cliente y proyecto.
+import { vistaSel, vistaDe, filtrosMenu } from './ui.js';
 export const ESTADOS_TK = ['Nuevo', 'En curso', 'Esperando al cliente', 'Hecho', 'Descartado'];
 const TK_COLOR = { 'Nuevo': '--s-revision', 'En curso': '--s-curso', 'Esperando al cliente': '--s-confirmar', 'Hecho': '--s-entregado', 'Descartado': '--s-empezar' };
 export const COBROS = ['A definir', 'Incluido en el abono', 'A facturar', 'Sin cargo'];
@@ -18,8 +19,8 @@ export function initTickets(ctx) {
   const mon = (n, m) => money ? money(n, m) : (m + ' ' + n);
 
   function vTickets() {
-    let h = '<div class="head"><div><h1>Tickets</h1><p>Los pedidos chicos de los clientes: un cambio en la web, un flyer, subir algo. Con número, quién lo hace, horas y si se cobra, para que no se pierda nada sin facturar.</p></div>' +
-      (isStaff() ? '<button class="btn primary" data-act="tkNuevo">+ Ticket</button>' : '') + '</div>';
+    let h = '<div class="head"><div><h1>Tickets</h1><p>Pedidos chicos de los clientes, con quién lo hace, horas y si se cobra.</p></div>' +
+      '<div class="toolbar">' + vistaSel('tickets', ['lista', 'tablero'], vistaDe('tickets', ['lista', 'tablero'])) + (ctx.autoBtn ? ctx.autoBtn('tickets') : '') + (isStaff() ? '<button class="btn primary" data-act="tkNuevo">+ Ticket</button>' : '') + '</div></div>';
     if (S.PD === null) return h + '<section class="sheet">' + emptyBox('Falta un paso en la base de datos', 'Para usar Tickets hay que correr la migración 0016 en Supabase.') + '</section>';
     const ab = tks().filter(abierto), sinResp = ab.filter(t => !t.resp), m = thisMonth();
     const delMes = tks().filter(t => String(t.cerrado || t.creado || '').slice(0, 7) === m);
@@ -32,16 +33,24 @@ export function initTickets(ctx) {
       kpi('Sin responsable', sinResp.length, 'para asignar', sinResp.length ? 'warn' : '', ' data-act="tkF" data-k="resp" data-v="__nadie"') +
       kpi('Horas este mes', horasTxt(Math.round(hs * 10) / 10) || '0 h', delMes.length + ' tickets', '', '') +
       kpi('A facturar', aFac.length, Object.entries(porMon).map(([mo, n]) => mon(n, mo)).join(' · ') || 'sin montos cargados', aFac.length ? 'alert' : '', ' data-act="tkF" data-k="cobro" data-v="A facturar"') + '</section>';
-    const f = st.f, q = norm(f.q || '');
-    const lista = tks().filter(t => (f.estado === 'abiertos' ? abierto(t) : f.estado === 'cerrados' ? !abierto(t) : true) && (!f.cliente || t.cliente === f.cliente) &&
+    const f = st.f, q = norm(f.q || ''), tablero = vistaDe('tickets', ['lista', 'tablero']) === 'tablero';
+    const lista = tks().filter(t => (tablero ? t.estado !== 'Descartado' && (abierto(t) || String(t.cerrado || t.creado || '').slice(0, 7) >= m) : f.estado === 'abiertos' ? abierto(t) : f.estado === 'cerrados' ? !abierto(t) : true) && (!f.cliente || t.cliente === f.cliente) &&
       (!f.resp || (f.resp === '__nadie' ? !t.resp : t.resp === f.resp)) && (!f.cobro || (f.cobro === 'A facturar' ? t.cobro === 'A facturar' && !t.facturado : t.cobro === f.cobro)) &&
       (!q || norm(t.titulo + ' ' + t.cliente + ' ' + t.detalle + ' #' + t.numero).includes(q)))
       .sort((a, b) => (abierto(b) - abierto(a)) || (b.creado || '').localeCompare(a.creado || ''));
-    h += '<div class="toolbar"><input class="in" type="search" id="tk-q" placeholder="Buscar ticket, cliente o #número" value="' + esc(f.q || '') + '">' +
-      '<select class="in" data-tkf="estado" aria-label="Estado">' + [['abiertos', 'Abiertos'], ['cerrados', 'Cerrados'], ['todos', 'Todos']].map(([v, l]) => opt(v, l, f.estado)).join('') + '</select>' +
+    h += '<div class="toolbar fbar2"><input class="in" type="search" id="tk-q" placeholder="Buscar ticket, cliente o #número" value="' + esc(f.q || '') + '">' +
+      (tablero ? '' : '<select class="in" data-tkf="estado" aria-label="Estado">' + [['abiertos', 'Abiertos'], ['cerrados', 'Cerrados'], ['todos', 'Todos']].map(([v, l]) => opt(v, l, f.estado)).join('') + '</select>') +
       '<select class="in" data-tkf="cliente" aria-label="Cliente">' + clienteOpts(f.cliente, 'Todos los clientes') + '</select>' +
-      '<select class="in" data-tkf="resp" aria-label="Responsable">' + opt('', 'Todo el equipo', f.resp) + opt('__nadie', 'Sin responsable', f.resp) + personas().map(a => opt(a, a, f.resp)).join('') + '</select>' +
-      '<select class="in" data-tkf="cobro" aria-label="Cobro">' + opt('', 'Cualquier cobro', f.cobro) + COBROS.map(c => opt(c, c === 'A facturar' ? 'A facturar (sin facturar)' : c, f.cobro)).join('') + '</select></div>';
+      filtrosMenu('tickets', '<label class="lbl">Responsable</label><select class="in" data-tkf="resp" aria-label="Responsable">' + opt('', 'Todo el equipo', f.resp) + opt('__nadie', 'Sin responsable', f.resp) + personas().map(a => opt(a, a, f.resp)).join('') + '</select>' +
+        '<label class="lbl">Cobro</label><select class="in" data-tkf="cobro" aria-label="Cobro">' + opt('', 'Cualquier cobro', f.cobro) + COBROS.map(c => opt(c, c === 'A facturar' ? 'A facturar (sin facturar)' : c, f.cobro)).join('') + '</select>', (f.resp ? 1 : 0) + (f.cobro ? 1 : 0)) + '</div>';
+    if (tablero) {
+      const can = isStaff();
+      const cols = ESTADOS_TK.filter(e => e !== 'Descartado').map(e => { const its = lista.filter(t => t.estado === e);
+        return '<div class="col" style="--c:var(' + (TK_COLOR[e] || '--muted') + ')" data-tkdrop="' + esc(e) + '"><div class="col-h">' + pillTk(e) + '<span class="n">' + its.length + '</span></div>' +
+          its.map(t => '<button class="card" data-act="tkVer" data-id="' + esc(t._id) + '" data-tkdrag="' + esc(t._id) + '"' + (can ? ' draggable="true"' : '') + '><span class="cl"><span>#' + t.numero + ' · ' + esc(t.cliente) + '</span></span><b>' + esc(t.titulo) + '</b>' +
+            '<span class="tk-cf">' + (t.resp ? av(t.resp, fotoDe(t.resp)) : '<span class="muted">Sin responsable</span>') + (t.cobro === 'A facturar' && !t.facturado ? '<span class="tk-cob fac">A facturar</span>' : '') + (t.paraCuando && abierto(t) ? '<span class="mono muted">para ' + fmtShort(t.paraCuando) + '</span>' : '') + '</span></button>').join('') + '</div>'; }).join('');
+      return h + (can ? '<p class="muted" style="margin:0">Arrastrá un ticket a otra columna para cambiarle el estado. En “Hecho” se ven los cerrados de este mes.</p>' : '') + '<div class="kbw"><div class="kb tk-kb">' + cols + '</div></div>';
+    }
     if (!lista.length) return h + '<section class="sheet">' + emptyBox(tks().length ? 'Ningún ticket con ese filtro' : 'Todavía no hay tickets', tks().length ? '' : 'Los clientes los cargan desde su portal, o ustedes con “+ Ticket” cuando llega un pedido por WhatsApp o mail.') + '</section>';
     const can = isStaff();
     h += '<section class="sheet"><div class="tbl"><table><thead><tr><th>#</th><th>Ticket</th><th>Estado</th><th>Quién</th><th>Horas</th><th>Cobro</th><th>Fecha</th></tr></thead><tbody>' + lista.map(t => '<tr class="click" data-act="tkVer" data-id="' + esc(t._id) + '">' +
@@ -183,6 +192,18 @@ export function initTickets(ctx) {
       if (t.dataset.bfupd === 'cliente') { u.proyectoId = null; }
       try { await data.briefUpd(b._id, u); Object.assign(b, t.dataset.bfupd === 'cliente' ? { cliente: t.value, proyectoId: null } : { proyectoId: t.value || null }); abrirBrief(b._id); render(); toast('Brief asignado'); } catch (er) { toast(er.message); }
     }
+  });
+  // Arrastrar tickets entre columnas del tablero
+  let drag = null;
+  document.addEventListener('dragstart', e => { const c = e.target.closest && e.target.closest('[data-tkdrag]'); if (!c) return; drag = c.dataset.tkdrag; try { e.dataTransfer.setData('text/plain', drag); e.dataTransfer.effectAllowed = 'move'; } catch (_) { /* nada */ } c.classList.add('dragging'); });
+  document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.dragging,[data-tkdrop].over').forEach(x => x.classList.remove('dragging', 'over')); });
+  document.addEventListener('dragover', e => { const col = drag && e.target.closest && e.target.closest('[data-tkdrop]'); if (!col) return; e.preventDefault(); document.querySelectorAll('[data-tkdrop].over').forEach(x => { if (x !== col) x.classList.remove('over'); }); col.classList.add('over'); });
+  document.addEventListener('drop', async e => {
+    const col = drag && e.target.closest && e.target.closest('[data-tkdrop]'); if (!col) return;
+    e.preventDefault(); const x = tks().find(y => y._id === drag), v = col.dataset.tkdrop; drag = null; col.classList.remove('over');
+    if (!x || x.estado === v) return;
+    const antes = x.estado; x.estado = v; render();
+    try { await data.pedidoGuardar(x._id, { estado: v }); toast('Ticket #' + x.numero + ' → ' + v); } catch (er) { x.estado = antes; render(); toast(er.message); }
   });
   const acts = {
     tkNuevo: t => abrir(null, t.dataset.cliente ? { cliente: t.dataset.cliente } : null),

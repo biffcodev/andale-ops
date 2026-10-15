@@ -16,6 +16,10 @@ import { initTickets } from './tickets.js';
 import { initEntregas } from './entregas.js';
 import { initInformes } from './informes.js';
 import { initReloj } from './reloj.js';
+import { initFichaMarca } from './fichamarca.js';
+import { initAutomatizar } from './automatizar.js';
+import { initPerfil, aplicarTema, temaGuardado } from './perfil.js';
+import { masMenu, vistaSel, vistaDe, guardarVista, toastAccion, uiActs, filtrosMenu, reabrir } from './ui.js';
 import * as E from './emails.js';
 initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
@@ -462,10 +466,7 @@ function vInicio() {
 
   // 4. Proyectos en curso con avance
   const enCurso = open.filter(p => p.estado !== 'A confirmar').sort((a, b) => (PRIOS.indexOf(a.prioridad) + 1 || 9) - (PRIOS.indexOf(b.prioridad) + 1 || 9) || sortByEntrega(a, b)).slice(0, 6);
-  const ring = pct => '<svg viewBox="0 0 36 36" class="ring" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--line)" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--s-entregado)" stroke-width="4" stroke-linecap="round" stroke-dasharray="' + (pct * 0.9425).toFixed(1) + ' 100" transform="rotate(-90 18 18)"/></svg>';
-  const pcards = enCurso.length ? '<div class="pcs">' + enCurso.map(p => { const pct = avance(p), e = etapasDe(p); return '<button class="pc" style="--t:var(' + (TIPO_COLOR[p.tipo] || '--accent') + ')" data-act="pver" data-id="' + esc(p._id) + '"><span class="pc-top"><span class="pc-cli">' + esc(p.cliente) + '</span>' + prioFlag(p.prioridad) + '</span><b class="pc-n">' + esc(p.proyecto) + '</b>' +
-    '<span class="pc-m"><span class="pc-r">' + ring(pct) + '<i>' + pct + '%</i></span><span class="pc-d">' + stPill(p.estado) + '<span>' + (e.length ? e.filter(x => x.ok).length + ' de ' + e.length + ' tareas' : 'Sin tareas') + '</span>' + (p.entrega ? '<span>Entrega ' + fmtShort(p.entrega) + ' ' + daysBadge(p) + '</span>' : '') + '</span></span>' +
-    '<span class="pc-f">' + (resp(p).length ? '<span class="avs">' + resp(p).map(a => av(a, fotoDe(a))).join('') + '</span>' : '<span class="muted">Sin responsable</span>') + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + '</span></button>'; }).join('') + '</div>'
+  const pcards = enCurso.length ? '<div class="pcs">' + enCurso.map(projCard).join('') + '</div>'
     : emptyBox('No hay proyectos abiertos', '');
 
   // 5. Equipo: carga de cada persona
@@ -494,22 +495,28 @@ function vInicio() {
   return h;
 }
 
+const pcRing = pct => '<svg viewBox="0 0 36 36" class="ring" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--line)" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--s-entregado)" stroke-width="4" stroke-linecap="round" stroke-dasharray="' + (pct * 0.9425).toFixed(1) + ' 100" transform="rotate(-90 18 18)"/></svg>';
+function projCard(p) { const pct = avance(p), e = etapasDe(p); return '<button class="pc" style="--t:var(' + (TIPO_COLOR[p.tipo] || '--accent') + ')" data-act="pver" data-id="' + esc(p._id) + '"><span class="pc-top"><span class="pc-cli">' + esc(p.cliente) + '</span>' + prioFlag(p.prioridad) + '</span><b class="pc-n">' + esc(p.proyecto) + '</b>' +
+    '<span class="pc-m"><span class="pc-r">' + pcRing(pct) + '<i>' + pct + '%</i></span><span class="pc-d">' + stPill(p.estado) + '<span>' + (e.length ? e.filter(x => x.ok).length + ' de ' + e.length + ' tareas' : 'Sin tareas') + '</span>' + (p.entrega ? '<span>Entrega ' + fmtShort(p.entrega) + ' ' + daysBadge(p) + '</span>' : '') + '</span></span>' +
+    '<span class="pc-f">' + (resp(p).length ? '<span class="avs">' + resp(p).map(a => av(a, fotoDe(a))).join('') + '</span>' : '<span class="muted">Sin responsable</span>') + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + '</span></button>'; }
 function vProyectos() {
   if (S.pficha) return vProyectoFicha();
   const f = S.f;
-  const modes = [['lista', 'Lista'], ['tablero', 'Tablero'], ['calendario', 'Calendario']];
+  const modos = ['lista', 'cuadricula', 'tablero', 'calendario']; if (!modos.includes(S.mode)) S.mode = 'lista';
   let h = '<div class="head"><div><h1>Proyectos</h1><p>' + (isExt() ? 'Los proyectos donde figurás como responsable.' : 'Trabajos puntuales con entrega: branding, web, packaging.') + '</p></div>' +
-    '<div class="toolbar"><div class="seg" role="group" aria-label="Vista">' + modes.map(([k, l]) => '<button data-act="mode" data-mode="' + k + '" aria-pressed="' + (S.mode === k) + '">' + l + '</button>').join('') + '</div>' + addBtn('proyecto', 'Proyecto') + '</div></div>';
-  h += '<div class="toolbar">' +
+    '<div class="toolbar">' + vistaSel('proyectos', modos, S.mode) + aut().boton('proyectos') + addBtn('proyecto', 'Proyecto') + '</div></div>';
+  const sec = (f.tipo ? 1 : 0) + (f.resp ? 1 : 0) + (f.plazo ? 1 : 0) + (S.mode !== 'tablero' && !f.abiertos ? 1 : 0);
+  h += '<div class="toolbar fbar2">' +
     '<input class="in" type="search" id="pq" data-bind="f.q" placeholder="Buscar cliente o proyecto" value="' + esc(f.q) + '">' +
     '<select class="in" id="pe" data-bind="f.estado" aria-label="Estado">' + optsFrom(S.L.estadosProyecto, f.estado, 'Todos los estados') + '</select>' +
-    '<select class="in" id="pt" data-bind="f.tipo" aria-label="Tipo">' + optsFrom(S.L.tipos, f.tipo, 'Todos los tipos') + '</select>' +
-    (isStaff() ? '<select class="in" id="pr" data-bind="f.resp" aria-label="Responsable">' + opt('', 'Todo el equipo', f.resp) + opt('__none', 'Sin asignar', f.resp) + personas().map(p => opt(p, p, f.resp)).join('') + '</select>' : '') +
     '<select class="in" id="pc" data-bind="f.cliente" aria-label="Cliente">' + clienteOpts(f.cliente, 'Todos los clientes') + '</select>' +
-    '<select class="in" id="pp" data-bind="f.plazo" aria-label="Plazo">' + opt('', 'Cualquier plazo', f.plazo) + opt('atrasados', 'Atrasados', f.plazo) + opt('7dias', 'Entregas en 7 días', f.plazo) + opt('sinfecha', 'Sin fecha pactada', f.plazo) + '</select>' +
-    (S.mode === 'tablero' ? '' : '<label class="chk"><input type="checkbox" id="pa" data-bind="f.abiertos"' + (f.abiertos ? ' checked' : '') + '> Solo abiertos</label>') +
-    (f.q || f.estado || f.tipo || f.resp || f.cliente || f.plazo ? '<button class="btn ghost sm" data-act="clearF">Limpiar filtros</button>' : '') +
+    filtrosMenu('proyectos', '<label class="lbl" for="pt">Tipo</label><select class="in" id="pt" data-bind="f.tipo" aria-label="Tipo">' + optsFrom(S.L.tipos, f.tipo, 'Todos los tipos') + '</select>' +
+      (isStaff() ? '<label class="lbl" for="pr">Responsable</label><select class="in" id="pr" data-bind="f.resp" aria-label="Responsable">' + opt('', 'Todo el equipo', f.resp) + opt('__none', 'Sin asignar', f.resp) + personas().map(p => opt(p, p, f.resp)).join('') + '</select>' : '') +
+      '<label class="lbl" for="pp">Plazo</label><select class="in" id="pp" data-bind="f.plazo" aria-label="Plazo">' + opt('', 'Cualquier plazo', f.plazo) + opt('atrasados', 'Atrasados', f.plazo) + opt('7dias', 'Entregas en 7 días', f.plazo) + opt('sinfecha', 'Sin fecha pactada', f.plazo) + '</select>' +
+      (S.mode === 'tablero' ? '' : '<label class="chk"><input type="checkbox" id="pa" data-bind="f.abiertos"' + (f.abiertos ? ' checked' : '') + '> Solo abiertos</label>') +
+      (f.q || f.estado || f.tipo || f.resp || f.cliente || f.plazo ? '<button class="btn link sm" data-act="clearF">Limpiar todos los filtros</button>' : ''), sec) +
     '</div>';
+  if (S.mode === 'cuadricula') { const list = filtrarProyectos(false).sort(sortByEntrega); return h + (list.length ? '<div class="pcs">' + list.map(projCard).join('') + '</div>' : '<section class="sheet">' + emptyBox('Ningún proyecto coincide con los filtros', 'Probá limpiar los filtros.') + '</section>'); }
   if (S.mode === 'tablero') return h + vTablero();
   if (S.mode === 'calendario') return h + vCalendario();
   return h + vLista();
@@ -523,16 +530,15 @@ function vLista() {
   const fila = p => {
     const dis = canEditProj(p) ? '' : ' disabled';
     return '<tr class="click" data-act="pver" data-id="' + esc(p._id) + '">' +
-      '<td class="pjc"><b>' + esc(p.proyecto) + '</b><span class="sub"><button class="btn link" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente || '—') + '</button></span></td>' +
+      '<td class="pjc"><b>' + esc(p.proyecto) + (p.prioridad ? ' ' + prioFlag(p.prioridad) : '') + '</b><span class="sub"><button class="btn link" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente || '—') + '</button></span></td>' +
       '<td>' + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '<span class="muted">—</span>') + '</td>' +
       '<td>' + picker('proyecto', p) + '</td>' +
       '<td>' + etapaCell(p) + '</td>' +
       '<td class="n">' + (p.entrega ? '<span class="mono">' + fmt(p.entrega) + '</span><span class="sub">' + daysBadge(p) + '</span>' : '<span class="muted">—</span>') + '</td>' +
-      '<td>' + prioSelect(p) + '</td>' +
       '<td><select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado"' + dis + '>' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select></td>' +
       '</tr>';
   };
-  const head = '<thead><tr><th>Proyecto</th><th>Tipo</th><th>Responsables</th><th>Tareas</th><th>Entrega</th><th>Prioridad</th><th>Estado</th></tr></thead>';
+  const head = '<thead><tr><th>Proyecto</th><th>Tipo</th><th>Responsables</th><th>Tareas</th><th>Entrega</th><th>Estado</th></tr></thead>';
   return grupos.map(([e, arr]) => {
     const cerrado = S.gcl.has(e);
     return '<section class="sheet grp' + (cerrado ? ' cerrado' : '') + '" style="--c:var(' + stVar(e) + ')"><button class="grp-h" data-act="grpTog" data-g="' + esc(e) + '" aria-expanded="' + !cerrado + '"><span class="chev" aria-hidden="true">▾</span><span class="grp-pill">' + esc(e) + '</span><span class="grp-n">' + arr.length + '</span></button>' +
@@ -851,12 +857,19 @@ function vAbonos() {
   const base = S.A.filter(a => (!af.estado || a.estado === af.estado));
   const list = base.filter(a => (!af.tipo || a.tipo === af.tipo) && (!af.resp || (af.resp === '__none' ? !resp(a).length : hasResp(a, af.resp))) && (!q || norm(a.cliente + ' ' + (a.plan || '') + ' ' + (a.notas || '')).includes(q))).sort((a, b) => cmp(a.cliente, b.cliente) || cmp(a.tipo, b.tipo));
   const dis = isStaff() ? '' : ' disabled';
-  let h = pest + '<div class="head"><div><h1>Abonos</h1><p>' + (isExt() ? 'Los abonos donde figurás como responsable.' : 'Lo que se factura todos los meses: redes y Ads.') + '</p></div><div class="toolbar">' + addBtn('abono', 'Abono') + '</div></div>' +
-    '<div class="toolbar"><input class="in" type="search" id="aq" data-bind="af.q" placeholder="Buscar cliente o plan" value="' + esc(af.q) + '">' +
+  let h = pest + '<div class="head"><div><h1>Abonos</h1><p>' + (isExt() ? 'Los abonos donde figurás como responsable.' : 'Lo que se factura todos los meses: redes y Ads.') + '</p></div><div class="toolbar">' + vistaSel('abonos', ['lista', 'cuadricula'], vistaDe('abonos', ['lista', 'cuadricula'])) + addBtn('abono', 'Abono') + '</div></div>' +
+    '<div class="toolbar fbar2"><input class="in" type="search" id="aq" data-bind="af.q" placeholder="Buscar cliente o plan" value="' + esc(af.q) + '">' +
     '<div class="seg" role="group" aria-label="Tipo">' + tipos.map(t => '<button data-act="afTipo" data-tipo="' + esc(t) + '" aria-pressed="' + (af.tipo === t) + '">' + (t || 'Todos') + ' <span class="c">' + base.filter(a => !t || a.tipo === t).length + '</span></button>').join('') + '</div>' +
-    '<select class="in" id="ae" data-bind="af.estado" aria-label="Estado">' + opt('', 'Todos los estados', af.estado) + ESTADOS_ABONO.map(e => opt(e, e === 'Activo' ? 'Activos' : e === 'Pausado' ? 'Pausados' : 'Dados de baja', af.estado)).join('') + '</select>' +
-    (isStaff() ? '<select class="in" id="ar" data-bind="af.resp" aria-label="Responsable">' + opt('', 'Todo el equipo', af.resp) + opt('__none', 'Sin asignar', af.resp) + personas().map(p => opt(p, p, af.resp)).join('') + '</select>' : '') + '</div>';
+    filtrosMenu('abonos', '<label class="lbl" for="ae">Estado</label><select class="in" id="ae" data-bind="af.estado" aria-label="Estado">' + opt('', 'Todos los estados', af.estado) + ESTADOS_ABONO.map(e => opt(e, e === 'Activo' ? 'Activos' : e === 'Pausado' ? 'Pausados' : 'Dados de baja', af.estado)).join('') + '</select>' +
+    (isStaff() ? '<label class="lbl" for="ar">Responsable</label><select class="in" id="ar" data-bind="af.resp" aria-label="Responsable">' + opt('', 'Todo el equipo', af.resp) + opt('__none', 'Sin asignar', af.resp) + personas().map(p => opt(p, p, af.resp)).join('') + '</select>' : ''), (af.estado ? 1 : 0) + (af.resp ? 1 : 0)) + '</div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox(S.A.length ? 'Ningún abono coincide' : 'Todavía no hay abonos', S.A.length ? 'Probá con otro filtro.' : (isStaff() ? 'Cargá el primero con “+ Abono”.' : '')) + '</section>';
+  if (vistaDe('abonos', ['lista', 'cuadricula']) === 'cuadricula') {
+    const cl = n => S.C.find(c => c.nombre === n) || {};
+    return h + '<div class="cgrid">' + list.map(a => '<button class="ccard" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '" style="--c:var(' + (AB_COLOR[a.estado] || '--muted') + ')">' +
+      '<span class="cc-top">' + av(a.cliente, cl(a.cliente).avatar, 'sq') + '<span class="cc-n"><b>' + esc(a.cliente) + '</b><span>' + esc(a.plan ? 'Plan ' + a.plan : 'Sin plan') + '</span></span></span>' +
+      '<span class="cc-m"><span class="tag svc" style="--c:var(' + (a.tipo === 'Ads' ? '--s-curso' : '--accent') + ')">' + esc(a.tipo || '—') + '</span>' + abPill(a.estado) + '</span>' +
+      '<span class="cc-f">' + (resp(a).length ? '<span class="avs">' + resp(a).map(x => av(x, fotoDe(x))).join('') + '</span>' : '<span class="muted">Sin responsable</span>') + '<span class="muted mono">' + (a.desde ? 'desde ' + esc(monthLabel(a.desde.slice(0, 7))) : '') + '</span></span></button>').join('') + '</div><div class="count num" style="padding:0 4px">' + list.length + ' abonos</div>';
+  }
   const rows = list.map(a => '<tr><td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button></td>' +
     '<td><span class="tag svc" style="--c:var(' + (a.tipo === 'Ads' ? '--s-curso' : '--accent') + ')">' + esc(a.tipo || '—') + '</span></td><td>' + (a.plan ? esc(a.plan) : '<span class="muted">—</span>') + '</td>' +
     '<td>' + picker('abono', a) + '</td>' +
@@ -902,10 +915,17 @@ function vClientes() {
   const estados = ['', ...S.L.estadosCliente];
   const counts = e => S.C.filter(c => !e || c.estado === e).length;
   const list = S.C.filter(c => (!cf.estado || c.estado === cf.estado) && (!q || norm(c.nombre + ' ' + (c.contacto || '') + ' ' + contactosBusca(c) + ' ' + (c.servicio || '')).includes(q))).sort((a, b) => cmp(a.nombre, b.nombre));
-  let h = '<div class="head"><div><h1>Clientes</h1><p>' + (isExt() ? 'Los clientes de los trabajos que tenés asignados.' : 'El estado se calcula solo con sus abonos y proyectos.') + '</p></div><div class="toolbar">' + addBtn('cliente', 'Cliente') + '</div></div>' +
-    '<div class="toolbar"><input class="in" type="search" id="cq" data-bind="cf.q" placeholder="Buscar cliente o contacto" value="' + esc(cf.q) + '">' +
+  let h = '<div class="head"><div><h1>Clientes</h1><p>' + (isExt() ? 'Los clientes de los trabajos que tenés asignados.' : 'El estado se calcula solo con sus abonos y proyectos.') + '</p></div><div class="toolbar">' + vistaSel('clientes', ['lista', 'cuadricula'], vistaDe('clientes', ['lista', 'cuadricula'])) + addBtn('cliente', 'Cliente') + '</div></div>' +
+    '<div class="toolbar fbar2"><input class="in" type="search" id="cq" data-bind="cf.q" placeholder="Buscar cliente o contacto" value="' + esc(cf.q) + '">' +
     (isStaff() ? '<div class="seg" role="group" aria-label="Estado">' + estados.map(e => '<button data-act="cfEstado" data-estado="' + esc(e) + '" aria-pressed="' + (cf.estado === e) + '">' + (VER_CL[e] || e || 'Todos') + ' <span class="c">' + counts(e) + '</span></button>').join('') + '</div>' : '') + '</div>';
   if (!list.length) return h + '<section class="sheet">' + emptyBox(S.C.length ? 'Ningún cliente coincide' : 'Todavía no hay clientes', S.C.length ? 'Probá con otro estado o búsqueda.' : '') + '</section>';
+  if (vistaDe('clientes', ['lista', 'cuadricula']) === 'cuadricula') return h + '<div class="cgrid">' + list.map(c => {
+    const act = proyectosDe(c.nombre).filter(isOpen).length;
+    return '<button class="ccard" data-act="ficha" data-cliente="' + esc(c.nombre) + '"><span class="cc-top">' + av(c.nombre, c.avatar, 'sq') + '<span class="cc-n"><b>' + esc(c.nombre) + '</b><span>' + esc(contactoTxt(c) || 'Sin contacto') + '</span></span></span>' +
+      '<span class="cc-m">' + clPill(c.estado) + (act ? '<span class="muted">' + act + ' proyecto' + (act > 1 ? 's' : '') + ' abierto' + (act > 1 ? 's' : '') + '</span>' : '') + '</span>' +
+      (serviciosDe(c.nombre).length ? servPills(c.nombre) : '') +
+      '<span class="cc-f">' + (resp(c).length ? '<span class="avs">' + resp(c).map(x => av(x, fotoDe(x))).join('') + '</span>' : '<span class="muted">Sin responsable</span>') + '</span></button>';
+  }).join('') + '</div><div class="count num" style="padding:0 4px">' + list.length + ' clientes</div>';
   const staff = isStaff();
   S.csel.forEach(id => { if (!list.some(c => c._id === id)) S.csel.delete(id); });
   const rows = list.map(c => {
@@ -947,11 +967,15 @@ function vFicha() {
   const projRow = p => '<button class="row" data-act="pver" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.tipo, etapaTxt(p), resp(p).join(', ')].filter(Boolean).join(' · ')) + '</span></span>' + stPill(p.estado) + '</button>';
   const abRow = a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(abonoLabel(a)) + '</b><span>' + (resp(a).length ? esc(resp(a).join(', ')) : 'sin responsable') + (a.desde ? ' · desde ' + esc(fmt(a.desde)) : '') + '</span></span>' + abPill(a.estado) + '</button>';
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
-  return back +
-    '<div class="head"><div class="head-av">' + (isStaff() ? avEditable('cliente', c._id, c.nombre, c.avatar, 'xl sq') : av(c.nombre, c.avatar, 'xl sq')) + '<div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + servPills(c.nombre) + '</p></div></div>' +
-    '<div class="toolbar">' + (isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button>' + waBtn(c) + '<button class="btn" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">Editar cliente</button><button class="btn" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Anotar charla</button><button class="btn" data-act="new" data-kind="abono" data-preset="' + preset + '">+ Abono</button><button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' : addBtn('comunicacion', 'Charla', { cliente: c.nombre })) + '</div></div>' +
-    (IA ? IA.fichaHtml(c.nombre) : '') +
-    '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
+  const pendN = ms.filter(m => m.proximo && !m.hecho).length;
+  const tabs = [['resumen', 'Resumen'], ...(isStaff() ? [['marca', 'Marca y voz' + (c.marca && Object.values(c.marca).some(Boolean) ? '' : ' <span class="tab-dot" title="Sin completar"></span>')]] : []), ['trabajos', 'Trabajos'],
+    ['charlas', 'Charlas' + (pendN ? ' <span class="snav-n hot">' + pendN + '</span>' : '')], ...(conTabla() && (isStaff() || contactosDe(c.nombre).length) ? [['contactos', 'Contactos']] : []), ...(isAdmin() && ADM ? [['cuenta', 'Cuenta']] : [])];
+  const tab = tabs.some(t => t[0] === S.ctab) ? S.ctab : 'resumen';
+  const acciones = isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button>' + waBtn(c) + '<button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' +
+    masMenu([{ act: 'edit', label: 'Editar cliente', attrs: ' data-kind="cliente" data-id="' + esc(c._id) + '"', icon: 'clientes' }, { act: 'new', label: 'Anotar charla', attrs: ' data-kind="comunicacion" data-preset="' + preset + '"', icon: 'charla' }, { act: 'new', label: 'Nuevo abono', attrs: ' data-kind="abono" data-preset="' + preset + '"', icon: 'abonos' }])
+    : addBtn('comunicacion', 'Charla', { cliente: c.nombre });
+  let body = '';
+  if (tab === 'resumen') body = (IA ? IA.fichaHtml(c.nombre) : '') + '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
     (conTabla() ? '' : '<dt>Contacto</dt><dd>' + (c.contacto ? esc(c.contacto) : '<span class="muted">—</span>') + '</dd>' +
     '<dt>Email</dt><dd>' + copy(c.email) + '</dd>' +
@@ -959,17 +983,22 @@ function vFicha() {
     '<dt>Instagram / web</dt><dd>' + link(c.web) + '</dd>' +
     '<dt>Carpeta</dt><dd>' + link(c.carpeta) + '</dd>' +
     '<dt>Notas</dt><dd>' + (c.notas ? '<span style="white-space:pre-wrap">' + esc(c.notas) + '</span>' : '<span class="muted">—</span>') + '</dd>' +
-    '</dl></div></section>' + (conTabla() && (isStaff() || contactosDe(c.nombre).length) ? contactosHtml(c) : '') + (isAdmin() && ADM ? ADM.fichaSection(c) : '') + '</div>' +
-    '<div class="stack">' +
+    '</dl></div></section>' + '</div><div class="stack">' +
     '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + as.filter(a => a.estado === 'Activo').length + ' activos</span></div>' + (as.length ? '<div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('Sin abonos', '')) + '</section>' +
-    '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' +
-    (S.T && isStaff() ? tk().fichaHtml(c.nombre) : '') + redesFicha(c) +
-    (() => { const hs = historiaCliente(c.nombre); return hs.length ? '<section class="sheet"><div class="sheet-h"><h2>Lo que hicimos juntos</h2><span class="muted num">' + hs.length + '</span></div><ol class="hist">' + hs.map(x => '<li class="' + (x.on ? 'on' : '') + '"><button class="hist-i" data-act="' + x.act + '"' + (x.kind ? ' data-kind="' + x.kind + '"' : '') + ' data-id="' + esc(x.id) + '"><span class="srv' + (x.on ? ' on' : '') + '" style="--c:var(' + (TIPO_COLOR[x.tipo] || '--muted') + ')">' + esc(x.tipo) + '</span><span class="t"><b>' + esc(x.t) + '</b><span>' + esc(x.sub) + '</span></span><span class="mono muted">' + (x.f ? esc(x.f.slice(0, 4)) : '') + '</span></button></li>').join('') + '</ol></section>' : ''; })() +
-    (() => { const pend = ms.filter(m => m.proximo && !m.hecho), resto = ms.filter(m => !(m.proximo && !m.hecho));
+    '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' + '</div></div>';
+  else if (tab === 'marca') body = fm().html(c);
+  else if (tab === 'trabajos') body = '<div class="stack">' + (S.T && isStaff() ? tk().fichaHtml(c.nombre) : '') + redesFicha(c) +
+    (() => { const hs = historiaCliente(c.nombre); return hs.length ? '<section class="sheet"><div class="sheet-h"><h2>Lo que hicimos juntos</h2><span class="muted num">' + hs.length + '</span></div><ol class="hist">' + hs.map(x => '<li class="' + (x.on ? 'on' : '') + '"><button class="hist-i" data-act="' + x.act + '"' + (x.kind ? ' data-kind="' + x.kind + '"' : '') + ' data-id="' + esc(x.id) + '"><span class="srv' + (x.on ? ' on' : '') + '" style="--c:var(' + (TIPO_COLOR[x.tipo] || '--muted') + ')">' + esc(x.tipo) + '</span><span class="t"><b>' + esc(x.t) + '</b><span>' + esc(x.sub) + '</span></span><span class="mono muted">' + (x.f ? esc(x.f.slice(0, 4)) : '') + '</span></button></li>').join('') + '</ol></section>' : ''; })() + '' + '</div>';
+  else if (tab === 'charlas') body = (() => { const pend = ms.filter(m => m.proximo && !m.hecho), resto = ms.filter(m => !(m.proximo && !m.hecho));
       return '<section class="sheet"><div class="sheet-h"><div><h2>Charlas y pendientes</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Lo que se habló con ' + esc(c.nombre) + ', qué se acordó y lo que falta hacer.</p></div>' + ((isStaff() || isExt()) ? '<button class="btn sm" data-act="new" data-kind="comunicacion" data-preset="' + preset + '">+ Anotar charla</button>' : '') + '</div>' +
         (ms.length ? (pend.length ? '<div class="sheet-b" style="padding-bottom:0"><span class="eyebrow">Pendiente</span></div><div class="timeline">' + pend.map(m => comItem(m, true)).join('') + '</div>' : '') + (resto.length ? (pend.length ? '<div class="sheet-b" style="padding-bottom:0"><span class="eyebrow">Historial</span></div>' : '') + '<div class="timeline">' + resto.map(m => comItem(m, true)).join('') + '</div>' : '')
-          : emptyBox('Todavía no hay charlas anotadas', 'Anotá reuniones, llamadas o WhatsApps. Si pegás el chat, Mr. Piggy completa todo.')) + '</section>'; })() +
-    '</div></div>';
+          : emptyBox('Todavía no hay charlas anotadas', 'Anotá reuniones, llamadas o WhatsApps. Si pegás el chat, Mr. Piggy completa todo.')) + '</section>'; })() + '';
+  else if (tab === 'contactos') body = contactosHtml(c);
+  else if (tab === 'cuenta') body = ADM.fichaSection(c) || '<section class="sheet">' + emptyBox('Sin datos de cuenta', '') + '</section>';
+  return back +
+    '<div class="head"><div class="head-av">' + (isStaff() ? avEditable('cliente', c._id, c.nombre, c.avatar, 'xl sq') : av(c.nombre, c.avatar, 'xl sq')) + '<div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + servPills(c.nombre) + '</p></div></div>' +
+    '<div class="toolbar">' + acciones + '</div></div>' +
+    '<nav class="pf-tabs ftabs" aria-label="Secciones del cliente">' + tabs.map(([k, l]) => '<button data-act="ctab" data-t="' + k + '"' + (tab === k ? ' aria-current="page"' : '') + '>' + l + '</button>').join('') + '</nav>' + body;
 }
 
 // Ficha del cliente: cómo viene el mes de redes.
@@ -1032,15 +1061,21 @@ let INTEGR = null;
 const integr = () => INTEGR || (INTEGR = initIntegraciones({ S, esc, opt, toast, $, data, render, isAdmin, isStaff, closeForm, ISO, emptyBox, DEF: INTEG_DEF }));
 const vIntegraciones = () => integr().view();
 const trab = () => TRAB || (TRAB = initTrabajo({ S, esc, opt, toast, data, render, isStaff, personas }));
+let PRF = null;
+const prf = () => PRF || (PRF = initPerfil({ S, esc, toast, data, $, avEditable, closeForm, ROLES, render }));
+let FM = null;
+let AUT = null;
+const aut = () => AUT || (AUT = initAutomatizar({ S, esc, opt, toast, data, $, isAdmin, isStaff, render }));
+const fm = () => FM || (FM = initFichaMarca({ S, esc, toast, data, render, emptyBox, isStaff, closeForm }));
 let RLJ = null;
 const rlj = () => RLJ || (RLJ = initReloj({ S, esc, opt, toast, data, $, today, cmp }));
 let INF = null;
-const inf = () => INF || (INF = initInformes({ S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
-const red = () => RED || (RED = initRedes({ avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
+const inf = () => INF || (INF = initInformes({ marcaCtx: (c, ps) => fm().contexto(c, ps), S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
+const red = () => RED || (RED = initRedes({ autoBtn: p => aut().boton(p), toastAccion, masMenu, marcaCtx: (c, ps) => fm().contexto(c, ps), avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
   cfgGet: (k, c) => integr().cfgGet(k, c), servicios: n => serviciosDe(n).map(x => x.tipo).join(', '),
   irMes: id => { S.view = 'redes'; S.rmFicha = id || null; S.ficha = null; S.pficha = null; try { history.replaceState(null, '', '#redes' + (id ? '/' + id : '')); } catch (e) { } render(); window.scrollTo(0, 0); } }));
 const moneyFmt = (n, m) => { try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: m || 'ARS', maximumFractionDigits: 0 }).format(+n || 0); } catch (e) { return (m || '') + ' ' + n; } };
-const tk = () => TKS || (TKS = initTickets({ S, esc, opt, toast, data, render, $, av, fotoDe, personas, fmt, fmtShort, today, thisMonth, isStaff, isAdmin, cmp, norm, emptyBox, hil, clienteOpts, closeForm, reload, ISO, money: moneyFmt, copyText, waNum, openMail: o => MAIL && MAIL.open(o) }));
+const tk = () => TKS || (TKS = initTickets({ autoBtn: p => aut().boton(p), S, esc, opt, toast, data, render, $, av, fotoDe, personas, fmt, fmtShort, today, thisMonth, isStaff, isAdmin, cmp, norm, emptyBox, hil, clienteOpts, closeForm, reload, ISO, money: moneyFmt, copyText, waNum, openMail: o => MAIL && MAIL.open(o) }));
 const vTickets = () => tk().vTickets();
 const vBriefs = () => tk().vBriefs();
 const vRedes = () => S.rmFicha ? red().vMes(S.rmFicha) : red().vLista();
@@ -1109,9 +1144,10 @@ function render() {
   const sync = $('#sync');
   sync.className = 'sync ' + (S.status === 'ok' ? 'ok' : S.status === 'offline' ? 'err' : '');
   sync.lastElementChild.textContent = S.status === 'ok' ? 'En vivo' : S.status === 'offline' ? 'Sin conexión' : 'Conectando';
-  $('#me').innerHTML = avEditable('persona', S.me.id, S.me.alias, fotoDe(S.me.alias), '', true) + '<span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>';
+  $('#me').innerHTML = '<button class="me-b" data-act="perfil" title="Tu perfil, avisos y tema">' + av(S.me.alias, fotoDe(S.me.alias), '') + '<span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>' + ICON.ajustes + '</button>';
   if (S.status === 'loading') { $('#view').innerHTML = '<section class="sheet">' + emptyBox('Cargando datos del equipo…', '') + '</section>'; return; }
   $('#view').innerHTML = viewFn(S.view)();
+  reabrir($('#view'));
   ponerHerramientas();
   const kb2 = document.querySelector('.kb'); if (kb2) { kb2.scrollLeft = kbLeft; kb2.querySelectorAll('.col').forEach((c, i) => { c.scrollTop = kbTops[i] || 0; }); kbFlechas(kb2); }
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { } } }
@@ -1157,7 +1193,7 @@ function recargarVersion() {
 }
 window.addEventListener('vite:preloadError', e => { if (recargarVersion()) e.preventDefault(); });
 window.addEventListener('unhandledrejection', e => { if (esVersionVieja(e.reason && e.reason.message)) recargarVersion(); });
-let toastT; function toast(msg) { if (esVersionVieja(msg) && recargarVersion()) return; const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
+let toastT; function toast(msg) { if (esVersionVieja(msg) && recargarVersion()) return; const t = $('#toast'); t.classList.remove('con-acc'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 const EXP = initExportar({ $, toast: m => toast(m), titulo: () => tituloVista() });
 
 /* ---------- Formularios ---------- */
@@ -1364,7 +1400,7 @@ async function saveListas(k, arr) {
 }
 function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('Copiado'), () => toast(v)); } catch (e) { toast(v); } }
 const ACT = {
-  go: t => { if (t.dataset.pend) S.mf.pend = true; go(t.dataset.view); },
+  go: t => { if (t.dataset.pend) S.mf.pend = true; if (t.dataset.tab) S.tab[t.dataset.view] = t.dataset.tab; go(t.dataset.view); },
   gqTarea: t => { ACT.pver(t); setTimeout(() => abrirTarea(t.dataset.id, +t.dataset.i), 0); },
   gqPiggy: () => { const q = $('#gq').value; $('#gq').value = ''; $('#gqres').hidden = true; if (IA) { IA.abrir(q); } },
   ptab: t => { S.ptab = t.dataset.t; render(); },
@@ -1396,7 +1432,8 @@ const ACT = {
   clearF: () => { S.f = { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true }; render(); },
   cfEstado: t => { S.cf.estado = t.dataset.estado; render(); },
   afTipo: t => { S.af.tipo = t.dataset.tipo; render(); },
-  ficha: t => { S.ficha = t.dataset.cliente; S.pficha = null; S.view = 'clientes'; try { history.replaceState(null, '', '#clientes/' + encodeURIComponent(S.ficha)); } catch (e) { } render(); window.scrollTo(0, 0); },
+  ctab: t => { S.ctab = t.dataset.t; render(); },
+  ficha: t => { S.ctab = t.dataset.tab || (S.ficha !== t.dataset.cliente ? 'resumen' : S.ctab); S.ficha = t.dataset.cliente; S.pficha = null; S.view = 'clientes'; try { history.replaceState(null, '', '#clientes/' + encodeURIComponent(S.ficha)); } catch (e) { } render(); window.scrollTo(0, 0); },
   back: () => { S.ficha = null; try { history.replaceState(null, '', '#clientes'); } catch (e) { } render(); },
   pver: t => { const id = t.dataset.id; if (S.pficha !== id) S.ptab = 'tareas'; S.pficha = id; S.ficha = null; S.view = 'proyectos'; closeForm(); try { history.replaceState(null, '', '#proyectos/' + id); } catch (e) { } render(); window.scrollTo(0, 0); },
   pback: () => { S.pficha = null; try { history.replaceState(null, '', '#proyectos'); } catch (e) { } render(); },
@@ -1407,6 +1444,8 @@ const ACT = {
     if (!mail) { toast('Cargá el email del contacto'); return; }
     location.href = 'mailto:' + encodeURIComponent(mail) + '?subject=' + encodeURIComponent('Tu acceso al portal de àndale') + '&body=' + encodeURIComponent(txt);
   },
+  ...uiActs,
+  uiVista: t => { guardarVista(t.dataset.p, t.dataset.v); if (t.dataset.p === 'proyectos') { S.mode = t.dataset.v; lsSet('mode', S.mode); } render(); },
   print: () => window.print(),
   exportar: () => exportarVista(),
   ...EXP.actions,
@@ -1639,7 +1678,7 @@ async function start(sess) {
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
   S.me = me;
   if (me.rol === 'admin' && !ADM) {
-    ADM = initAdmin({ S, av, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
+    ADM = initAdmin({ autoBtn: p => aut().boton(p), autoVista: () => aut().vista(), S, av, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
     ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
     Object.assign(ACT, ADM.actions);
   }
@@ -1650,7 +1689,7 @@ async function start(sess) {
     IA = initIA({ S, contactos: n => contactosDe(n), esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
     Object.assign(ACT, IA.actions);
   }
-  if (!ACT.flEditar) { Object.assign(ACT, trab().acts); Object.assign(ACT, hil().acts); Object.assign(ACT, red().acts); Object.assign(ACT, tk().acts); Object.assign(ACT, ent().acts); Object.assign(ACT, inf().acts); Object.assign(ACT, rlj().acts); }
+  if (!ACT.flEditar) { Object.assign(ACT, trab().acts); Object.assign(ACT, hil().acts); Object.assign(ACT, red().acts); Object.assign(ACT, tk().acts); Object.assign(ACT, ent().acts); Object.assign(ACT, inf().acts); Object.assign(ACT, rlj().acts); Object.assign(ACT, fm().acts); Object.assign(ACT, prf().acts); Object.assign(ACT, aut().acts); }
   rlj().iniciar();
   $('#askbtn').hidden = !IA; $('#askbtn .askbtn-i').innerHTML = ISO; document.querySelectorAll('.askmini').forEach(b => { b.hidden = !IA; b.innerHTML = ISO; });
   $('#top').hidden = false;
@@ -1663,6 +1702,7 @@ async function start(sess) {
 }
 
 (async () => {
+  aplicarTema(temaGuardado());
   iconizar(document.body); EXP.observar();
   if (!data.configured) { $('#view').innerHTML = '<div class="login"><div class="login-card"><h2>Falta configurar la base de datos</h2><p>Definí VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.</p></div></div>'; return; }
   data.onAuth((ev, s) => { if (ev === 'SIGNED_IN' && s) start(s); if (ev === 'SIGNED_OUT') { S.me = null; started = false; showLogin(); } });

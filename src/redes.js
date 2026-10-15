@@ -8,6 +8,7 @@ const MES_COLOR = { 'Planificación': '--s-empezar', 'Producción': '--s-curso',
 const REDES = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X'];
 const FORMATOS_DEF = ['Historias', 'Reels', 'Posts y carruseles'];
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+import { vistaSel, vistaDe, filtrosMenu } from './ui.js';
 const IMG = /\.(jpe?g|png|gif|webp|tiff?|bmp|heic)$/i;
 
 export function initRedes(ctx) {
@@ -48,7 +49,8 @@ export function initRedes(ctx) {
     let tot = 0, plan = 0, aprobar = 0, cambios = 0, extras = 0;
     ms.forEach(m => { const ps = piezas(m._id) || []; tot += ps.length; plan += Object.values(m.plan || {}).reduce((a, n) => a + (+n || 0), 0); aprobar += ps.filter(z => z.estado === 'Para el cliente').length; cambios += ps.filter(z => z.estado === 'Cambios').length; extras += ps.filter(z => z.extra).length; });
     const nav = '<div class="rm-nav"><button class="btn ghost sm" data-act="rmMes" data-d="-1" aria-label="Mes anterior">←</button><b>' + esc(cap(monthLabel(st.mes))) + '</b><button class="btn ghost sm" data-act="rmMes" data-d="1" aria-label="Mes siguiente">→</button>' + (st.mes !== thisMonth() ? '<button class="btn ghost sm" data-act="rmMes" data-d="0">Este mes</button>' : '') + '</div>';
-    let h = '<div class="head"><div><h1>Redes</h1><p>El mes de cada cliente: qué hay que publicar, en qué está cada pieza y qué falta aprobar.</p></div>' + nav + '</div>';
+    const vista = vistaDe('redes', ['cuadricula', 'lista']);
+    let h = '<div class="head"><div><h1>Redes</h1><p>El mes de cada cliente: qué hay que publicar, en qué está cada pieza y qué falta aprobar.</p></div><div class="toolbar">' + nav + vistaSel('redes', ['cuadricula', 'lista'], vista) + (ctx.autoBtn ? ctx.autoBtn('redes') : '') + '</div></div>';
     if (S.RM === null) return h + '<section class="sheet">' + emptyBox('Falta un paso en la base de datos', 'Para usar Redes hay que correr la migración 0016 en Supabase.') + '</section>';
     h += '<section class="hks rm-k">' +
       kpi('Clientes con el mes armado', ms.length + ' de ' + cs.length, cs.length - ms.length ? (cs.length - ms.length) + ' sin arrancar' : 'todos arrancados') +
@@ -58,7 +60,24 @@ export function initRedes(ctx) {
     const sinMes = cs.filter(c => !mesCliente(c, st.mes));
     if (sinMes.length && isStaff()) h += '<div class="rm-bar"><span><b>' + sinMes.length + '</b> cliente' + (sinMes.length > 1 ? 's' : '') + ' sin el mes armado</span><button class="btn sm primary" data-act="rmArrancarTodos">Arrancar ' + esc(monthLabel(st.mes).split(' ')[0]) + ' para todos</button></div>';
     if (!cs.length) return h + '<section class="sheet">' + emptyBox('No hay clientes con abono de Redes activo', 'Cuando un cliente tenga un abono de Redes, aparece acá.') + '</section>';
-    h += '<div class="rm-cards">' + cs.map(c => card(c, mesCliente(c, st.mes))).join('') + '</div>';
+    const rf = S.rf || (S.rf = { q: '', resp: '', estado: '', pend: false }), q = norm(rf.q);
+    const pend = m => { const ps = m && piezas(m._id); return !!(ps && ps.some(z => z.estado === 'Para el cliente' || z.estado === 'Cambios')); };
+    const vis = cs.filter(c => { const m = mesCliente(c, st.mes); return (!q || norm(c).includes(q)) && (!rf.resp || (rf.resp === '__none' ? !(m && m.resp) : m && m.resp === rf.resp)) && (!rf.estado || (rf.estado === '__sin' ? !m : m && m.estado === rf.estado)) && (!rf.pend || pend(m)); });
+    h += '<div class="toolbar fbar2"><input class="in" type="search" id="rfq" data-bind="rf.q" placeholder="Buscar cliente" value="' + esc(rf.q) + '">' +
+      filtrosMenu('redes', '<label class="lbl" for="rfe">Estado del mes</label><select class="in" id="rfe" data-bind="rf.estado">' + opt('', 'Todos', rf.estado) + opt('__sin', 'Sin arrancar', rf.estado) + ESTADOS_MES.map(e => opt(e, e, rf.estado)).join('') + '</select>' +
+        '<label class="lbl" for="rfr">Responsable</label><select class="in" id="rfr" data-bind="rf.resp">' + opt('', 'Todo el equipo', rf.resp) + opt('__none', 'Sin asignar', rf.resp) + personas().map(p => opt(p, p, rf.resp)).join('') + '</select>' +
+        '<label class="chk"><input type="checkbox" data-bind="rf.pend"' + (rf.pend ? ' checked' : '') + '> Solo con algo para aprobar o con cambios</label>', (rf.estado ? 1 : 0) + (rf.resp ? 1 : 0) + (rf.pend ? 1 : 0)) + '</div>';
+    if (!vis.length) return h + '<section class="sheet">' + emptyBox('Ningún cliente coincide', 'Probá con otro filtro.') + '</section>';
+    if (vista === 'lista') {
+      const fila = c => { const m = mesCliente(c, st.mes), cli = S.C.find(x => x.nombre === c) || {};
+        if (!m) return '<tr><td class="name"><span class="who1">' + av(c, cli.avatar, 'sq') + esc(c) + '</span></td><td><span class="muted">Sin arrancar</span></td><td class="muted">—</td><td class="n muted">—</td><td class="n muted">—</td><td class="r">' + (isStaff() ? '<button class="btn sm" data-act="rmArrancar" data-c="' + esc(c) + '">Arrancar</button>' : '') + '</td></tr>';
+        const ps = piezas(m._id), n = ps ? ps.length : null, plan = Object.values(m.plan || {}).reduce((a, x) => a + (+x || 0), 0);
+        const ap = ps ? ps.filter(z => z.estado === 'Para el cliente').length : 0, ca = ps ? ps.filter(z => z.estado === 'Cambios').length : 0;
+        return '<tr class="click" data-act="rmAbrir" data-id="' + esc(m._id) + '"><td class="name"><span class="who1">' + av(c, cli.avatar, 'sq') + esc(c) + '</span></td><td>' + mesPill(m.estado) + '</td><td>' + (m.resp ? esc(m.resp) : '<span class="muted">—</span>') + '</td>' +
+          '<td class="n num">' + (n == null ? '…' : n + (plan ? ' / ' + plan : '')) + '</td><td class="n">' + (ap ? '<span class="pzst" style="--c:var(--s-revision)">' + ap + ' a aprobar</span>' : '') + (ca ? ' <span class="pzst" style="--c:var(--s-cancelado)">' + ca + (ca > 1 ? ' cambios' : ' cambio') + '</span>' : '') + (!ap && !ca ? '<span class="muted">—</span>' : '') + '</td><td class="r">' + (m.visible ? '<span class="muted" title="El cliente lo ve en el portal">En el portal</span>' : '') + '</td></tr>'; };
+      return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Estado</th><th>Responsable</th><th class="n">Piezas</th><th class="n">Pendiente</th><th></th></tr></thead><tbody>' + vis.map(fila).join('') + '</tbody></table></div><div class="count num">' + vis.length + ' clientes</div></section>';
+    }
+    h += '<div class="rm-cards">' + vis.map(c => card(c, mesCliente(c, st.mes))).join('') + '</div>';
     return h;
   }
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -93,7 +112,9 @@ export function initRedes(ctx) {
     const tab = tabs.some(t => t[0] === st.tab) ? st.tab : 'planilla';
     let h = '<div class="pf-head rm-head"><div class="pf-top"><button class="pf-logo" data-act="ficha" data-cliente="' + esc(m.cliente) + '">' + av(m.cliente, cli.avatar, 'xl sq') + '</button><div class="pf-tit"><button class="btn link pf-cli" data-act="ficha" data-cliente="' + esc(m.cliente) + '">' + esc(m.cliente) + '</button>' +
       '<h1 class="rm-tit">' + (prev ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(prev._id) + '" aria-label="Mes anterior">←</button>' : '') + 'Redes · ' + esc(cap(monthLabel(m.mes))) + (next ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(next._id) + '" aria-label="Mes siguiente">→</button>' : '') + '</h1></div>' +
-      '<div class="toolbar pf-acc">' + (can ? carpetaBtn(m) + (next ? '' : '<button class="btn" data-act="rmSiguiente" data-id="' + esc(m._id) + '">Arrancar ' + esc(monthLabel(addMonth(m.mes, 1)).split(' ')[0]) + '</button>') + enviarBtn(m, lista) : '') + '</div></div>' +
+      '<div class="toolbar pf-acc">' + (can ? carpetaBtn(m) + enviarBtn(m, lista) + (ctx.masMenu ? ctx.masMenu([
+        next ? null : { act: 'rmSiguiente', label: 'Arrancar ' + monthLabel(addMonth(m.mes, 1)).split(' ')[0], attrs: ' data-id="' + esc(m._id) + '"', icon: 'calendario' },
+        { act: 'rmBorrarMes', label: 'Borrar este mes', attrs: ' data-id="' + esc(m._id) + '"', danger: true, icon: 'alerta' }]) : '') : '') + '</div></div>' +
       '<div class="pf-meta">' + (can ? '<select class="cellsel st" style="--c:var(' + (MES_COLOR[m.estado] || '--muted') + ')" data-rmupd="estado" data-id="' + esc(m._id) + '" aria-label="Estado del mes">' + ESTADOS_MES.map(e => opt(e, e, m.estado)).join('') + '</select>' : mesPill(m.estado)) +
       '<span class="rm-resp">' + (m.resp ? av(m.resp, fotoDe(m.resp)) : '') + (can ? '<select class="in sm" data-rmupd="resp" data-id="' + esc(m._id) + '" aria-label="Responsable del mes">' + opt('', 'Sin responsable', m.resp) + personas().map(a => opt(a, a, m.resp)).join('') + '</select>' : esc(m.resp || '')) + '</span>' +
       (can ? '<label class="rm-portal sw"><input type="checkbox" data-rmupd="visible" data-id="' + esc(m._id) + '"' + (m.visible ? ' checked' : '') + '><span></span><b>Visible en el portal</b></label>' : '') +
@@ -123,7 +144,8 @@ export function initRedes(ctx) {
       '<button class="btn sm" data-act="rmCopys"><span class="pig" aria-hidden="true">' + ISO + '</span> Escribir copys</button><button class="btn sm danger" data-act="rmBorrar">Borrar</button><button class="btn ghost sm" data-act="rmSelNada">Listo</button></div>' : '';
     const tools = can ? '<div class="toolbar rm-tools"><form class="rm-add" data-rmadd="' + esc(m._id) + '"><span>+</span><input class="in sm" type="number" min="1" max="60" name="n" value="1" aria-label="Cantidad"><select class="in sm" name="f" aria-label="Formato">' + fs.map(f => opt(f, f, '')).join('') + '</select><button class="btn sm">Agregar</button></form>' +
       '<button class="btn sm" data-act="rmIdeas" data-id="' + esc(m._id) + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido</button>' +
-      '<button class="btn sm" data-act="rmChat" data-id="' + esc(m._id) + '">Pegar chat del cliente</button></div>' : '';
+      '<button class="btn sm" data-act="rmChat" data-id="' + esc(m._id) + '">Pegar chat del cliente</button>' +
+      (ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? '<button class="btn link sm rm-sinmarca" data-act="ficha" data-cliente="' + esc(m.cliente) + '" data-tab="marca" title="Sin ficha, Mr. Piggy escribe genérico">Completar la ficha de marca de ' + esc(m.cliente) + '</button>' : '') + '</div>' : '';
     if (!ps.length) return tools + '<section class="sheet">' + emptyBox('Todavía no hay piezas este mes', can ? 'Sumalas con “+ Agregar” (de a muchas), o pedile a Mr. Piggy que proponga el contenido según el plan.' : '') + '</section>';
     const fila = z => {
       const id = esc(z._id), d = can ? '' : ' disabled';
@@ -211,6 +233,15 @@ export function initRedes(ctx) {
   function local(mesId, ids, u) { const ps = piezas(mesId) || []; ps.forEach(z => { if (ids.includes(z._id)) Object.assign(z, u); }); }
 
   /* ---------- Acciones ---------- */
+  // Deshacer un mes arrancado por error (o borrarlo después): se va el mes con sus piezas. La carpeta de Dropbox, si se creó, queda.
+  async function borrarMes(m, silencioso) {
+    await data.mesDel(m._id);
+    const i = (S.RM || []).findIndex(x => x._id === m._id); if (i >= 0) S.RM.splice(i, 1);
+    P.delete(m._id); st.sel.clear();
+    if (S.rmFicha === m._id) ctx.irMes(null); else render();
+    if (!silencioso) toast('Listo: se borró ' + monthLabel(m.mes) + ' de ' + m.cliente);
+  }
+  const ofrecerDeshacer = (msg, meses) => { if (ctx.toastAccion) ctx.toastAccion(msg, 'Deshacer', async () => { try { for (const m of meses) await borrarMes(m, true); toast(meses.length > 1 ? 'Se deshicieron ' + meses.length + ' meses' : 'Deshecho'); } catch (e) { toast(e.message); } }); else toast(msg); };
   async function arrancar(cliente, mes, base) {
     const ab = abonoRedes(cliente);
     const plan = base ? { ...(base.plan || {}) } : planDeAbono(ab);
@@ -270,7 +301,7 @@ export function initRedes(ctx) {
       const prev = mesCliente(m.cliente, addMonth(m.mes, -1)), pp = prev ? (piezas(prev._id) || []) : [];
       const cli = S.C.find(x => x.nombre === m.cliente) || {};
       const r = await data.ia({ modo: 'redes_ideas', texto: Object.keys(faltan).length ? 'Proponé estas piezas que faltan: ' + Object.entries(faltan).map(([f, n]) => n + ' ' + f).join(', ') + '.' : 'Proponé 3 ideas extra.',
-        contexto: { cliente: m.cliente, notas_cliente: cli.notas || '', servicios: ctx.servicios ? ctx.servicios(m.cliente) : '', mes: m.mes, formatos: formatos(), plan, notas_del_mes: m.notas, ya_cargadas: ps.map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })), mes_anterior: pp.slice(0, 60).map(z => ({ formato: z.formato, tema: z.tema })) } });
+        contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, [...pp, ...ps]) : {}), notas_cliente: cli.notas || '', servicios: ctx.servicios ? ctx.servicios(m.cliente) : '', mes: m.mes, formatos: formatos(), plan, notas_del_mes: m.notas, ya_cargadas: ps.map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })), mes_anterior: pp.slice(0, 60).map(z => ({ formato: z.formato, tema: z.tema })) } });
       const nuevas = (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && x.tema).map(x => ({ formato: formatos().includes(x.formato) ? x.formato : (formatos().find(f => norm(f).startsWith(norm(x.formato).slice(0, 4))) || formatos()[0]), tema: String(x.tema).slice(0, 200), copy: x.copy || '', hashtags: x.hashtags || '',
         fecha: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : '', estado: 'Idea', extra: !Object.keys(faltan).length }));
       if (!nuevas.length) { toast('Mr. Piggy no propuso nada. Probá de nuevo.'); }
@@ -284,7 +315,7 @@ export function initRedes(ctx) {
     if (btn) { btn.disabled = true; btn.textContent = 'Escribiendo…'; }
     try {
       const cli = S.C.find(x => x.nombre === m.cliente) || {};
-      const r = await data.ia({ modo: 'redes_copys', texto: JSON.stringify(ps.map(z => ({ id: z._id, formato: z.formato, fecha: z.fecha, tema: z.tema, copy_actual: z.copy }))), contexto: { cliente: m.cliente, notas_cliente: cli.notas || '', notas_del_mes: m.notas } });
+      const r = await data.ia({ modo: 'redes_copys', texto: JSON.stringify(ps.map(z => ({ id: z._id, formato: z.formato, fecha: z.fecha, tema: z.tema, copy_actual: z.copy }))), contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, piezas(m._id) || []) : {}), notas_cliente: cli.notas || '', notas_del_mes: m.notas } });
       let n = 0;
       for (const x of Array.isArray(r.piezas) ? r.piezas : []) { const z = ps.find(y => y._id === x.id); if (!z || !x.copy) continue; const u = { copy: x.copy, ...(x.hashtags ? { hashtags: x.hashtags } : {}) }; await data.piezasUpd([z._id], u); Object.assign(z, u); n++; }
       toast(n ? 'Mr. Piggy escribió ' + n + ' copys. Revisalos.' : 'No se pudo escribir los copys.');
@@ -305,7 +336,7 @@ export function initRedes(ctx) {
     const b = $('#rmchat-b'); b.disabled = true; b.textContent = 'Leyendo…';
     try {
       const ps = piezas(m._id) || [];
-      const r = await data.ia({ modo: 'redes_chat', texto: t, contexto: { formatos: formatos(), piezas: ps.map(z => ({ id: z._id, fecha: z.fecha, formato: z.formato, tema: z.tema, estado: z.estado })) } });
+      const r = await data.ia({ modo: 'redes_chat', texto: t, contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, ps) : {}), formatos: formatos(), piezas: ps.map(z => ({ id: z._id, fecha: z.fecha, formato: z.formato, tema: z.tema, estado: z.estado })) } });
       let ap = 0, ca = 0, nu = 0;
       for (const c of Array.isArray(r.cambios) ? r.cambios : []) {
         const z = ps.find(x => x._id === c.id); if (!z) continue;
@@ -381,9 +412,14 @@ export function initRedes(ctx) {
     rmAbrir: t => ctx.irMes(t.dataset.id),
     rmVolver: () => ctx.irMes(null),
     rmTab: t => { st.tab = t.dataset.t; lsSet('rmTab', st.tab); render(); },
-    rmArrancar: async t => { t.disabled = true; try { const m = await arrancar(t.dataset.c, st.mes, mesCliente(t.dataset.c, addMonth(st.mes, -1))); toast('Mes arrancado para ' + t.dataset.c); ctx.irMes(m._id); } catch (e) { toast(e.message); t.disabled = false; } },
-    rmArrancarTodos: async t => { t.disabled = true; let n = 0; for (const c of clientesMes(st.mes).filter(c => !mesCliente(c, st.mes))) { try { await arrancar(c, st.mes, mesCliente(c, addMonth(st.mes, -1))); n++; } catch (e) { toast(c + ': ' + e.message); } } toast(n + ' meses arrancados'); render(); },
-    rmSiguiente: async t => { const m = mesDe(t.dataset.id); if (!m) return; t.disabled = true; try { const nm = await arrancar(m.cliente, addMonth(m.mes, 1), m); toast(cap(monthLabel(nm.mes)) + ' arrancado con el plan y las piezas fijas'); ctx.irMes(nm._id); } catch (e) { toast(e.message); t.disabled = false; } },
+    rmArrancar: async t => { t.disabled = true; try { const m = await arrancar(t.dataset.c, st.mes, mesCliente(t.dataset.c, addMonth(st.mes, -1))); ctx.irMes(m._id); ofrecerDeshacer('Mes arrancado para ' + t.dataset.c, [m]); } catch (e) { toast(e.message); t.disabled = false; } },
+    rmBorrarMes: async t => {
+      const m = mesDe(t.dataset.id); if (!m) return; const n = (piezas(m._id) || []).length;
+      if (!window.confirm('¿Borrar ' + monthLabel(m.mes) + ' de ' + m.cliente + '?' + (n ? ' Se borran también sus ' + n + ' piezas.' : '') + ' No se puede deshacer.')) return;
+      try { await borrarMes(m); } catch (e) { toast(e.message); }
+    },
+    rmArrancarTodos: async t => { t.disabled = true; const hechos = []; for (const c of clientesMes(st.mes).filter(c => !mesCliente(c, st.mes))) { try { hechos.push(await arrancar(c, st.mes, mesCliente(c, addMonth(st.mes, -1)))); } catch (e) { toast(c + ': ' + e.message); } } render(); if (hechos.length) ofrecerDeshacer(hechos.length + ' meses arrancados', hechos); },
+    rmSiguiente: async t => { const m = mesDe(t.dataset.id); if (!m) return; t.disabled = true; try { const nm = await arrancar(m.cliente, addMonth(m.mes, 1), m); ctx.irMes(nm._id); ofrecerDeshacer(cap(monthLabel(nm.mes)) + ' arrancado con el plan y las piezas fijas', [nm]); } catch (e) { toast(e.message); t.disabled = false; } },
     rmCarpeta: async t => { const m = mesDe(t.dataset.id); if (!m) return; t.disabled = true; t.textContent = 'Creando…'; try { const r = await data.dropbox({ accion: 'carpeta_mes', mes_id: m._id }); m.carpeta = r.carpeta; m.carpetaUrl = r.carpeta_url; toast('Carpetas creadas en Dropbox'); render(); } catch (e) { toast(e.message); t.disabled = false; t.textContent = 'Crear carpetas en Dropbox'; } },
     rmContar: t => { const m = mesDe(t.dataset.id); if (m) contar(m); },
     rmEnviar: async t => {
