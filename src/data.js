@@ -315,7 +315,7 @@ export async function borrarComentario(id) { check(await sb.from('comentarios').
 export async function leerAvisos(ids) { if (ids.length) check(await sb.from('notificaciones').update({ leida: true }).in('id', ids)); }
 export async function avisos() { return tolerante(sb.from('notificaciones').select('*').order('created_at', { ascending: false }).limit(80)).then(rows => rows ? rows.map(n => ({ _id: n.id, tipo: n.tipo, titulo: n.titulo, cuerpo: n.cuerpo, link: n.link, leida: n.leida, actor: idx.personaAlias.get(n.actor_id) || '', creado: n.created_at })) : null); }
 /* ---------- Mantenimiento (solo admins): copia de seguridad, borrar datos de prueba, errores ---------- */
-export const TABLAS_BACKUP = ['personas', 'listas', 'ajustes', 'plan_cuentas', 'cajas', 'colaboradores', 'remuneraciones', 'conceptos_fijos', 'flujos',
+export const TABLAS_BACKUP = ['personas', 'listas', 'ajustes', 'plan_cuentas', 'cajas', 'colaboradores', 'lotes_aumento', 'remuneraciones', 'conceptos_fijos', 'flujos',
   'clientes', 'clientes_admin', 'contactos', 'cliente_responsables', 'abonos', 'abono_responsables', 'abono_finanzas', 'precios_abono',
   'proyectos', 'proyecto_responsables', 'proyecto_finanzas', 'proyecto_facturacion', 'tareas', 'comunicaciones', 'propuestas',
   'resumenes', 'facturas', 'movimientos', 'imputaciones', 'liquidaciones', 'comprobantes_pago', 'gestiones', 'drive_archivos', 'emails',
@@ -405,13 +405,14 @@ const opcional = p => p.catch(e => { if (/PGRST205|42P01|Could not find the tabl
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
   const desdeMes = new Date(); desdeMes.setDate(1); desdeMes.setHours(0, 0, 0, 0);
-  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il, prop, seg] = await Promise.all([
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il, prop, seg, la] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
     all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })), all('proyecto_finanzas'), all('abono_finanzas'), all('imputaciones'),
     opcional(all('colaboradores', q => q.order('nombre'))), opcional(all('remuneraciones')), opcional(all('conceptos_fijos')), opcional(all('liquidaciones')), opcional(all('drive_archivos', q => q.order('modificado', { ascending: false, nullsFirst: false }))),
     opcional(all('ia_log', q => q.gte('created_at', desdeMes.toISOString()))),
     opcional(all('propuestas', q => q.order('fecha', { ascending: false }))),
     opcional(all('seguimiento', q => q.not('email_id', 'is', null))),
+    opcional(all('lotes_aumento', q => q.order('created_at', { ascending: false }))),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
@@ -431,7 +432,8 @@ export async function loadAdmin() {
     ABF: new Map(abf.map(r => [r.abono_id, { ...r, inversion: num(r.inversion) }])),
     IMP: imp.map(r => ({ ...r, monto: num(r.monto) || 0 })),
     CO: co.map(r => ({ ...r, persona: idx.personaAlias.get(r.persona_id) || '' })),
-    RM: rm.map(r => ({ ...r, desde: month(r.desde), monto: num(r.monto) })),
+    RM: rm.map(r => ({ ...r, desde: month(r.desde), monto: num(r.monto), monto_anterior: num(r.monto_anterior), pct: num(r.pct), lote_id: r.lote_id || null })),
+    LA: la.map(r => ({ ...r, desde: month(r.desde), valor: num(r.valor) })),
     CF: cf.map(r => ({ ...r, desde: month(r.desde), hasta: month(r.hasta), monto: num(r.monto) })),
     LQ: lq.map(r => ({ ...r, periodo: month(r.periodo), monto: num(r.monto) })),
     DA: da.map(r => ({ ...r, datos: r.datos || {} })),

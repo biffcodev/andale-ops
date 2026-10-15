@@ -2,6 +2,7 @@
 // Sueldos y pagos: Sueldo u honorario con historial, extras fijos,
 // aguinaldo, liquidación mensual y pago (que queda como egreso en Caja). Solo administradores.
 import * as data from './data.js';
+import { initAumentos } from './aumentos.js';
 
 export const MES_CORTO = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 const TIPOS = ['Empleado', 'Socio', 'Proveedor'];
@@ -93,6 +94,9 @@ export function initEquipo(ctx, k) {
   // Mes de referencia: hoy, o el primer mes con sueldo si todavía no arrancó (ej. cargado desde noviembre).
   const mesRef = c => { const m = thisMonth(); if (remVig(c.id, m).length) return m; const fut = AD.RM.filter(r => r.colaborador_id === c.id && r.desde > m).map(r => r.desde).sort()[0]; return fut || m; };
   const costoMensual = cs => cs.reduce((acc, c) => { const { rs, ex } = lineaRem(c, mesRef(c)); [...rs, ...ex].forEach(x => add(acc, x.moneda, x.monto)); return acc; }, {});
+  const AU = initAumentos(ctx, k, { colab, esProv, pctTxt });
+  // Ir a una pantalla desde un panel (el botón "go" de la app)
+  const irA = (view, tab) => { const b = document.createElement('button'); b.dataset.act = 'go'; b.dataset.view = view; if (tab) b.dataset.tab = tab; b.hidden = true; document.body.appendChild(b); b.click(); b.remove(); };
 
   /* ---------- Equipo › Personas ---------- */
   function vPersonas() {
@@ -134,43 +138,18 @@ export function initEquipo(ctx, k) {
 
   /* ---------- Equipo › Aumentos ---------- */
   function vAumentos() {
-    const m = thisMonth(), y = m.slice(0, 4);
-    const gente = AD.CO.filter(c => !esProv(c) && c.activo).sort((a, b) => cmp(a.nombre, b.nombre));
-    const cambios = AD.RM.filter(r => { const c = colab(r.colaborador_id); return c && !esProv(c) && r.concepto !== 'Honorario'; }).sort((a, b) => b.desde.localeCompare(a.desde) || cmp((colab(a.colaborador_id) || {}).nombre, (colab(b.colaborador_id) || {}).nombre));
-    const aumentos = cambios.map(r => ({ r, ant: remAnterior(r) })).filter(x => x.ant);
-    const delAnio = aumentos.filter(x => x.r.desde.startsWith(y) && x.r.desde <= m).map(x => pctDe(x.r, x.ant)).filter(v => v != null);
-    const ult = aumentos.find(x => x.r.desde <= m);
-    let h = '<div class="head"><div><h1>Aumentos</h1><p>Cuánto cobra cada persona del equipo y cómo fue cambiando. Cada aumento guarda el monto anterior, así queda el historial.</p></div><div class="toolbar"><button class="btn primary" data-act="pgAumento">Aumento general</button></div></div>';
-    h += '<section class="stc3" aria-label="Aumentos">' +
-      stc('azul', multi(costoMensual(gente)), 'Costo mensual hoy', pl(gente.length, 'persona', 'personas') + ' con sueldo') +
-      stc('', delAnio.length ? pctTxt(Math.round(delAnio.reduce((a, v) => a + v, 0) / delAnio.length * 10) / 10) : '—', 'Aumento promedio ' + esc(y), delAnio.length ? pl(delAnio.length, 'aumento', 'aumentos') + ' en el año' : 'sin aumentos este año') +
-      stc('tinta', ult ? fmt(ult.r.desde) : '—', 'Último aumento', ult ? esc(((colab(ult.r.colaborador_id) || {}).nombre || '') + ' · ' + (pctDe(ult.r, ult.ant) != null ? pctTxt(pctDe(ult.r, ult.ant)) : '') + (ult.r.motivo ? ' · ' + ult.r.motivo : '')) : 'todavía ninguno') + '</section>';
-    const filas = gente.map(c => {
-      const mc = mesRef(c), r = remVig(c.id, mc).find(x => x.concepto === 'Sueldo') || remVig(c.id, mc)[0];
-      const a = r ? remAnterior(r) : null, ini = r ? (remVig(c.id, y + '-01').find(x => x.concepto === r.concepto) || null) : null;
-      const prog = AD.RM.filter(x => x.colaborador_id === c.id && x.desde > mc).sort((p, q) => p.desde.localeCompare(q.desde))[0];
-      const acum = r && ini && ini !== r ? pctDe(r, ini) : null;
-      return '<tr><td class="name"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button><span class="sub">' + esc(c.tipo) + '</span></td>' +
-        '<td class="r">' + (r ? '<span class="money">' + money(r.monto, r.moneda) + '</span><span class="sub">desde ' + fmt(r.desde) + (extrasVig(c.id, mc).length ? ' · con extras ' + esc(multi(lineaRem(c, mc).acc)) : '') + '</span>' : '<span class="muted">sin cargar</span>') + '</td>' +
-        '<td>' + (r && a ? '<b>' + esc(pctDe(r, a) != null ? pctTxt(pctDe(r, a)) : '') + '</b><span class="sub">' + esc(fmt(r.desde) + (r.motivo ? ' · ' + r.motivo : '')) + '</span>' : '<span class="muted">' + (r ? 'sueldo inicial' : '—') + '</span>') + '</td>' +
-        '<td class="r">' + (acum != null ? '<b>' + esc(pctTxt(acum)) + '</b>' : '<span class="muted">—</span>') + '</td>' +
-        '<td>' + (prog ? '<span class="money">' + money(prog.monto, prog.moneda) + '</span><span class="sub">desde ' + fmt(prog.desde) + '</span>' : '<span class="muted">—</span>') + '</td>' +
-        '<td class="r"><button class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '" data-from="aum">' + (r ? 'Aumento' : 'Cargar sueldo') + '</button></td></tr>';
-    }).join('');
-    h += '<section class="sheet"><div class="sheet-h"><h2>Sueldo de cada uno</h2></div>' + (filas ? '<div class="tbl"><table><thead><tr><th>Persona</th><th class="r">Sueldo hoy (sin extras)</th><th>Último aumento</th><th class="r">En ' + esc(y) + '</th><th>Programado</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div>' : emptyBox('Todavía no hay sueldos cargados', 'Cargalos desde la ficha de cada persona en Equipo › Personas.')) + '</section>';
-    if (cambios.length) h += '<section class="sheet"><div class="sheet-h"><h2>Historial</h2><span class="muted">' + cambios.length + ' cambios</span></div><div class="tbl"><table><thead><tr><th>Desde</th><th>Persona</th><th class="r">Antes</th><th class="r">Ahora</th><th class="r">Aumento</th><th>Motivo</th></tr></thead><tbody>' +
-      cambios.slice(0, 80).map(r => { const a = remAnterior(r), pc = pctDe(r, a); return '<tr><td class="mono">' + fmt(r.desde) + (r.desde > m ? ' <span class="tag">programado</span>' : '') + '</td><td>' + esc((colab(r.colaborador_id) || {}).nombre || '') + '</td><td class="r">' + (a ? '<span class="money">' + money(a.monto, a.moneda) + '</span>' : '<span class="muted">—</span>') + '</td><td class="r"><span class="money">' + money(r.monto, r.moneda) + '</span></td><td class="r">' + (pc != null ? '<b>' + esc(pctTxt(pc)) + '</b>' : '<span class="muted">' + (a ? '—' : 'inicial') + '</span>') + '</td><td>' + esc(r.motivo || '') + '</td></tr>'; }).join('') + '</tbody></table></div></section>';
-    return h;
+    return '<div class="head"><div><h1>Aumentos</h1><p>Elegí a quiénes, definí el aumento y revisá antes de confirmar. Los que no tildes no cambian. Cada tanda queda como un lote con su historial.</p></div></div>' + AU.vista('sueldos');
   }
 
   /* ---------- Finanzas › Proveedores ---------- */
   function vProveedores() {
-    const t = S.tab.proveedores === 'lista' ? 'lista' : 'pagos', m = AD.pg.mes, y = m.slice(0, 4);
+    const t = ['lista', 'aumentos'].includes(S.tab.proveedores) ? S.tab.proveedores : 'pagos', m = AD.pg.mes, y = m.slice(0, 4);
     const lq = liqMes(m).filter(deGrupo(true)), falt = faltantes(m).filter(deGrupo(true));
     const pend = {}, pag = {}; lq.forEach(l => add(l.movimiento_id ? pag : pend, l.moneda, l.monto));
     const anio = {}; AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.egreso > 0 && v.cuenta === 'Proveedores').forEach(v => add(anio, v.moneda, v.egreso));
-    let h = '<div class="head"><div><h1>Proveedores</h1><p>Freelancers y empresas que trabajan para àndale: trabajos puntuales, honorarios fijos y cuánto se les pagó. El equipo y sus sueldos están en Equipo.</p></div><div class="toolbar">' + (t === 'pagos' ? mesNav() : verInact() + '<button class="btn primary" data-act="pgColab" data-g="prov">+ Proveedor</button>') + '</div></div>';
-    h += ctx.subnav('proveedores', [['pagos', 'Pagos del mes', lq.filter(l => !l.movimiento_id).length || ''], ['lista', 'Proveedores']]);
+    let h = '<div class="head"><div><h1>Proveedores</h1><p>Freelancers y empresas que trabajan para àndale: trabajos puntuales, honorarios fijos y cuánto se les pagó. El equipo y sus sueldos están en Equipo.</p></div><div class="toolbar">' + (t === 'pagos' ? mesNav() : t === 'lista' ? verInact() + '<button class="btn primary" data-act="pgColab" data-g="prov">+ Proveedor</button>' : '') + '</div></div>';
+    h += ctx.subnav('proveedores', [['pagos', 'Pagos del mes', lq.filter(l => !l.movimiento_id).length || ''], ['lista', 'Proveedores'], ['aumentos', 'Aumentos']]);
+    if (t === 'aumentos') return h + AU.vista('proveedores');
     h += '<section class="stc3" aria-label="Proveedores">' +
       stc('azul', multi(pend), 'Falta pagar en ' + esc(monthLabel(m).split(' ')[0]), pl(lq.filter(l => !l.movimiento_id).length, 'pago pendiente', 'pagos pendientes')) +
       stc('', multi(pag), 'Pagado en el mes', pl(lq.filter(l => l.movimiento_id).length, 'pago', 'pagos')) +
@@ -234,11 +213,10 @@ export function initEquipo(ctx, k) {
     const hist = c ? histRem(c.id) : [], ex = c ? AD.CF.filter(x => x.colaborador_id === c.id).sort((a, b) => cmp(a.concepto, b.concepto)) : [], pagos = c ? pagosDe(c.id).slice(0, 12) : [];
     const box = (titulo, inner, btn) => '<div class="field full"><span class="lbl" style="display:flex;justify-content:space-between;align-items:center">' + titulo + (btn || '') + '</span>' + inner + '</div>';
     const lista = rows => rows.length ? '<div class="rows" style="border:1px solid var(--line);border-radius:8px">' + rows.join('') + '</div>' : '<span class="muted">Nada cargado.</span>';
-    const remRows = hist.map(r => { const a = remAnterior(r), pc = pctDe(r, a); return '<div class="row" data-act="pgRemEdit" data-id="' + esc(r.id) + '" title="Corregir" style="cursor:pointer"><span class="d">' + fmt(r.desde) + '</span><span class="t"><b class="money">' + money(r.monto, r.moneda) + '</b><span>' + esc([r.concepto, pc != null ? pctTxt(pc) : '', r.motivo].filter(Boolean).join(' · ')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgRemDel" data-id="' + esc(r.id) + '" aria-label="Borrar">✕</button></div>'; });
     const pagRows = pagos.map(v => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b class="money">' + money(v.egreso, v.moneda) + '</b><span>' + esc(v.detalle || v.subcuenta) + '</span></span><span></span></div>');
     const extra = !c ? '<p class="formnote" style="grid-column:1/-1">Después de guardar vas a poder cargar ' + (esP ? 'su honorario fijo (si tiene) y sus pagos.' : 'el sueldo, los aumentos y los extras.') + '</p>' : esP
-      ? box('Honorario fijo por mes', lista(remRows) + '<span class="hint">Solo si cobra lo mismo todos los meses. Si cobra por trabajo, dejalo vacío y cargá cada trabajo en Pagos del mes.</span>', '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">+ Honorario</button>') + box('Últimos pagos', lista(pagRows))
-      : (remVig(c.id, mesRef(c)).length ? box('Por mes se le transfiere', '<div><b class="money" style="font-size:20px">' + esc(multi(lineaRem(c, mesRef(c)).acc)) + '</b> <span class="muted">sueldo + extras' + (mesRef(c) > thisMonth() ? ', desde ' + fmt(mesRef(c)) : ' vigentes') + '</span></div>') : '') + box('Sueldo', lista(remRows), '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">' + (hist.length ? '+ Aumento' : '+ Sueldo') + '</button>') +
+      ? box('Honorario fijo por mes', AU.timeline(c) + '<span class="hint">Solo si cobra lo mismo todos los meses. Si cobra por trabajo, dejalo vacío y cargá cada trabajo en Pagos del mes.</span>', '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">+ Honorario</button>') + box('Últimos pagos', lista(pagRows))
+      : (remVig(c.id, mesRef(c)).length ? box('Por mes se le transfiere', '<div><b class="money" style="font-size:20px">' + esc(multi(lineaRem(c, mesRef(c)).acc)) + '</b> <span class="muted">sueldo + extras' + (mesRef(c) > thisMonth() ? ', desde ' + fmt(mesRef(c)) : ' vigentes') + '</span></div>') : '') + box('Sueldo', AU.timeline(c), '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">' + (hist.length ? '+ Aumento' : '+ Sueldo') + '</button>') +
         box('Extras fijos', lista(ex.map(x => '<div class="row" data-act="pgExtra" data-id="' + esc(c.id) + '" data-x="' + esc(x.id) + '" title="Editar" style="cursor:pointer"><span class="d">' + (x.desde ? fmt(x.desde) : 'siempre') + '</span><span class="t"><b>' + esc(x.concepto) + ' · <span class="money">' + money(x.monto, x.moneda) + '</span></b><span>' + esc((x.hasta ? 'hasta ' + fmt(x.hasta) : 'sin fecha de fin') + (x.notas ? ' · ' + x.notas : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgExtraDel" data-id="' + esc(x.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgExtra" data-id="' + esc(c.id) + '">+ Extra</button>') +
         box('Últimos pagos', lista(pagRows));
     const rolOpts = esP ? ['externo', 'equipo'] : ['equipo', 'admin'];
@@ -318,6 +296,11 @@ export function initEquipo(ctx, k) {
   // Corregir un sueldo u honorario ya cargado (monto, mes, motivo), sin crear un aumento.
   function formRemEdit(rid) {
     const r = AD.RM.find(x => x.id === rid), c = r && colab(r.colaborador_id); if (!c) return;
+    if (r.lote_id) {
+      if (r.desde <= thisMonth()) { toast('Ese monto ya rige: se corrige con otro lote'); return; }
+      const amb = esProv(c) ? 'proveedores' : 'sueldos';
+      ctx.closeForm(); irA(amb === 'sueldos' ? 'aumentos' : 'proveedores', amb === 'sueldos' ? null : 'aumentos'); AU.editar(amb, r.lote_id); return;
+    }
     openPanel({
       title: c.nombre, eyebrow: 'Corregir ' + r.concepto.toLowerCase(), saveLabel: 'Guardar',
       intro: 'Cambia este monto tal cual, sin sumar un aumento al historial. Para un aumento usá “+ Aumento”.',
@@ -355,9 +338,17 @@ export function initEquipo(ctx, k) {
         { k: 'motivo', label: 'Motivo', ph: 'Paritaria, aumento semestral…', full: 1 },
       ],
       onSave: async v => {
-        let monto = v.monto; if (monto == null && v.pct && cur) monto = r2(cur.monto * (1 + v.pct / 100));
+        // El monto anterior: el último antes del mes elegido
+        const prev = AD.RM.filter(x => x.colaborador_id === cid && x.concepto === v.concepto && x.desde < v.desde).sort((a, b) => b.desde.localeCompare(a.desde))[0];
+        let monto = v.monto; if (monto == null && v.pct && prev) monto = r2(prev.monto * (1 + v.pct / 100));
         if (!monto) throw new Error('Poné el monto o el porcentaje');
-        await data.upsert('remuneraciones', { colaborador_id: cid, concepto: v.concepto, desde: v.desde + '-01', monto, moneda: v.moneda, motivo: v.motivo || (v.pct ? 'Aumento ' + String(v.pct).replace('.', ',') + '%' : '') }, 'colaborador_id,concepto,desde');
+        if (AD.RM.some(x => x.colaborador_id === cid && x.concepto === v.concepto && x.desde === v.desde)) throw new Error('Ya hay un monto cargado desde ' + fmt(v.desde) + '. Tocalo en la línea de tiempo para corregirlo.');
+        if (prev && v.desde < thisMonth()) throw new Error('Un aumento rige desde este mes o uno que viene');
+        const motivo = v.motivo || (v.pct ? 'Aumento ' + String(v.pct).replace('.', ',') + '%' : '');
+        let lote_id = null;
+        // Con un monto anterior es un aumento: queda como lote de una persona (con su historial, editable hasta que empiece)
+        if (prev) lote_id = (await data.ins('lotes_aumento', { ambito: esProv(c) ? 'proveedores' : 'sueldos', desde: v.desde + '-01', modo: v.pct ? 'porcentaje' : 'monto', valor: v.pct || monto, redondeo: 0, motivo, creado_por: (S.me && S.me.id) || null })).id;
+        await data.ins('remuneraciones', { colaborador_id: cid, concepto: v.concepto, desde: v.desde + '-01', monto, moneda: v.moneda, motivo, ...(prev ? { lote_id, monto_anterior: prev.monto, pct: prev.monto ? Math.round((monto / prev.monto - 1) * 10000) / 100 : null } : {}) });
         toast('Guardado: ' + money(monto, v.moneda) + ' desde ' + fmt(v.desde));
         if (desde !== 'aum') AD.postSave = () => formColaborador(cid);
       },
@@ -444,23 +435,6 @@ export function initEquipo(ctx, k) {
       },
     });
   }
-  function formAumento() {
-    const objetivo = AD.CO.filter(c => c.activo && c.tipo !== 'Proveedor' && remVig(c.id, thisMonth()).some(r => r.concepto === 'Sueldo'));
-    if (!objetivo.length) { toast('Primero cargá los sueldos vigentes'); return; }
-    openPanel({
-      title: 'Aumento general', eyebrow: 'Equipo · Aumentos', saveLabel: 'Aplicar',
-      intro: 'Se guarda un sueldo nuevo para cada persona tildada, desde el mes indicado, sin perder el historial. Los proveedores no entran: su honorario se cambia en su ficha.',
-      values: { pct: '', desde: addMonth(thisMonth(), 1), motivo: '' },
-      fields: [{ k: 'pct', label: 'Aumento %', num: 1, req: 1 }, { k: 'desde', label: 'Desde qué mes', type: 'month', month: 1, req: 1 }, { k: 'motivo', label: 'Motivo', ph: 'Paritaria', full: 1 }],
-      extra: '<div class="field full"><span class="lbl">A quiénes</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + objetivo.map(c => { const r = remVig(c.id, thisMonth()).find(x => x.concepto === 'Sueldo'); return '<label class="row" style="cursor:pointer"><input type="checkbox" data-pgaum="' + esc(c.id) + '" checked><span class="t"><b>' + esc(c.nombre) + '</b><span>' + esc(c.tipo) + '</span></span><span class="money">' + money(r.monto, r.moneda) + '</span></label>'; }).join('') + '</div></div>',
-      onSave: async v => {
-        const sel = objetivo.filter(c => ($('[data-pgaum="' + c.id + '"]') || {}).checked);
-        for (const c of sel) { const r = remVig(c.id, thisMonth()).find(x => x.concepto === 'Sueldo'); await data.upsert('remuneraciones', { colaborador_id: c.id, concepto: 'Sueldo', desde: v.desde + '-01', monto: r2(r.monto * (1 + v.pct / 100)), moneda: r.moneda, motivo: v.motivo || 'Aumento ' + String(v.pct).replace('.', ',') + '%' }, 'colaborador_id,concepto,desde'); }
-        toast('Aumento cargado para ' + sel.length + ' personas');
-      },
-    });
-  }
-
   /* ---------- comprobante de pago ---------- */
   async function reciboPdf(cid) {
     const c = colab(cid), m = AD.pg.mes, its = liqMes(m).filter(l => l.colaborador_id === cid);
@@ -499,7 +473,7 @@ export function initEquipo(ctx, k) {
         mensaje: 'Hola ' + nom + ', ¿cómo estás?\n\nTe mandamos adjunto el comprobante de ' + p.periodo + '.\n\nCualquier cosa, avisanos.',
         build: v => E.libreEmail({ cfg: k.cfgMarca(), contacto: p.c.nombre, cuenta: p.c.nombre, titulo: 'Comprobante de ' + p.periodo, mensaje: v.mensaje, firma: k.firma(), asunto: v.asunto }) });
     },
-    pgAumento: () => formAumento(),
+    pgAumento: () => irA('aumentos'),
     pgGenerar: async t => {
       const m = AD.pg.mes, g = t && t.dataset ? t.dataset.g : '', rows = faltantes(m).filter(x => !g || deGrupo(g === 'prov')(x)).map(p => ({ ...p, periodo: m + '-01' }));
       if (!rows.length) { toast('No falta nada'); return; }
@@ -510,5 +484,6 @@ export function initEquipo(ctx, k) {
 
   // Para el asistente y la Caja
   const colabPorNombre = nombre => { const n = norm((nombre || '').trim()); return n ? AD.CO.find(c => norm(c.nombre) === n || (c.otros_nombres || []).some(o => norm(o) === n)) : null; };
+  Object.assign(actions, AU.actions);
   return { actions, view: vSueldos, vSueldos, vAumentos, vProveedores, vPersonas, faltantes, liqMes, colabPorNombre };
 }
