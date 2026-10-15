@@ -14,6 +14,7 @@ import { initHilos } from './hilos.js';
 import { initRedes } from './redes.js';
 import { initTickets } from './tickets.js';
 import { initEntregas } from './entregas.js';
+import { initInformes } from './informes.js';
 import * as E from './emails.js';
 initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
@@ -46,7 +47,7 @@ const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': 
 const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
 const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['redes', 'Redes'], ['tickets', 'Tickets'], ['briefs', 'Briefs'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Opciones'], ['integraciones', 'Integraciones']];
 // Menú lateral: grupos por tipo de tarea. Las vistas de administración las aporta admin.js.
-const GRUPOS = [['Trabajo', ['inicio', 'proyectos', 'redes', 'tickets', 'abonos', 'mis']], ['Clientes', ['clientes', 'briefs', 'propuestas']], ['Plata', ['cobros', 'gastos', 'pagos', 'numeros']], ['Configuración', ['equipo', 'listas', 'integraciones', 'ajustes']]];
+const GRUPOS = [['Trabajo', ['inicio', 'proyectos', 'redes', 'tickets', 'abonos', 'mis']], ['Clientes', ['clientes', 'briefs', 'propuestas']], ['Plata', ['plata', 'cobros', 'gastos', 'pagos', 'numeros']], ['Configuración', ['equipo', 'listas', 'integraciones', 'ajustes']]];
 // Pantallas que ahora viven como pestañas de otra (los links viejos y los emails siguen funcionando).
 const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], precios: ['abonos', 'precios'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
 const resolver = v => { const a = ALIAS[v]; if (!a) return v; S.tab[a[0]] = a[1]; return a[0]; };
@@ -1031,7 +1032,9 @@ let INTEGR = null;
 const integr = () => INTEGR || (INTEGR = initIntegraciones({ S, esc, opt, toast, $, data, render, isAdmin, isStaff, closeForm, ISO, emptyBox, DEF: INTEG_DEF }));
 const vIntegraciones = () => integr().view();
 const trab = () => TRAB || (TRAB = initTrabajo({ S, esc, opt, toast, data, render, isStaff, personas }));
-const red = () => RED || (RED = initRedes({ avisarCliente: (c, t, i) => avisarCliente(c, t, i), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
+let INF = null;
+const inf = () => INF || (INF = initInformes({ S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
+const red = () => RED || (RED = initRedes({ avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
   cfgGet: (k, c) => integr().cfgGet(k, c), servicios: n => serviciosDe(n).map(x => x.tipo).join(', '),
   irMes: id => { S.view = 'redes'; S.rmFicha = id || null; S.ficha = null; S.pficha = null; try { history.replaceState(null, '', '#redes' + (id ? '/' + id : '')); } catch (e) { } render(); window.scrollTo(0, 0); } }));
 const moneyFmt = (n, m) => { try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: m || 'ARS', maximumFractionDigits: 0 }).format(+n || 0); } catch (e) { return (m || '') + ' ' + n; } };
@@ -1044,14 +1047,15 @@ const ent = () => ENT || (ENT = initEntregas({ S, esc, opt, toast, data, render,
 // Aviso por email a los contactos con acceso al portal cuando algo queda para revisar (mes de redes o entrega).
 async function avisarCliente(cliente, tipo, info) {
   const ks = contactosDe(cliente).filter(k => k.portal && k.email);
-  if (!ks.length) { toast('Ningún contacto de ' + cliente + ' tiene acceso al portal todavía: habilitalo en su ficha → Contactos.'); return; }
-  const que = tipo === 'redes' ? 'el contenido de redes de ' + monthLabel(String(info.mes || '').slice(0, 7)) : '“' + info.titulo + '” de ' + info.proyecto;
-  if (!window.confirm('¿Le avisamos por email a ' + ks.map(nomContacto).join(', ') + ' que tiene para revisar ' + que + '?')) return;
+  if (!ks.length) { toast('Ningún contacto de ' + cliente + ' tiene acceso al portal todavía: habilitalo en su ficha → Contactos.'); return false; }
+  const mesTxt = monthLabel(String(info.mes || '').slice(0, 7));
+  const que = tipo === 'redes' ? 'el contenido de redes de ' + mesTxt : tipo === 'informe' ? 'el informe de redes de ' + mesTxt : '“' + info.titulo + '” de ' + info.proyecto;
+  if (!window.confirm('¿Le avisamos por email a ' + ks.map(nomContacto).join(', ') + (tipo === 'informe' ? ' que ya puede ver ' : ' que tiene para revisar ') + que + '?')) return false;
   const nombres = ks.map(k => (k.nombre || '').split(' ')[0]).filter(Boolean);
-  const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\nYa tenés para revisar ' + que + ' en el portal de àndale. Desde ahí podés aprobar o pedirnos cambios, y comentar lo que quieras.\n\nEntrás con tu email, sin contraseña.';
-  const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: tipo === 'redes' ? 'Tus redes del mes, listas para revisar' : 'Tenés una entrega para revisar', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ir al portal', firma: 'Saludos,\n' + ((S.me && (S.me.nombre || S.me.alias) || '').split(' ')[0] || 'Equipo') + '\nàndale', asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
-  try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); }
-  catch (e) { toast('No se pudo mandar el aviso: ' + e.message); }
+  const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\n' + (tipo === 'informe' ? 'Ya está en el portal de àndale ' + que + ': cómo fue el mes, qué funcionó mejor y qué proponemos para el que viene.' : 'Ya tenés para revisar ' + que + ' en el portal de àndale. Desde ahí podés aprobar o pedirnos cambios, y comentar lo que quieras.') + '\n\nEntrás con tu email, sin contraseña.';
+  const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: tipo === 'redes' ? 'Tus redes del mes, listas para revisar' : tipo === 'informe' ? 'Tu informe de redes de ' + mesTxt : 'Tenés una entrega para revisar', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ir al portal', firma: 'Saludos,\n' + ((S.me && (S.me.nombre || S.me.alias) || '').split(' ')[0] || 'Equipo') + '\nàndale', asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : tipo === 'informe' ? 'Informe de redes de ' + mesTxt + ' · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
+  try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); return true; }
+  catch (e) { toast('No se pudo mandar el aviso: ' + e.message); return false; }
 }
 const hil = () => HIL || (HIL = initHilos({ S, esc, toast, data, $, av, fotoDe, personas, go, abrirLink }));
 // Link a Google Calendar (sin API): abre el evento ya armado para guardarlo.
@@ -1644,7 +1648,7 @@ async function start(sess) {
     IA = initIA({ S, contactos: n => contactosDe(n), esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
     Object.assign(ACT, IA.actions);
   }
-  if (!ACT.flEditar) { Object.assign(ACT, trab().acts); Object.assign(ACT, hil().acts); Object.assign(ACT, red().acts); Object.assign(ACT, tk().acts); Object.assign(ACT, ent().acts); }
+  if (!ACT.flEditar) { Object.assign(ACT, trab().acts); Object.assign(ACT, hil().acts); Object.assign(ACT, red().acts); Object.assign(ACT, tk().acts); Object.assign(ACT, ent().acts); Object.assign(ACT, inf().acts); }
   $('#askbtn').hidden = !IA; $('#askbtn .askbtn-i').innerHTML = ISO; document.querySelectorAll('.askmini').forEach(b => { b.hidden = !IA; b.innerHTML = ISO; });
   $('#top').hidden = false;
   $('#hoy').textContent = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });

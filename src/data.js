@@ -154,6 +154,40 @@ export async function piezasIns(mes, lista) {
 export async function piezasUpd(ids, u) { const r = piezaRow(u); if (!Object.keys(r).length || !ids.length) return; check(await sb.from('piezas').update(r).in('id', ids)); }
 export async function piezasDel(ids) { if (ids.length) check(await sb.from('piezas').delete().in('id', ids)); }
 
+/* ---------- Horas del año (para saber cuánto deja cada cliente de verdad) ---------- */
+// Tareas vienen con los proyectos; acá van piezas, meses de redes y tickets. Tolerante: si falta una tabla, viene vacía.
+export async function horasAnio(y) {
+  const d = y + '-01-01', h = (+y + 1) + '-01-01', cn = id => idx.clienteName.get(id) || '';
+  const [pz, rm, pd] = await Promise.all([
+    tolerante(sb.from('piezas').select('cliente_id, horas, extra').gte('created_at', d).lt('created_at', h).limit(50000)),
+    tolerante(sb.from('redes_meses').select('cliente_id, horas, mes').gte('mes', d).lt('mes', h)),
+    tolerante(sb.from('pedidos').select('cliente_id, horas, cobro, created_at').gte('created_at', d).lt('created_at', h)),
+  ]);
+  return { y,
+    piezas: (pz || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, extra: !!x.extra })),
+    meses: (rm || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, mes: String(x.mes).slice(0, 7) })),
+    pedidos: (pd || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, cobro: x.cobro })) };
+}
+
+/* ---------- Informes de redes ---------- */
+export function informeUI(x) {
+  return { _id: x.id, cliente: idx.clienteName.get(x.cliente_id) || '', clienteId: x.cliente_id, mes: String(x.mes || '').slice(0, 7), datos: x.datos || {}, texto: x.texto || '', estado: x.estado, publicadoAt: x.publicado_at, enviadoAt: x.enviado_at, actualizado: x.updated_at };
+}
+// Los del cliente, del más nuevo al más viejo (para comparar con el mes anterior).
+export async function informesDe(cliente) {
+  const cid = idx.clienteId.get(cliente); if (!cid) return [];
+  return (check(await sb.from('informes_redes').select('*').eq('cliente_id', cid).order('mes', { ascending: false }).limit(24)) || []).map(informeUI);
+}
+export async function informeGuardar(id, u, cliente, mes) {
+  const r = {};
+  ['datos', 'texto', 'estado'].forEach(k => { if (k in u) r[k] = u[k]; });
+  if ('publicadoAt' in u) r.publicado_at = u.publicadoAt;
+  if ('enviadoAt' in u) r.enviado_at = u.enviadoAt;
+  if (id) { check(await sb.from('informes_redes').update(r).eq('id', id)); return id; }
+  return check(await sb.from('informes_redes').upsert({ cliente_id: idx.clienteId.get(cliente), mes: mes + '-01', ...r }, { onConflict: 'cliente_id,mes' }).select('id').single()).id;
+}
+export async function informeDel(id) { check(await sb.from('informes_redes').delete().eq('id', id)); }
+
 /* ---------- Tickets, briefs, entregas y sitios ---------- */
 export function pedidoUI(x) {
   return { _id: x.id, numero: x.numero, cliente: idx.clienteName.get(x.cliente_id) || '', autor: x.autor_nombre || '', origen: x.origen, titulo: x.titulo, detalle: x.detalle || '', paraCuando: x.para_cuando || '',
@@ -247,6 +281,29 @@ export async function comentar(row) {
 export async function borrarComentario(id) { check(await sb.from('comentarios').delete().eq('id', id)); }
 export async function leerAvisos(ids) { if (ids.length) check(await sb.from('notificaciones').update({ leida: true }).in('id', ids)); }
 export async function avisos() { return tolerante(sb.from('notificaciones').select('*').order('created_at', { ascending: false }).limit(80)).then(rows => rows ? rows.map(n => ({ _id: n.id, tipo: n.tipo, titulo: n.titulo, cuerpo: n.cuerpo, link: n.link, leida: n.leida, actor: idx.personaAlias.get(n.actor_id) || '', creado: n.created_at })) : null); }
+/* ---------- Mantenimiento (solo admins): copia de seguridad, borrar datos de prueba, errores ---------- */
+export const TABLAS_BACKUP = ['personas', 'listas', 'ajustes', 'plan_cuentas', 'cajas', 'colaboradores', 'remuneraciones', 'conceptos_fijos', 'flujos',
+  'clientes', 'clientes_admin', 'contactos', 'cliente_responsables', 'abonos', 'abono_responsables', 'abono_finanzas', 'precios_abono',
+  'proyectos', 'proyecto_responsables', 'proyecto_finanzas', 'proyecto_facturacion', 'tareas', 'comunicaciones', 'propuestas',
+  'resumenes', 'facturas', 'movimientos', 'imputaciones', 'liquidaciones', 'comprobantes_pago', 'gestiones', 'drive_archivos', 'emails',
+  'redes_meses', 'piezas', 'entregas', 'sitios', 'pedidos', 'briefs', 'informes_redes', 'comentarios'];
+export async function backup(onProg) {
+  const out = {};
+  for (const [i, t] of TABLAS_BACKUP.entries()) {
+    if (onProg) onProg(i + 1, TABLAS_BACKUP.length, t);
+    const rows = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from(t).select('*').range(from, from + 999);
+      if (error) { if (!rows.length) out[t] = { error: error.message }; break; }
+      rows.push(...(data || [])); if (!data || data.length < 1000) break;
+    }
+    if (!out[t]) out[t] = rows;
+  }
+  return out;
+}
+export async function resetDatos(confirmacion) { const { data, error } = await sb.rpc('reset_datos', { confirmacion }); if (error) throw new Error(error.message); return data; }
+export async function errores() { return tolerante(sb.from('errores').select('*').order('created_at', { ascending: false }).limit(200)).then(r => r ? r.map(x => ({ ...x, quien: idx.personaAlias.get(x.persona_id) || '' })) : null); }
+export async function erroresBorrar() { check(await sb.from('errores').delete().not('id', 'is', null)); }
 export async function logError(e) { try { await sb.from('errores').insert({ mensaje: String(e.mensaje || '').slice(0, 1900), detalle: String(e.detalle || '').slice(0, 7900), url: String(e.url || '').slice(0, 500), version: String(e.version || '') }); } catch (_) { /* nada */ } }
 
 // ---------- Escritura ----------

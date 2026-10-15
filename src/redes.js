@@ -89,7 +89,7 @@ export function initRedes(ctx) {
     const cli = S.C.find(x => x.nombre === m.cliente) || {}, can = isStaff();
     const prev = mesCliente(m.cliente, addMonth(m.mes, -1)), next = mesCliente(m.cliente, addMonth(m.mes, 1));
     const lista = ps || [];
-    const tabs = [['planilla', 'Planilla'], ['calendario', 'Calendario'], ['feed', 'Feed'], ['conv', 'Conversación']];
+    const tabs = [['planilla', 'Planilla'], ['calendario', 'Calendario'], ['feed', 'Feed'], ['conv', 'Conversación'], ...(can && ctx.informe ? [['informe', 'Informe']] : [])];
     const tab = tabs.some(t => t[0] === st.tab) ? st.tab : 'planilla';
     let h = '<div class="pf-head rm-head"><div class="pf-top"><button class="pf-logo" data-act="ficha" data-cliente="' + esc(m.cliente) + '">' + av(m.cliente, cli.avatar, 'xl sq') + '</button><div class="pf-tit"><button class="btn link pf-cli" data-act="ficha" data-cliente="' + esc(m.cliente) + '">' + esc(m.cliente) + '</button>' +
       '<h1 class="rm-tit">' + (prev ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(prev._id) + '" aria-label="Mes anterior">←</button>' : '') + 'Redes · ' + esc(cap(monthLabel(m.mes))) + (next ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(next._id) + '" aria-label="Mes siguiente">→</button>' : '') + '</h1></div>' +
@@ -105,6 +105,7 @@ export function initRedes(ctx) {
     if (tab === 'planilla') h += planilla(m, lista, can);
     else if (tab === 'calendario') h += calendario(m, lista);
     else if (tab === 'feed') h += feed(m, lista);
+    else if (tab === 'informe') h += ctx.informe(m, lista);
     else if (tab === 'conv') h += '<div class="pf-grid"><div>' + hil().html('mes', m._id, { cliente: m.cliente, titulo: 'Conversación del mes', publico: true, vacio: 'Lo que se habla de las redes de ' + m.cliente + ' este mes. Marcá “Visible al cliente” para que lo lea en el portal.' }) + '</div><aside class="pf-side"><section class="pf-card"><h3>Notas del mes</h3><textarea class="in" rows="8" data-rmupd="notas" data-id="' + esc(m._id) + '" placeholder="Fechas especiales, promos, lo que pidió el cliente…"' + (can ? '' : ' disabled') + '>' + esc(m.notas) + '</textarea></section></aside></div>';
     return h;
   }

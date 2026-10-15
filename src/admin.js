@@ -6,6 +6,7 @@ import { initEquipo } from './equipo.js';
 import { initAsistente } from './asistente.js';
 import { initStats } from './stats.js';
 import { ICON } from './iconos.js';
+import { initMantenimiento } from './mantenimiento.js';
 import { initPropuestas } from './propuestas.js';
 
 export function initAdmin(ctx) {
@@ -16,7 +17,7 @@ export function initAdmin(ctx) {
   const esExterior = m => m && m !== 'ARS' && m !== 'USD';
   const EMISORES = ['Fer', 'Jime'];
   const TIPOS_COMP = ['Factura ARCA', 'Invoice', 'Otro'];
-  const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'proyectos' },
+  const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'horas' },
     mes: thisMonth(), sel: null, rd: null, ff: { estado: 'abiertas', cliente: '', emisor: '', anio: String(new Date().getFullYear()) },
     pp: { sel: new Set(), pct: '', desde: addMonth(thisMonth(), 1), motivo: '' }, form: null };
 
@@ -655,11 +656,12 @@ export function initAdmin(ctx) {
     const accSin = {}; sinImp.forEach(x => add(accSin, x.v.moneda, x.falta));
     const accImp = {}; AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (mv && (mv.fecha || '').startsWith(y)) add(accImp, mv.moneda, x.monto); });
     let h = '<div class="head"><div>' + lock + '<h1>Qué deja cada cliente</h1><p>Lo que queda de cada abono y proyecto después de pagar proveedores (sin sueldos ni gastos fijos).</p></div>' +
-      '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['proyectos', 'Proyectos'], ['abonos', 'Abonos']].map(([k, l]) => '<button data-act="aRtVer" data-v="' + k + '" aria-pressed="' + (rt.ver === k) + '">' + l + '</button>').join('') + '</div>' +
+      '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['horas', 'Con horas'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos']].map(([k, l]) => '<button data-act="aRtVer" data-v="' + k + '" aria-pressed="' + (rt.ver === k) + '">' + l + '</button>').join('') + '</div>' +
       '<select class="in" aria-label="Año" data-art="anio">' + anios.map(a => opt(a, a, y)).join('') + '</select></div></div>';
     h += '<section class="kpis"><div class="kpi"><span class="eyebrow">Gastos asignados a clientes ' + esc(y) + '</span><b style="font-size:20px" class="money">' + esc(multi(accImp)) + '</b><span>a abonos y proyectos</span></div>' +
       '<div class="kpi ' + (sinImp.length ? 'warn' : '') + '"><span class="eyebrow">Pagos a proveedores sin asignar</span><b style="font-size:20px" class="money">' + esc(multi(accSin)) + '</b><span>' + sinImp.length + ' pagos en ' + esc(y) + '</span></div></section>';
-    if (rt.ver === 'proyectos') {
+    if (rt.ver === 'horas') h += rentHoras(y);
+    else if (rt.ver === 'proyectos') {
       const ps = S.P.filter(p => p.estado !== 'Cancelado' && (AD.PFZ.has(p._id) || AD.PF.some(c => c.proyecto_id === p._id) || AD.IMP.some(x => x.proyecto_id === p._id))).map(p => ({ p, f: finProyecto(p) })).sort((a, b) => cmp(a.p.cliente, b.p.cliente));
       const sinPres = S.P.filter(p => isOpenP(p) && !AD.PFZ.has(p._id) && !AD.PF.some(c => c.proyecto_id === p._id)).length;
       h += '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2>' + (sinPres ? '<span class="muted">' + sinPres + ' abiertos sin presupuesto cargado</span>' : '') + '</div>' + (ps.length ? '<div class="tbl"><table><thead><tr><th>Proyecto</th><th>Estado</th><th class="r">Presupuesto</th><th class="r">Facturado</th><th class="r">Falta facturar</th><th class="r">Costos</th><th class="r">Margen</th><th></th></tr></thead><tbody>' +
@@ -684,6 +686,63 @@ export function initAdmin(ctx) {
     return h;
   }
   const isOpenP = p => !['Entregado', 'Cancelado'].includes(p.estado);
+
+  /* ---------- Qué deja cada cliente, contando las horas ---------- */
+  // Horas: las que carga el equipo (opcional) al cerrar tareas, en piezas, en el mes de redes y en tickets.
+  // Costo de la hora: el que pongan las socias o, si no hay, sueldos del año ÷ horas disponibles del equipo (140 h por persona por mes).
+  const cfgRent = () => (AD.AJ && AD.AJ.rentabilidad) || {};
+  function costoHoraEstimado(y) {
+    const meses = y === thisMonth().slice(0, 4) ? +thisMonth().slice(5, 7) : 12;
+    const lab = AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.cuenta === 'Costo Laboral' && v.moneda === 'ARS').reduce((a, v) => a + v.egreso, 0);
+    const gente = Math.max(1, S.E.filter(e => e.activo !== false && e.rol !== 'externo').length);
+    return lab ? Math.round(lab / (meses * gente * 140)) : 0;
+  }
+  function filasHoras(y) {
+    const hr = AD.HR, ch = +cfgRent().costo_hora || costoHoraEstimado(y), out = new Map();
+    const fila = c => { if (!out.has(c)) out.set(c, { cliente: c, ing: 0, ingUsd: 0, hT: 0, hP: 0, hM: 0, hK: 0, extras: 0, prov: 0, proyectos: new Set() }); return out.get(c); };
+    const cliMov = v => v.cliente || ((S.C.find(c => c.nombre === v.contraparte) || {}).nombre) || '';
+    AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.ingreso > 0 && /^Venta/.test(v.cuenta) && cliMov(v)).forEach(v => { const f = fila(cliMov(v)); if (v.moneda === 'ARS') f.ing += v.ingreso; else if (v.moneda === 'USD') f.ingUsd += v.ingreso; else if (v.usd) f.ingUsd += +v.usd; });
+    S.P.forEach(p => (p.etapas || []).forEach(t => { if (t.horas && (!t.hechaAt || String(t.hechaAt).startsWith(y))) { const f = fila(p.cliente); f.hT += +t.horas; f.proyectos.add(p.proyecto); } }));
+    if (hr) {
+      hr.piezas.forEach(z => { if (!z.cliente) return; const f = fila(z.cliente); f.hP += z.horas; if (z.extra) f.extras++; });
+      hr.meses.forEach(m => { if (m.cliente) fila(m.cliente).hM += m.horas; });
+      hr.pedidos.forEach(t => { if (t.cliente) fila(t.cliente).hK += t.horas; });
+    }
+    AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (!mv || !(mv.fecha || '').startsWith(y) || mv.moneda !== 'ARS') return; const a = x.abono_id ? S.A.find(z => z._id === x.abono_id) : null, p = x.proyecto_id ? S.P.find(z => z._id === x.proyecto_id) : null; const c = (a && a.cliente) || (p && p.cliente); if (c) fila(c).prov += x.monto; });
+    return { ch, filas: [...out.values()].map(f => { const horas = f.hT + f.hP + f.hM + f.hK, costo = horas * ch, queda = f.ing - costo - f.prov; return { ...f, horas, costo, queda, pct: f.ing ? Math.round(queda / f.ing * 100) : null, vh: horas && f.ing ? Math.round(f.ing / horas) : null }; }).filter(f => f.ing || f.horas).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999)) };
+  }
+  function rentHoras(y) {
+    if (!AD.HR || AD.HR.y !== y) { if (!AD.hrCargando) { AD.hrCargando = true; data.horasAnio(y).then(r => { AD.HR = r; }, () => { AD.HR = { y, piezas: [], meses: [], pedidos: [] }; }).finally(() => { AD.hrCargando = false; ctx.render(); }); } return '<section class="sheet">' + emptyBox('Juntando las horas del año…', '') + '</section>'; }
+    const { ch, filas } = filasHoras(y), est = costoHoraEstimado(y), cfg = cfgRent();
+    const totH = filas.reduce((a, f) => a + f.horas, 0), conHoras = filas.filter(f => f.horas).length;
+    const M = v => money(Math.round(v), 'ARS');
+    let h = '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.reloj + '</span><h2>Lo que deja cada cliente, contando el tiempo <span class="sx-sub">(' + esc(y) + ', en pesos)</span></h2></div>' +
+      '<div class="sx-ns pl-ns"><div class="sx-n"><b>' + esc(Math.round(totH).toLocaleString('es-AR')) + ' h</b><span>Horas cargadas</span><small>' + conHoras + ' de ' + filas.length + ' clientes tienen horas</small></div>' +
+      '<div class="sx-n"><b>' + esc(M(ch)) + '</b><span>Costo de la hora</span><small>' + (cfg.costo_hora ? 'el que pusieron ustedes' : est ? 'estimado con los sueldos del año' : 'cargalo abajo') + '</small></div></div>' +
+      '<div class="sx-panel rt-ch"><label for="rt-ch">Costo de la hora del equipo</label><input class="in" id="rt-ch" type="number" min="0" step="100" value="' + esc(cfg.costo_hora || '') + '" placeholder="' + esc(est ? String(est) : 'Ej.: 9000') + '"><button class="btn sm" data-act="aRtCh">Guardar</button>' +
+      '<span class="muted">' + (est ? 'Estimado: ' + esc(M(est)) + ' (sueldos del año ÷ 140 h por persona por mes). ' : '') + 'Si lo dejan vacío se usa el estimado.</span></div>' +
+      (totH ? '' : '<div class="sx-panel"><p class="sx-lead" style="margin:0"><b>Todavía no hay horas cargadas.</b> Se cargan (opcional) al cerrar una tarea, en cada pieza, en el mes de redes y en los tickets. Con unas semanas de datos esto empieza a decir algo; mientras tanto, los números son orientativos.</p></div>') +
+      (filas.length ? '<div class="tbl sx-tbl"><table><thead><tr><th>Cliente</th><th class="r">Ingresó</th><th class="r">Horas</th><th class="r">Costo del tiempo</th><th class="r">Proveedores</th><th class="r">Queda</th><th class="r">Valor hora real</th><th class="r">Extras</th></tr></thead><tbody>' +
+        filas.map(f => '<tr><td><span class="sx-cl">' + (ctx.av ? ctx.av(f.cliente, (S.C.find(x => x.nombre === f.cliente) || {}).avatar, 'sq') : '') + '<span><b>' + esc(f.cliente) + '</b>' + (f.ingUsd ? '<span class="sub">+ ' + esc(money(f.ingUsd, 'USD')) + ' en dólares (no suma acá)</span>' : '') + '</span></span></td><td class="r">' + esc(M(f.ing)) + '</td>' +
+          '<td class="r" title="' + esc('Tareas ' + f.hT + ' · piezas ' + f.hP + ' · mes de redes ' + f.hM + ' · tickets ' + f.hK) + '">' + (f.horas ? esc(f.horas.toLocaleString('es-AR')) + ' h' : '<span class="muted">—</span>') + '</td><td class="r">' + (f.horas ? esc(M(f.costo)) : '—') + '</td><td class="r">' + (f.prov ? esc(M(f.prov)) : '—') + '</td>' +
+          '<td class="r"><b class="sx-big' + (f.queda < 0 ? ' neg' : '') + '">' + esc(M(f.queda)) + '</b>' + (f.pct != null ? '<span class="sub">' + f.pct + '%</span>' : '') + '</td><td class="r">' + (f.vh != null ? '<span class="' + (ch && f.vh < ch ? 'neg' : '') + '">' + esc(M(f.vh)) + '</span>' : '—') + '</td><td class="r">' + (f.extras || '—') + '</td></tr>').join('') + '</tbody></table></div>' : '') +
+      '</section>';
+    // Lectura de Mr. Piggy
+    const an = AD.rtIA;
+    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.ia + '</span><h2>Qué ve Mr. Piggy</h2><div class="sx-der"><button class="btn sm" data-act="aRtIA"' + (AD.rtIABusy || !filas.length ? ' disabled' : '') + '>' + (AD.rtIABusy ? 'Mirando los números…' : an ? 'Volver a analizar' : 'Analizar') + '</button></div></div>' +
+      (an ? '<div class="sx-panel rt-ia"><p class="sx-lead" style="color:var(--fg)">' + esc(an.resumen) + '</p>' +
+        ((an.alertas || []).length ? '<div class="bl">' + an.alertas.map(a => '<div class="bl-r"><div class="bl-t">' + (ctx.av ? ctx.av(a.cliente, (S.C.find(x => x.nombre === a.cliente) || {}).avatar, 'sq') : '') + '<span class="bl-l">' + esc(a.cliente) + '</span></div><p class="rt-p"><b>' + esc(a.problema) + '</b> ' + esc(a.sugerencia) + '</p></div>').join('') + '</div>' : '') +
+        ((an.oportunidades || []).length ? '<h4 style="margin:14px 0 6px">Oportunidades</h4><ul class="rt-ul">' + an.oportunidades.map(o => '<li>' + esc(o) + '</li>').join('') + '</ul>' : '') + '</div>'
+        : '<div class="sx-panel"><p class="sx-lead" style="margin:0">Mira margen, horas y extras de cada cliente y marca dónde conviene ajustar precio o alcance. Las horas son aproximadas, así que lo toma con pinzas.</p></div>') + '</section>';
+    // Presupuestador
+    const pr = AD.rtPre;
+    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.precios + '</span><h2>¿Cuánto nos llevó algo parecido?</h2></div>' +
+      '<div class="sx-panel rt-pre"><div class="field full"><label for="rt-pre-t">Contá el trabajo nuevo</label><textarea id="rt-pre-t" rows="3" placeholder="Ej.: branding completo para una cervecería artesanal, con logo, paleta, tipografías y aplicaciones en etiqueta y redes">' + esc((pr && pr.pedido) || '') + '</textarea></div>' +
+      '<div class="toolbar"><select class="in" id="rt-pre-tipo" aria-label="Tipo">' + opt('', 'Tipo de trabajo', (pr && pr.tipo) || '') + (S.L.tipos || []).map(t => opt(t, t, (pr && pr.tipo) || '')).join('') + '</select><button class="btn primary" data-act="aRtPre"' + (AD.rtPreBusy ? ' disabled' : '') + '>' + ICON.ia + (AD.rtPreBusy ? 'Calculando…' : 'Estimar con Mr. Piggy') + '</button></div>' +
+      (pr && pr.r ? '<div class="sx-ns pl-ns rt-pre-r"><div class="sx-n"><b>' + esc(String(pr.r.horas)) + ' h</b><span>Horas estimadas</span>' + (pr.r.horas_min != null ? '<small>entre ' + pr.r.horas_min + ' y ' + pr.r.horas_max + ' h</small>' : '') + '</div>' +
+        (pr.r.precio_sugerido ? '<div class="sx-n"><b>' + esc(money(pr.r.precio_sugerido, pr.r.moneda || 'ARS')) + '</b><span>Precio sugerido</span><small>con el costo de la hora y margen</small></div>' : '') + '</div><p class="sx-lead" style="margin:0">' + esc(pr.r.explicacion) + '</p>' : '') + '</div></section>';
+    return h;
+  }
 
   /* ---------- Vista: Precios y aumentos ---------- */
   function vPrecios() {
@@ -1007,6 +1066,52 @@ export function initAdmin(ctx) {
     return 'Hola' + (nombre ? ' ' + nombre : '') + ', ¿cómo estás? Te escribimos de àndale para contarte que a partir de ' + monthLabel(p.desde) + ' el abono de ' + (a.tipo === 'Redes' ? 'redes sociales' + (a.plan ? ' (plan ' + a.plan + ')' : '') : a.tipo) + ' pasa a ' + money(p.monto, p.moneda) + ' por mes' + (pct ? ', un ajuste del ' + String(pct).replace('.', ',') + '%' : '') + '. Cualquier consulta, estamos para conversarlo. ¡Gracias por seguir trabajando con nosotros!';
   }
 
+  /* ---------- Vista: Plata hoy (las tres preguntas) ---------- */
+  // ¿Cuánto entra? ¿Quién nos debe? ¿Cuánto nos queda? Con los mismos datos de Cobros, Gastos e ingresos y Sueldos.
+  function vPlata() {
+    const m = thisMonth(), mesN = monthLabel(m).split(' ')[0];
+    const lista = o => Object.entries(o).filter(([, v]) => Math.abs(v) > 0.004);
+    const linea = o => lista(o).length ? lista(o).map(([c, v]) => money(v, c)).join(' · ') : money(0, 'ARS');
+    const sec = (icon, titulo, cuerpo, der) => '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + (ICON[icon] || '') + '</span><h2>' + titulo + '</h2>' + (der ? '<div class="sx-der">' + der + '</div>' : '') + '</div>' + cuerpo + '</section>';
+    const grande = (v, l, sub, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(v) + '</b><span>' + esc(l) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>';
+    const chico = o => lista(o).length > 1 ? 'chico' : '';
+    // 1. Lo que corresponde cobrar por este mes (resumen armado o, si falta, lo que sugiere el abono) y lo que ya entró.
+    const esperado = {}, porCli = [];
+    clientesDelMes(m).forEach(c => {
+      const r = AD.R.find(x => x.cliente === c && x.periodo === m), acc = {};
+      if (r) add(acc, r.moneda || 'ARS', r.total); else sugerencias(c, m).forEach(x => add(acc, x.moneda || 'ARS', parseMonto(x.monto) || 0));
+      Object.entries(acc).forEach(([mo, v]) => add(esperado, mo, v));
+      if (lista(acc).length) porCli.push([c, acc, !!r]);
+    });
+    const entro = {}; AD.MV.filter(v => (v.fecha || '').startsWith(m) && v.ingreso > 0 && /^Venta/.test(v.cuenta)).forEach(v => add(entro, v.moneda, v.ingreso));
+    // 2. Facturas con saldo.
+    const debe = {}, venc = {}, porDeudor = new Map();
+    AD.F.forEach(f => { if (f.saldo > 0.009) { add(debe, f.moneda, f.saldo); const v = estadoFactura(f) === 'Vencida'; if (v) add(venc, f.moneda, f.saldo); const d = porDeudor.get(f.cliente) || { acc: {}, venc: 0, n: 0 }; add(d.acc, f.moneda, f.saldo); d.n++; if (v) d.venc++; porDeudor.set(f.cliente, d); } });
+    const deudores = [...porDeudor.entries()].sort((a, b) => (b[1].venc - a[1].venc) || ((b[1].acc.ARS || 0) + (b[1].acc.USD || 0) * 1000 - (a[1].acc.ARS || 0) - (a[1].acc.USD || 0) * 1000));
+    // 3. Saldo en cuentas, lo que falta pagar del mes y cómo quedaría.
+    const hay = {}; AD.MV.forEach(x => add(hay, x.moneda, x.ingreso - x.egreso));
+    const pagar = {}; EQ.liqMes(m).filter(l => !l.movimiento_id).forEach(l => add(pagar, l.moneda, l.monto)); EQ.faltantes(m).forEach(p => add(pagar, p.moneda, +p.monto || 0));
+    const queda = {}; [hay, debe].forEach(o => Object.entries(o).forEach(([c, v]) => add(queda, c, v))); Object.entries(pagar).forEach(([c, v]) => add(queda, c, -v));
+    const ARSUSD = o => { const out = {}; ['ARS', 'USD'].forEach(c => { if (o[c]) out[c] = o[c]; }); Object.entries(o).forEach(([c, v]) => { if (!out[c] && Math.abs(v) > 0.004) out[c] = v; }); return out; };
+
+    let h = '<div class="head"><div><h1>Plata hoy</h1><p>Las tres preguntas de siempre, con los números de Cobros, Gastos e ingresos y Sueldos. Tocá cada parte para ir al detalle.</p></div></div>';
+    h += sec('ingreso', '¿Cuánto entra en ' + esc(mesN) + '?',
+      '<div class="sx-ns pl-ns">' + grande(linea(esperado), 'Para cobrar por ' + mesN, porCli.filter(x => !x[2]).length ? porCli.filter(x => !x[2]).length + ' resúmenes sin armar todavía (se estima con el abono)' : 'según los resúmenes del mes', chico(esperado)) +
+        grande(linea(entro), 'Ya entró este mes', 'cobros cargados en Gastos e ingresos', chico(entro)) + '</div>' +
+      (porCli.length ? '<div class="sx-panel"><div class="bl">' + porCli.sort((a, b) => (b[1].ARS || 0) - (a[1].ARS || 0)).slice(0, 12).map(([c, acc, armado]) => '<div class="bl-r click" data-act="aCuenta" data-cliente="' + esc(c) + '"><div class="bl-t">' + (ctx.av ? ctx.av(c, (S.C.find(x => x.nombre === c) || {}).avatar, 'sq') : '') + '<span class="bl-l">' + esc(c) + (armado ? '' : ' <small class="muted">· estimado</small>') + '</span><span class="bl-v">' + esc(linea(acc)) + '</span></div></div>').join('') + '</div></div>' : ''),
+      '<button class="btn sm" data-act="go" data-view="cobros">Ir a Cobros</button>');
+    h += sec('alerta', '¿Quién nos debe?',
+      '<div class="sx-ns pl-ns">' + grande(linea(debe), 'Por cobrar', 'en facturas hechas', chico(debe)) + grande(linea(venc), 'Vencido', (n => n ? n + (n === 1 ? ' cliente con facturas vencidas' : ' clientes con facturas vencidas') : 'nada vencido')(deudores.filter(d => d[1].venc).length), (lista(venc).length ? 'neg ' : '') + chico(venc)) + '</div>' +
+      (deudores.length ? '<div class="sx-panel"><div class="bl">' + deudores.slice(0, 15).map(([c, d]) => '<div class="bl-r click" data-act="aCuenta" data-cliente="' + esc(c) + '"><div class="bl-t">' + (ctx.av ? ctx.av(c, (S.C.find(x => x.nombre === c) || {}).avatar, 'sq') : '') + '<span class="bl-l">' + esc(c) + ' <small class="muted">· ' + d.n + (d.n === 1 ? ' factura' : ' facturas') + '</small></span>' + (d.venc ? '<span class="pzst" style="--c:var(--crit)">' + d.venc + ' vencida' + (d.venc > 1 ? 's' : '') + '</span>' : '') + '<span class="bl-v">' + esc(linea(d.acc)) + '</span></div></div>').join('') + '</div></div>' : '<div class="sx-panel"><p class="sx-lead" style="margin:0">Nadie debe nada. 🎉</p></div>'),
+      lista(venc).length ? '<button class="btn sm" data-act="asRecs">Mandar recordatorios</button>' : '');
+    h += sec('plata', '¿Cuánto nos queda?',
+      '<div class="sx-ns pl-ns">' + grande(linea(ARSUSD(hay)), 'Hay hoy', 'en todas las cuentas', chico(ARSUSD(hay))) + grande(linea(pagar), 'Falta pagar en ' + mesN, 'sueldos, honorarios y extras', chico(pagar)) +
+        grande(linea(ARSUSD(queda)), 'Quedaría', 'si se cobra lo que deben y se paga lo del mes', (Object.values(queda).some(v => v < 0) ? 'neg ' : '') + chico(ARSUSD(queda))) + '</div>' +
+      '<div class="sx-panel"><p class="sx-lead" style="margin:0">Es una foto aproximada: no incluye gastos fijos que todavía no se cargaron ni cobros futuros de otros meses. Para el detalle, <button class="btn link" data-act="go" data-view="gastos">Gastos e ingresos</button> y <button class="btn link" data-act="go" data-view="pagos">Sueldos y proveedores</button>.</p></div>');
+    h += '<table class="sr-only" data-titulo="Plata hoy"><thead><tr><th>Concepto</th><th>Monto</th></tr></thead><tbody>' + [['Para cobrar por ' + mesN, esperado], ['Ya entró este mes', entro], ['Por cobrar (facturas)', debe], ['Vencido', venc], ['Hay hoy', hay], ['Falta pagar este mes', pagar], ['Quedaría', queda]].map(([l, o]) => '<tr><td>' + esc(l) + '</td><td>' + esc(linea(o)) + '</td></tr>').join('') + '</tbody></table>';
+    return h;
+  }
+
   /* ---------- Vista: Caja ---------- */
   AD.cj = { mes: thisMonth(), q: '', cuenta: '', moneda: '' };
   function vCaja() {
@@ -1121,6 +1226,7 @@ export function initAdmin(ctx) {
     formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a),
     openComposer: o => openComposer(o), cfgMarca: () => cfgMarca(), firma: () => firma(), mailsDe: c => mailsDe(c), cuotasPlan };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;
+  const MT = initMantenimiento(ctx, { ...kit, data });
   const AS = initAsistente(ctx, kit);
   const ST = initStats(ctx, kit);
   const PZ = initPropuestas(ctx, kit);
@@ -1134,6 +1240,30 @@ export function initAdmin(ctx) {
     aReint: async t => { try { await data.upd('movimientos', t.dataset.id, { reintegrado: true }); toast('Listo: ya no figura como deuda con la socia'); await ctx.reload(); } catch (err) { toast(err.message); } },
     aMes: t => { const n = +t.dataset.d; AD.mes = n ? addMonth(AD.mes, n) : thisMonth(); ctx.render(); },
     aCuenta: t => openCuenta(t.dataset.cliente, AD.mes),
+    aRtCh: async () => {
+      const v = (($('#rt-ch') || {}).value || '').trim();
+      try { await data.upsert('ajustes', { clave: 'rentabilidad', valor: { ...cfgRent(), costo_hora: v ? +v : null } }, 'clave'); toast(v ? 'Costo de la hora guardado' : 'Se usa el estimado'); await ctx.reload(); }
+      catch (err) { toast(err.message); }
+    },
+    aRtIA: async () => {
+      const y = AD.rt.anio, { ch, filas } = filasHoras(y);
+      AD.rtIABusy = true; ctx.render();
+      try {
+        AD.rtIA = await data.ia({ modo: 'rentabilidad', contexto: { anio: y, moneda: 'ARS', costo_hora: ch, aclaracion: 'Las horas las carga el equipo de forma aproximada y opcional; clientes sin horas no tienen dato, no significa cero.',
+          clientes: filas.map(f => ({ cliente: f.cliente, ingreso: Math.round(f.ing), ingreso_usd: Math.round(f.ingUsd), horas: f.horas, costo_horas: Math.round(f.costo), proveedores: Math.round(f.prov), queda: Math.round(f.queda), margen_pct: f.pct, valor_hora_real: f.vh, piezas_extra: f.extras, abonos: S.A.filter(a => a.cliente === f.cliente && a.estado === 'Activo').map(a => a.tipo + (a.plan ? ' ' + a.plan : '')) })) } });
+      } catch (err) { toast(err.message); }
+      AD.rtIABusy = false; ctx.render();
+    },
+    aRtPre: async () => {
+      const pedido = (($('#rt-pre-t') || {}).value || '').trim(), tipo = ($('#rt-pre-tipo') || {}).value || '';
+      if (!pedido) { toast('Contá qué trabajo hay que presupuestar'); return; }
+      const ch = +cfgRent().costo_hora || costoHoraEstimado(AD.rt.anio);
+      const historial = S.P.filter(p => (p.etapas || []).some(t => t.horas)).map(p => { const f = AD.PFZ.get(p._id); return { proyecto: p.proyecto, cliente: p.cliente, tipo: p.tipo, estado: p.estado, horas: (p.etapas || []).reduce((a, t) => a + (+t.horas || 0), 0), tareas: (p.etapas || []).length, presupuesto: f ? f.presupuesto : null, moneda: f ? f.moneda : null, inicio: p.inicio || '', entrega: p.entregaReal || p.entrega || '' }; });
+      AD.rtPre = { pedido, tipo, r: AD.rtPre && AD.rtPre.r }; AD.rtPreBusy = true; ctx.render();
+      try { AD.rtPre.r = await data.ia({ modo: 'presupuesto', texto: (tipo ? 'Tipo: ' + tipo + '\n' : '') + pedido, contexto: { costo_hora: ch, moneda: 'ARS', proyectos_con_horas: historial, aclaracion: historial.length < 3 ? 'Hay muy pocos proyectos con horas cargadas: dalo como rango amplio y decilo.' : '' } }); }
+      catch (err) { toast(err.message); }
+      AD.rtPreBusy = false; ctx.render();
+    },
     aCuentaDe: t => openCuenta(t.dataset.cliente, thisMonth()),
     aCuentaOtro: () => { const v = $('#a-otro').value; if (v) openCuenta(v, AD.mes); },
     aBack: () => { AD.sel = null; AD.rd = null; ctx.render(); },
@@ -1275,7 +1405,7 @@ export function initAdmin(ctx) {
     return tabs + ((S.tab.numeros || 'stats') === 'rent' ? vRent() : ST.view());
   }
 
-  Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions);
+  Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions, MT.actions);
   return {
     load, actions, fichaSection, proyectoSection, AD, cfgMarca: () => cfgMarca(),
     // Para la IA: abrir formularios ya completos (nada se guarda sin confirmar).
@@ -1285,7 +1415,7 @@ export function initAdmin(ctx) {
       propuesta: preset => actions.pzNueva({ dataset: { clase: preset.clase || 'Presupuesto', preset: JSON.stringify(preset) } }),
     },
     contexto: () => contextoIA(),
-    views: [['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Números', vNumeros], ['ajustes', 'Ajustes', AS.ajustes],
+    views: [['plata', 'Plata hoy', vPlata], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Números', vNumeros], ['ajustes', 'Ajustes', () => AS.ajustes() + MT.html()],
       ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
     counts: () => (AD.ok ? { cobros: AD.F.filter(f => estadoFactura(f) === 'Vencida').length + AS.count() } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; PZ.reset(); },
