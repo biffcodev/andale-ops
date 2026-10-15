@@ -3,6 +3,7 @@
 // comparadas con el año anterior. Todo en SVG propio, sin librerías. Cada gráfico lleva su tabla
 // de datos (oculta a la vista) para leerlo con lector de pantalla y para descargarlo en Excel o CSV.
 import { ICON } from './iconos.js';
+import { rango, enRango, selector } from './periodo.js';
 
 const MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 // Cuentas que no son operación: saldo inicial, compra/venta de divisas, retiros y aportes de socios.
@@ -13,7 +14,9 @@ const limpiaSub = s => String(s || 'Sin categoría').replace(/^S\./, '');
 export function initStats(ctx, k) {
   const { S, esc, opt, thisMonth, emptyBox } = ctx;
   const { AD, money, add } = k;
-  AD.st = { anio: String(new Date().getFullYear()), mon: 'ARS', clTodos: false };
+  AD.st = { mon: 'ARS', clTodos: false };
+  AD.per = AD.per || { k: 'anio' };
+  const hoy = () => ctx.today ? ctx.today() : new Date().toISOString().slice(0, 10);
 
   const compact = (n, cur) => {
     const sym = cur === 'USD' ? 'US$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '$';
@@ -29,21 +32,21 @@ export function initStats(ctx, k) {
   const top = (rows, n) => rows.length > n ? [...rows.slice(0, n - 1), ['Otros (' + (rows.length - n + 1) + ')', sum(rows.slice(n - 1).map(r => r[1]))]] : rows;
 
   /* ---------- datos ---------- */
-  function base(y, hasta) {
+  function base(r, grupos) {
     const mon = AD.st.mon;
     // En dólares también entran EUR, GBP y otras monedas del exterior, por los USD que realmente se recibieron.
     const ext = v => mon === 'USD' && v.moneda !== 'ARS' && v.moneda !== 'USD' && v.usd != null && v.usd !== '';
-    const mv = AD.MV.filter(v => (v.fecha || '').startsWith(y) && (v.moneda === mon || ext(v)) && !NO_OPERATIVAS.has(v.cuenta))
+    const mv = AD.MV.filter(v => enRango(v.fecha, r) && (v.moneda === mon || ext(v)) && !NO_OPERATIVAS.has(v.cuenta))
       .map(v => ext(v) ? { ...v, ingreso: v.ingreso > 0 ? +v.usd : 0, egreso: v.egreso > 0 ? +v.usd : 0 } : v);
     const ing = mv.filter(v => v.ingreso > 0 && /^Venta/.test(v.cuenta)), eg = mv.filter(v => v.egreso > 0);
-    const sinUsd = mon === 'USD' ? AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.moneda !== 'ARS' && v.moneda !== 'USD' && (v.usd == null || v.usd === '') && !NO_OPERATIVAS.has(v.cuenta)) : [];
-    const porMes = (xs, f) => MES.map((_, i) => xs.filter(v => +v.fecha.slice(5, 7) === i + 1).reduce((a, v) => a + f(v), 0));
-    const ultimo = hasta || (y === thisMonth().slice(0, 4) ? +thisMonth().slice(5, 7) : 12);
-    return { y, mon, ing, eg, ultimo, sinUsd,
-      ingMes: porMes(ing, v => v.ingreso).slice(0, ultimo), egMes: porMes(eg, v => v.egreso).slice(0, ultimo),
-      aboMes: porMes(ing.filter(v => ABONO_SUB.has(v.subcuenta)), v => v.ingreso).slice(0, ultimo),
-      proMes: porMes(ing.filter(v => !ABONO_SUB.has(v.subcuenta)), v => v.ingreso).slice(0, ultimo),
-      labMes: porMes(eg.filter(v => v.cuenta === 'Costo Laboral'), v => v.egreso).slice(0, ultimo) };
+    const sinUsd = mon === 'USD' ? AD.MV.filter(v => enRango(v.fecha, r) && v.moneda !== 'ARS' && v.moneda !== 'USD' && (v.usd == null || v.usd === '') && !NO_OPERATIVAS.has(v.cuenta)) : [];
+    const gs = grupos || r.grupos;
+    const porG = (xs, f) => gs.map(g => xs.filter(v => v.fecha.slice(0, 10) >= g.d && v.fecha.slice(0, 10) <= g.h).reduce((a, v) => a + f(v), 0));
+    return { mon, ing, eg, sinUsd, n: gs.length,
+      ingMes: porG(ing, v => v.ingreso), egMes: porG(eg, v => v.egreso),
+      aboMes: porG(ing.filter(v => ABONO_SUB.has(v.subcuenta)), v => v.ingreso),
+      proMes: porG(ing.filter(v => !ABONO_SUB.has(v.subcuenta)), v => v.ingreso),
+      labMes: porG(eg.filter(v => v.cuenta === 'Costo Laboral'), v => v.egreso) };
   }
 
   /* ---------- piezas ---------- */
@@ -51,17 +54,18 @@ export function initStats(ctx, k) {
   // Tabla de datos del gráfico: invisible en pantalla, la leen el lector de pantalla y las descargas.
   const datos = (titulo, cab, filas) => '<table class="sr-only" data-titulo="' + esc(titulo) + '"><caption>' + esc(titulo) + '</caption><thead><tr>' + cab.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' + filas.map(f => '<tr>' + f.map(c => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
   const delta = (a, b, alReves) => {
-    if (!b) return '<span class="sx-d nada">sin datos del año anterior</span>';
+    if (!b) return '<span class="sx-d nada">sin datos para comparar</span>';
     const d = Math.round((a / b - 1) * 100); const bien = alReves ? d <= 0 : d >= 0;
-    return '<span class="sx-d ' + (d === 0 ? 'igual' : bien ? 'up' : 'down') + '">' + (d > 0 ? '▲ ' : d < 0 ? '▼ ' : '') + Math.abs(d) + '% vs. ' + esc(String(+AD.st.anio - 1)) + '</span>';
+    return '<span class="sx-d ' + (d === 0 ? 'igual' : bien ? 'up' : 'down') + '">' + (d > 0 ? '▲ ' : d < 0 ? '▼ ' : '') + Math.abs(d) + '% vs. ' + esc(rango(AD.per, hoy()).prev.label) + '</span>';
   };
   const grande = (valor, label, extra, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(valor) + '</b><span>' + esc(label) + '</span>' + (extra || '') + '</div>';
 
   // Curva suave (monótona: no inventa picos ni baja de cero) con área y comparación gris.
-  function curva(main0, prev0, n0, mon, { W = 640, H = 230, color = 'var(--c1)', nombre = '', nombrePrev = '' } = {}) {
+  function curva(main0, prev0, etiquetas, mon, { W = 640, H = 230, color = 'var(--c1)', nombre = '', nombrePrev = '' } = {}) {
+    const n0 = etiquetas.length;
     // Arranca en el primer mes con datos (de este año o del anterior), así no se pierde medio gráfico en ceros.
     let d0 = 0; while (d0 < n0 - 2 && !(main0[d0] || (prev0 && prev0[d0]))) d0++;
-    const main = main0.slice(d0), prev = prev0 ? prev0.slice(d0) : null, n = n0 - d0, MS = MES.slice(d0);
+    const main = main0.slice(d0), prev = prev0 ? prev0.slice(d0) : null, n = n0 - d0, MS = etiquetas.slice(d0);
     const L = 48, R = 12, T = 12, B = 26, iw = W - L - R, ih = H - T - B;
     const mx = niceMax(Math.max(...main.slice(0, n), ...(prev || []).slice(0, n), 1));
     const X = i => n > 1 ? L + iw * i / (n - 1) : L + iw / 2, Y = v => T + ih - (v / mx) * ih;
@@ -83,14 +87,14 @@ export function initStats(ctx, k) {
     const last = main[n - 1] || 0; g += '<circle cx="' + X(n - 1).toFixed(1) + '" cy="' + Y(last).toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2"/>';
     // Zonas para el tooltip, una por mes.
     const band = n > 1 ? iw / (n - 1) : iw;
-    for (let i = 0; i < n; i++) g += '<rect class="hz" x="' + Math.max(L, X(i) - band / 2).toFixed(1) + '" y="' + T + '" width="' + band.toFixed(1) + '" height="' + ih + '"' + tip(MS[i] + ' ' + AD.st.anio, nombre + ': ' + money(main[i] || 0, mon) + (prev && prev.some(v => v) ? ' · ' + nombrePrev + ': ' + money(prev[i] || 0, mon) : '')) + '/>';
+    for (let i = 0; i < n; i++) g += '<rect class="hz" x="' + Math.max(L, X(i) - band / 2).toFixed(1) + '" y="' + T + '" width="' + band.toFixed(1) + '" height="' + ih + '"' + tip(MS[i], nombre + ': ' + money(main[i] || 0, mon) + (prev && prev.some(v => v) ? ' · ' + nombrePrev + ': ' + money(prev[i] || 0, mon) : '')) + '/>';
     return '<div class="sx-chart"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(nombre + ' por mes') + '">' + g + '</svg></div>';
   }
   const leyenda = items => '<div class="sx-ley">' + items.map(([n, c]) => '<span><i style="--c:' + c + '"></i>' + esc(n) + '</span>').join('') + '</div>';
 
   // Lista de barras: nombre a la izquierda, valor a la derecha, barra fina abajo. La primera, en color pleno.
   function barras(rows, color, fmt, { tituloDatos, avatar } = {}) {
-    if (!rows.length) return emptyBox('Sin datos para este año', '');
+    if (!rows.length) return emptyBox('Sin datos en este período', '');
     const mx = Math.max(...rows.map(r => r[1]), 1), tot = sum(rows.map(r => r[1]));
     return '<div class="bl">' + rows.map(([l, v], i) => '<div class="bl-r"' + tip(l, fmt(v) + ' · ' + pct(v, tot) + '% del total') + '><div class="bl-t">' + (avatar ? avatar(l) : '') + '<span class="bl-l">' + esc(l) + '</span><span class="bl-v">' + esc(fmt(v)) + '<small>' + pct(v, tot) + '%</small></span></div><span class="bl-tr" style="--c:' + color + '"><i class="' + (i ? '' : 'top') + '" style="width:' + Math.max(1, v / mx * 100).toFixed(1) + '%"></i></span></div>').join('') + '</div>' +
       (tituloDatos ? datos(tituloDatos, ['Concepto', 'Monto', '% del total'], rows.map(([l, v]) => [l, money(v, AD.st.mon), pct(v, tot) + '%'])) : '');
@@ -112,33 +116,34 @@ export function initStats(ctx, k) {
 
   /* ---------- vista ---------- */
   function vStats() {
-    const st = AD.st, b = base(st.anio), prev = base(String(+st.anio - 1), b.ultimo), C1 = 'var(--c1)', C2 = 'var(--c2)', C3 = 'var(--c3)';
-    const anios = [...new Set([...AD.MV.map(v => (v.fecha || '').slice(0, 4)), st.anio])].filter(Boolean).sort().reverse();
-    const ti = sum(b.ingMes), te = sum(b.egMes), res = ti - te, lab = sum(b.labMes), meses = Math.max(b.ultimo, 1);
+    const st = AD.st, r = rango(AD.per, hoy()), b = base(r), prev = base(r.prev, r.prev.grupos.length === r.grupos.length ? r.prev.grupos : null), C1 = 'var(--c1)', C2 = 'var(--c2)', C3 = 'var(--c3)';
+    const anios = [...new Set(AD.MV.map(v => (v.fecha || '').slice(0, 4)))].filter(Boolean).sort().reverse();
+    const ti = sum(b.ingMes), te = sum(b.egMes), res = ti - te, lab = sum(b.labMes), meses = r.meses;
     const pi = sum(prev.ingMes), pe = sum(prev.egMes), pl = sum(prev.labMes);
-    const hayPrev = prev.ing.length + prev.eg.length > 0, y0 = String(+st.anio - 1), M = v => money(v, st.mon), K = v => compact(v, st.mon);
-    const periodo = b.ultimo === 12 ? 'todo ' + st.anio : 'enero a ' + MES[b.ultimo - 1].toLowerCase() + ' de ' + st.anio;
-    let h = '<div class="head"><div><h1>Estadísticas</h1><p>Cómo viene ' + esc(st.anio) + ' según Gastos e ingresos: lo que entra, lo que sale y de dónde viene.</p></div>' +
-      '<div class="toolbar"><div class="seg" role="group" aria-label="Moneda">' + ['ARS', 'USD'].map(m => '<button data-act="stMon" data-v="' + m + '" aria-pressed="' + (st.mon === m) + '">' + (m === 'ARS' ? 'Pesos' : 'Dólares (con EUR y GBP)') + '</button>').join('') + '</div><select class="in" data-stk="anio" aria-label="Año">' + anios.map(a => opt(a, a, st.anio)).join('') + '</select></div></div>' +
+    const hayPrev = prev.ing.length + prev.eg.length > 0, y0 = r.prev.label, M = v => money(v, st.mon), K = v => compact(v, st.mon);
+    const periodo = r.label, labels = r.grupos.map(g => g.l), cada = r.porSemana ? 'por semana' : 'por mes', div = r.porSemana ? Math.max(1, r.grupos.length) : meses;
+    let h = '<div class="head"><div><h1>Estadísticas</h1><p>Cómo viene ' + esc(periodo) + ' según Gastos e ingresos: lo que entra, lo que sale y de dónde viene.</p></div>' +
+      '<div class="toolbar">' + selector(AD.per, anios, esc, hoy()) + '<div class="seg" role="group" aria-label="Moneda">' + ['ARS', 'USD'].map(m => '<button data-act="stMon" data-v="' + m + '" aria-pressed="' + (st.mon === m) + '">' + (m === 'ARS' ? 'Pesos' : 'Dólares') + '</button>').join('') + '</div></div></div>' +
       (b.sinUsd.length ? '<section class="callout"><p><b>' + b.sinUsd.length + ' movimientos en ' + esc([...new Set(b.sinUsd.map(v => v.moneda))].join(' y ')) + ' sin los USD cargados</b>: no se suman acá. Abrilos en Gastos e ingresos y completá “¿Cuántos USD fueron?”.</p></section>' : '');
-    if (!b.ing.length && !b.eg.length) return h + '<section class="sheet">' + emptyBox('Sin gastos ni ingresos en ' + (st.mon === 'ARS' ? 'pesos' : 'dólares') + ' para ' + st.anio, 'Probá con la otra moneda u otro año.') + '</section>';
+    if (!b.ing.length && !b.eg.length) return h + '<section class="sheet">' + emptyBox('Sin gastos ni ingresos en ' + (st.mon === 'ARS' ? 'pesos' : 'dólares') + ' en ' + periodo, 'Probá con otro período o la otra moneda.') + '</section>';
 
-    // 1. El año en cuatro números
-    h += '<section class="sheet sx">' + tituloSec('resultado', 'El año en números', '(' + esc(periodo) + ')') +
+    // 1. El período en cuatro números
+    h += '<section class="sheet sx">' + tituloSec('resultado', 'En números', '(' + esc(periodo) + ')') +
       '<div class="sx-ns">' +
-      grande(K(ti), 'Ingresos', '<small>' + esc(K(ti / meses)) + ' por mes</small>' + (hayPrev ? delta(ti, pi) : '')) +
-      grande(K(te), 'Gastos', '<small>' + esc(K(te / meses)) + ' por mes</small>' + (hayPrev ? delta(te, pe, true) : '')) +
+      grande(K(ti), 'Ingresos', '<small>' + esc(K(ti / div)) + ' ' + cada + '</small>' + (hayPrev ? delta(ti, pi) : '')) +
+      grande(K(te), 'Gastos', '<small>' + esc(K(te / div)) + ' ' + cada + '</small>' + (hayPrev ? delta(te, pe, true) : '')) +
       grande(K(res), 'Lo que quedó', '<small>' + (ti ? pct(res, ti) + '% de lo que entra' : '—') + '</small>' + (hayPrev ? delta(res, pi - pe) : ''), res < 0 ? 'neg' : 'pos') +
       grande(K(lab), 'Sueldos', '<small>' + (ti ? pct(lab, ti) + '% de los ingresos' : 'sueldos y aguinaldos') + '</small>' + (hayPrev ? delta(lab, pl, true) : '')) +
-      '</div>' + datos('El año en números', ['Concepto', st.anio, y0], [['Ingresos', M(ti), M(pi)], ['Gastos', M(te), M(pe)], ['Lo que quedó', M(res), M(pi - pe)], ['Sueldos', M(lab), M(pl)]]) + '</section>';
+      '</div>' + datos('En números', ['Concepto', periodo, y0], [['Ingresos', M(ti), M(pi)], ['Gastos', M(te), M(pe)], ['Lo que quedó', M(res), M(pi - pe)], ['Sueldos', M(lab), M(pl)]]) + '</section>';
 
-    // 2. Curvas de ingresos y gastos contra el año anterior
-    const fila = (n, a, p) => MES.slice(0, b.ultimo).map((m, i) => [m, M(a[i] || 0), M(p[i] || 0)]);
+    // 2. Curvas de ingresos y gastos contra el período anterior
+    const fila = (n, a, p) => labels.map((m, i) => [m, M(a[i] || 0), M(p[i] || 0)]);
+    const compara = hayPrev && prev.n === b.n;
     h += '<div class="sx-2">' +
-      '<section class="sheet sx">' + tituloSec('ingreso', '<b>' + esc(K(ti)) + '</b> de ingresos', '(' + esc(st.anio) + ')', leyenda([[st.anio, C1], ...(hayPrev ? [[y0, 'var(--muted)']] : [])])) +
-      curva(b.ingMes, hayPrev ? prev.ingMes : null, b.ultimo, st.mon, { color: C1, nombre: st.anio, nombrePrev: y0 }) + datos('Ingresos por mes', ['Mes', st.anio, y0], fila('Ingresos', b.ingMes, prev.ingMes)) + '</section>' +
-      '<section class="sheet sx">' + tituloSec('gasto', '<b>' + esc(K(te)) + '</b> de gastos', '(' + esc(st.anio) + ')', leyenda([[st.anio, C2], ...(hayPrev ? [[y0, 'var(--muted)']] : [])])) +
-      curva(b.egMes, hayPrev ? prev.egMes : null, b.ultimo, st.mon, { color: C2, nombre: st.anio, nombrePrev: y0 }) + datos('Gastos por mes', ['Mes', st.anio, y0], fila('Gastos', b.egMes, prev.egMes)) + '</section></div>';
+      '<section class="sheet sx">' + tituloSec('ingreso', '<b>' + esc(K(ti)) + '</b> de ingresos', '(' + esc(cada) + ')', leyenda([[periodo, C1], ...(compara ? [[y0, 'var(--muted)']] : [])])) +
+      curva(b.ingMes, compara ? prev.ingMes : null, labels, st.mon, { color: C1, nombre: 'Ingresos', nombrePrev: y0 }) + datos('Ingresos ' + cada, ['Período', periodo, y0], fila('Ingresos', b.ingMes, prev.ingMes)) + '</section>' +
+      '<section class="sheet sx">' + tituloSec('gasto', '<b>' + esc(K(te)) + '</b> de gastos', '(' + esc(cada) + ')', leyenda([[periodo, C2], ...(compara ? [[y0, 'var(--muted)']] : [])])) +
+      curva(b.egMes, compara ? prev.egMes : null, labels, st.mon, { color: C2, nombre: 'Gastos', nombrePrev: y0 }) + datos('Gastos ' + cada, ['Período', periodo, y0], fila('Gastos', b.egMes, prev.egMes)) + '</section></div>';
 
     // 3. De dónde viene la plata: abonos vs. proyectos y por servicio
     const ab = sum(b.aboMes), pr = sum(b.proMes);
@@ -147,7 +152,7 @@ export function initStats(ctx, k) {
       '<div class="sx-panel sx-split"><div><p class="sx-lead">Lo recurrente (abonos de redes y Ads) sostiene <b>' + pct(ab, ab + pr) + '%</b> de los ingresos de ' + esc(periodo) + '.</p>' +
       barras(serv, C1, K, { tituloDatos: 'Ingresos por servicio' }) + '</div>' +
       dona([['Abonos', ab], ['Proyectos', pr]], [C1, C3], M, [pct(ab, ab + pr) + '%', 'recurrente']) + '</div>' +
-      datos('Abonos y proyectos por mes', ['Mes', 'Abonos', 'Proyectos', 'Total'], b.aboMes.map((v, i) => [MES[i], M(v), M(b.proMes[i]), M(v + b.proMes[i])])) + '</section>';
+      datos('Abonos y proyectos', ['Período', 'Abonos', 'Proyectos', 'Total'], b.aboMes.map((v, i) => [labels[i], M(v), M(b.proMes[i]), M(v + b.proMes[i])])) + '</section>';
 
     // 4. Clientes: tabla con logo, como un ranking
     const cl = agrupar(b.ing, v => v.cliente || v.contraparte || 'Sin cliente', v => v.ingreso), totCl = sum(cl.map(r => r[1]));
@@ -173,7 +178,7 @@ export function initStats(ctx, k) {
     h += '<section class="sheet sx">' + tituloSec('operacion', 'Operación hoy') +
       '<div class="sx-ns">' +
       grande(String(S.C.filter(c => c.estado === 'Activo').length), 'Clientes activos', '<small>' + ab2.filter(a => a.tipo === 'Redes').length + ' con redes · ' + ab2.filter(a => a.tipo === 'Ads').length + ' con Ads</small>') +
-      grande(String(totP), 'Proyectos abiertos', '<small>' + S.P.filter(p => p.estado === 'Entregado' && (p.entregaReal || p.entrega || '').startsWith(st.anio)).length + ' entregados en ' + esc(st.anio) + '</small>') +
+      grande(String(totP), 'Proyectos abiertos', '<small>' + S.P.filter(p => p.estado === 'Entregado' && enRango(p.entregaReal || p.entrega || '', r)).length + ' entregados en ' + esc(periodo) + '</small>') +
       grande(plataN(porCobrar), 'Por cobrar', '<small>en facturas hechas</small>', Object.keys(porCobrar).length > 1 ? 'chico' : '') +
       grande(plataN(vencido), 'Vencido', '<small>' + nVenc + (nVenc === 1 ? ' factura' : ' facturas') + '</small>', (Object.keys(vencido).length ? 'neg' : '') + (Object.keys(vencido).length > 1 ? ' chico' : '')) + '</div>' +
       (totP ? '<div class="sx-panel"><p class="sx-lead">Proyectos abiertos por estado</p>' + '<div class="bl">' + Object.entries(est).sort((a, c) => c[1] - a[1]).map(([e, n]) => '<div class="bl-r"><div class="bl-t"><span class="bl-dot" style="--c:var(' + ctx.stVar(e) + ')"></span><span class="bl-l">' + esc(e) + '</span><span class="bl-v">' + n + (n === 1 ? ' proyecto' : ' proyectos') + '</span></div><span class="bl-tr" style="--c:var(' + ctx.stVar(e) + ')"><i class="top" style="width:' + (n / Math.max(...Object.values(est)) * 100).toFixed(1) + '%"></i></span></div>').join('') + '</div></div>' : '') +
@@ -191,7 +196,13 @@ export function initStats(ctx, k) {
     tipEl.hidden = false;
   });
   document.addEventListener('mousemove', e => { if (tipEl && !tipEl.hidden) { const x = Math.min(e.clientX + 14, innerWidth - tipEl.offsetWidth - 8); tipEl.style.left = x + 'px'; tipEl.style.top = (e.clientY + 14) + 'px'; } });
-  document.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.stk) { AD.st[t.dataset.stk] = t.value; ctx.render(); } });
+  // Período compartido por Estadísticas y Rentabilidad.
+  document.addEventListener('change', e => {
+    const t = e.target; if (!t.dataset || !t.dataset.per) return;
+    const p = AD.per; p[t.dataset.per] = t.value;
+    if (t.dataset.per === 'k' && t.value === 'rango' && !(p.d && p.h)) { const r = rango({ k: '3m' }, hoy()); p.d = r.desde; p.h = r.hasta; }
+    AD.HR = null; ctx.render();
+  });
 
   return { view: vStats, actions: { stMon: t => { AD.st.mon = t.dataset.v; ctx.render(); }, stClTodos: () => { AD.st.clTodos = !AD.st.clTodos; ctx.render(); } } };
 }

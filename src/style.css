@@ -1743,3 +1743,18 @@ details.ec-datos[open]>summary::after{content:"▴"}
 .pl-lab{paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round}
 .pl-b i{min-width:0}
 @media (max-width:960px){.side{z-index:60}.side-scrim{z-index:55}}
+/* Menú lateral con secciones que se despliegan */
+.snav-sec{display:grid;gap:1px}
+.snav-h .snav-chev{width:8px;height:8px;border-right:1.6px solid var(--muted);border-bottom:1.6px solid var(--muted);transform:rotate(-45deg);margin:0 4px 0 2px;transition:transform .15s;flex:none}
+.snav-sec.open>.snav-h .snav-chev{transform:rotate(45deg);margin-top:-4px}
+.snav-sec.act>.snav-h{font-weight:650}
+.snav-sec.act>.snav-h svg{color:var(--accent)}
+.snav-sub{display:grid;gap:1px;margin:1px 0 6px 21px;padding-left:12px;border-left:1px solid var(--line)}
+.snav-sub[hidden]{display:none}
+#nav .snav-c{padding:7px 10px;font-size:14px;font-weight:500;color:var(--fg);opacity:.85}
+#nav .snav-c[aria-current="page"]{opacity:1}
+.snav-sep{display:block;height:1px;background:var(--line);margin:8px 10px}
+@media (min-width:961px){.sectabs{display:none}}
+.per{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.per select.in{min-width:170px}
+.per input[type=date]{width:auto}

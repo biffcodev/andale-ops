@@ -175,15 +175,17 @@ export async function horasPorPedido() {
 
 /* ---------- Horas del año (para saber cuánto deja cada cliente de verdad) ---------- */
 // Tareas vienen con los proyectos; acá van piezas, meses de redes y tickets. Tolerante: si falta una tabla, viene vacía.
-export async function horasAnio(y) {
-  const d = y + '-01-01', h = (+y + 1) + '-01-01', cn = id => idx.clienteName.get(id) || '';
+export const horasAnio = y => horasRango(y + '-01-01', y + '-12-31');
+// Horas de un período (desde y hasta, inclusive).
+export async function horasRango(desde, hasta) {
+  const d = desde, hd = new Date(hasta + 'T12:00:00Z'); hd.setUTCDate(hd.getUTCDate() + 1); const h = hd.toISOString().slice(0, 10), cn = id => idx.clienteName.get(id) || '';
   const [pz, rm, pd, hh] = await Promise.all([
     tolerante(sb.from('piezas').select('cliente_id, horas, extra').gte('created_at', d).lt('created_at', h).limit(50000)),
     tolerante(sb.from('redes_meses').select('cliente_id, horas, mes').gte('mes', d).lt('mes', h)),
     tolerante(sb.from('pedidos').select('cliente_id, horas, cobro, created_at').gte('created_at', d).lt('created_at', h)),
     tolerante(sb.from('horas').select('cliente_id, proyecto_id, abono_id, pedido_id, persona_id, minutos, fecha').gte('fecha', d).lt('fecha', h).limit(50000)),
   ]);
-  return { y,
+  return { y: desde + '|' + hasta,
     piezas: (pz || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, extra: !!x.extra })),
     meses: (rm || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, mes: String(x.mes).slice(0, 7) })),
     pedidos: (pd || []).map(x => ({ cliente: cn(x.cliente_id), horas: +x.horas || 0, cobro: x.cobro })),

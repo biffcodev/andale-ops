@@ -6,6 +6,7 @@ import { initEquipo } from './equipo.js';
 import { initAsistente } from './asistente.js';
 import { initStats } from './stats.js';
 import { masMenu } from './ui.js';
+import { rango, enRango, selector } from './periodo.js';
 import { ICON } from './iconos.js';
 import { initMantenimiento } from './mantenimiento.js';
 import { initPropuestas } from './propuestas.js';
@@ -548,7 +549,7 @@ export function initAdmin(ctx) {
   const movDe = id => AD.MV.find(v => v.id === id);
   function costos(kind, id, anio) { // { moneda: monto } de egresos imputados
     const acc = {};
-    AD.IMP.filter(x => (kind === 'abono' ? x.abono_id : x.proyecto_id) === id).forEach(x => { const mv = movDe(x.movimiento_id); if (!mv || (anio && !(mv.fecha || '').startsWith(anio))) return; add(acc, mv.moneda, x.monto); });
+    AD.IMP.filter(x => (kind === 'abono' ? x.abono_id : x.proyecto_id) === id).forEach(x => { const mv = movDe(x.movimiento_id); if (!mv || (anio && (typeof anio === 'object' ? !enRango(mv.fecha, anio) : !(mv.fecha || '').startsWith(anio)))) return; add(acc, mv.moneda, x.monto); });
     return acc;
   }
   function finProyecto(p) {
@@ -649,19 +650,19 @@ export function initAdmin(ctx) {
 
   /* ---------- Vista: Rentabilidad ---------- */
   function vRent() {
-    const rt = AD.rt, y = rt.anio, m = thisMonth();
-    const anios = [...new Set([...AD.MV.map(v => (v.fecha || '').slice(0, 4)), y])].filter(Boolean).sort().reverse();
-    const provAnio = AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.cuenta === 'Proveedores' && v.egreso > 0);
+    const rt = AD.rt, R = rango(AD.per || (AD.per = { k: 'anio' }), today()), y = R.label, m = thisMonth();
+    const anios = [...new Set(AD.MV.map(v => (v.fecha || '').slice(0, 4)))].filter(Boolean).sort().reverse();
+    const provAnio = AD.MV.filter(v => enRango(v.fecha, R) && v.cuenta === 'Proveedores' && v.egreso > 0);
     const imputadoDe = id => r2(AD.IMP.filter(x => x.movimiento_id === id).reduce((a, x) => a + x.monto, 0));
     const sinImp = provAnio.map(v => ({ v, falta: r2(v.egreso - imputadoDe(v.id)) })).filter(x => x.falta > 0.009).sort((a, b) => (b.v.fecha || '').localeCompare(a.v.fecha || ''));
     const accSin = {}; sinImp.forEach(x => add(accSin, x.v.moneda, x.falta));
-    const accImp = {}; AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (mv && (mv.fecha || '').startsWith(y)) add(accImp, mv.moneda, x.monto); });
+    const accImp = {}; AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (mv && enRango(mv.fecha, R)) add(accImp, mv.moneda, x.monto); });
     let h = '<div class="head"><div>' + lock + '<h1>Qué deja cada cliente</h1><p>Lo que queda de cada abono y proyecto después de pagar proveedores (sin sueldos ni gastos fijos).</p></div>' +
       '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['horas', 'Con horas'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos']].map(([k, l]) => '<button data-act="aRtVer" data-v="' + k + '" aria-pressed="' + (rt.ver === k) + '">' + l + '</button>').join('') + '</div>' +
-      '<select class="in" aria-label="Año" data-art="anio">' + anios.map(a => opt(a, a, y)).join('') + '</select></div></div>';
+      selector(AD.per, anios, esc, today()) + '</div></div>';
     h += '<section class="kpis"><div class="kpi"><span class="eyebrow">Gastos asignados a clientes ' + esc(y) + '</span><b style="font-size:20px" class="money">' + esc(multi(accImp)) + '</b><span>a abonos y proyectos</span></div>' +
-      '<div class="kpi ' + (sinImp.length ? 'warn' : '') + '"><span class="eyebrow">Pagos a proveedores sin asignar</span><b style="font-size:20px" class="money">' + esc(multi(accSin)) + '</b><span>' + sinImp.length + ' pagos en ' + esc(y) + '</span></div></section>';
-    if (rt.ver === 'horas') h += rentHoras(y);
+      '<div class="kpi ' + (sinImp.length ? 'warn' : '') + '"><span class="eyebrow">Pagos a proveedores sin asignar</span><b style="font-size:20px" class="money">' + esc(multi(accSin)) + '</b><span>' + sinImp.length + ' pagos · ' + esc(y) + '</span></div></section>';
+    if (rt.ver === 'horas') h += rentHoras(R);
     else if (rt.ver === 'proyectos') {
       const ps = S.P.filter(p => p.estado !== 'Cancelado' && (AD.PFZ.has(p._id) || AD.PF.some(c => c.proyecto_id === p._id) || AD.IMP.some(x => x.proyecto_id === p._id))).map(p => ({ p, f: finProyecto(p) })).sort((a, b) => cmp(a.p.cliente, b.p.cliente));
       const sinPres = S.P.filter(p => isOpenP(p) && !AD.PFZ.has(p._id) && !AD.PF.some(c => c.proyecto_id === p._id)).length;
@@ -671,10 +672,10 @@ export function initAdmin(ctx) {
           '<td class="r money">' + esc(multi(f.cost) || '—') + '</td><td class="r"><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? '<span class="sub">' + f.pct + '%</span>' : '') + '</td>' +
           '<td class="r"><button class="btn ghost sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">Editar</button></td></tr>').join('') + '</tbody></table></div>' : emptyBox('Todavía no hay proyectos con precio cargado', 'Abrí un proyecto → “Precio y cobro” y cargá cuánto se cobra y en cuántas veces.')) + '</section>';
     } else {
-      const meses = []; for (let i = 1; i <= 12; i++) { const mm = y + '-' + String(i).padStart(2, '0'); if (mm <= m) meses.push(mm); }
+      const meses = []; for (let mm = R.desde.slice(0, 7); mm <= R.hasta.slice(0, 7) && mm <= m; mm = addMonth(mm, 1)) meses.push(mm);
       const rows = S.A.map(a => {
         const ing = {}; meses.forEach(mm => { if (abonoEnMes(a, mm)) { const pr = precioEn(a._id, mm); if (pr) add(ing, pr.moneda, pr.monto); } });
-        const cost = costos('abono', a._id, y);
+        const cost = costos('abono', a._id, R);
         if (!Object.keys(ing).length && !Object.keys(cost).length) return null;
         const mon = Object.keys(ing)[0] || Object.keys(cost)[0], same = Object.keys(cost).every(k => k === mon);
         const margen = same ? r2((ing[mon] || 0) - (cost[mon] || 0)) : null;
@@ -693,37 +694,38 @@ export function initAdmin(ctx) {
   // Costo de la hora: el que pongan las socias o, si no hay, sueldos del año ÷ horas disponibles del equipo (140 h por persona por mes).
   const cfgRent = () => (AD.AJ && AD.AJ.rentabilidad) || {};
   window.addEventListener('horas-cargadas', () => { AD.HR = null; });
-  function costoHoraEstimado(y) {
-    const meses = y === thisMonth().slice(0, 4) ? +thisMonth().slice(5, 7) : 12;
-    const lab = AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.cuenta === 'Costo Laboral' && v.moneda === 'ARS').reduce((a, v) => a + v.egreso, 0);
+  function costoHoraEstimado(R) {
+    const meses = R.meses;
+    const lab = AD.MV.filter(v => enRango(v.fecha, R) && v.cuenta === 'Costo Laboral' && v.moneda === 'ARS').reduce((a, v) => a + v.egreso, 0);
     const gente = Math.max(1, S.E.filter(e => e.activo !== false && e.rol !== 'externo').length);
     return lab ? Math.round(lab / (meses * gente * 140)) : 0;
   }
-  function filasHoras(y) {
-    const hr = AD.HR, ch = +cfgRent().costo_hora || costoHoraEstimado(y), out = new Map();
+  function filasHoras(R) {
+    const hr = AD.HR, ch = +cfgRent().costo_hora || costoHoraEstimado(R), out = new Map();
     const fila = c => { if (!out.has(c)) out.set(c, { cliente: c, ing: 0, ingUsd: 0, hT: 0, hP: 0, hM: 0, hK: 0, hR: 0, extras: 0, prov: 0, proyectos: new Set() }); return out.get(c); };
     const cliMov = v => v.cliente || ((S.C.find(c => c.nombre === v.contraparte) || {}).nombre) || '';
-    AD.MV.filter(v => (v.fecha || '').startsWith(y) && v.ingreso > 0 && /^Venta/.test(v.cuenta) && cliMov(v)).forEach(v => { const f = fila(cliMov(v)); if (v.moneda === 'ARS') f.ing += v.ingreso; else if (v.moneda === 'USD') f.ingUsd += v.ingreso; else if (v.usd) f.ingUsd += +v.usd; });
-    S.P.forEach(p => (p.etapas || []).forEach(t => { if (t.horas && (!t.hechaAt || String(t.hechaAt).startsWith(y))) { const f = fila(p.cliente); f.hT += +t.horas; f.proyectos.add(p.proyecto); } }));
+    AD.MV.filter(v => enRango(v.fecha, R) && v.ingreso > 0 && /^Venta/.test(v.cuenta) && cliMov(v)).forEach(v => { const f = fila(cliMov(v)); if (v.moneda === 'ARS') f.ing += v.ingreso; else if (v.moneda === 'USD') f.ingUsd += v.ingreso; else if (v.usd) f.ingUsd += +v.usd; });
+    S.P.forEach(p => (p.etapas || []).forEach(t => { if (t.horas && (!t.hechaAt || enRango(String(t.hechaAt), R))) { const f = fila(p.cliente); f.hT += +t.horas; f.proyectos.add(p.proyecto); } }));
     if (hr) {
       hr.piezas.forEach(z => { if (!z.cliente) return; const f = fila(z.cliente); f.hP += z.horas; if (z.extra) f.extras++; });
       hr.meses.forEach(m => { if (m.cliente) fila(m.cliente).hM += m.horas; });
       hr.pedidos.forEach(t => { if (t.cliente) fila(t.cliente).hK += t.horas; });
       (hr.registro || []).forEach(r => { if (r.cliente) fila(r.cliente).hR += r.horas; });
     }
-    AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (!mv || !(mv.fecha || '').startsWith(y) || mv.moneda !== 'ARS') return; const a = x.abono_id ? S.A.find(z => z._id === x.abono_id) : null, p = x.proyecto_id ? S.P.find(z => z._id === x.proyecto_id) : null; const c = (a && a.cliente) || (p && p.cliente); if (c) fila(c).prov += x.monto; });
+    AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (!mv || !enRango(mv.fecha, R) || mv.moneda !== 'ARS') return; const a = x.abono_id ? S.A.find(z => z._id === x.abono_id) : null, p = x.proyecto_id ? S.P.find(z => z._id === x.proyecto_id) : null; const c = (a && a.cliente) || (p && p.cliente); if (c) fila(c).prov += x.monto; });
     return { ch, filas: [...out.values()].map(f => { const horas = Math.round((f.hT + f.hP + f.hM + f.hK + f.hR) * 100) / 100, costo = horas * ch, queda = f.ing - costo - f.prov; return { ...f, horas, costo, queda, pct: f.ing ? Math.round(queda / f.ing * 100) : null, vh: horas && f.ing ? Math.round(f.ing / horas) : null }; }).filter(f => f.ing || f.horas).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999)) };
   }
-  function rentHoras(y) {
-    if (!AD.HR || AD.HR.y !== y) { if (!AD.hrCargando) { AD.hrCargando = true; data.horasAnio(y).then(r => { AD.HR = r; }, () => { AD.HR = { y, piezas: [], meses: [], pedidos: [] }; }).finally(() => { AD.hrCargando = false; ctx.render(); }); } return '<section class="sheet">' + emptyBox('Juntando las horas del año…', '') + '</section>'; }
-    const { ch, filas } = filasHoras(y), est = costoHoraEstimado(y), cfg = cfgRent();
+  function rentHoras(R) {
+    const y = R.desde + '|' + R.hasta;
+    if (!AD.HR || AD.HR.y !== y) { if (!AD.hrCargando) { AD.hrCargando = true; data.horasRango(R.desde, R.hasta).then(r => { AD.HR = { ...r, y }; }, () => { AD.HR = { y, piezas: [], meses: [], pedidos: [] }; }).finally(() => { AD.hrCargando = false; ctx.render(); }); } return '<section class="sheet">' + emptyBox('Juntando las horas del período…', '') + '</section>'; }
+    const { ch, filas } = filasHoras(R), est = costoHoraEstimado(R), cfg = cfgRent();
     const totH = filas.reduce((a, f) => a + f.horas, 0), conHoras = filas.filter(f => f.horas).length;
     const M = v => money(Math.round(v), 'ARS');
-    let h = '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.reloj + '</span><h2>Lo que deja cada cliente, contando el tiempo <span class="sx-sub">(' + esc(y) + ', en pesos)</span></h2></div>' +
+    let h = '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.reloj + '</span><h2>Lo que deja cada cliente, contando el tiempo <span class="sx-sub">(' + esc(R.label) + ', en pesos)</span></h2></div>' +
       '<div class="sx-ns pl-ns"><div class="sx-n"><b>' + esc(Math.round(totH).toLocaleString('es-AR')) + ' h</b><span>Horas cargadas</span><small>' + conHoras + ' de ' + filas.length + ' clientes tienen horas</small></div>' +
-      '<div class="sx-n"><b>' + esc(M(ch)) + '</b><span>Costo de la hora</span><small>' + (cfg.costo_hora ? 'el que pusieron ustedes' : est ? 'estimado con los sueldos del año' : 'cargalo abajo') + '</small></div></div>' +
+      '<div class="sx-n"><b>' + esc(M(ch)) + '</b><span>Costo de la hora</span><small>' + (cfg.costo_hora ? 'el que pusieron ustedes' : est ? 'estimado con los sueldos del período' : 'cargalo abajo') + '</small></div></div>' +
       '<div class="sx-panel rt-ch"><label for="rt-ch">Costo de la hora del equipo</label><input class="in" id="rt-ch" type="number" min="0" step="100" value="' + esc(cfg.costo_hora || '') + '" placeholder="' + esc(est ? String(est) : 'Ej.: 9000') + '"><button class="btn sm" data-act="aRtCh">Guardar</button>' +
-      '<span class="muted">' + (est ? 'Estimado: ' + esc(M(est)) + ' (sueldos del año ÷ 140 h por persona por mes). ' : '') + 'Si lo dejan vacío se usa el estimado.</span></div>' +
+      '<span class="muted">' + (est ? 'Estimado: ' + esc(M(est)) + ' (sueldos del período ÷ 140 h por persona por mes). ' : '') + 'Si lo dejan vacío se usa el estimado.</span></div>' +
       (totH ? '' : '<div class="sx-panel"><p class="sx-lead" style="margin:0"><b>Todavía no hay horas cargadas.</b> Cada uno las anota con el reloj de arriba (“¿En qué estuviste trabajando?”). Con unas semanas de datos esto empieza a decir algo; mientras tanto, los números son orientativos.</p></div>') +
       (filas.length ? '<div class="tbl sx-tbl"><table><thead><tr><th>Cliente</th><th class="r">Ingresó</th><th class="r">Horas</th><th class="r">Costo del tiempo</th><th class="r">Proveedores</th><th class="r">Queda</th><th class="r">Valor hora real</th><th class="r">Extras</th></tr></thead><tbody>' +
         filas.map(f => '<tr><td><span class="sx-cl">' + (ctx.av ? ctx.av(f.cliente, (S.C.find(x => x.nombre === f.cliente) || {}).avatar, 'sq') : '') + '<span><b>' + esc(f.cliente) + '</b>' + (f.ingUsd ? '<span class="sub">+ ' + esc(money(f.ingUsd, 'USD')) + ' en dólares (no suma acá)</span>' : '') + '</span></span></td><td class="r">' + esc(M(f.ing)) + '</td>' +
@@ -817,7 +819,7 @@ export function initAdmin(ctx) {
     const proys = S.P.filter(p => p.cliente === c.nombre && !['Cancelado'].includes(p.estado));
     const n = (v, l, sub, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(v) + '</b><span>' + esc(l) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>';
     const resEst = cu.res ? (cu.res.estado === 'Enviado' ? 'Enviado el ' + fmt(cu.res.enviado_el || '').slice(0, 5) : 'Preparado, sin enviar') : (cu.total ? 'Sin preparar' : 'Nada para cobrar este mes');
-    let h = '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.plata + '</span><h2>Cuenta de ' + esc(c.nombre) + '</h2><div class="sx-der toolbar">' +
+    let h = '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.plata + '</span><h2>Estado de cuenta</h2><div class="sx-der toolbar">' +
       (ec.vencidas.length ? '<button class="btn sm" data-act="aRecCliente" data-cliente="' + esc(c.nombre) + '">Mandar recordatorio</button>' : '') +
       masMenu([{ act: 'aMailLibre', label: 'Escribir un email', icon: 'mail', attrs: ' data-cliente="' + esc(c.nombre) + '"' }, { act: 'aClienteAdm', label: 'Datos de facturación', icon: 'doc', attrs: ' data-cliente="' + esc(c.nombre) + '"' }]) + '</div></div>' +
       '<div class="sx-ns">' + n(monto(ec.debe), 'Debe hoy', nada(ec.venc) ? (nada(ec.debe) ? 'está al día' : 'nada vencido') : '<span class="t-crit">' + esc(multi(ec.venc)) + ' vencido</span>', nada(ec.venc) ? '' : 'crit') +
@@ -843,7 +845,7 @@ export function initAdmin(ctx) {
   function deudaLinea(cliente) {
     const ec = estadoCuenta(cliente);
     if (!ec.facs.length && nada(ec.cobAnio)) return '';
-    return '<button class="ec-linea" data-act="ctab" data-t="cuenta">' + ICON.plata + '<span>' + (nada(ec.debe) ? 'Está al día' : 'Debe <b class="money">' + esc(multi(ec.debe)) + '</b>' + (nada(ec.venc) ? '' : ' · <b style="color:var(--crit)">' + esc(multi(ec.venc)) + ' vencido</b>')) + (ec.ultimoPago ? ' · último pago ' + fmt(ec.ultimoPago) : '') + '</span><span class="muted">Ver cuenta →</span></button>';
+    return '<button class="ec-linea" data-act="ctab" data-t="cuenta">' + ICON.plata + '<span>' + (nada(ec.debe) ? 'Está al día' : 'Debe <b class="money">' + esc(multi(ec.debe)) + '</b>' + (nada(ec.venc) ? '' : ' · <b style="color:var(--crit)">' + esc(multi(ec.venc)) + ' vencido</b>')) + (ec.ultimoPago ? ' · último pago ' + fmt(ec.ultimoPago) : '') + '</span><span class="muted">Ver facturación →</span></button>';
   }
   // Todas las cuentas juntas: quién debe, cuánto pagó y cómo está el resumen del mes.
   function vCuentas() {
@@ -856,7 +858,7 @@ export function initAdmin(ctx) {
     const peso = o => (o.ARS || 0) + (o.USD || 0) * 1000 + (o.EUR || 0) * 1100;
     const vis = filas.filter(r => (!q || norm(r.c.nombre).includes(q)) && (!cf.debe || !nada(r.ec.debe))).sort((a, b) => peso(b.ec.venc) - peso(a.ec.venc) || peso(b.ec.debe) - peso(a.ec.debe) || cmp(a.c.nombre, b.c.nombre));
     const n = (v, l, sub, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(v) + '</b><span>' + esc(l) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>';
-    let h = '<div class="head"><div><h1>Cuentas</h1><p>Cuánto debe y cuánto pagó cada cliente. Tocá uno para ver su cuenta completa.</p></div></div>';
+    let h = '<div class="head"><div><h1>Saldos de clientes</h1><p>Cuánto debe y cuánto pagó cada cliente. Tocá uno para ver sus facturas y pagos.</p></div></div>';
     h += '<section class="sheet sx"><div class="sx-ns">' + n(monto(tot.debe), 'Falta cobrar', nDeben + ' cliente' + (nDeben === 1 ? '' : 's') + ' con saldo') + n(monto(tot.venc), 'Vencido', nVenc ? nVenc + ' cliente' + (nVenc === 1 ? '' : 's') : 'nada vencido', nada(tot.venc) ? '' : 'crit') + n(monto(tot.cob), 'Cobrado en ' + today().slice(0, 4), '') + '</div></section>';
     h += '<div class="toolbar fbar2"><input class="in" type="search" id="cuq" data-bind="cuq" placeholder="Buscar cliente" value="' + esc(S.cuq || '') + '"><button class="btn mio' + (cf.debe ? ' on' : '') + '" data-act="aCuDebe" aria-pressed="' + !!cf.debe + '">Solo los que deben</button></div>';
     if (!vis.length) return h + '<section class="sheet">' + emptyBox('Ningún cliente coincide', '') + '</section>';
@@ -1388,10 +1390,10 @@ export function initAdmin(ctx) {
       catch (err) { toast(err.message); }
     },
     aRtIA: async () => {
-      const y = AD.rt.anio, { ch, filas } = filasHoras(y);
+      const y = rango(AD.per || { k: 'anio' }, today()), { ch, filas } = filasHoras(y);
       AD.rtIABusy = true; ctx.render();
       try {
-        AD.rtIA = await data.ia({ modo: 'rentabilidad', contexto: { anio: y, moneda: 'ARS', costo_hora: ch, aclaracion: 'Las horas las carga el equipo de forma aproximada y opcional; clientes sin horas no tienen dato, no significa cero.',
+        AD.rtIA = await data.ia({ modo: 'rentabilidad', contexto: { periodo: y.label + ' (' + y.desde + ' a ' + y.hasta + ')', moneda: 'ARS', costo_hora: ch, aclaracion: 'Las horas las carga el equipo de forma aproximada y opcional; clientes sin horas no tienen dato, no significa cero.',
           clientes: filas.map(f => ({ cliente: f.cliente, ingreso: Math.round(f.ing), ingreso_usd: Math.round(f.ingUsd), horas: f.horas, costo_horas: Math.round(f.costo), proveedores: Math.round(f.prov), queda: Math.round(f.queda), margen_pct: f.pct, valor_hora_real: f.vh, piezas_extra: f.extras, abonos: S.A.filter(a => a.cliente === f.cliente && a.estado === 'Activo').map(a => a.tipo + (a.plan ? ' ' + a.plan : '')) })) } });
       } catch (err) { toast(err.message); }
       AD.rtIABusy = false; ctx.render();
@@ -1399,7 +1401,7 @@ export function initAdmin(ctx) {
     aRtPre: async () => {
       const pedido = (($('#rt-pre-t') || {}).value || '').trim(), tipo = ($('#rt-pre-tipo') || {}).value || '';
       if (!pedido) { toast('Contá qué trabajo hay que presupuestar'); return; }
-      const ch = +cfgRent().costo_hora || costoHoraEstimado(AD.rt.anio);
+      const ch = +cfgRent().costo_hora || costoHoraEstimado(rango(AD.per || { k: 'anio' }, today()));
       const reg = new Map(); ((AD.HR && AD.HR.registro) || []).forEach(r => { if (r.proyectoId) reg.set(r.proyectoId, (reg.get(r.proyectoId) || 0) + r.horas); });
       const hsP = p => (p.etapas || []).reduce((a, t) => a + (+t.horas || 0), 0) + (reg.get(p._id) || 0);
       const historial = S.P.filter(p => hsP(p) > 0).map(p => { const f = AD.PFZ.get(p._id); return { proyecto: p.proyecto, cliente: p.cliente, tipo: p.tipo, estado: p.estado, horas: Math.round(hsP(p) * 10) / 10, tareas: (p.etapas || []).length, presupuesto: f ? f.presupuesto : null, moneda: f ? f.moneda : null, inicio: p.inicio || '', entrega: p.entregaReal || p.entrega || '' }; });
@@ -1556,7 +1558,7 @@ export function initAdmin(ctx) {
     return tabs + (t === 'auto' && ctx.autoVista ? ctx.autoVista() : t === 'carga' ? MT.html('carga') : t === 'datos' ? MT.html('datos') : AS.ajustes());
   }
   function vNumeros() {
-    const tabs = ctx.subnav('numeros', [['stats', 'Cómo venimos'], ['rent', 'Qué deja cada cliente']]);
+    const tabs = ctx.subnav('numeros', [['stats', 'Estadísticas'], ['rent', 'Qué deja cada cliente']]);
     return tabs + ((S.tab.numeros || 'stats') === 'rent' ? vRent() : ST.view());
   }
 
@@ -1570,7 +1572,7 @@ export function initAdmin(ctx) {
       propuesta: preset => actions.pzNueva({ dataset: { clase: preset.clase || 'Presupuesto', preset: JSON.stringify(preset) } }),
     },
     contexto: () => contextoIA(),
-    views: [['plata', 'Hoy y lo que viene', vPlata], ['cuentas', 'Cuentas', vCuentas], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Números', vNumeros], ['ajustes', 'Ajustes', vAjustes],
+    views: [['plata', 'Hoy y lo que viene', vPlata], ['cuentas', 'Saldos de clientes', vCuentas], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Números', vNumeros], ['ajustes', 'Ajustes', vAjustes],
       ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
     counts: () => (AD.ok ? { cobros: AD.F.filter(f => estadoFactura(f) === 'Vencida').length + AS.count() } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; PZ.reset(); },

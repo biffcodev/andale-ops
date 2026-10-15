@@ -53,14 +53,16 @@ const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-r
 const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['redes', 'Redes'], ['tickets', 'Tickets'], ['briefs', 'Briefs'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Opciones'], ['integraciones', 'Integraciones']];
 // Menú lateral: grupos por tipo de tarea. Las vistas de administración las aporta admin.js.
 // Menú en 5 secciones. Cada sección agrupa pantallas que se ven como pestañas arriba; las rutas (#proyectos, #cobros…) no cambian.
+// Menú en secciones que se despliegan: lo del día a día (trabajo y clientes) por un lado, lo financiero por otro.
+// Las rutas (#proyectos, #cobros…) no cambian; una sección se abre sola cuando estás adentro y se pliega o despliega con un clic.
 const SECCIONES = [
   ['inicio', 'Inicio', 'inicio', ['inicio']],
   ['trabajo', 'Trabajo', 'tarea', ['mis', 'proyectos', 'redes', 'tickets']],
-  ['clientes', 'Clientes', 'clientes', ['clientes', 'cuentas', 'abonos', 'propuestas', 'briefs', 'comunicaciones']],
-  ['plata', 'Plata', 'plata', ['plata', 'cobros', 'gastos', 'pagos', 'numeros']],
+  ['clientes', 'Clientes', 'clientes', ['clientes', 'abonos', 'propuestas', 'briefs', 'comunicaciones']],
+  ['finanzas', 'Finanzas', 'plata', ['plata', 'cuentas', 'cobros', 'gastos', 'pagos', 'numeros']],
   ['config', 'Configuración', 'ajustes', ['equipo', 'listas', 'integraciones', 'ajustes']],
 ];
-const TAB_LABEL = { mis: 'Mis trabajos', plata: 'Hoy y lo que viene', propuestas: 'Presupuestos', pagos: 'Sueldos y proveedores', listas: 'Opciones', comunicaciones: 'Charlas' };
+const TAB_LABEL = { mis: 'Mis trabajos', plata: 'Hoy y lo que viene', cuentas: 'Saldos de clientes', propuestas: 'Presupuestos', pagos: 'Sueldos y proveedores', listas: 'Opciones', comunicaciones: 'Charlas' };
 const seccionDe = v => (SECCIONES.find(x => x[3].includes(v)) || SECCIONES[0])[0];
 // Pantallas que ahora viven como pestañas de otra (los links viejos y los emails siguen funcionando).
 const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], precios: ['abonos', 'precios'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
@@ -772,7 +774,7 @@ function buscar(q) {
   const c0 = out.length && S.C.find(c => norm(c.nombre + ' ' + (c.contacto || '') + ' ' + contactosBusca(c)).includes(k));
   if (c0 && isStaff()) {
     const pre = esc(JSON.stringify({ cliente: c0.nombre })), cl = esc(c0.nombre);
-    const a = [isAdmin() && ADM ? '<button class="tsr tsr-a" data-act="ficha" data-cliente="' + cl + '" data-tab="cuenta">' + ICON.plata + 'Cuenta</button>' : '',
+    const a = [isAdmin() && ADM ? '<button class="tsr tsr-a" data-act="ficha" data-cliente="' + cl + '" data-tab="cuenta">' + ICON.plata + 'Facturación</button>' : '',
       isAdmin() && ADM ? '<button class="tsr tsr-a" data-act="aCuentaDe" data-cliente="' + cl + '">' + ICON.mail + 'Resumen del mes</button>' : '',
       '<button class="tsr tsr-a" data-act="ficha" data-cliente="' + cl + '" data-tab="trabajos">' + ICON.proyectos + 'Trabajos</button>',
       '<button class="tsr tsr-a" data-act="mail" data-cliente="' + cl + '">' + ICON.mail + 'Escribir mail</button>',
@@ -993,7 +995,7 @@ function vFicha() {
   const abRow = a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(abonoLabel(a)) + '</b><span>' + (resp(a).length ? esc(resp(a).join(', ')) : 'sin responsable') + (a.desde ? ' · desde ' + esc(fmt(a.desde)) : '') + '</span></span>' + abPill(a.estado) + '</button>';
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   const pendN = ms.filter(m => m.proximo && !m.hecho).length;
-  const tabs = [['resumen', 'Resumen'], ...(isAdmin() && ADM ? [['cuenta', 'Cuenta']] : []), ['trabajos', 'Trabajos'], ...(isStaff() ? [['marca', 'Marca y voz' + (c.marca && Object.values(c.marca).some(Boolean) ? '' : ' <span class="tab-dot" title="Sin completar"></span>')]] : []),
+  const tabs = [['resumen', 'Resumen'], ...(isAdmin() && ADM ? [['cuenta', 'Facturación']] : []), ['trabajos', 'Trabajos'], ...(isStaff() ? [['marca', 'Marca y voz' + (c.marca && Object.values(c.marca).some(Boolean) ? '' : ' <span class="tab-dot" title="Sin completar"></span>')]] : []),
     ['charlas', 'Charlas' + (pendN ? ' <span class="snav-n hot">' + pendN + '</span>' : '')], ...(conTabla() && (isStaff() || contactosDe(c.nombre).length) ? [['contactos', 'Contactos']] : [])];
   const tab = tabs.some(t => t[0] === S.ctab) ? S.ctab : 'resumen';
   const acciones = isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button>' + waBtn(c) + '<button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' +
@@ -1174,9 +1176,18 @@ function render() {
   const vs = new Map(views().map(v => [v[0], v[1]]));
   const secAct = seccionDe(S.view);
   S.secLast = S.secLast || {}; S.secLast[secAct] = S.view;
-  const secN = ks => ks.reduce((a, k) => a + (k === 'proyectos' || k === 'abonos' || k === 'clientes' || k === 'comunicaciones' ? 0 : (counts[k] || 0)), 0);
-  $('#nav').innerHTML = SECCIONES.map(([k, l, ic, ks]) => { const its = ks.filter(x => vs.has(x)); if (!its.length) return ''; const n = secN(its);
-    return '<button class="snav-i" data-act="sec" data-s="' + k + '"' + (secAct === k ? ' aria-current="page"' : '') + '>' + (ICON[ic] || '') + '<span class="snav-l">' + l + '</span>' + (n ? '<span class="snav-n' + (k === 'plata' ? ' hot' : '') + '">' + n + '</span>' : '') + '</button>'; }).join('');
+  if (!S.navOpen) { let g = null; try { g = JSON.parse(localStorage.getItem('navOpen') || 'null'); } catch (e) { /* sin storage */ } S.navOpen = new Set(Array.isArray(g) ? g : []); }
+  const hot = k => k === 'cobros';
+  const cnt = k => counts[k] && !['proyectos', 'abonos', 'clientes'].includes(k) ? '<span class="snav-n' + (hot(k) ? ' hot' : '') + '">' + counts[k] + '</span>' : '';
+  $('#nav').innerHTML = SECCIONES.map(([k, l, ic, ks]) => {
+    const its = ks.filter(x => vs.has(x)); if (!its.length) return '';
+    if (its.length === 1 && k === 'inicio') return '<button class="snav-i" data-act="go" data-view="inicio"' + (S.view === 'inicio' ? ' aria-current="page"' : '') + '>' + ICON.inicio + '<span class="snav-l">Inicio</span></button>';
+    const abierta = secAct === k || S.navOpen.has(k), n = its.reduce((a, x) => a + (cnt(x) ? counts[x] : 0), 0);
+    return (k === 'finanzas' ? '<span class="snav-sep" aria-hidden="true"></span>' : '') +
+      '<div class="snav-sec' + (abierta ? ' open' : '') + (secAct === k ? ' act' : '') + '"><button class="snav-i snav-h" data-act="secTog" data-s="' + k + '" aria-expanded="' + abierta + '">' + (ICON[ic] || '') + '<span class="snav-l">' + l + '</span>' +
+      (!abierta && n ? '<span class="snav-n' + (k === 'finanzas' ? ' hot' : '') + '">' + n + '</span>' : '') + '<span class="snav-chev" aria-hidden="true"></span></button>' +
+      '<div class="snav-sub"' + (abierta ? '' : ' hidden') + '>' + its.map(x => '<button class="snav-i snav-c" data-act="go" data-view="' + x + '"' + (S.view === x ? ' aria-current="page"' : '') + '><span class="snav-l">' + esc(TAB_LABEL[x] || vs.get(x)) + '</span>' + cnt(x) + '</button>').join('') + '</div></div>';
+  }).join('');
   S.secCounts = counts;
   $('#nav2').hidden = true;
   const sync = $('#sync');
@@ -1439,6 +1450,10 @@ async function saveListas(k, arr) {
 function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('Copiado'), () => toast(v)); } catch (e) { toast(v); } }
 const ACT = {
   soloMio: t => { const yo = S.me.alias; if (t.dataset.p === 'proyectos') S.f.resp = S.f.resp === yo ? '' : yo; else if (t.dataset.p === 'redes') { S.rf = S.rf || { q: '', resp: '', estado: '', pend: false }; S.rf.resp = S.rf.resp === yo ? '' : yo; } render(); },
+  secTog: t => { const k = t.dataset.s; S.navOpen = S.navOpen || new Set(); const enEsta = seccionDe(S.view) === k;
+    if (enEsta) { const sec = t.closest('.snav-sec'); const sub = sec && sec.querySelector('.snav-sub'); if (sub) { const ab = sub.hidden; sub.hidden = !ab; sec.classList.toggle('open', ab); t.setAttribute('aria-expanded', String(ab)); } return; }
+    if (S.navOpen.has(k)) S.navOpen.delete(k); else S.navOpen.add(k);
+    try { localStorage.setItem('navOpen', JSON.stringify([...S.navOpen])); } catch (e) { /* sin storage */ } render(); },
   sec: t => { const sec = SECCIONES.find(x => x[0] === t.dataset.s); if (!sec) return; const vs = new Set(views().map(v => v[0])); const last = S.secLast && S.secLast[sec[0]];
     go(last && vs.has(last) && last !== S.view ? last : (sec[3].find(k => vs.has(k) && k !== 'mis') || sec[3].find(k => vs.has(k)))); },
   go: t => { if (t.dataset.pend) S.mf.pend = true; if (t.dataset.tab) S.tab[t.dataset.view] = t.dataset.tab; go(t.dataset.view); },
