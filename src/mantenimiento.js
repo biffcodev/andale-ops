@@ -8,7 +8,7 @@ import { ICON } from './iconos.js';
 export function initMantenimiento(ctx, k) {
   const { S, esc, toast, $, emptyBox, thisMonth } = ctx;
   const { AD, data } = k;
-  AD.mt = { prog: '', copia: false, errores: null, cargandoErr: false, verErr: false };
+  AD.mt = { prog: '', copia: false, errores: null, cargandoErr: false, verErr: false, carga: null, rprog: '', rres: null };
   const hoy = () => new Date().toISOString().slice(0, 10);
   const bajar = (blob, nombre) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
 
@@ -27,7 +27,7 @@ export function initMantenimiento(ctx, k) {
       ['pagos', 'Sueldos, honorarios y proveedores', AD.CO.length > 0, AD.CO.length + ' cargados', 'pagos'],
       ['clientes', 'Clientes activos (con logo)', act.length > 0, act.length + ' activos · ' + act.filter(c => c.avatar).length + ' con logo', 'clientes'],
       ['contactos', 'Contacto que recibe cobros en cada cliente', act.length > 0 && conCobros.length === act.length, conCobros.length + ' de ' + act.length + ' clientes activos', 'clientes'],
-      ['abonos', 'Abonos con su precio vigente', abAct.length > 0 && conPrecio.length === abAct.length, conPrecio.length + ' de ' + abAct.length + ' abonos activos', 'abonos'],
+      ['abonos', 'Redes y Ads con su precio vigente', abAct.length > 0 && conPrecio.length === abAct.length, conPrecio.length + ' de ' + abAct.length + ' servicios activos', 'precios'],
       ['rent', 'Costo de la hora del equipo', !!ch, ch ? 'cargado' : 'se usa el estimado con sueldos', 'numeros'],
       ['portal', 'Clientes en el portal', portal > 0, portal + ' contactos con acceso', 'clientes'],
     ];
@@ -41,6 +41,16 @@ export function initMantenimiento(ctx, k) {
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.descargar + '</span><h2>Copia de seguridad</h2></div><div class="sx-panel mt-b">' +
       '<p class="sx-lead">Baja <b>todo</b> lo que hay en la base: clientes, proyectos, tareas, plata, redes y configuración. Guardala en un lugar seguro: tiene datos de clientes y de facturación.</p>' +
       '<div class="toolbar"><button class="btn primary" data-act="mtCopia" data-f="json"' + (mt.prog ? ' disabled' : '') + '>' + ICON.descargar + 'Descargar copia (JSON)</button><button class="btn" data-act="mtCopia" data-f="xlsx"' + (mt.prog ? ' disabled' : '') + '>' + ICON.excel + 'En Excel, para mirarla</button>' + (mt.prog ? '<span class="muted">' + esc(mt.prog) + '</span>' : mt.copia ? '<span class="pzst" style="--c:var(--s-entregado)">Copia descargada</span>' : '') + '</div></div></section>';
+    // Cargar una copia (restaurar)
+    const cg = mt.carga;
+    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.deshacer + '</span><h2>Cargar una copia</h2></div><div class="sx-panel mt-b">' +
+      '<p class="sx-lead">Vuelve a poner lo que hay en una copia (el archivo .json que se descarga arriba). Lo que falta se crea y lo que ya está se reemplaza por lo de la copia. Lo que no está en la copia no se borra: si querés volver exactamente a como estaba, primero usá “Empezar de cero”. Mientras se carga no se mandan avisos.</p>' +
+      (!cg ? '<label class="btn">' + ICON.descargar + 'Elegir la copia (.json)<input type="file" accept="application/json,.json" data-mtcarga="1" hidden></label>'
+        : '<div class="mt-cg"><b>' + esc(cg.nombre) + '</b><span class="muted">' + (cg.fecha ? 'Copia del ' + esc(cg.fecha.slice(8, 10) + '/' + cg.fecha.slice(5, 7) + '/' + cg.fecha.slice(0, 4) + ' ' + cg.fecha.slice(11, 16)) + ' · ' : '') + cg.total + ' registros en ' + cg.tablas.length + ' tablas</span>' +
+          '<div class="mt-pills">' + cg.tablas.slice(0, 40).map(([t, n]) => '<span class="pill-s">' + esc(t.replace(/_/g, ' ')) + ' <b>' + n + '</b></span>').join('') + '</div>' +
+          (mt.rres ? '<div class="mt-res">' + mt.rres.map(r => '<span class="pill-s' + (r.error ? ' err' : ' ok') + '">' + esc(r.tabla.replace(/_/g, ' ')) + ' ' + (r.error ? '· ' + esc(r.error) : r.n + '/' + r.total) + '</span>').join('') + '</div>' : '') +
+          (mt.rprog ? '<p class="muted">' + esc(mt.rprog) + '</p>' : '<div class="toolbar"><input class="in" id="mt-rconf" placeholder="Escribí RESTAURAR" autocomplete="off" aria-label="Confirmación"><button class="btn primary" data-act="mtRestaurar">Cargar la copia</button><button class="btn ghost" data-act="mtCargaNo">Elegir otra</button></div>') + '</div>') +
+      '</div></section>';
     h += '<section class="sheet sx mt-reset"><div class="sx-h"><span class="sx-i" style="--c1:var(--crit)">' + ICON.alerta + '</span><h2>Empezar de cero</h2></div><div class="sx-panel mt-b">' +
       '<p class="sx-lead"><b>Se borra:</b> clientes, contactos, abonos, proyectos, tareas, charlas, presupuestos, resúmenes, facturas, gastos e ingresos, sueldos pagados, redes, tickets, briefs e informes.<br><b>Queda:</b> el equipo, las opciones y flujos, el plan de cuentas, las cuentas de banco, las personas y sueldos que se pagan, los ajustes y las conexiones.</p>' +
       '<p class="sx-lead">No se puede deshacer. Primero descargá la copia.</p>' +
@@ -65,7 +75,30 @@ export function initMantenimiento(ctx, k) {
     } catch (e) { toast('No se pudo armar la copia: ' + e.message); }
     mt.prog = ''; ctx.render();
   }
+  document.addEventListener('change', async e => {
+    const t = e.target; if (!t.dataset || !t.dataset.mtcarga) return;
+    const f = t.files[0]; t.value = ''; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text()), tb = j && j.tablas;
+      if (!tb || typeof tb !== 'object') throw new Error('Ese archivo no es una copia de àndale Operaciones');
+      const tablas = Object.entries(tb).filter(([, r]) => Array.isArray(r) && r.length).map(([k2, r]) => [k2, r.length]);
+      AD.mt.carga = { nombre: f.name, fecha: j.fecha || '', tablas, total: tablas.reduce((a, x) => a + x[1], 0), datos: tb }; AD.mt.rres = null; ctx.render();
+    } catch (err) { toast(err instanceof SyntaxError ? 'No se pudo leer el archivo: tiene que ser el .json de la copia' : err.message); }
+  });
   const actions = {
+    mtCargaNo: () => { AD.mt.carga = null; AD.mt.rres = null; ctx.render(); },
+    mtRestaurar: async () => {
+      const mt = AD.mt; if (!mt.carga) return;
+      if ((($('#mt-rconf') || {}).value || '').trim() !== 'RESTAURAR') { toast('Escribí RESTAURAR, en mayúsculas, para confirmar'); return; }
+      mt.rprog = 'Empezando…'; ctx.render();
+      try {
+        mt.rres = await data.restaurar(mt.carga.datos, (i, n, t, k, tot) => { mt.rprog = 'Cargando ' + t.replace(/_/g, ' ') + ' (' + i + ' de ' + n + ')' + (tot > 400 ? ' · ' + k + ' de ' + tot : '') + '…'; const el = document.querySelector('.mt-cg p.muted'); if (el) el.textContent = mt.rprog; });
+        const malos = mt.rres.filter(r => r.error);
+        toast(malos.length ? 'Se cargó con ' + malos.length + ' problema' + (malos.length > 1 ? 's' : '') + ': mirá el detalle' : 'Copia cargada: ' + mt.rres.reduce((a, r) => a + r.n, 0) + ' registros');
+        await ctx.reload();
+      } catch (err) { toast(err.message); }
+      mt.rprog = ''; ctx.render();
+    },
     mtCopia: t => copia(t.dataset.f),
     mtReset: async () => {
       const conf = (($('#mt-conf') || {}).value || '').trim();

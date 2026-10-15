@@ -39,6 +39,14 @@ export function initAdmin(ctx) {
   const multi = acc => { const e = Object.entries(acc).filter(([, v]) => Math.abs(v) > 0.004); return e.length ? e.map(([c, v]) => money(v, c)).join(' + ') : money(0, 'ARS'); };
   const lock = ''; // la barra lateral ya agrupa Administración
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  // Tarjeta de número con varias monedas: una fila por moneda, con su píldora, y una línea de contexto.
+  const MON_L = { ARS: 'Pesos', USD: 'Dólares', EUR: 'Euros', GBP: 'Libras' };
+  function kq(label, acc, { sub = '', tono = '', act = '' } = {}) {
+    const e = Object.entries(acc || {}).filter(([, v]) => Math.abs(v) > 0.004).sort((a, b) => ['ARS', 'USD', 'EUR', 'GBP'].indexOf(a[0]) - ['ARS', 'USD', 'EUR', 'GBP'].indexOf(b[0]));
+    const filas = (e.length ? e : [['ARS', 0]]).map(([c, v]) => '<div class="kq-r"><span class="kq-c">' + (MON_L[c] || c) + '</span><b class="' + (tono === 'auto' ? (v < -0.004 ? 'neg' : v > 0.004 ? 'pos' : '') : tono) + '">' + esc(money(v, c)) + '</b></div>');
+    return '<div class="kq' + (act ? ' click' : '') + '"' + act + '><span class="kq-l">' + esc(label) + '</span>' + filas.join('') + (sub ? '<span class="kq-s">' + sub + '</span>' : '') + '</div>';
+  }
+  const kqs = items => '<section class="sheet kqs">' + items.join('') + '</section>';
 
   /* ---------- datos derivados ---------- */
   const cadm = cliente => AD.CA.get(cliente) || {};
@@ -464,7 +472,7 @@ export function initAdmin(ctx) {
           titulo: 'Invoice ' + (f.numero || ''), eyebrow: f.cliente, tipo: 'Factura enviada', cliente: f.cliente, periodo: f.periodo || null, factura_id: f.id,
           para: mailsDe(f.cliente), asunto: 'Invoice ' + (f.numero || '') + ' · àndale',
           mensaje: 'Hi' + (nom ? ' ' + nom : '') + ',\n\nPlease find attached invoice ' + (f.numero || '') + ' for ' + PDFm(f.monto, f.moneda) + (f.vencimiento ? ', due ' + new Date(f.vencimiento + 'T12:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '') + '. Payment details are included in the PDF.\n\nThank you!',
-          build: v => E.libreEmail({ cfg: cfgMarca(), cuenta: f.cliente, titulo: 'Invoice ' + (f.numero || ''), mensaje: v.mensaje, firma: { ...firmaDe(S), saludo: 'Best regards,' }, asunto: v.asunto }),
+          build: v => E.libreEmail({ cfg: cfgMarca(), cuenta: f.cliente, titulo: 'Invoice ' + (f.numero || ''), mensaje: v.mensaje, firma: firmaDe(S), asunto: v.asunto }),
         });
         return;
       }
@@ -644,7 +652,7 @@ export function initAdmin(ctx) {
   function destinosOpts(cur) {
     const ab = S.A.filter(a => a.estado !== 'Baja' || 'a:' + a._id === cur).sort((x, y) => cmp(x.cliente, y.cliente) || cmp(x.tipo, y.tipo));
     const pr = S.P.filter(p => p.estado !== 'Cancelado' || 'p:' + p._id === cur).sort((x, y) => cmp(x.cliente, y.cliente) || cmp(x.proyecto, y.proyecto));
-    return opt('', 'Elegí abono o proyecto', cur) + '<optgroup label="Abonos">' + ab.map(a => opt('a:' + a._id, a.cliente + ' · ' + a.tipo + (a.plan ? ' ' + a.plan : ''), cur)).join('') + '</optgroup>' +
+    return opt('', 'Elegí abono o proyecto', cur) + '<optgroup label="Redes y Ads">' + ab.map(a => opt('a:' + a._id, a.cliente + ' · ' + a.tipo + (a.plan ? ' ' + a.plan : ''), cur)).join('') + '</optgroup>' +
       '<optgroup label="Proyectos">' + pr.map(p => opt('p:' + p._id, p.cliente + ' · ' + p.proyecto, cur)).join('') + '</optgroup>';
   }
   function impSumHtml() {
@@ -676,8 +684,8 @@ export function initAdmin(ctx) {
     const sinImp = provAnio.map(v => ({ v, falta: r2(v.egreso - imputadoDe(v.id)) })).filter(x => x.falta > 0.009).sort((a, b) => (b.v.fecha || '').localeCompare(a.v.fecha || ''));
     const accSin = {}; sinImp.forEach(x => add(accSin, x.v.moneda, x.falta));
     const accImp = {}; AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (mv && enRango(mv.fecha, R)) add(accImp, mv.moneda, x.monto); });
-    let h = '<div class="head"><div>' + lock + '<h1>Qué deja cada cliente</h1><p>Lo que queda de cada abono y proyecto después de pagar proveedores (sin sueldos ni gastos fijos).</p></div>' +
-      '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['horas', 'Con horas'], ['proyectos', 'Proyectos'], ['abonos', 'Abonos']].map(([k, l]) => '<button data-act="aRtVer" data-v="' + k + '" aria-pressed="' + (rt.ver === k) + '">' + l + '</button>').join('') + '</div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Qué deja cada cliente</h1><p>Lo que queda de cada cliente de Redes y de cada proyecto después de pagar proveedores (sin sueldos ni gastos fijos).</p></div>' +
+      '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['horas', 'Con horas'], ['proyectos', 'Proyectos'], ['abonos', 'Redes']].map(([k, l]) => '<button data-act="aRtVer" data-v="' + k + '" aria-pressed="' + (rt.ver === k) + '">' + l + '</button>').join('') + '</div>' +
       selector(AD.per, anios, esc, today()) + '</div></div>';
     h += '<section class="kpis"><div class="kpi"><span class="eyebrow">Gastos asignados a clientes ' + esc(y) + '</span><b style="font-size:20px" class="money">' + esc(multi(accImp)) + '</b><span>a abonos y proyectos</span></div>' +
       '<div class="kpi ' + (sinImp.length ? 'warn' : '') + '"><span class="eyebrow">Pagos a proveedores sin asignar</span><b style="font-size:20px" class="money">' + esc(multi(accSin)) + '</b><span>' + sinImp.length + ' pagos · ' + esc(y) + '</span></div></section>';
@@ -692,16 +700,24 @@ export function initAdmin(ctx) {
           '<td class="r"><button class="btn ghost sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">Editar</button></td></tr>').join('') + '</tbody></table></div>' : emptyBox('Todavía no hay proyectos con precio cargado', 'Abrí un proyecto → “Precio y cobro” y cargá cuánto se cobra y en cuántas veces.')) + '</section>';
     } else {
       const meses = []; for (let mm = R.desde.slice(0, 7); mm <= R.hasta.slice(0, 7) && mm <= m; mm = addMonth(mm, 1)) meses.push(mm);
-      const rows = S.A.map(a => {
+      // Redes y Ads se suman en un solo renglón por cliente (Ads va con Redes).
+      const porCl = new Map();
+      S.A.forEach(a => {
         const ing = {}; meses.forEach(mm => { if (abonoEnMes(a, mm)) { const pr = precioEn(a._id, mm); if (pr) add(ing, pr.moneda, pr.monto); } });
         const cost = costos('abono', a._id, R);
-        if (!Object.keys(ing).length && !Object.keys(cost).length) return null;
-        const mon = Object.keys(ing)[0] || Object.keys(cost)[0], same = Object.keys(cost).every(k => k === mon);
-        const margen = same ? r2((ing[mon] || 0) - (cost[mon] || 0)) : null;
-        return { a, ing, cost, mon, margen, pct: margen != null && ing[mon] ? Math.round(margen / ing[mon] * 100) : null };
-      }).filter(Boolean).sort((x, z) => cmp(x.a.cliente, z.a.cliente) || cmp(x.a.tipo, z.a.tipo));
-      h += '<section class="sheet"><div class="sheet-h"><h2>Abonos · ' + esc(y) + '</h2><span class="muted">ingresos según precio vigente de cada mes; la pauta de Ads no cuenta como ingreso</span></div>' + (rows.length ? '<div class="tbl"><table><thead><tr><th>Abono</th><th class="r">Ingresos</th><th class="r">Costos</th><th class="r">Margen</th><th></th></tr></thead><tbody>' +
-        rows.map(r => '<tr><td class="name">' + esc(r.a.cliente) + '<span class="sub">' + esc(r.a.tipo + (r.a.plan ? ' · ' + r.a.plan : '') + (r.a.estado !== 'Activo' ? ' · ' + r.a.estado : '')) + '</span></td><td class="r money">' + esc(multi(r.ing) || '—') + '</td><td class="r money">' + esc(multi(r.cost) || '—') + '</td><td class="r"><b class="money">' + (r.margen != null ? money(r.margen, r.mon) : '—') + '</b>' + (r.pct != null ? '<span class="sub">' + r.pct + '%</span>' : '') + '</td><td class="r">' + (r.a.tipo === 'Ads' ? '<button class="btn ghost sm" data-act="aAds" data-abono="' + esc(r.a._id) + '">Pauta</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('Sin datos para ' + y, 'Cargá precios en los abonos.')) + '</section>';
+        if (!Object.keys(ing).length && !Object.keys(cost).length) return;
+        const g = porCl.get(a.cliente) || { cliente: a.cliente, abs: [], ing: {}, cost: {} };
+        g.abs.push(a); Object.entries(ing).forEach(([k, v]) => add(g.ing, k, v)); Object.entries(cost).forEach(([k, v]) => add(g.cost, k, v)); porCl.set(a.cliente, g);
+      });
+      const rows = [...porCl.values()].map(g => {
+        const mon = Object.keys(g.ing)[0] || Object.keys(g.cost)[0], same = Object.keys(g.cost).every(k => k === mon) && Object.keys(g.ing).length <= 1;
+        const margen = same ? r2((g.ing[mon] || 0) - (g.cost[mon] || 0)) : null;
+        const red = g.abs.find(a => a.tipo === 'Redes'), ads = g.abs.find(a => a.tipo === 'Ads');
+        const desc = [red ? 'Redes' + (red.plan ? ' · plan ' + red.plan : '') : '', ads ? '+ Ads' : '', ...g.abs.filter(a => a.tipo !== 'Redes' && a.tipo !== 'Ads').map(a => a.tipo)].filter(Boolean).join(' ');
+        return { ...g, mon, margen, desc, ads, pct: margen != null && g.ing[mon] ? Math.round(margen / g.ing[mon] * 100) : null };
+      }).sort((x, z) => cmp(x.cliente, z.cliente));
+      h += '<section class="sheet"><div class="sheet-h"><h2>Redes · ' + esc(R.label) + '</h2><span class="muted">ingresos según el precio vigente de cada mes; la pauta de Ads no cuenta como ingreso</span></div>' + (rows.length ? '<div class="tbl"><table><thead><tr><th>Cliente</th><th class="r">Ingresos</th><th class="r">Costos</th><th class="r">Margen</th><th></th></tr></thead><tbody>' +
+        rows.map(r => '<tr><td class="name">' + esc(r.cliente) + '<span class="sub">' + esc(r.desc) + '</span></td><td class="r money">' + esc(multi(r.ing) || '—') + '</td><td class="r money">' + esc(multi(r.cost) || '—') + '</td><td class="r"><b class="money">' + (r.margen != null ? money(r.margen, r.mon) : '—') + '</b>' + (r.pct != null ? '<span class="sub">' + r.pct + '%</span>' : '') + '</td><td class="r">' + (r.ads ? '<button class="btn ghost sm" data-act="aAds" data-abono="' + esc(r.ads._id) + '">Pauta de Ads</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('Sin datos para ' + R.label, 'Cargá los precios en Finanzas › Precios y aumentos.')) + '</section>';
     }
     h += '<section class="sheet"><div class="sheet-h"><h2>Pagos a proveedores sin asignar</h2><span class="toolbar"><span class="muted">' + sinImp.length + '</span>' + (sinImp.length ? '<button class="btn sm" data-act="aImpIAvarios">✨ Repartir con IA</button>' : '') + '</span></div>' + (sinImp.length ? '<div class="rows">' + sinImp.slice(0, 30).map(({ v, falta }) => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b>' + esc(v.contraparte || v.subcuenta) + ' · <span class="money">' + money(falta, v.moneda) + '</span></b><span>' + esc(v.detalle || '') + '</span></span><button class="btn sm" data-act="aMov" data-id="' + esc(v.id) + '">Asignar</button></div>').join('') + '</div>' : emptyBox('Todo asignado', 'Los pagos a proveedores del año ya están asignados a clientes.')) + '</section>';
     return h;
@@ -774,13 +790,14 @@ export function initAdmin(ctx) {
   const pctDe = id => { const v = AD.pp.pctPor && AD.pp.pctPor[id]; return parseMonto(v != null && v !== '' ? v : AD.pp.pct); };
   function vPrecios() {
     const pp = AD.pp, m = thisMonth(); pp.pctPor = pp.pctPor || {}; pp.minMeses = pp.minMeses || '3';
-    const ab = S.A.filter(a => a.estado === 'Activo').sort((a, b) => cmp(a.cliente, b.cliente) || cmp(a.tipo, b.tipo));
+    const ordT = t => t === 'Redes' ? 0 : t === 'Ads' ? 1 : 2;
+    const ab = S.A.filter(a => a.estado === 'Activo').sort((a, b) => cmp(a.cliente, b.cliente) || ordT(a.tipo) - ordT(b.tipo));
     const pct = parseMonto(pp.pct);
     const sel = ab.filter(a => pp.sel.has(a._id));
     const sinAum = a => { const cur = precioEn(a._id, m); const ref = cur ? cur.desde : (a.desde || ''); return mesesEntre(ref, pp.desde || m); };
-    let h = '<div class="head"><div>' + lock + '<h1>Precios y aumentos</h1><p>Precio vigente de cada abono, aumentos e historial. Elegí a qué clientes les aplicás cada aumento.</p></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Precios y aumentos</h1><p>Lo que paga cada cliente por Redes (y Ads, si lo suma), los aumentos y el historial. Elegí a quiénes les aplicás cada aumento.</p></div>' +
       (AD.PR.some(p => p.desde > m && !p.aviso_enviado) ? '<div class="toolbar"><button class="btn primary" data-act="aAvisos">Avisar aumentos por email</button></div>' : '') + '</div>';
-    h += '<section class="sheet"><div class="sheet-h"><h2>Aplicar aumento</h2><span class="muted">' + sel.length + ' abonos elegidos</span></div><div class="sheet-b" style="display:grid;gap:12px"><div class="toolbar" style="align-items:flex-end">' +
+    h += '<section class="sheet"><div class="sheet-h"><h2>Aplicar aumento</h2><span class="muted">' + sel.length + (sel.length === 1 ? ' elegido' : ' elegidos') + '</span></div><div class="sheet-b" style="display:grid;gap:12px"><div class="toolbar" style="align-items:flex-end">' +
       '<div class="field"><label for="pp-pct">Aumento %</label><input class="in" id="pp-pct" data-app="pct" inputmode="decimal" value="' + esc(pp.pct) + '" placeholder="4" style="width:90px"></div>' +
       '<div class="field"><label for="pp-desde">Desde qué mes</label><input class="in" id="pp-desde" type="month" data-app="desde" value="' + esc(pp.desde) + '"></div>' +
       '<div class="field" style="flex:1;min-width:240px"><label for="pp-mot">Motivo (sale en el mail al cliente)</label><input class="in" id="pp-mot" data-app="motivo" list="dl-motivos" value="' + esc(pp.motivo) + '" placeholder="Ej.: la inflación de los últimos meses">' +
@@ -788,22 +805,24 @@ export function initAdmin(ctx) {
       '<div class="toolbar pp-sel"><span class="muted">Elegir:</span><button class="btn sm" data-act="aPpAll">Todos</button><button class="btn sm" data-act="aPpSin">Los que llevan</button><select class="in sm" data-app="minMeses" aria-label="Meses sin aumento">' + ['2', '3', '4', '6', '12'].map(n => opt(n, n + ' meses o más', pp.minMeses)).join('') + '</select><span class="muted">sin aumento</span><button class="btn sm ghost" data-act="aPpNone">Ninguno</button>' +
       '<span style="flex:1"></span><button class="btn primary" data-act="aPpApply"' + (sel.length && sel.every(a => pctDe(a._id)) ? '' : ' disabled') + '>Aplicar a ' + sel.length + '</button></div>' +
       '<p class="muted" style="margin:0;font-size:13px">Podés cambiar el % de un cliente en particular en su fila. Los que entraron hace poco o aumentaron hace poco aparecen marcados.</p></div></section>';
-    const rows = ab.map(a => {
+    const rows = ab.map((a, i) => {
+      const first = i === 0 || ab[i - 1].cliente !== a.cliente;
       const cur = precioEn(a._id, m), next = precioEn(a._id, '9999-12'), hist = historial(a._id);
       const futuro = next && next.desde > m ? next : null, on = pp.sel.has(a._id), pr = pctDe(a._id);
       const nuevo = pr && cur && on ? r2(cur.monto * (1 + pr / 100)) : null;
       const desdeAlta = mesesEntre(a.desde, m), ult = cur ? mesesEntre(cur.desde, m) : null, sa = sinAum(a);
       const reciente = (desdeAlta != null && desdeAlta < 3) || (cur && ult != null && ult < 2 && hist.length > 1);
       const aviso = futuro ? (futuro.aviso_enviado ? '<span class="muted">Avisado ' + fmt(futuro.aviso_enviado) + '</span>' : '<button class="btn sm" data-act="aAviso" data-id="' + esc(futuro.id) + '">Avisar por email</button>') : '';
-      return '<tr class="' + (on ? 'pp-on' : '') + '"><td><input type="checkbox" aria-label="Elegir ' + esc(a.cliente) + '" data-ppsel="' + esc(a._id) + '"' + (on ? ' checked' : '') + (cur ? '' : ' disabled') + '></td><td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button><span class="sub">' + esc(a.tipo + (a.plan ? ' · ' + a.plan : '')) + '</span></td>' +
-        '<td>' + (a.desde ? '<span class="mono">' + esc(fmt(a.desde)) + '</span>' + (desdeAlta != null && desdeAlta < 3 ? '<span class="sub"><span class="pzst" style="--c:var(--s-revision)">entró hace ' + (desdeAlta <= 0 ? 'menos de un mes' : desdeAlta + (desdeAlta === 1 ? ' mes' : ' meses')) + '</span></span>' : '') : '<span class="muted">—</span>') + '</td>' +
-        '<td class="r">' + (cur ? '<span class="money">' + money(cur.monto, cur.moneda) + '</span><span class="sub">' + (hist.length > 1 ? 'último aumento ' + fmt(cur.desde) : 'desde ' + fmt(cur.desde)) + (sa != null ? ' · ' + (sa <= 0 ? 'este mes' : 'hace ' + sa + (sa === 1 ? ' mes' : ' meses')) : '') + '</span>' : '<span class="days late">Sin precio</span>') + '</td>' +
+      const serv = a.tipo === 'Redes' ? 'Redes' + (a.plan ? ' · plan ' + a.plan : '') : a.tipo === 'Ads' ? '+ Ads' : a.tipo;
+      return '<tr class="' + (on ? 'pp-on' : '') + (first ? ' pp-g' : ' pp-sub') + '"><td><input type="checkbox" aria-label="Elegir ' + esc(a.cliente + ' ' + a.tipo) + '" data-ppsel="' + esc(a._id) + '"' + (on ? ' checked' : '') + (cur ? '' : ' disabled') + '></td><td class="name">' + (first ? '<button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button>' : '') + '<span class="pp-sv"><span class="sv" style="--c:var(' + (a.tipo === 'Ads' ? '--t-naranja' : '--t-rosa') + ')">' + esc(serv) + '</span>' + (a.tipo === 'Ads' ? (a.tipo === 'Ads' ? (() => { const af = AD.ABF.get(a._id); return '<button class="sv sv-b" style="--c:var(--c6)" data-act="aAds" data-abono="' + esc(a._id) + '">' + (af && af.inversion ? esc((af.inversion_paga === 'àndale' ? 'Adelanta àndale · ' : 'Paga el cliente · ') + money(af.inversion, af.inversion_moneda)) : 'Cargar pauta') + '</button>'; })() : '') : '') + (desdeAlta != null && desdeAlta < 3 ? '<span class="sv" style="--c:var(--s-revision)">nuevo · entró ' + (desdeAlta <= 0 ? 'este mes' : 'hace ' + desdeAlta + (desdeAlta === 1 ? ' mes' : ' meses')) + '</span>' : '') + '</span></td>' +
+
+        '<td class="r">' + (cur ? '<b class="money">' + money(cur.monto, cur.moneda) + '</b><span class="sub">desde ' + fmt(cur.desde) + '</span>' : '<span class="sv" style="--c:var(--crit)">Sin precio</span>') + '</td>' +
+        '<td>' + (sa != null ? '<span class="sv" style="--c:var(' + (sa >= 6 ? '--s-cancelado' : sa >= 3 ? '--s-revision' : '--s-entregado') + ')">' + (sa <= 0 ? 'este mes' : sa + (sa === 1 ? ' mes' : ' meses')) + '</span>' : '<span class="muted">—</span>') + '</td>' +
         '<td class="r">' + (on && cur ? '<input class="in sm pp-pct" inputmode="decimal" data-pppct="' + esc(a._id) + '" value="' + esc(pp.pctPor[a._id] != null ? pp.pctPor[a._id] : '') + '" placeholder="' + esc(pp.pct || '%') + '" aria-label="% para ' + esc(a.cliente) + '"> %' : '') + '</td>' +
-        '<td class="r">' + (futuro ? '<span class="money">' + money(futuro.monto, futuro.moneda) + '</span><span class="sub">desde ' + fmt(futuro.desde) + (futuro.motivo ? ' · ' + esc(futuro.motivo) : '') + '</span>' : nuevo ? '<span class="money" style="opacity:.75">' + money(nuevo, cur.moneda) + '</span><span class="sub">vista previa · +' + esc(String(pr).replace('.', ',')) + '%</span>' : '<span class="muted">—</span>') + (reciente && on ? '<span class="sub t-crit">ojo: es reciente</span>' : '') + '</td>' +
-        '<td>' + (a.tipo === 'Ads' ? (() => { const af = AD.ABF.get(a._id); return '<button class="btn ghost sm" data-act="aAds" data-abono="' + esc(a._id) + '">' + (af && af.inversion ? esc((af.inversion_paga === 'àndale' ? 'Adelanta àndale · ' : 'Paga el cliente · ') + money(af.inversion, af.inversion_moneda)) : 'Cargar pauta') + '</button>'; })() : '<span class="muted">—</span>') + '</td>' +
-        '<td>' + aviso + '</td><td class="r"><button class="btn ghost sm" data-act="aPrecio" data-abono="' + esc(a._id) + '">' + (cur ? 'Cambiar precio' : 'Cargar precio') + '</button><span class="sub">' + hist.length + ' precios</span></td></tr>';
+        '<td class="r">' + (futuro ? '<b class="money">' + money(futuro.monto, futuro.moneda) + '</b><span class="sub">desde ' + fmt(futuro.desde) + '</span>' + (futuro.motivo && !/^Aumento \d/i.test(futuro.motivo) ? '<span class="sub muted" title="' + esc(futuro.motivo) + '">' + esc(futuro.motivo.length > 28 ? futuro.motivo.slice(0, 27) + '…' : futuro.motivo) + '</span>' : '') : nuevo ? '<b class="money" style="opacity:.7">' + money(nuevo, cur.moneda) + '</b><span class="sub">vista previa · +' + esc(String(pr).replace('.', ',')) + '%</span>' : '<span class="muted">—</span>') + (reciente && on ? '<span class="sub t-crit">ojo: es reciente</span>' : '') + '</td>' +
+        '<td class="r nowrap">' + aviso + '<button class="btn ghost sm" data-act="aPrecio" data-abono="' + esc(a._id) + '" title="' + hist.length + (hist.length === 1 ? ' precio cargado' : ' precios cargados') + '">' + (cur ? 'Cambiar' : 'Cargar precio') + '</button></td></tr>';
     }).join('');
-    return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th></th><th>Abono</th><th>Cliente desde</th><th class="r">Precio vigente</th><th class="r">% propio</th><th class="r">Próximo</th><th>Pauta</th><th>Aviso</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+    return h + '<section class="sheet"><div class="tbl"><table class="pp-t"><thead><tr><th></th><th>Cliente y servicio</th><th class="r">Hoy paga</th><th>Sin aumento</th><th class="r">% propio</th><th class="r">Próximo</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
   }
 
   /* ---------- Sección en la ficha del cliente ---------- */
@@ -813,19 +832,19 @@ export function initAdmin(ctx) {
     return '<div class="sheet-b" style="border-top:1px solid var(--line);display:grid;gap:6px"><b>Emails enviados</b><div class="rows">' + es.map(x => '<div class="row" style="cursor:default"><span class="d">' + fmt(String(x.created_at).slice(0, 10)) + '</span><span class="t"><b>' + esc(x.asunto) + '</b><span>' + esc(x.tipo + ' · ' + (x.para || []).join(', ') + (x.adjuntos && x.adjuntos.length ? ' · 📎 ' + x.adjuntos.join(', ') : '')) + (x.error ? ' · ' + esc(x.error) : '') + '</span></span>' + pill(x.estado, x.estado === 'Enviado' ? '--s-entregado' : '--s-cancelado') + '</div>').join('') + '</div></div>';
   }
   // Estado de cuenta de un cliente: lo facturado (cargos) y lo cobrado (pagos), con el saldo que va quedando.
-  function estadoCuenta(cliente) {
-    const y = today().slice(0, 4);
+  function estadoCuenta(cliente, R) {
+    const y = today().slice(0, 4); R = R || rango({ k: 'anio' }, today());
     const facs = AD.F.filter(f => f.cliente === cliente);
     const ids = new Set(facs.map(f => f.id));
     const pagos = AD.MV.filter(v => v.ingreso > 0 && (ids.has(v.factura_id) || (v.cliente === cliente && /^Venta/.test(v.cuenta) && !v.factura_id)));
     // Si una factura figura cobrada pero el pago no está atado a un movimiento, igual se muestra (con la fecha de la factura).
     facs.forEach(f => { const ya = pagos.filter(v => v.factura_id === f.id).reduce((a, v) => a + v.ingreso, 0); if (f.cobrado - ya > 0.009) pagos.push({ fecha: f.fecha, ingreso: r2(f.cobrado - ya), moneda: f.moneda, detalle: 'registrado en la factura ' + (f.numero || ''), factura_id: f.id }); });
     const debe = {}, venc = {}, facAnio = {}, cobAnio = {};
-    facs.forEach(f => { if (f.saldo > 0.009) { add(debe, f.moneda, f.saldo); if (estadoFactura(f) === 'Vencida') add(venc, f.moneda, f.saldo); } if ((f.fecha || '').startsWith(y)) add(facAnio, f.moneda, f.monto); });
-    pagos.forEach(v => { if ((v.fecha || '').startsWith(y)) add(cobAnio, v.moneda, v.ingreso); });
+    facs.forEach(f => { if (f.saldo > 0.009) { add(debe, f.moneda, f.saldo); if (estadoFactura(f) === 'Vencida') add(venc, f.moneda, f.saldo); } if (enRango(f.fecha, R)) add(facAnio, f.moneda, f.monto); });
+    pagos.forEach(v => { if (enRango(v.fecha, R)) add(cobAnio, v.moneda, v.ingreso); });
     const ultimoPago = pagos.reduce((a, v) => (v.fecha || '') > a ? v.fecha : a, '');
     const vencidas = facs.filter(f => estadoFactura(f) === 'Vencida').sort((a, b) => (a.vencimiento || '').localeCompare(b.vencimiento || ''));
-    return { facs, pagos, debe, venc, facAnio, cobAnio, ultimoPago, vencidas, y };
+    return { facs, pagos, debe, venc, facAnio, cobAnio, ultimoPago, vencidas, y, R };
   }
   const nada = o => !Object.values(o).some(v => Math.abs(v) > 0.009);
   const monto = o => nada(o) ? money(0, 'ARS') : multi(o);
@@ -852,9 +871,9 @@ export function initAdmin(ctx) {
     let h = '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.plata + '</span><h2>Estado de cuenta</h2><div class="sx-der toolbar">' +
       (ec.vencidas.length ? '<button class="btn sm" data-act="aRecCliente" data-cliente="' + esc(c.nombre) + '">Mandar recordatorio</button>' : '') +
       masMenu([{ act: 'aMailLibre', label: 'Escribir un email', icon: 'mail', attrs: ' data-cliente="' + esc(c.nombre) + '"' }, { act: 'aClienteAdm', label: 'Datos de facturación', icon: 'doc', attrs: ' data-cliente="' + esc(c.nombre) + '"' }]) + '</div></div>' +
-      '<div class="sx-ns">' + n(monto(ec.debe), 'Debe hoy', nada(ec.venc) ? (nada(ec.debe) ? 'está al día' : 'nada vencido') : '<span class="t-crit">' + esc(multi(ec.venc)) + ' vencido</span>', nada(ec.venc) ? '' : 'crit') +
-      n(monto(ec.cobAnio), 'Pagó en ' + ec.y, ec.ultimoPago ? 'último pago ' + fmt(ec.ultimoPago) : 'sin pagos registrados') +
-      n(monto(ec.facAnio), 'Se le facturó en ' + ec.y, ec.facs.length + ' factura' + (ec.facs.length === 1 ? '' : 's') + ' en total') + '</div>' +
+      '<div class="kqs kqs-in">' + kq('Debe hoy', ec.debe, { sub: nada(ec.debe) ? '<span class="pill-n pos">Está al día</span>' : nada(ec.venc) ? 'nada vencido' : '<span class="pill-n neg">' + esc(multi(ec.venc)) + ' vencido</span>', tono: nada(ec.venc) ? '' : 'neg' }) +
+      kq('Pagó en ' + ec.y, ec.cobAnio, { sub: ec.ultimoPago ? 'último pago ' + fmt(ec.ultimoPago) : 'sin pagos registrados', tono: 'pos' }) +
+      kq('Se le facturó en ' + ec.y, ec.facAnio, { sub: ec.facs.length + ' factura' + (ec.facs.length === 1 ? '' : 's') + ' en total' }) + '</div>' +
       '<div class="ec-mes"><div><span class="lbl">' + esc(cap(monthLabel(m))) + '</span><b class="money">' + (cu.total ? money(cu.total, cu.moneda) : '—') + '</b><span class="muted">' + esc(resEst) + (cu.res ? '' : cu.total ? ' · estimado con abonos y cuotas' : '') + '</span></div>' +
       (cu.total || cu.res ? '<button class="btn ' + (cu.res && cu.res.estado === 'Enviado' ? '' : 'primary') + '" data-act="aCuentaDe" data-cliente="' + esc(c.nombre) + '">' + (cu.res && cu.res.estado === 'Enviado' ? 'Ver resumen' : cu.res ? 'Revisar y mandar resumen' : 'Preparar resumen') + '</button>' : '') + '</div>' +
       '<div class="sx-panel">' + libroCuenta(ec) + '</div></section>';
@@ -881,7 +900,8 @@ export function initAdmin(ctx) {
   function vCuentas() {
     const m = thisMonth(), mesN = monthLabel(m).split(' ')[0], cf = AD.cf || (AD.cf = { debe: false });
     const q = norm(S.cuq || '');
-    const filas = S.C.filter(c => c.estado !== 'Inactivo' || AD.F.some(f => f.cliente === c.nombre && f.saldo > 0.009)).map(c => ({ c, ec: estadoCuenta(c.nombre), cu: cuenta(c.nombre, m) }))
+    const P = AD.cuPer || (AD.cuPer = { k: 'anio' }), R = rango(P, today());
+    const filas = S.C.filter(c => c.estado !== 'Inactivo' || AD.F.some(f => f.cliente === c.nombre && f.saldo > 0.009)).map(c => ({ c, ec: estadoCuenta(c.nombre, R), cu: cuenta(c.nombre, m) }))
       .filter(r => r.ec.facs.length || r.cu.total || r.c.estado === 'Activo');
     const tot = { debe: {}, venc: {}, cob: {} }; let nDeben = 0, nVenc = 0;
     filas.forEach(r => { Object.entries(r.ec.debe).forEach(([mo, v]) => add(tot.debe, mo, v)); Object.entries(r.ec.venc).forEach(([mo, v]) => add(tot.venc, mo, v)); Object.entries(r.ec.cobAnio).forEach(([mo, v]) => add(tot.cob, mo, v)); if (!nada(r.ec.debe)) nDeben++; if (!nada(r.ec.venc)) nVenc++; });
@@ -889,11 +909,13 @@ export function initAdmin(ctx) {
     const vis = filas.filter(r => (!q || norm(r.c.nombre).includes(q)) && (!cf.debe || !nada(r.ec.debe))).sort((a, b) => peso(b.ec.venc) - peso(a.ec.venc) || peso(b.ec.debe) - peso(a.ec.debe) || cmp(a.c.nombre, b.c.nombre));
     const n = (v, l, sub, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(v) + '</b><span>' + esc(l) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>';
     let h = '<div class="head"><div><h1>Saldos de clientes</h1><p>Cuánto debe y cuánto pagó cada cliente. Tocá uno para ver sus facturas y pagos.</p></div></div>';
-    h += '<section class="sheet sx"><div class="sx-ns">' + n(monto(tot.debe), 'Falta cobrar', nDeben + ' cliente' + (nDeben === 1 ? '' : 's') + ' con saldo') + n(monto(tot.venc), 'Vencido', nVenc ? nVenc + ' cliente' + (nVenc === 1 ? '' : 's') : 'nada vencido', nada(tot.venc) ? '' : 'crit') + n(monto(tot.cob), 'Cobrado en ' + today().slice(0, 4), '') + '</div></section>';
-    h += '<div class="toolbar fbar2"><input class="in" type="search" id="cuq" data-bind="cuq" placeholder="Buscar cliente" value="' + esc(S.cuq || '') + '"><button class="btn mio' + (cf.debe ? ' on' : '') + '" data-act="aCuDebe" aria-pressed="' + !!cf.debe + '">Solo los que deben</button></div>';
+    h += kqs([kq('Falta cobrar', tot.debe, { sub: nDeben ? '<span class="pill-s">' + nDeben + ' cliente' + (nDeben === 1 ? '' : 's') + ' con saldo</span>' : '<span class="pill-n pos">Nadie debe</span>' }),
+      kq('Vencido', tot.venc, { sub: nVenc ? '<span class="pill-n neg">' + nVenc + ' cliente' + (nVenc === 1 ? '' : 's') + '</span>' : 'nada vencido', tono: nada(tot.venc) ? '' : 'neg' }),
+      kq('Cobrado · ' + R.label, tot.cob, { tono: 'pos' })]);
+    h += '<div class="toolbar fbar2"><input class="in" type="search" id="cuq" data-bind="cuq" placeholder="Buscar cliente" value="' + esc(S.cuq || '') + '"><button class="btn mio' + (cf.debe ? ' on' : '') + '" data-act="aCuDebe" aria-pressed="' + !!cf.debe + '">Solo los que deben</button><span style="flex:1"></span>' + selector(P, [...new Set(AD.MV.map(v => (v.fecha || '').slice(0, 4)))].filter(Boolean).sort().reverse(), esc, today(), 'cuper') + '</div>';
     if (!vis.length) return h + '<section class="sheet">' + emptyBox('Ningún cliente coincide', '') + '</section>';
     const resTxt = cu => cu.res ? (cu.res.estado === 'Enviado' ? pill('Enviado', '--s-entregado') : pill('Preparado', '--s-revision')) : cu.total ? pill('Sin preparar', '--s-empezar') : '<span class="muted">—</span>';
-    h += '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th class="r">Debe</th><th class="r">Pagó en ' + today().slice(0, 4) + '</th><th>Último pago</th><th>Resumen de ' + esc(mesN) + '</th><th></th></tr></thead><tbody>' +
+    h += '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th class="r">Debe</th><th class="r">Pagó · ' + esc(R.label) + '</th><th>Último pago</th><th>Resumen de ' + esc(mesN) + '</th><th></th></tr></thead><tbody>' +
       vis.map(({ c, ec, cu }) => '<tr class="click" data-act="ficha" data-cliente="' + esc(c.nombre) + '" data-tab="cuenta"><td class="name"><span class="who1">' + ctx.av(c.nombre, c.avatar, 'sq') + esc(c.nombre) + '</span></td>' +
         '<td class="r money"' + (nada(ec.venc) ? '' : ' style="color:var(--crit);font-weight:650"') + '>' + (nada(ec.debe) ? '<span class="muted">—</span>' : esc(multi(ec.debe))) + (nada(ec.venc) ? '' : '<span class="sub">' + esc(multi(ec.venc)) + ' vencido</span>') + '</td>' +
         '<td class="r money">' + (nada(ec.cobAnio) ? '<span class="muted">—</span>' : esc(multi(ec.cobAnio))) + '</td><td class="mono">' + (ec.ultimoPago ? fmt(ec.ultimoPago) : '<span class="muted">—</span>') + '</td><td>' + resTxt(cu) + '</td>' +
@@ -984,7 +1006,7 @@ export function initAdmin(ctx) {
           const g = k => (($('#af-' + k) || {}).value || '').trim(), cl = g('cliente');
           const ej = [...new Set(AD.F.filter(x => x.concepto && x.cliente === cl).map(x => x.concepto))].slice(0, 6);
           const ab = S.A.filter(a => a.cliente === cl && a.estado === 'Activo').map(a => a.tipo + (a.plan ? ' ' + a.plan : '')), pr = S.P.filter(p => p.cliente === cl && !['Cancelado'].includes(p.estado)).slice(0, 5).map(p => p.proyecto);
-          return { tarea: 'concepto', texto: ['Cliente: ' + cl, 'Tipo: ' + g('tipo'), 'Monto: ' + g('monto') + ' ' + g('moneda'), g('periodo') ? 'Mes: ' + g('periodo') : '', ab.length ? 'Abonos activos: ' + ab.join(', ') : '', pr.length ? 'Proyectos: ' + pr.join(', ') : '', g('concepto') ? 'Lo que ya escribieron: ' + g('concepto') : '', ej.length ? 'Conceptos de otras facturas a este cliente:\n- ' + ej.join('\n- ') : ''].filter(Boolean).join('\n') };
+          return { tarea: 'concepto', texto: ['Cliente: ' + cl, 'Tipo: ' + g('tipo'), 'Monto: ' + g('monto') + ' ' + g('moneda'), g('periodo') ? 'Mes: ' + g('periodo') : '', ab.length ? 'Servicios mensuales (Redes y Ads): ' + ab.join(', ') : '', pr.length ? 'Proyectos: ' + pr.join(', ') : '', g('concepto') ? 'Lo que ya escribieron: ' + g('concepto') : '', ej.length ? 'Conceptos de otras facturas a este cliente:\n- ' + ej.join('\n- ') : ''].filter(Boolean).join('\n') };
         } },
         { k: 'link_pdf', label: 'Link al PDF (carpeta de administración)', type: 'url', full: 1, ph: 'https://drive.google.com/...', adv: 1 },
         { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2, adv: 1 },
@@ -1224,7 +1246,7 @@ export function initAdmin(ctx) {
     const n = (v, l, sub, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(v) + '</b><span>' + esc(l) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>';
     const x0 = fl.F[0], ultimo = fl.F[fl.F.length - 1], neg = fl.F.find(x => x.saldo < 0);
     const debeTot = AD.F.filter(f => f.moneda === mon && f.saldo > 0.009).reduce((a, f) => a + f.saldo, 0), vencTot = AD.F.filter(f => f.moneda === mon && estadoFactura(f) === 'Vencida').reduce((a, f) => a + f.saldo, 0);
-    let h = '<div class="head"><div><h1>Plata</h1><p>Cuánto hay, qué entra y qué sale en los próximos meses, y cómo venimos.</p></div><div class="toolbar">' +
+    let h = '<div class="head"><div><h1>Hoy y lo que viene</h1><p>Cuánto hay, qué entra y qué sale en los próximos meses, y cómo venimos.</p></div><div class="toolbar">' +
       (mons.length > 1 ? '<div class="seg" role="group" aria-label="Moneda">' + mons.map(mo => '<button data-act="plMon" data-v="' + mo + '" aria-pressed="' + (mo === mon) + '">' + (mo === 'ARS' ? 'Pesos' : mo === 'USD' ? 'Dólares' : mo) + '</button>').join('') + '</div>' : '') +
       '<div class="seg" role="group" aria-label="Meses">' + [3, 6].map(k => '<button data-act="plN" data-v="' + k + '" aria-pressed="' + (k === P.n) + '">' + k + ' meses</button>').join('') + '</div></div></div>';
     // Hoy
@@ -1234,9 +1256,9 @@ export function initAdmin(ctx) {
       n(M(x0.sal.sueldos), 'Falta pagar este mes', 'sueldos, honorarios y extras · <button class="btn link" data-act="go" data-view="pagos">ver</button>') + '</div></section>';
     // Lo que viene
     const max = Math.max(1, ...fl.F.map(x => Math.max(x.entra, x.sale)), ...fl.F.map(x => Math.abs(x.saldo)), Math.abs(fl.hay));
-    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.calendario + '</span><h2>Lo que viene</h2><div class="sx-der">' + leyenda([['Entra', 'var(--money)'], ['Sale', 'var(--crit)'], ['Queda en las cuentas', 'var(--fg)']]) + '</div></div>' +
+    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.calendario + '</span><h2>Lo que viene</h2><div class="sx-der">' + leyenda([['Entra', 'var(--g-in)'], ['Sale', 'var(--g-out)'], ['Queda en las cuentas', 'var(--g-line)']]) + '</div></div>' +
       (neg ? '<div class="pl-alerta">' + ICON.alerta + '<span>Ojo: en <b>' + esc(mesL(neg.m)) + '</b> las cuentas quedarían en <b>' + esc(M(neg.saldo)) + '</b> si todo sale como está cargado. Conviene cobrar lo vencido o mover pagos.</span></div>' : '') +
-      grafFlujo(fl, max, mesL, M) +
+      grafBarras(fl.F.map(x => ({ l: mesL(x.m), a: x.entra, b: x.sale, v: x.saldo })), M, { titulo: 'Flujo de plata' }) +
       '<div class="tbl"><table class="pl-t"><thead><tr><th>Mes</th><th class="r">Entra</th><th class="r">Sale</th><th class="r">Diferencia</th><th class="r">Queda al final</th></tr></thead><tbody>' +
       fl.F.map((x, k) => '<tr class="click" data-act="plDet" data-k="' + k + '"' + (P.det === k ? ' aria-expanded="true"' : '') + '><td><b>' + esc(mesL(x.m)) + '</b>' + (k === 0 ? ' <span class="muted">· lo que falta</span>' : '') + '</td><td class="r money" style="color:var(--money)">' + esc(M(x.entra)) + '</td><td class="r money">' + esc(M(x.sale)) + '</td><td class="r money"' + (x.entra - x.sale < 0 ? ' style="color:var(--crit)"' : '') + '>' + esc(M(x.entra - x.sale)) + '</td><td class="r money"><b' + (x.saldo < 0 ? ' style="color:var(--crit)"' : '') + '>' + esc(M(x.saldo)) + '</b></td></tr>' +
         (P.det === k ? '<tr class="pl-det"><td colspan="5">' + detFlujo(x, k, fl, M) + '</td></tr>' : '')).join('') +
@@ -1245,34 +1267,51 @@ export function initAdmin(ctx) {
       '<li><b>Entra:</b> las facturas que faltan cobrar, en el mes en que vencen (las vencidas cuentan en este mes), más lo que corresponde cobrar cada mes y todavía no se facturó: el resumen si ya está armado o, si no, los abonos con su precio, las cuotas de proyectos y los tickets a facturar.</li>' +
       '<li><b>Sale:</b> sueldos, honorarios y extras de cada mes (lo que figura en Sueldos y proveedores), más los gastos habituales: el promedio de los últimos 3 meses (' + fl.prev.map(v => esc(M(v))).join(', ') + ' → ' + esc(M(fl.prom)) + ' por mes, sin sueldos).</li>' +
       '<li><b>Supone</b> que cada cliente paga en el mes que corresponde. Si alguien suele pagar tarde, lo vas a ver en lo vencido. No convierte monedas: pesos y dólares van por separado.</li></ul></details></section>';
-    // Lo que pasó
-    const hmax = Math.max(1, ...fl.hist.map(r => Math.max(r.entro, r.salio)));
-    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.barras + '</span><h2>Cómo venimos</h2><div class="sx-der"><button class="btn sm ghost" data-act="go" data-view="gastos">Ver movimientos</button></div></div>' +
-      '<div class="tbl"><table class="pl-t pl-h"><thead><tr><th>Mes</th><th class="r">Entró</th><th class="r">Salió</th><th class="r">Quedó</th><th class="pl-bc"></th></tr></thead><tbody>' +
-      fl.hist.slice().reverse().map(r => '<tr><td>' + esc(mesL(r.m)) + (r.m === fl.m0 ? ' <span class="muted">· hasta hoy</span>' : '') + '</td><td class="r money">' + esc(M(r.entro)) + '</td><td class="r money">' + esc(M(r.salio)) + '</td><td class="r money"' + (r.entro - r.salio < 0 ? ' style="color:var(--crit)"' : ' style="color:var(--money)"') + '><b>' + esc(M(r.entro - r.salio)) + '</b></td>' +
-        '<td class="pl-bc"><span class="pl-b"><i style="width:' + (r.entro / hmax * 100).toFixed(1) + '%;background:var(--money)"></i><i style="width:' + (r.salio / hmax * 100).toFixed(1) + '%;background:var(--crit)"></i></span></td></tr>').join('') + '</tbody></table></div></section>';
+    // Lo que pasó, en el período que elijan (por defecto, los últimos 6 meses).
+    const PP = AD.plPer || (AD.plPer = { k: '6m' }), R = rango(PP, today());
+    const anios = [...new Set(AD.MV.map(v => (v.fecha || '').slice(0, 4)))].filter(Boolean).sort().reverse();
+    const movs = AD.MV.filter(v => v.moneda === mon && v.cuenta !== 'Saldo Inicial');
+    const hist = R.grupos.map(gr => { const xs = movs.filter(v => (v.fecha || '') >= gr.d && (v.fecha || '').slice(0, 10) <= gr.h); const entro = xs.reduce((a2, v) => a2 + v.ingreso, 0), salio = xs.reduce((a2, v) => a2 + v.egreso, 0); return { l: gr.l, d: gr.d, h: gr.h, entro, salio, quedo: entro - salio }; });
+    const tE = hist.reduce((a2, r) => a2 + r.entro, 0), tS = hist.reduce((a2, r) => a2 + r.salio, 0);
+    const pill = (v, txt) => '<span class="pill-n ' + (v < 0 ? 'neg' : 'pos') + '">' + esc(txt || M(v)) + '</span>';
+    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.barras + '</span><h2>Cómo venimos <span class="sx-sub">(' + esc(R.label) + ')</span></h2><div class="sx-der toolbar">' + selector(PP, anios, esc, today(), 'plper') + '<button class="btn sm ghost" data-act="go" data-view="gastos">Ver movimientos</button></div></div>' +
+      '<div class="pl-res"><div><span class="lbl">Entró</span><b class="money">' + esc(M(tE)) + '</b></div><div><span class="lbl">Salió</span><b>' + esc(M(tS)) + '</b></div><div><span class="lbl">Quedó</span>' + pill(tE - tS) + '</div></div>' +
+      grafBarras(hist.map(r => ({ l: r.l, a: r.entro, b: r.salio, v: r.quedo })), M, { linea: 'Quedó', titulo: 'Cómo venimos' }) +
+      '<div class="tbl"><table class="pl-t"><thead><tr><th>' + (R.porSemana ? 'Semana' : 'Mes') + '</th><th class="r">Entró</th><th class="r">Salió</th><th class="r">Quedó</th></tr></thead><tbody>' +
+      hist.slice().reverse().map(r => '<tr><td>' + esc(r.l) + (r.h === today() || (r.d <= today() && r.h >= today()) ? ' <span class="muted">· hasta hoy</span>' : '') + '</td><td class="r money">' + esc(M(r.entro)) + '</td><td class="r money">' + esc(M(r.salio)) + '</td><td class="r">' + pill(r.quedo) + '</td></tr>').join('') + '</tbody></table></div></section>';
     return h;
   }
   const leyenda = items => '<div class="sx-ley">' + items.map(([nm, c]) => '<span><i style="--c:' + c + '"></i>' + esc(nm) + '</span>').join('') + '</div>';
-  // Barras de entra y sale por mes y una línea con lo que queda en las cuentas.
-  function grafFlujo(fl, max, mesL, M) {
-    const W = 680, H = 220, L = 12, R = 12, T = 16, B = 28, iw = W - L - R, ih = H - T - B, nn = fl.F.length;
-    const minS = Math.min(0, ...fl.F.map(x => x.saldo), fl.hay), rango = max - minS || 1;
-    const Y = v => T + ih - ((v - minS) / rango) * ih, y0 = Y(0), col = iw / nn, bw = Math.min(34, col / 4);
-    let g = '<line class="bl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y0.toFixed(1) + '" y2="' + y0.toFixed(1) + '"/>';
+  // Gráfico de barras: por cada período, lo que entra y lo que sale; una línea fina con lo que queda (opcional).
+  // filas = [{ l, a, b, v? }]  a = entra, b = sale, v = valor de la línea
+  function grafBarras(filas, M, { linea = 'Queda en las cuentas', titulo = 'Entra y sale' } = {}) {
+    const n = filas.length; if (!n) return '';
+    const W = 680, H = 230, L = 52, R = 14, T = 22, B = 30, iw = W - L - R, ih = H - T - B;
+    const conLinea = filas.some(f => f.v != null);
+    const vals = filas.flatMap(f => [f.a || 0, f.b || 0, ...(conLinea ? [f.v || 0] : [])]);
+    const top = Math.max(1, ...vals), bot = Math.min(0, ...vals);
+    const paso = (x => { const p = Math.pow(10, Math.floor(Math.log10(x))); const f = x / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; })((top - bot) / 4 || 1);
+    const yMax = Math.ceil(top / paso) * paso, yMin = Math.floor(bot / paso) * paso, rangoY = yMax - yMin || 1;
+    const Y = v => T + ih - ((v - yMin) / rangoY) * ih, col = iw / n, bw = Math.max(6, Math.min(22, col * 0.22));
+    const corto = v => { const a = Math.abs(v), sg = v < 0 ? '−' : ''; return sg + (a >= 1e6 ? (a / 1e6).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' M' : a >= 1e3 ? Math.round(a / 1e3).toLocaleString('es-AR') + ' k' : Math.round(a).toLocaleString('es-AR')); };
+    let g = '';
+    for (let v = yMin; v <= yMax + 1e-9; v += paso) { const y = Y(v).toFixed(1); g += '<line class="' + (Math.abs(v) < 1e-9 ? 'bl' : 'gl') + '" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text class="ax" x="' + (L - 8) + '" y="' + (+y + 4) + '" text-anchor="end">' + esc(corto(v)) + '</text>'; }
+    const y0 = Y(0), barra = (x, v, c) => { const y = Y(Math.max(0, v)), h = Math.abs(Y(v) - y0); return '<path d="M' + x.toFixed(1) + ',' + (y + h).toFixed(1) + 'V' + (y + 4).toFixed(1) + 'q0,-4 4,-4h' + (bw - 8).toFixed(1) + 'q4,0 4,4V' + (y + h).toFixed(1) + 'Z" fill="' + c + '"/>'; };
     const pts = [];
-    fl.F.forEach((x, k) => {
+    filas.forEach((f, k) => {
       const cx = L + col * k + col / 2;
-      g += '<rect x="' + (cx - bw - 2).toFixed(1) + '" y="' + Y(x.entra).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(0, y0 - Y(x.entra)).toFixed(1) + '" rx="4" fill="var(--money)" opacity=".85"/>';
-      g += '<rect x="' + (cx + 2).toFixed(1) + '" y="' + Y(x.sale).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(0, y0 - Y(x.sale)).toFixed(1) + '" rx="4" fill="var(--crit)" opacity=".75"/>';
-      g += '<text class="ax" x="' + cx.toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + esc(mesL(x.m)) + '</text>';
-      pts.push([cx, Y(x.saldo)]);
-      g += '<rect class="hz" x="' + (L + col * k).toFixed(1) + '" y="' + T + '" width="' + col.toFixed(1) + '" height="' + ih + '"><title>' + esc(mesL(x.m) + ' · entra ' + M(x.entra) + ' · sale ' + M(x.sale) + ' · queda ' + M(x.saldo)) + '</title></rect>';
+      if (f.a > 0) g += barra(cx - bw - 2, f.a, 'var(--g-in)');
+      if (f.b > 0) g += barra(cx + 2, f.b, 'var(--g-out)');
+      g += '<text class="ax" x="' + cx.toFixed(1) + '" y="' + (H - 9) + '" text-anchor="middle">' + esc(f.l) + '</text>';
+      if (f.v != null) pts.push([cx, Y(f.v), f.v]);
+      g += '<rect class="hz" x="' + (L + col * k).toFixed(1) + '" y="' + T + '" width="' + col.toFixed(1) + '" height="' + ih + '"><title>' + esc(f.l + ' · entra ' + M(f.a || 0) + ' · sale ' + M(f.b || 0) + (f.v != null ? ' · ' + linea.toLowerCase() + ' ' + M(f.v) : '')) + '</title></rect>';
     });
-    g += '<path d="' + pts.map((p, k) => (k ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('') + '" fill="none" stroke="var(--fg)" stroke-width="2.2" stroke-linejoin="round"/>';
-    pts.forEach((p, k) => { const v = fl.F[k].saldo; g += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="4.5" fill="' + (v < 0 ? 'var(--crit)' : 'var(--fg)') + '" stroke="var(--surface)" stroke-width="2"/><text class="ax pl-lab" x="' + p[0].toFixed(1) + '" y="' + (p[1] - 10).toFixed(1) + '" text-anchor="middle">' + esc(M(v).replace(/,\d+$/, '')) + '</text>'; });
-    return '<div class="sx-chart"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Entra, sale y queda por mes">' + g + '</svg></div>' +
-      '<table class="sr-only" data-titulo="Flujo de plata"><thead><tr><th>Mes</th><th>Entra</th><th>Sale</th><th>Queda</th></tr></thead><tbody>' + fl.F.map(x => '<tr><td>' + esc(mesL(x.m)) + '</td><td>' + esc(M(x.entra)) + '</td><td>' + esc(M(x.sale)) + '</td><td>' + esc(M(x.saldo)) + '</td></tr>').join('') + '</tbody></table>';
+    if (pts.length) {
+      g += '<path d="' + pts.map((p, k) => (k ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('') + '" fill="none" stroke="var(--g-line)" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="' + (n > 8 ? '0' : '4 3') + '"/>';
+      pts.forEach(p => { g += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3.5" fill="var(--surface)" stroke="var(--g-line)" stroke-width="1.5"/>'; if (n <= 8 && Math.abs(p[2]) > 0.5) g += '<text class="pl-lab" x="' + p[0].toFixed(1) + '" y="' + (p[1] - 9).toFixed(1) + '" text-anchor="middle">' + esc(corto(p[2])) + '</text>'; });
+    }
+    return '<div class="sx-chart pl-chart"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(titulo) + '">' + g + '</svg></div>' +
+      '<table class="sr-only" data-titulo="' + esc(titulo) + '"><thead><tr><th>Período</th><th>Entra</th><th>Sale</th>' + (conLinea ? '<th>' + esc(linea) + '</th>' : '') + '</tr></thead><tbody>' + filas.map(f => '<tr><td>' + esc(f.l) + '</td><td>' + esc(M(f.a || 0)) + '</td><td>' + esc(M(f.b || 0)) + '</td>' + (conLinea ? '<td>' + esc(M(f.v || 0)) + '</td>' : '') + '</tr>').join('') + '</tbody></table>';
   }
   function detFlujo(x, k, fl, M) {
     const fila = (l, v, sub) => '<div class="pl-dr"><span>' + l + (sub ? '<small>' + sub + '</small>' : '') + '</span><b class="money">' + esc(M(v)) + '</b></div>';
@@ -1289,19 +1328,21 @@ export function initAdmin(ctx) {
   /* ---------- Vista: Caja ---------- */
   AD.cj = { mes: thisMonth(), q: '', cuenta: '', moneda: '' };
   function vCaja() {
-    const cj = AD.cj, m = cj.mes, y = m.slice(0, 4), q = norm(cj.q);
+    const cj = AD.cj, m = cj.mes, q = norm(cj.q);
+    const P = AD.cjPer || (AD.cjPer = { k: 'm' });
+    const finMes = mm => { const [yy, mo] = mm.split('-').map(Number); return new Date(Date.UTC(yy, mo, 0)).toISOString().slice(0, 10); };
+    const R = P.k === 'm' ? { desde: m + '-01', hasta: finMes(m), label: monthLabel(m) } : rango(P, today());
+    const y = R.hasta.slice(0, 4);
     const saldo = {}; AD.MV.forEach(x => add(saldo, x.moneda, x.ingreso - x.egreso));
-    const delMes = AD.MV.filter(x => (x.fecha || '').startsWith(m));
+    const delMes = AD.MV.filter(x => enRango(x.fecha, R));
     const ingM = {}, egM = {}; delMes.forEach(x => { if (x.cuenta !== 'Saldo Inicial') { add(ingM, x.moneda, x.ingreso); add(egM, x.moneda, x.egreso); } });
     const deuda = AD.MV.filter(x => x.reintegro_a && !x.reintegrado && x.egreso > 0);
     const porSocio = {}; deuda.forEach(x => { porSocio[x.reintegro_a] = porSocio[x.reintegro_a] || {}; add(porSocio[x.reintegro_a], x.moneda, x.egreso); });
     let h = '<div class="head"><div>' + lock + '<h1>Gastos e ingresos</h1><p>Lo que entra y sale, con las categorías de siempre. Los cobros de facturas se cargan solos.</p></div>' +
-      '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aCjMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aCjMes" data-d="0">Este mes</button><button class="btn sm" data-act="aCjMes" data-d="1" aria-label="Mes siguiente">→</button></div><button class="btn primary" data-act="aMov">+ Cargar gasto o ingreso</button></div></div>';
-    h += '<section class="kpis">' +
-      '<div class="kpi"><span class="eyebrow">Hay en pesos</span><b style="color:var(' + ((saldo.ARS || 0) < 0 ? '--crit' : '--money') + ')">' + money(saldo.ARS || 0, 'ARS') + '</b><span>hoy, todas las cuentas</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Hay en dólares</span><b style="color:var(' + ((saldo.USD || 0) < 0 ? '--crit' : '--money') + ')">' + money(saldo.USD || 0, 'USD') + '</b><span>' + (saldo.EUR ? money(saldo.EUR, 'EUR') + ' en euros' : 'hoy, todas las cuentas') + '</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Ingresos del mes</span><b style="font-size:20px">' + esc(multi(ingM)) + '</b><span>' + delMes.filter(x => x.ingreso > 0).length + ' ingresos</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Gastos del mes</span><b style="font-size:20px">' + esc(multi(egM)) + '</b><span>' + delMes.filter(x => x.egreso > 0).length + ' gastos</span></div></section>';
+      '<div class="toolbar">' + selector(P, [...new Set(AD.MV.map(v => (v.fecha || '').slice(0, 4)))].filter(Boolean).sort().reverse(), esc, today(), 'cjper', [['m', 'Un mes']]) + (P.k === 'm' ? '<div class="cal-h"><button class="btn sm" data-act="aCjMes" data-d="-1" aria-label="Mes anterior">←</button><b class="cj-mes">' + esc(cap(monthLabel(m))) + '</b><button class="btn sm" data-act="aCjMes" data-d="1" aria-label="Mes siguiente">→</button>' + (m !== thisMonth() ? '<button class="btn sm ghost" data-act="aCjMes" data-d="0">Este mes</button>' : '') + '</div>' : '') + '<button class="btn primary" data-act="aMov">+ Cargar gasto o ingreso</button></div></div>';
+    const quedoM = {}; Object.entries(ingM).forEach(([c, v]) => add(quedoM, c, v)); Object.entries(egM).forEach(([c, v]) => add(quedoM, c, -v));
+    h += kqs([kq('Hay hoy', saldo, { sub: 'en todas las cuentas', tono: 'auto' }), kq('Entró', ingM, { sub: delMes.filter(x => x.ingreso > 0 && x.cuenta !== 'Saldo Inicial').length + ' ingresos · ' + esc(R.label), tono: 'pos' }),
+      kq('Salió', egM, { sub: delMes.filter(x => x.egreso > 0).length + ' gastos · ' + esc(R.label) }), kq('Quedó', quedoM, { sub: 'lo que entró menos lo que salió', tono: 'auto' })]);
     if (deuda.length) h += '<section class="sheet"><div class="sheet-h"><div><h2>Se les debe a los socios</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Gastos de àndale que una socia pagó con su plata o su tarjeta. Cuando se lo devuelvan, tocá “Ya se lo devolvimos”.</p></div><span class="muted">' + Object.entries(porSocio).map(([s, acc]) => esc(s) + ': <b class="money">' + esc(multi(acc)) + '</b>').join(' · ') + '</span></div><div class="rows">' +
       deuda.sort((a, b) => b.fecha.localeCompare(a.fecha)).map(x => '<div class="row click" data-act="aMov" data-id="' + esc(x.id) + '" title="Tocá para editar o borrar"><span class="d">' + fmt(x.fecha) + '</span><span class="t"><b>' + esc(x.contraparte || x.subcuenta) + ' · <span class="money">' + money(x.egreso, x.moneda) + '</span></b><span>Lo pagó ' + esc(x.reintegro_a) + (x.detalle ? ' · ' + esc(x.detalle) : '') + '</span></span><button class="btn sm" data-act="aReint" data-id="' + esc(x.id) + '">Ya se lo devolvimos</button></div>').join('') + '</div></section>';
     // Resumen del mes por cuenta
@@ -1316,7 +1357,7 @@ export function initAdmin(ctx) {
     const list = delMes.filter(x => (!cj.cuenta || x.cuenta === cj.cuenta) && (!cj.moneda || x.moneda === cj.moneda) && (!q || norm([x.contraparte, x.detalle, x.subcuenta, x.cuenta].join(' ')).includes(q))).sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.created_at || '').localeCompare(a.created_at || ''));
     h += '<section class="sheet"><div class="sheet-h"><div><h2>Movimientos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Tocá cualquiera para corregirlo o borrarlo.</p></div></div><div class="fbar"><label class="fbar-q">' + ICON.buscar + '<input class="in" type="search" id="cj-q" data-acj="q" placeholder="Buscar por cliente, proveedor o detalle" aria-label="Buscar" value="' + esc(cj.q) + '"></label><select class="in" id="cj-c" data-acj="cuenta" aria-label="Categoría">' + opt('', 'Todas las categorías', cj.cuenta) + cuentasMes.map(c => opt(c, c, cj.cuenta)).join('') + '</select><select class="in" id="cj-m" data-acj="moneda" aria-label="Moneda">' + opt('', 'Todas las monedas', cj.moneda) + MONEDAS.map(c => opt(c, c, cj.moneda)).join('') + '</select></div>' +
       (list.length ? '<div class="tbl"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Cliente / proveedor</th><th>Detalle</th><th class="r">Ingreso</th><th class="r">Gasto</th></tr></thead><tbody>' + list.map(x => '<tr class="click" data-act="aMov" data-id="' + esc(x.id) + '"><td class="mono">' + fmt(x.fecha) + '</td><td>' + esc(x.cuenta) + '<span class="sub">' + esc(x.subcuenta) + '</span></td><td>' + esc(x.contraparte) + (x.factura_id ? '<span class="sub">cobro de factura</span>' : '') + (x.reintegro_a ? '<span class="sub">pagó ' + esc(x.reintegro_a) + (x.reintegrado ? ' · devuelto' : '') + '</span>' : '') + '</td><td>' + esc(x.detalle) + '</td><td class="r">' + (x.ingreso ? '<span class="money">' + money(x.ingreso, x.moneda) + '</span>' : '') + '</td><td class="r">' + (x.egreso ? money(x.egreso, x.moneda) : '') + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('No hay nada con ese filtro', '')) +
-      '<div class="count num">' + list.length + ' de ' + delMes.length + ' gastos e ingresos del mes</div></section>';
+      '<div class="count num">' + list.length + ' de ' + delMes.length + ' gastos e ingresos · ' + esc(R.label) + '</div></section>';
     return h;
   }
   // Cómo se cargó la última vez a esa persona o empresa (para completar categoría y cuenta solas).
@@ -1343,7 +1384,7 @@ export function initAdmin(ctx) {
         { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
         { k: 'monto', label: 'Monto', num: 1, req: 1 },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
-        { k: 'usd', label: '¿Cuántos USD fueron?', num: 1, hint: 'Lo que entró (o salió) de verdad al pasarlo a dólares. Así Números lo suma en USD.' },
+        { k: 'usd', label: '¿Cuántos USD fueron?', num: 1, hint: 'Lo que entró (o salió) de verdad al pasarlo a dólares. Así Estadísticas lo suma en USD.' },
         { k: 'contraparte', label: '¿A quién / de quién?', full: 1, ph: 'Meta, Adobe, Cata, Apromax…', hint: 'Si ya le pagaste antes, la categoría y la cuenta se completan solas.' },
         { k: 'detalle', label: 'Detalle', full: 1, ph: 'Ej.: Ads octubre P4 y Cultu', piggy: () => {
           const g = k => (($('#af-' + k) || {}).value || '').trim(), quien = g('contraparte');
@@ -1408,7 +1449,7 @@ export function initAdmin(ctx) {
   /* ---------- Acciones ---------- */
   const actions = {
     aCjMes: t => { const n = +t.dataset.d; AD.cj.mes = n ? addMonth(AD.cj.mes, n) : thisMonth(); ctx.render(); },
-    aCjIr: t => { AD.cj.mes = t.dataset.mes; ctx.render(); },
+    aCjIr: t => { AD.cj.mes = t.dataset.mes; AD.cjPer = { k: 'm' }; ctx.render(); },
     aCjCuenta: t => { AD.cj.cuenta = t.dataset.cuenta; ctx.render(); },
     aMov: t => formMovimiento(t.dataset.id || null),
     aReint: async t => { try { await data.upd('movimientos', t.dataset.id, { reintegrado: true }); toast('Listo: ya no figura como deuda con la socia'); await ctx.reload(); } catch (err) { toast(err.message); } },
@@ -1556,6 +1597,9 @@ export function initAdmin(ctx) {
     if (AD.form && AD.form.composer && t.type === 'checkbox' && t.closest && t.closest('#aform')) { refreshPreview(); return; }
     if (t.dataset.impi !== undefined) { AD.impDraft[+t.dataset.impi][t.dataset.impk] = t.value; return; }
     if (t.dataset.art) { AD.rt[t.dataset.art] = t.value; ctx.render(); return; }
+    if (t.dataset.cjper) { const P = AD.cjPer || (AD.cjPer = { k: 'm' }); P[t.dataset.cjper] = t.value; if (t.dataset.cjper === 'k' && t.value === 'rango' && !(P.d && P.h)) { const r = rango({ k: '3m' }, today()); P.d = r.desde; P.h = r.hasta; } ctx.render(); return; }
+    if (t.dataset.cuper) { const P = AD.cuPer || (AD.cuPer = { k: 'anio' }); P[t.dataset.cuper] = t.value; if (t.dataset.cuper === 'k' && t.value === 'rango' && !(P.d && P.h)) { const r = rango({ k: '6m' }, today()); P.d = r.desde; P.h = r.hasta; } ctx.render(); return; }
+    if (t.dataset.plper) { const P = AD.plPer || (AD.plPer = { k: '6m' }); P[t.dataset.plper] = t.value; if (t.dataset.plper === 'k' && t.value === 'rango' && !(P.d && P.h)) { const r = rango({ k: '6m' }, today()); P.d = r.desde; P.h = r.hasta; } ctx.render(); return; }
     if (AD.form && AD.form.onInput && t.tagName === 'SELECT' && t.closest && t.closest('#aform')) AD.form.onInput();
     if (t.dataset.ri !== undefined && t.type === 'checkbox' && AD.rd) { AD.rd.items[+t.dataset.ri].inc = t.checked; ctx.render(); return; }
     if (t.dataset.rdk && t.tagName === 'SELECT' && AD.rd) { AD.rd[t.dataset.rdk] = t.value; ctx.render(); return; }
@@ -1670,13 +1714,14 @@ export function initAdmin(ctx) {
     return tabs + (t === 'bancos' ? vBancos() : t === 'auto' && ctx.autoVista ? ctx.autoVista() : t === 'carga' ? MT.html('carga') : t === 'datos' ? MT.html('datos') : AS.ajustes());
   }
   function vNumeros() {
-    const tabs = ctx.subnav('numeros', [['stats', 'Estadísticas'], ['rent', 'Qué deja cada cliente']]);
+    const tabs = ctx.subnav('numeros', [['stats', 'General'], ['rent', 'Qué deja cada cliente']]);
     return tabs + ((S.tab.numeros || 'stats') === 'rent' ? vRent() : ST.view());
   }
 
   Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions, MT.actions);
   return {
     load, actions, fichaSection, deudaLinea, proyectoSection, AD, cfgMarca: () => cfgMarca(),
+    precioHoy: id => (AD.ok ? precioEn(id, thisMonth()) : null), moneyFmt: (n, m) => money(n, m),
     // Para la IA: abrir formularios ya completos (nada se guarda sin confirmar).
     abrir: {
       movimiento: preset => formMovimiento(null, preset),
@@ -1684,8 +1729,8 @@ export function initAdmin(ctx) {
       propuesta: preset => actions.pzNueva({ dataset: { clase: preset.clase || 'Presupuesto', preset: JSON.stringify(preset) } }),
     },
     contexto: () => contextoIA(),
-    views: [['plata', 'Hoy y lo que viene', vPlata], ['cuentas', 'Saldos de clientes', vCuentas], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Números', vNumeros], ['ajustes', 'Ajustes', vAjustes],
-      ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
+    views: [['plata', 'Hoy y lo que viene', vPlata], ['cuentas', 'Saldos de clientes', vCuentas], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['pagos', 'Sueldos y proveedores', EQ.view], ['numeros', 'Estadísticas', vNumeros], ['ajustes', 'Ajustes', vAjustes],
+      ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios y aumentos', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
     counts: () => (AD.ok ? { cobros: AD.F.filter(f => estadoFactura(f) === 'Vencida').length + AS.count() } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; PZ.reset(); },
   };

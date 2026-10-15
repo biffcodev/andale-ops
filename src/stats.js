@@ -83,7 +83,7 @@ export function initStats(ctx, k) {
     const pm = path(main);
     if (prev && prev.some(v => v)) g += '<path d="' + path(prev) + '" fill="none" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.6"/>';
     if (n > 1) g += '<path d="' + pm + 'L' + X(n - 1).toFixed(1) + ',' + Y(0) + 'L' + L + ',' + Y(0) + 'Z" fill="url(#' + id + ')"/>';
-    g += '<path d="' + pm + '" fill="none" stroke="' + color + '" stroke-width="2.4" stroke-linecap="round"/>';
+    g += '<path d="' + pm + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round"/>';
     const last = main[n - 1] || 0; g += '<circle cx="' + X(n - 1).toFixed(1) + '" cy="' + Y(last).toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2"/>';
     // Zonas para el tooltip, una por mes.
     const band = n > 1 ? iw / (n - 1) : iw;
@@ -116,7 +116,7 @@ export function initStats(ctx, k) {
 
   /* ---------- vista ---------- */
   function vStats() {
-    const st = AD.st, r = rango(AD.per, hoy()), b = base(r), prev = base(r.prev, r.prev.grupos.length === r.grupos.length ? r.prev.grupos : null), C1 = 'var(--c1)', C2 = 'var(--c2)', C3 = 'var(--c3)';
+    const st = AD.st, r = rango(AD.per, hoy()), b = base(r), prev = base(r.prev, r.prev.grupos.length === r.grupos.length ? r.prev.grupos : null), C1 = 'var(--g-in-ink)', C2 = 'var(--g-out)', C3 = 'var(--c1)';
     const anios = [...new Set(AD.MV.map(v => (v.fecha || '').slice(0, 4)))].filter(Boolean).sort().reverse();
     const ti = sum(b.ingMes), te = sum(b.egMes), res = ti - te, lab = sum(b.labMes), meses = r.meses;
     const pi = sum(prev.ingMes), pe = sum(prev.egMes), pl = sum(prev.labMes);
@@ -149,10 +149,10 @@ export function initStats(ctx, k) {
     const ab = sum(b.aboMes), pr = sum(b.proMes);
     const serv = top(agrupar(b.ing, v => limpiaSub(v.subcuenta), v => v.ingreso), 8);
     h += '<section class="sheet sx">' + tituloSec('dona', 'De dónde viene la plata') +
-      '<div class="sx-panel sx-split"><div><p class="sx-lead">Lo recurrente (abonos de redes y Ads) sostiene <b>' + pct(ab, ab + pr) + '%</b> de los ingresos de ' + esc(periodo) + '.</p>' +
+      '<div class="sx-panel sx-split"><div><p class="sx-lead">Lo recurrente (Redes y Ads) sostiene <b>' + pct(ab, ab + pr) + '%</b> de los ingresos de ' + esc(periodo) + '.</p>' +
       barras(serv, C1, K, { tituloDatos: 'Ingresos por servicio' }) + '</div>' +
-      dona([['Abonos', ab], ['Proyectos', pr]], [C1, C3], M, [pct(ab, ab + pr) + '%', 'recurrente']) + '</div>' +
-      datos('Abonos y proyectos', ['Período', 'Abonos', 'Proyectos', 'Total'], b.aboMes.map((v, i) => [labels[i], M(v), M(b.proMes[i]), M(v + b.proMes[i])])) + '</section>';
+      dona([['Redes y Ads', ab], ['Proyectos', pr]], [C1, C3], M, [pct(ab, ab + pr) + '%', 'recurrente']) + '</div>' +
+      datos('Redes y proyectos', ['Período', 'Redes y Ads', 'Proyectos', 'Total'], b.aboMes.map((v, i) => [labels[i], M(v), M(b.proMes[i]), M(v + b.proMes[i])])) + '</section>';
 
     // 4. Clientes: tabla con logo, como un ranking
     const cl = agrupar(b.ing, v => v.cliente || v.contraparte || 'Sin cliente', v => v.ingreso), totCl = sum(cl.map(r => r[1]));

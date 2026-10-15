@@ -60,7 +60,7 @@ export const B = {
     // Firma armada: saludo y, al lado de la foto, nombre, cargo y contacto.
     const tel = t.tel ? '<a href="tel:' + esc(String(t.tel).replace(/[^\d+]/g, '')) + '" style="color:' + SOFT + ';text-decoration:none">' + esc(t.tel) + '</a>' : '';
     const mail = t.email ? '<a href="mailto:' + esc(t.email) + '" style="color:' + SOFT + ';text-decoration:none">' + esc(t.email) + '</a>' : '';
-    const foto = t.foto ? '<td width="64" valign="top" style="width:64px;padding:0 14px 0 0"><img src="' + esc(t.foto) + '" width="56" height="56" alt="' + esc(t.nombre) + '" style="display:block;width:56px;height:56px;border-radius:50%;object-fit:cover;border:0"></td>' : '';
+    const foto = t.foto ? '<td width="64" valign="top" style="width:64px;padding:0 14px 0 0"><img src="' + esc(t.foto) + '" width="56" height="56" alt="' + esc(t.nombre) + '" style="display:block;width:56px;height:56px;min-width:56px;max-width:56px;border-radius:28px;object-fit:cover;border:0"></td>' : '';
     return (t.saludo ? td(esc(t.saludo), txt(15, INK, 'padding:0 0 12px')) : '') +
       td('<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>' + foto + '<td valign="middle" style="' + txt(14, SOFT) + '">' +
         '<div style="' + txt(15.5, INK, 'font-weight:700') + '">' + esc(t.nombre) + '</div>' +

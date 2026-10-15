@@ -327,6 +327,22 @@ export async function backup(onProg) {
   }
   return out;
 }
+// Restaurar una copia: tabla por tabla, en el mismo orden de la copia (primero lo que otros usan), de a 400 registros.
+export async function restaurar(tablas, onProg) {
+  const res = [], lista = TABLAS_BACKUP.filter(t => Array.isArray(tablas[t]) && tablas[t].length);
+  for (const [i, t] of lista.entries()) {
+    const rows = tablas[t]; let n = 0, err = '';
+    for (let k = 0; k < rows.length; k += 400) {
+      if (onProg) onProg(i + 1, lista.length, t, k, rows.length);
+      const { data, error } = await sb.rpc('restaurar_tabla', { p_tabla: t, p_filas: rows.slice(k, k + 400) });
+      if (error) { err = /restaurar_tabla|function/.test(error.message) && /not find|does not exist|schema cache/i.test(error.message) ? 'Falta correr el SQL 0019 en Supabase' : error.message; break; }
+      n += data || 0;
+    }
+    res.push({ tabla: t, total: rows.length, n, error: err });
+    if (err === 'Falta correr el SQL 0019 en Supabase') break;
+  }
+  return res;
+}
 export async function resetDatos(confirmacion) { const { data, error } = await sb.rpc('reset_datos', { confirmacion }); if (error) throw new Error(error.message); return data; }
 export async function errores() { return tolerante(sb.from('errores').select('*').order('created_at', { ascending: false }).limit(200)).then(r => r ? r.map(x => ({ ...x, quien: idx.personaAlias.get(x.persona_id) || '' })) : null); }
 export async function erroresBorrar() { check(await sb.from('errores').delete().not('id', 'is', null)); }

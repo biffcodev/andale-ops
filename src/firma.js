@@ -6,7 +6,7 @@ export function firmaDe(S, alias) {
   const f = (e.prefs && e.prefs.firma) || {};
   const val = (k, def) => (f[k] != null && String(f[k]).trim() !== '' ? String(f[k]).trim() : def || '');
   return {
-    saludo: f.saludo != null ? String(f.saludo) : 'Saludos,',
+    saludo: '',
     nombre: val('nombre', e.nombre || yo || 'Equipo àndale'),
     cargo: val('cargo', e.puesto),
     tel: val('tel', e.tel),

@@ -1790,3 +1790,91 @@ td:has(> .pp-pct){white-space:nowrap}
 .mp-fir-prev table{width:auto!important;padding:0!important;border:0}
 .mp-fir-prev td,.mp-fir-prev tr{border:0!important;background:none!important;padding-left:0;padding-right:0;vertical-align:middle}
 .mp-fir-prev td[width="64"]{padding-right:14px!important}
+.mp-fir-prev img{width:56px!important;height:56px!important;min-width:56px;max-width:none!important;border-radius:50%!important;object-fit:cover}
+.mp-fir-prev img{width:56px!important;height:56px!important;min-width:56px;max-width:none!important;border-radius:50%!important;object-fit:cover}
+/* Sin bordes de color en las cajas: el color va en píldoras e íconos */
+.card.late{border-left:1px solid var(--line)}
+.sheet.grp{border-top:1px solid var(--line)}
+.col{border-top:0}
+.card{border-left:1px solid var(--line)}
+.tkg{border-left:1px solid var(--line)}
+.pc{border-top:1px solid var(--line)}
+.rm-cp{border-left:0}
+.au-r.on{border-color:var(--line);box-shadow:none}
+.ec-mes,.pl-alerta{border:0}
+.mp-av{grid-template-columns:22px minmax(0,1fr) 48px}
+.mt-cg{display:grid;gap:8px}
+.mt-pills,.mt-res{display:flex;flex-wrap:wrap;gap:6px}
+.pill-s{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:var(--surface-2);font-size:12.5px;color:var(--fg)}
+.pill-s b{font-weight:650}
+.pill-s.ok{background:color-mix(in srgb,var(--s-entregado) 14%,var(--surface));color:color-mix(in srgb,var(--s-entregado) 70%,var(--fg))}
+.pill-s.err{background:color-mix(in srgb,var(--crit) 12%,var(--surface));color:var(--crit)}
+label.btn input[type=file]{display:none}
+/* ===== Paleta del sistema (las que pasó Fer) =====
+   A: FF595E · FF924C · FFCA3A · C5CA30 · 8AC926
+   B: 669900 · 99CC33 · CCEE66 · 006699 · 3399CC · 990066 · CC3399 · FF6600 · FF9900 · FFCC00 */
+:root{
+  --s-empezar:#8A91A0; --s-curso:#3399CC; --s-revision:#FF9900; --s-entregado:#669900; --s-pausado:#A0A6B4; --s-cancelado:#FF595E; --s-confirmar:#CC3399; --s-presup:#006699;
+  --t-naranja:#FF6600; --t-rosa:#CC3399; --t-ambar:#FFCA3A;
+  --c1:#3399CC; --c2:#FF924C; --c3:#8AC926; --c4:#CC3399; --c5:#FFCA3A; --c6:#006699; --c7:#990066; --c8:#C5CA30; --c9:#FF6600; --c10:#99CC33;
+  --g-in:#8AC926; --g-in-ink:#669900; --g-out:#FF595E; --g-line:#006699;
+  --money:#5A8A00;
+  --pill-k:72%; --pill-mix:#000;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --money:#99CC33; --g-line:#3399CC; --pill-k:78%; --pill-mix:#fff; } }
+:root[data-theme="dark"]{ --money:#99CC33; --g-line:#3399CC; --pill-k:78%; --pill-mix:#fff; }
+/* Píldoras suaves: fondo claro del color y texto del mismo color oscurecido, así se leen también el amarillo y el verde claro */
+.pill{background:color-mix(in srgb,var(--c,var(--muted)) 16%,var(--surface));color:color-mix(in srgb,var(--c,var(--muted)) var(--pill-k),var(--pill-mix));padding:3px 10px 3px 9px;font-weight:600}
+.pill::before{background:var(--c,currentColor);opacity:1}
+select.cellsel.st{color:color-mix(in srgb,var(--c) var(--pill-k),var(--pill-mix));background-color:color-mix(in srgb,var(--c) 16%,var(--surface))}
+select.cellsel.st:hover,select.cellsel.st:focus{background-color:color-mix(in srgb,var(--c) 26%,var(--surface))}
+.pzst{color:color-mix(in srgb,var(--c) var(--pill-k),var(--pill-mix));background:color-mix(in srgb,var(--c) 16%,var(--surface))}
+.tag.svc,.srv.on{color:color-mix(in srgb,var(--c,var(--muted)) var(--pill-k),var(--pill-mix))}
+.grp-pill{background:color-mix(in srgb,var(--c) 16%,var(--surface));color:color-mix(in srgb,var(--c) var(--pill-k),var(--pill-mix))}
+.wk-e{background:color-mix(in srgb,var(--c) 16%,var(--surface));color:color-mix(in srgb,var(--c) var(--pill-k),var(--pill-mix))}
+.wk-e *{color:inherit}
+.pl-chart .pl-lab{font:600 11.5px var(--f-body,inherit);fill:var(--g-line);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.sx-chart .gl{stroke:var(--line);stroke-opacity:.6;stroke-dasharray:2 4}
+/* Montos en píldora: verde si da positivo, rojo si da negativo */
+.pill-n{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-weight:650;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill-n.pos{background:color-mix(in srgb,var(--g-in) 18%,var(--surface));color:color-mix(in srgb,var(--g-in-ink) 85%,var(--pill-mix))}
+.pill-n.neg{background:color-mix(in srgb,var(--g-out) 15%,var(--surface));color:color-mix(in srgb,var(--g-out) 80%,var(--pill-mix))}
+.pl-res{display:flex;gap:28px;flex-wrap:wrap;padding:4px 22px 6px}
+.pl-res>div{display:grid;gap:3px}
+.pl-res b{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.pl-res .pill-n{font-size:15px;padding:4px 12px}
+/* Tarjetas de números con varias monedas */
+.kqs{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0;padding:6px}
+.kqs-in{padding:0 12px 12px}
+.kq{display:grid;gap:6px;align-content:start;padding:16px 18px;border-radius:12px}
+.kq.click{cursor:pointer}.kq.click:hover{background:var(--surface-2)}
+.kq+.kq{border-left:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.kq-l{font-size:13px;font-weight:600;color:var(--muted)}
+.kq-r{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.kq-r b{font-size:24px;line-height:1.1;font-weight:750;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--fg)}
+.kq-r b.pos{color:var(--money)}.kq-r b.neg{color:var(--crit)}
+.kq-c{font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--muted)}
+.kq-s{font-size:12.5px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.kq-s .pill-n,.kq-s .pill-s{font-size:12px;padding:2px 9px}
+@media (max-width:760px){.kq+.kq{border-left:0;border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent)}}
+
+/* Redes: plan, Ads y precio como chips (Redes y Ads van juntos) */
+.svs{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.sv{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;line-height:1.5;white-space:nowrap;background:color-mix(in srgb,var(--c,var(--muted)) 15%,var(--surface));color:color-mix(in srgb,var(--c,var(--muted)) 72%,var(--fg));border:0}
+.sv.money-sv{background:var(--surface-2);color:var(--fg);font-variant-numeric:tabular-nums}
+.sv.money-sv i{font-style:normal;font-weight:500;color:var(--muted);margin-left:1px}
+button.sv.sv-b{cursor:pointer;font:inherit;font-size:12px;font-weight:600}
+button.sv.sv-b:hover{background:color-mix(in srgb,var(--c) 25%,var(--surface))}
+.svsum{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.rm-card .svs{margin:8px 0 2px}
+.rm-card.vacio .svs{margin-top:4px}
+.rm-serv{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
+.ccard .cc-m .svs{gap:4px}
+td.name .pp-sv{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+td.name .pp-sv .sv{display:inline-flex}
+tr.pp-sub td{border-top:0;padding-top:2px}
+tr.pp-sub td.name{padding-left:14px}
+.nowrap{white-space:nowrap}
+.pp-t td .sub{white-space:nowrap}
+.pp-t td.nowrap .btn + .btn{margin-left:6px}
+.pl-lab{paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}

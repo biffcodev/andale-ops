@@ -51,7 +51,7 @@ const VER_CL = { 'Proyectos': 'Solo proyectos' }; // solo para mostrar: el valor
 const TIPO_COLOR = { Branding: '--accent', Packaging: '--t-naranja', Web: '--s-curso', Diseño: '--s-confirmar', Audiovisual: '--s-presup', Redes: '--t-rosa', Ads: '--t-ambar', Otro: '--s-empezar' };
 const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': '--s-empezar' };
 const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
-const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['redes', 'Redes'], ['tickets', 'Tickets'], ['briefs', 'Briefs'], ['abonos', 'Abonos'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Opciones'], ['integraciones', 'Integraciones']];
+const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['redes', 'Redes'], ['tickets', 'Tickets'], ['briefs', 'Briefs'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Opciones'], ['integraciones', 'Integraciones']];
 // Menú lateral: grupos por tipo de tarea. Las vistas de administración las aporta admin.js.
 // Menú en 5 secciones. Cada sección agrupa pantallas que se ven como pestañas arriba; las rutas (#proyectos, #cobros…) no cambian.
 // Menú en secciones que se despliegan: lo del día a día (trabajo y clientes) por un lado, lo financiero por otro.
@@ -59,22 +59,22 @@ const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['redes', '
 const SECCIONES = [
   ['inicio', 'Inicio', 'inicio', ['inicio']],
   ['trabajo', 'Trabajo', 'tarea', ['mis', 'proyectos', 'redes', 'tickets']],
-  ['clientes', 'Clientes', 'clientes', ['clientes', 'abonos', 'propuestas', 'briefs', 'comunicaciones']],
-  ['finanzas', 'Finanzas', 'plata', ['plata', 'cuentas', 'cobros', 'gastos', 'pagos', 'numeros']],
+  ['clientes', 'Clientes', 'clientes', ['clientes', 'propuestas', 'briefs', 'comunicaciones']],
+  ['finanzas', 'Finanzas', 'plata', ['plata', 'cuentas', 'cobros', 'gastos', 'pagos', 'precios', 'numeros']],
   ['config', 'Configuración', 'ajustes', ['equipo', 'listas', 'integraciones', 'ajustes']],
 ];
-const TAB_LABEL = { mis: 'Mis trabajos', plata: 'Hoy y lo que viene', cuentas: 'Saldos de clientes', propuestas: 'Presupuestos', pagos: 'Sueldos y proveedores', listas: 'Opciones', comunicaciones: 'Charlas' };
+const TAB_LABEL = { mis: 'Mis trabajos', plata: 'Hoy y lo que viene', cuentas: 'Saldos de clientes', propuestas: 'Presupuestos', pagos: 'Sueldos y proveedores', listas: 'Opciones', comunicaciones: 'Charlas', precios: 'Precios y aumentos' };
 const seccionDe = v => (SECCIONES.find(x => x[3].includes(v)) || SECCIONES[0])[0];
 // Pantallas que ahora viven como pestañas de otra (los links viejos y los emails siguen funcionando).
-const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], precios: ['abonos', 'precios'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
+const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], abonos: ['redes', 'planes'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
 const resolver = v => { const a = ALIAS[v]; if (!a) return v; S.tab[a[0]] = a[1]; return a[0]; };
 /** Pestañas de una pantalla: [[clave, rótulo, cantidad?], ...] */
 function subnav(hub, tabs) {
   const cur = S.tab[hub] || tabs[0][0];
-  const SUBI = { mes: 'cierre', facturas: 'facturas', drive: 'drive', movs: 'caja', banco: 'banco', stats: 'estadisticas', rent: 'rentabilidad', abonos: 'abonos', precios: 'precios' };
+  const SUBI = { mes: 'cierre', facturas: 'facturas', drive: 'drive', movs: 'caja', banco: 'banco', stats: 'estadisticas', rent: 'rentabilidad', meses: 'redes', planes: 'abonos' };
   return '<nav class="subnav" aria-label="Secciones">' + tabs.map(([k, l, n]) => '<button data-act="tab" data-hub="' + hub + '" data-t="' + k + '"' + (cur === k ? ' aria-current="page"' : '') + '>' + (ICON[SUBI[k]] || '') + esc(l) + (n ? '<span class="snav-n hot">' + n + '</span>' : '') + '</button>').join('') + '</nav>';
 }
-const EXT_VIEWS = ['mis', 'proyectos', 'redes', 'abonos', 'clientes', 'comunicaciones'];
+const EXT_VIEWS = ['mis', 'proyectos', 'redes', 'clientes', 'comunicaciones'];
 
 /* ---------- Utilidades ---------- */
 const $ = s => document.querySelector(s);
@@ -328,8 +328,32 @@ const sortByEntrega = (a, b) => (a.entrega || '9999').localeCompare(b.entrega ||
 const proyectosDe = n => S.P.filter(p => p.cliente === n);
 const abonosDe = n => S.A.filter(a => a.cliente === n);
 const pendientes = () => S.M.filter(m => !m.hecho && m.proximo).sort((a, b) => (a.fechaProximo || '9999').localeCompare(b.fechaProximo || '9999'));
-const abonoLabel = a => (a.tipo || 'Abono') + (a.plan ? ' · ' + a.plan : '');
-const abonoTags = n => { const as = abonosDe(n).filter(a => a.estado === 'Activo'); return as.length ? '<span class="tags">' + as.map(a => '<span class="tag svc" style="--c:var(' + (a.tipo === 'Ads' ? '--s-curso' : '--accent') + ')">' + esc(abonoLabel(a)) + '</span>').join('') + '</span>' : ''; };
+const abonoLabel = a => (a.tipo || 'Redes') + (a.plan ? ' · ' + a.plan : '');
+// Redes y Ads van juntos: Ads es un agregado de Redes (no hay Ads sin Redes). En las listas se muestran como un solo servicio por cliente.
+const vivo = a => a && a.estado !== 'Baja';
+function servicioRedes(cliente) {
+  const as = S.A.filter(a => a.cliente === cliente);
+  const pick = t => as.filter(a => a.tipo === t).sort((a, b) => (vivo(b) - vivo(a)) || ESTADOS_ABONO.indexOf(a.estado) - ESTADOS_ABONO.indexOf(b.estado) || cmp(b.desde || '', a.desde || ''))[0] || null;
+  return { redes: pick('Redes'), ads: pick('Ads'), otros: as.filter(a => a.tipo !== 'Redes' && a.tipo !== 'Ads' && vivo(a)) };
+}
+const precioHoy = a => (a && isAdmin() && ADM && ADM.precioHoy) ? ADM.precioHoy(a._id) : null;
+const svChip = (txt, c, attrs) => '<span class="sv" style="--c:var(' + c + ')"' + (attrs || '') + '>' + esc(txt) + '</span>';
+// Chips del servicio: plan, Ads y (para admin) el precio de este mes.
+function servChips(cliente, o) {
+  o = o || {}; const s = servicioRedes(cliente), r = s.redes, ad = vivo(s.ads) ? s.ads : null;
+  let h = '';
+  if (r) h += svChip(r.plan ? 'Plan ' + r.plan : 'Redes · sin plan', '--t-rosa');
+  if (ad) h += svChip('+ Ads' + (ad.estado !== 'Activo' ? ' (' + ad.estado.toLowerCase() + ')' : ''), '--t-naranja');
+  else if (s.ads && o.todo) h += svChip('Ads dado de baja', '--muted');
+  if (!vivo(r) && ad) h += svChip('Ads sin Redes', '--crit');
+  if (r && r.estado !== 'Activo') h += svChip(r.estado === 'Baja' ? 'Dado de baja' : r.estado, AB_COLOR[r.estado] || '--muted');
+  if (o.precio && isAdmin() && ADM && ADM.moneyFmt) {
+    const tot = {}; [r, ad].filter(vivo).forEach(a => { const p = precioHoy(a); if (p) tot[p.moneda] = (tot[p.moneda] || 0) + (+p.monto || 0); });
+    const ks = Object.keys(tot); h += ks.length ? ks.map(m => '<span class="sv money-sv">' + esc(ADM.moneyFmt(tot[m], m)) + '<i>/mes</i></span>').join('') : (r ? '<span class="sv" style="--c:var(--crit)">Sin precio</span>' : '');
+  }
+  return h ? '<span class="svs">' + h + '</span>' : '';
+}
+const abonoTags = n => servChips(n);
 
 /* Estado del cliente: se calcula solo (abono activo → Activo; proyecto abierto → Proyectos; nada → Inactivo)
    salvo que se haya fijado a mano. La base aplica la misma regla con un trigger. */
@@ -423,7 +447,7 @@ function vInicio() {
   const in7 = open.filter(p => plazoOk(p, '7dias'));
   const pend = pendientes();
   const ab = S.A.filter(a => a.estado === 'Activo');
-  const abR = ab.filter(a => a.tipo === 'Redes').length, abA = ab.filter(a => a.tipo === 'Ads').length;
+  const abR = new Set(ab.filter(a => a.tipo === 'Redes').map(a => a.cliente)).size, abA = new Set(ab.filter(a => a.tipo === 'Ads').map(a => a.cliente)).size;
   const conf = S.P.filter(p => p.estado === 'A confirmar').length;
   const sinResp = open.filter(p => !resp(p).length).length + ab.filter(a => !resp(a).length).length;
   const mias = tareasDe(yo), miasHoy = mias.filter(x => x.x.fecha && diff(x.x.fecha) <= 0);
@@ -457,7 +481,7 @@ function vInicio() {
   h += '<section class="hks">' +
     kpi('mis', '--accent', mias.length, 'Tus tareas', miasHoy.length ? miasHoy.length + ' para hoy o vencidas' : 'nada vence hoy', 'data-act="go" data-view="mis"', '', miasHoy.length ? 'warn' : '') +
     kpi('proyectos', '--s-curso', open.length, 'Proyectos abiertos', S.P.filter(p => p.estado === 'En curso').length + ' en curso', 'data-act="goProy"', mini(estados)) +
-    kpi('abonos', '--s-entregado', ab.length, 'Abonos activos', abR + ' de redes · ' + abA + ' de Ads', 'data-act="go" data-view="abonos"', '<span class="hk-bar"><i style="flex:' + (abR || 0) + ';background:var(--t-rosa)"></i><i style="flex:' + (abA || 0) + ';background:var(--t-ambar)"></i></span>') +
+    kpi('abonos', '--t-rosa', abR, 'Clientes en Redes', abA ? abA + ' con Ads' : 'ninguno con Ads', 'data-act="go" data-view="redes" data-tab="planes"', '<span class="hk-bar"><i style="flex:' + Math.max(0, abR - abA) + ';background:var(--t-rosa)"></i><i style="flex:' + (abA || 0) + ';background:var(--t-naranja)"></i></span>') +
     (isAdmin() && ADM ? kpi('cobros', '--p-urgente', cobVenc, 'Cobros vencidos', cobVenc ? 'para reclamar' : 'nada vencido', 'data-act="go" data-view="cuentas"', '', cobVenc ? 'alert' : '')
       : kpi('comunicaciones', '--s-confirmar', pend.length, 'Pasos con clientes', 'pendientes', 'data-act="go" data-view="comunicaciones" data-pend="1"')) +
     '</section>';
@@ -484,8 +508,8 @@ function vInicio() {
   // 5. Equipo: carga de cada persona
   const gente = personas().map(a => ({ a, tk: tareasDe(a).length, pr: open.filter(p => hasResp(p, a)).length, ab: ab.filter(x => hasResp(x, a)).length })).filter(g => g.tk || g.pr || g.ab).sort((x, y) => (y.tk + y.pr) - (x.tk + x.pr));
   const maxC = Math.max(1, ...gente.map(g => g.tk + g.pr + g.ab));
-  const equipo = gente.length ? '<div class="eqs">' + gente.map(g => '<button class="eq" data-act="verDe" data-p="' + esc(g.a) + '">' + av(g.a, fotoDe(g.a)) + '<span class="eq-t"><b>' + esc(g.a) + '</b><span class="eq-bar"><i style="width:' + ((g.tk) / maxC * 100).toFixed(1) + '%;background:var(--accent)"></i><i style="width:' + (g.pr / maxC * 100).toFixed(1) + '%;background:var(--s-curso)"></i><i style="width:' + (g.ab / maxC * 100).toFixed(1) + '%;background:var(--s-entregado)"></i></span><small>' + [g.tk ? g.tk + ' tareas' : '', g.pr ? g.pr + ' proyectos' : '', g.ab ? g.ab + ' abonos' : ''].filter(Boolean).join(' · ') + '</small></span></button>').join('') + '</div><p class="eq-ley"><i style="background:var(--accent)"></i>Tareas <i style="background:var(--s-curso)"></i>Proyectos <i style="background:var(--s-entregado)"></i>Abonos</p>'
-    : emptyBox('Sin trabajos asignados', 'Asigná responsables en proyectos y abonos.');
+  const equipo = gente.length ? '<div class="eqs">' + gente.map(g => '<button class="eq" data-act="verDe" data-p="' + esc(g.a) + '">' + av(g.a, fotoDe(g.a)) + '<span class="eq-t"><b>' + esc(g.a) + '</b><span class="eq-bar"><i style="width:' + ((g.tk) / maxC * 100).toFixed(1) + '%;background:var(--accent)"></i><i style="width:' + (g.pr / maxC * 100).toFixed(1) + '%;background:var(--s-curso)"></i><i style="width:' + (g.ab / maxC * 100).toFixed(1) + '%;background:var(--s-entregado)"></i></span><small>' + [g.tk ? g.tk + ' tareas' : '', g.pr ? g.pr + ' proyectos' : '', g.ab ? g.ab + ' de Redes' : ''].filter(Boolean).join(' · ') + '</small></span></button>').join('') + '</div><p class="eq-ley"><i style="background:var(--accent)"></i>Tareas <i style="background:var(--s-curso)"></i>Proyectos <i style="background:var(--s-entregado)"></i>Redes</p>'
+    : emptyBox('Sin trabajos asignados', 'Asigná responsables en proyectos y en Redes.');
 
   // 6. Próximos pasos con clientes
   const pasosHtml = pend.length ? '<div class="rows">' + pend.slice(0, 6).map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmtShort(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + (m.responsable ? ' · ' + esc(m.responsable) : '') + '</span></span>' + (m.fechaProximo && diff(m.fechaProximo) < 0 ? '<span class="days late">Vencido</span>' : '') + '</button>').join('') + '</div>'
@@ -877,34 +901,55 @@ function vCalendario() {
       : emptyBox('Nada agendado este mes', 'Las entregas pactadas y los próximos pasos con fecha aparecen acá.')) + '</section>';
 }
 
-function vAbonos() {
-  const pest = isAdmin() && ADM_FN.precios ? subnav('abonos', [['abonos', 'Abonos'], ['precios', 'Precios y aumentos']]) : '';
-  if (pest && S.tab.abonos === 'precios') return pest + ADM_FN.precios();
+// Redes › Clientes y planes: un renglón por cliente con su plan, si tiene Ads y (para admin) cuánto paga por mes.
+function vPlanes() {
   const af = S.af, q = norm(af.q);
-  const tipos = ['', ...S.L.tiposAbono];
-  const base = S.A.filter(a => (!af.estado || a.estado === af.estado));
-  const list = base.filter(a => (!af.tipo || a.tipo === af.tipo) && (!af.resp || (af.resp === '__none' ? !resp(a).length : hasResp(a, af.resp))) && (!q || norm(a.cliente + ' ' + (a.plan || '') + ' ' + (a.notas || '')).includes(q))).sort((a, b) => cmp(a.cliente, b.cliente) || cmp(a.tipo, b.tipo));
+  const nombres = [...new Set(S.A.map(a => a.cliente))].filter(c => S.C.some(x => x.nombre === c));
+  const todas = nombres.map(c => ({ c, ...servicioRedes(c) })).map(f => ({ ...f, base: f.redes || f.ads, est: vivo(f.redes) ? f.redes.estado : vivo(f.ads) ? f.ads.estado : 'Baja' }));
+  const base = todas.filter(f => !af.estado || f.est === af.estado);
+  const conAds = f => vivo(f.ads);
+  const list = base.filter(f => (!af.tipo || (af.tipo === 'Ads' ? conAds(f) : !conAds(f))) && (!af.resp || (af.resp === '__none' ? !resp(f.base).length : hasResp(f.base, af.resp))) && (!q || norm(f.c + ' ' + ((f.redes || {}).plan || '') + ' ' + ((f.redes || {}).notas || '')).includes(q))).sort((x, y) => cmp(x.c, y.c));
   const dis = isStaff() ? '' : ' disabled';
-  let h = pest + '<div class="head"><div><h1>Abonos</h1><p>' + (isExt() ? 'Los abonos donde figurás como responsable.' : 'Lo que se factura todos los meses: redes y Ads.') + '</p></div><div class="toolbar">' + vistaSel('abonos', ['lista', 'cuadricula'], vistaDe('abonos', ['lista', 'cuadricula'])) + addBtn('abono', 'Abono') + '</div></div>' +
-    '<div class="toolbar fbar2"><input class="in" type="search" id="aq" data-bind="af.q" placeholder="Buscar cliente o plan" value="' + esc(af.q) + '">' +
-    '<div class="seg" role="group" aria-label="Tipo">' + tipos.map(t => '<button data-act="afTipo" data-tipo="' + esc(t) + '" aria-pressed="' + (af.tipo === t) + '">' + (t || 'Todos') + ' <span class="c">' + base.filter(a => !t || a.tipo === t).length + '</span></button>').join('') + '</div>' +
-    filtrosMenu('abonos', '<label class="lbl" for="ae">Estado</label><select class="in" id="ae" data-bind="af.estado" aria-label="Estado">' + opt('', 'Todos los estados', af.estado) + ESTADOS_ABONO.map(e => opt(e, e === 'Activo' ? 'Activos' : e === 'Pausado' ? 'Pausados' : 'Dados de baja', af.estado)).join('') + '</select>' +
-    (isStaff() ? '<label class="lbl" for="ar">Responsable</label><select class="in" id="ar" data-bind="af.resp" aria-label="Responsable">' + opt('', 'Todo el equipo', af.resp) + opt('__none', 'Sin asignar', af.resp) + personas().map(p => opt(p, p, af.resp)).join('') + '</select>' : ''), (af.estado ? 1 : 0) + (af.resp ? 1 : 0)) + '</div>';
-  if (!list.length) return h + '<section class="sheet">' + emptyBox(S.A.length ? 'Ningún abono coincide' : 'Todavía no hay abonos', S.A.length ? 'Probá con otro filtro.' : (isStaff() ? 'Cargá el primero con “+ Abono”.' : '')) + '</section>';
-  if (vistaDe('abonos', ['lista', 'cuadricula']) === 'cuadricula') {
-    const cl = n => S.C.find(c => c.nombre === n) || {};
-    return h + '<div class="cgrid">' + list.map(a => '<button class="ccard" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '" style="--c:var(' + (AB_COLOR[a.estado] || '--muted') + ')">' +
-      '<span class="cc-top">' + av(a.cliente, cl(a.cliente).avatar, 'sq') + '<span class="cc-n"><b>' + esc(a.cliente) + '</b><span>' + esc(a.plan ? 'Plan ' + a.plan : 'Sin plan') + '</span></span></span>' +
-      '<span class="cc-m"><span class="tag svc" style="--c:var(' + (a.tipo === 'Ads' ? '--s-curso' : '--accent') + ')">' + esc(a.tipo || '—') + '</span>' + abPill(a.estado) + '</span>' +
-      '<span class="cc-f">' + (resp(a).length ? '<span class="avs">' + resp(a).map(x => av(x, fotoDe(x))).join('') + '</span>' : '<span class="muted">Sin responsable</span>') + '<span class="muted mono">' + (a.desde ? 'desde ' + esc(monthLabel(a.desde.slice(0, 7))) : '') + '</span></span></button>').join('') + '</div><div class="count num" style="padding:0 4px">' + list.length + ' abonos</div>';
+  const activos = todas.filter(f => f.est === 'Activo');
+  let h = '<div class="head"><div><h1>Redes</h1><p>' + (isExt() ? 'Los clientes de redes donde figurás como responsable.' : 'Qué plan tiene cada cliente, si suma Ads y desde cuándo. Ads siempre va con Redes.') + '</p></div><div class="toolbar">' + vistaSel('planes', ['lista', 'cuadricula'], vistaDe('planes', ['lista', 'cuadricula'])) + addBtn('abono', 'Cliente en Redes', { tipo: 'Redes' }) + '</div></div>';
+  if (isStaff()) {
+    const tot = {}; if (isAdmin()) activos.forEach(f => [f.redes, f.ads].filter(x => x && x.estado === 'Activo').forEach(a => { const p = precioHoy(a); if (p) tot[p.moneda] = (tot[p.moneda] || 0) + (+p.monto || 0); }));
+    h += '<div class="svsum">' + '<span class="pill-s"><b>' + activos.length + '</b> clientes activos</span><span class="pill-s"><b>' + activos.filter(conAds).length + '</b> con Ads</span>' +
+      (todas.some(f => f.est === 'Pausado') ? '<span class="pill-s"><b>' + todas.filter(f => f.est === 'Pausado').length + '</b> en pausa</span>' : '') +
+      (isAdmin() && ADM && ADM.moneyFmt ? Object.keys(tot).map(m => '<span class="pill-s ok">' + esc(ADM.moneyFmt(tot[m], m)) + ' por mes</span>').join('') : '') +
+      (todas.some(f => !vivo(f.redes) && vivo(f.ads)) ? '<span class="pill-s err">' + todas.filter(f => !vivo(f.redes) && vivo(f.ads)).length + ' con Ads sin Redes</span>' : '') + '</div>';
   }
-  const rows = list.map(a => '<tr><td class="name"><button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button></td>' +
-    '<td><span class="tag svc" style="--c:var(' + (a.tipo === 'Ads' ? '--s-curso' : '--accent') + ')">' + esc(a.tipo || '—') + '</span></td><td>' + (a.plan ? esc(a.plan) : '<span class="muted">—</span>') + '</td>' +
-    '<td>' + picker('abono', a) + '</td>' +
-    '<td class="mono">' + (a.desde ? esc(fmt(a.desde)) : '<span class="muted">—</span>') + (a.hasta ? ' → ' + esc(fmt(a.hasta)) : '') + '</td>' +
-    '<td><select class="cellsel st" style="--c:var(' + (AB_COLOR[a.estado] || '--muted') + ')" aria-label="Estado" data-upd="abono" data-id="' + esc(a._id) + '" data-field="estado"' + dis + '>' + optsFrom(ESTADOS_ABONO, a.estado || '') + '</select></td>' +
-    '<td class="r"><button class="btn ghost sm" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '">' + (isStaff() ? 'Editar' : 'Ver') + '</button></td></tr>').join('');
-  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Plan</th><th>Responsables</th><th>Desde</th><th>Estado</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' abonos</div></section>';
+  h += '<div class="toolbar fbar2"><input class="in" type="search" id="aq" data-bind="af.q" placeholder="Buscar cliente o plan" value="' + esc(af.q) + '">' +
+    '<div class="seg" role="group" aria-label="Ads">' + [['', 'Todos'], ['Ads', 'Con Ads'], ['sin', 'Sin Ads']].map(([t, l]) => '<button data-act="afTipo" data-tipo="' + t + '" aria-pressed="' + (af.tipo === t) + '">' + l + ' <span class="c">' + base.filter(f => !t || (t === 'Ads' ? conAds(f) : !conAds(f))).length + '</span></button>').join('') + '</div>' +
+    filtrosMenu('planes', '<label class="lbl" for="ae">Estado</label><select class="in" id="ae" data-bind="af.estado" aria-label="Estado">' + opt('', 'Todos', af.estado) + ESTADOS_ABONO.map(e => opt(e, e === 'Activo' ? 'Activos' : e === 'Pausado' ? 'En pausa' : 'Dados de baja', af.estado)).join('') + '</select>' +
+    (isStaff() ? '<label class="lbl" for="ar">Responsable</label><select class="in" id="ar" data-bind="af.resp" aria-label="Responsable">' + opt('', 'Todo el equipo', af.resp) + opt('__none', 'Sin asignar', af.resp) + personas().map(p => opt(p, p, af.resp)).join('') + '</select>' : ''), (af.estado ? 1 : 0) + (af.resp ? 1 : 0)) + '</div>';
+  if (!list.length) return h + '<section class="sheet">' + emptyBox(todas.length ? 'Ningún cliente coincide' : 'Todavía no hay clientes en Redes', todas.length ? 'Probá con otro filtro.' : (isStaff() ? 'Sumá el primero con “+ Cliente en Redes”.' : '')) + '</section>';
+  const cl = n => S.C.find(c => c.nombre === n) || {};
+  const mesHoy = f => red().mesCliente(f.c, thisMonth());
+  const adsBtn = f => vivo(f.ads) ? '<button class="sv sv-b" style="--c:var(--t-naranja)" data-act="edit" data-kind="abono" data-id="' + esc(f.ads._id) + '">+ Ads' + (f.ads.estado !== 'Activo' ? ' · ' + esc(f.ads.estado.toLowerCase()) : '') + '</button>'
+    : (isStaff() && vivo(f.redes) ? '<button class="btn ghost sm" data-act="sumarAds" data-c="' + esc(f.c) + '">Sumar Ads</button>' : '<span class="muted">—</span>');
+  const precioCelda = f => {
+    if (!isAdmin() || !ADM || !ADM.moneyFmt) return '';
+    const ps = [['Redes', f.redes], ['Ads', f.ads]].filter(([, a]) => vivo(a)).map(([t, a]) => [t, precioHoy(a)]);
+    const tot = {}; ps.forEach(([, p]) => { if (p) tot[p.moneda] = (tot[p.moneda] || 0) + (+p.monto || 0); });
+    const ks = Object.keys(tot);
+    return '<td class="r">' + (ks.length ? ks.map(m => '<span class="money">' + esc(ADM.moneyFmt(tot[m], m)) + '</span>').join('<br>') + (ps.length > 1 ? '<span class="sub">' + ps.map(([t, p]) => t + ' ' + (p ? esc(ADM.moneyFmt(p.monto, p.moneda)) : 'sin precio')).join('<br>') + '</span>' : '') : '<button class="btn link" data-act="go" data-view="precios">Cargar precio</button>') + '</td>';
+  };
+  if (vistaDe('planes', ['lista', 'cuadricula']) === 'cuadricula') {
+    return h + '<div class="cgrid">' + list.map(f => '<button class="ccard" data-act="edit" data-kind="abono" data-id="' + esc(f.base._id) + '">' +
+      '<span class="cc-top">' + av(f.c, cl(f.c).avatar, 'sq') + '<span class="cc-n"><b>' + esc(f.c) + '</b><span>' + (f.base.desde ? 'desde ' + esc(monthLabel(f.base.desde.slice(0, 7))) : '') + '</span></span></span>' +
+      '<span class="cc-m">' + servChips(f.c, { precio: true }) + '</span>' +
+      '<span class="cc-f">' + (resp(f.base).length ? '<span class="avs">' + resp(f.base).map(x => av(x, fotoDe(x))).join('') + '</span>' : '<span class="muted">Sin responsable</span>') + '</span></button>').join('') + '</div><div class="count num" style="padding:0 4px">' + list.length + ' clientes</div>';
+  }
+  const rows = list.map(f => { const r = f.redes, m = mesHoy(f);
+    return '<tr><td class="name"><span class="who1">' + av(f.c, cl(f.c).avatar, 'sq') + '<span><button class="btn link" data-act="ficha" data-cliente="' + esc(f.c) + '">' + esc(f.c) + '</button>' + (!vivo(r) && vivo(f.ads) ? '<span class="sub"><span class="sv" style="--c:var(--crit)">Ads sin Redes</span></span>' : '') + '</span></span></td>' +
+      '<td>' + (r ? svChip(r.plan ? 'Plan ' + r.plan : 'Sin plan', '--t-rosa') : '<span class="muted">—</span>') + '</td>' +
+      '<td>' + adsBtn(f) + '</td>' + precioCelda(f) +
+      '<td>' + picker('abono', f.base) + '</td>' +
+      '<td class="mono">' + (f.base.desde ? esc(fmt(f.base.desde)) : '<span class="muted">—</span>') + (f.base.hasta ? ' → ' + esc(fmt(f.base.hasta)) : '') + '</td>' +
+      '<td><select class="cellsel st" style="--c:var(' + (AB_COLOR[f.base.estado] || '--muted') + ')" aria-label="Estado de ' + esc(f.c) + '" data-upd="abono" data-id="' + esc(f.base._id) + '" data-field="estado"' + dis + '>' + optsFrom(ESTADOS_ABONO, f.base.estado || '') + '</select></td>' +
+      '<td class="r nowrap">' + (m ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(m._id) + '">Ver el mes</button>' : '') + '<button class="btn ghost sm" data-act="edit" data-kind="abono" data-id="' + esc(f.base._id) + '">' + (isStaff() ? 'Editar' : 'Ver') + '</button></td></tr>'; }).join('');
+  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Plan</th><th>Ads</th>' + (isAdmin() && ADM && ADM.moneyFmt ? '<th class="r">Por mes</th>' : '') + '<th>Responsables</th><th>Desde</th><th>Estado</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' clientes</div></section>';
 }
 
 function vMis() {
@@ -921,13 +966,15 @@ function vMis() {
   const steps = pendientes().filter(m => m.responsable === yo);
   const tks = tareasDe(yo), tkLate = tks.filter(t => t.x.fecha && diff(t.x.fecha) < 0).length;
   const kpi = (n, l, cls) => '<div class="kpi ' + (cls || '') + '"><span class="eyebrow">' + l + '</span><b>' + n + '</b></div>';
-  h += '<section class="kpis">' + kpi(tks.length, 'Tareas pendientes', tkLate ? 'alert' : '') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(cuentas.length, 'Abonos') + '</section>';
+  h += '<section class="kpis">' + kpi(tks.length, 'Tareas pendientes', tkLate ? 'alert' : '') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(new Set(cuentas.map(a => a.cliente)).size, 'Clientes de Redes') + '</section>';
   const tkHtml = '<section class="sheet"><div class="sheet-h"><h2>Tareas</h2><span class="muted num">' + tks.length + (tkLate ? ' · <b style="color:var(--crit)">' + tkLate + ' vencidas</b>' : '') + '</span></div>' + (tks.length ? '<div class="tks mis">' + tks.map(({ p, x, i }) =>
     '<div class="tk"><input type="checkbox" class="tk-ok" aria-label="Marcar hecha" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"' + (canEditProj(p) ? '' : ' disabled') + '><button class="tk-n tk-lnk" data-act="pver" data-id="' + esc(p._id) + '"><b>' + esc(x.n) + '</b><span>' + esc(p.proyecto + ' · ' + p.cliente) + '</span></button>' + prioFlag(p.prioridad) + fechaTarea(x.fecha) + '</div>').join('') + '</div>' : emptyBox('Sin tareas a cargo de ' + yo, 'Las tareas se asignan desde la ficha de cada proyecto.')) + '</section>';
-  if (!tks.length && !mine.length && !cuentas.length && !myCl.length && !steps.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay nada a cargo de ' + yo, isStaff() ? 'Asigná responsables desde Proyectos o Abonos y aparece acá.' : 'Cuando te asignen un trabajo aparece acá.') + '</section>';
+  if (!tks.length && !mine.length && !cuentas.length && !myCl.length && !steps.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay nada a cargo de ' + yo, isStaff() ? 'Asigná responsables desde Proyectos o Redes y aparece acá.' : 'Cuando te asignen un trabajo aparece acá.') + '</section>';
   const others = o => resp(o).length > 1 ? ' · con ' + esc(resp(o).filter(x => x !== yo).join(', ')) : '';
   const group = (title, arr) => arr.length ? '<section class="sheet"><div class="sheet-h"><h2>' + title + '</h2><span class="muted num">' + arr.length + '</span></div><div class="rows">' + arr.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.cliente, p.tipo, etapaTxt(p)].filter(Boolean).join(' · ')) + others(p) + '</span></span>' + (daysBadge(p) || stPill(p.estado)) + '</button>').join('') + '</div></section>' : '';
-  const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + cuentas.length + '</span></div>' + (cuentas.length ? '<div class="rows">' + cuentas.map(a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(a.cliente) + '</b><span>' + esc(a.plan ? 'Plan ' + a.plan : '') + others(a) + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin cuentas mensuales a cargo', '')) + '</section>';
+  const misCl = [...new Set(cuentas.map(a => a.cliente))];
+  const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Redes</h2><span class="muted num">' + misCl.length + '</span></div>' + (misCl.length ? '<div class="rows">' + misCl.map(c => { const sv = servicioRedes(c), a = sv.redes || sv.ads, m = red().mesCliente(c, thisMonth());
+    return '<button class="row" ' + (m ? 'data-act="rmAbrir" data-id="' + esc(m._id) + '"' : 'data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"') + '><span class="d">Redes</span><span class="t"><b>' + esc(c) + '</b><span>' + servChips(c) + others(a) + '</span></span><span></span></button>'; }).join('') + '</div>' : emptyBox('Sin clientes de Redes a cargo', '')) + '</section>';
   h += '<div class="grid2"><div class="stack">' + tkHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
     '<div class="stack">' + cuentasHtml +
     '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos</h2>' + addBtn('comunicacion', 'Charla', null, 'sm') + '</div>' + (steps.length ? '<div class="rows">' + steps.map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin pasos pendientes', '')) + '</section>' +
@@ -979,7 +1026,7 @@ const servPills = nombre => '<span class="srvs">' + serviciosDe(nombre).map(x =>
 function historiaCliente(nombre) {
   const it = [];
   S.P.filter(p => p.cliente === nombre && p.estado !== 'Cancelado').forEach(p => it.push({ f: p.fechaInicio || p.entrega || '', tipo: p.tipo || 'Proyecto', t: p.proyecto, sub: isOpen(p) ? (p.entrega ? 'entrega ' + fmt(p.entrega) : p.estado) : 'entregado' + (p.entregaReal || p.entrega ? ' ' + fmt(p.entregaReal || p.entrega) : ''), on: isOpen(p), act: 'pver', id: p._id }));
-  S.A.filter(a => a.cliente === nombre).forEach(a => it.push({ f: a.desde ? a.desde + (a.desde.length === 7 ? '-01' : '') : '', tipo: a.tipo, t: 'Abono de ' + a.tipo + (a.plan ? ' · ' + a.plan : ''), sub: a.estado === 'Activo' ? (a.desde ? 'desde ' + monthLabel(a.desde.slice(0, 7)) : 'vigente') : 'de ' + (a.desde ? monthLabel(a.desde.slice(0, 7)) : '—') + (a.hasta ? ' a ' + monthLabel(a.hasta.slice(0, 7)) : ''), on: a.estado === 'Activo', act: 'edit', kind: 'abono', id: a._id }));
+  S.A.filter(a => a.cliente === nombre).forEach(a => it.push({ f: a.desde ? a.desde + (a.desde.length === 7 ? '-01' : '') : '', tipo: a.tipo, t: (a.tipo === 'Ads' ? 'Ads (con Redes)' : a.tipo + (a.plan ? ' · plan ' + a.plan : '')), sub: a.estado === 'Activo' ? (a.desde ? 'desde ' + monthLabel(a.desde.slice(0, 7)) : 'vigente') : 'de ' + (a.desde ? monthLabel(a.desde.slice(0, 7)) : '—') + (a.hasta ? ' a ' + monthLabel(a.hasta.slice(0, 7)) : ''), on: a.estado === 'Activo', act: 'edit', kind: 'abono', id: a._id }));
   return it.sort((a, b) => (a.f || '9').localeCompare(b.f || '9'));
 }
 
@@ -993,14 +1040,14 @@ function vFicha() {
   const copy = v => v ? '<span>' + esc(v) + '</span><button class="btn ghost sm" data-act="copy" data-v="' + esc(v) + '">Copiar</button>' : '<span class="muted">—</span>';
   const link = v => v ? (isUrl(v) ? '<a href="' + esc(v) + '" target="_blank" rel="noopener">' + esc(v.replace(/^https?:\/\/(www\.)?/, '')) + '</a>' : '<span>' + esc(v) + '</span>') : '<span class="muted">—</span>';
   const projRow = p => '<button class="row" data-act="pver" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.tipo, etapaTxt(p), resp(p).join(', ')].filter(Boolean).join(' · ')) + '</span></span>' + stPill(p.estado) + '</button>';
-  const abRow = a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(abonoLabel(a)) + '</b><span>' + (resp(a).length ? esc(resp(a).join(', ')) : 'sin responsable') + (a.desde ? ' · desde ' + esc(fmt(a.desde)) : '') + '</span></span>' + abPill(a.estado) + '</button>';
+  const abRow = a => '<button class="row" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="d">' + esc(a.tipo || '') + '</span><span class="t"><b>' + esc(a.tipo === 'Ads' ? 'Ads (con Redes)' : abonoLabel(a)) + '</b><span>' + (resp(a).length ? esc(resp(a).join(', ')) : 'sin responsable') + (a.desde ? ' · desde ' + esc(fmt(a.desde)) : '') + '</span></span>' + abPill(a.estado) + '</button>';
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   const pendN = ms.filter(m => m.proximo && !m.hecho).length;
   const tabs = [['resumen', 'Resumen'], ...(isAdmin() && ADM ? [['cuenta', 'Facturación']] : []), ['trabajos', 'Trabajos'], ...(isStaff() ? [['marca', 'Marca y voz' + (c.marca && Object.values(c.marca).some(Boolean) ? '' : ' <span class="tab-dot" title="Sin completar"></span>')]] : []),
     ['charlas', 'Charlas' + (pendN ? ' <span class="snav-n hot">' + pendN + '</span>' : '')], ...(conTabla() && (isStaff() || contactosDe(c.nombre).length) ? [['contactos', 'Contactos']] : [])];
   const tab = tabs.some(t => t[0] === S.ctab) ? S.ctab : 'resumen';
   const acciones = isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button>' + waBtn(c) + '<button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' +
-    masMenu([{ act: 'edit', label: 'Editar cliente', attrs: ' data-kind="cliente" data-id="' + esc(c._id) + '"', icon: 'clientes' }, { act: 'new', label: 'Anotar charla', attrs: ' data-kind="comunicacion" data-preset="' + preset + '"', icon: 'charla' }, { act: 'new', label: 'Nuevo abono', attrs: ' data-kind="abono" data-preset="' + preset + '"', icon: 'abonos' }])
+    masMenu([{ act: 'edit', label: 'Editar cliente', attrs: ' data-kind="cliente" data-id="' + esc(c._id) + '"', icon: 'clientes' }, { act: 'new', label: 'Anotar charla', attrs: ' data-kind="comunicacion" data-preset="' + preset + '"', icon: 'charla' }, { act: 'new', label: 'Sumar a Redes', attrs: ' data-kind="abono" data-preset="' + preset + '"', icon: 'abonos' }])
     : addBtn('comunicacion', 'Charla', { cliente: c.nombre });
   let body = '';
   if (tab === 'resumen') body = (isAdmin() && ADM && ADM.deudaLinea ? ADM.deudaLinea(c.nombre) : '') + (IA ? IA.fichaHtml(c.nombre) : '') + '<div class="ficha"><div class="stack"><section class="sheet"><div class="sheet-h"><h2>Datos</h2></div><div class="sheet-b"><dl class="kv">' +
@@ -1012,7 +1059,7 @@ function vFicha() {
     '<dt>Carpeta</dt><dd>' + link(c.carpeta) + '</dd>' +
     '<dt>Notas</dt><dd>' + (c.notas ? '<span style="white-space:pre-wrap">' + esc(c.notas) + '</span>' : '<span class="muted">—</span>') + '</dd>' +
     '</dl></div></section>' + '</div><div class="stack">' +
-    '<section class="sheet"><div class="sheet-h"><h2>Abonos</h2><span class="muted num">' + as.filter(a => a.estado === 'Activo').length + ' activos</span></div>' + (as.length ? '<div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('Sin abonos', '')) + '</section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Redes</h2>' + (isStaff() && !vivo(servicioRedes(c.nombre).redes) ? '<button class="btn ghost sm" data-act="new" data-kind="abono" data-preset="' + esc(JSON.stringify({ cliente: c.nombre, tipo: 'Redes' })) + '">Sumar a Redes</button>' : isStaff() && !vivo(servicioRedes(c.nombre).ads) ? '<button class="btn ghost sm" data-act="sumarAds" data-c="' + esc(c.nombre) + '">Sumar Ads</button>' : '') + '</div>' + (as.length ? '<div class="sheet-b">' + servChips(c.nombre, { precio: true, todo: true }) + '</div><div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('No tiene Redes', '')) + '</section>' +
     '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' + '</div></div>';
   else if (tab === 'marca') body = fm().html(c);
   else if (tab === 'trabajos') body = '<div class="stack">' + (S.T && isStaff() ? tk().fichaHtml(c.nombre) : '') + redesFicha(c) +
@@ -1051,7 +1098,7 @@ function vEquipo() {
     const ab = S.A.filter(a => a.estado === 'Activo' && hasResp(a, e.persona)).length, pr = S.P.filter(p => isOpen(p) && hasResp(p, e.persona)).length;
     return '<tr class="click" data-act="edit" data-kind="persona" data-id="' + esc(e._id) + '"' + (e.activo === false ? ' style="opacity:.55"' : '') + '><td><span class="who1">' + (isStaff() || (S.me && S.me.alias === e.persona) ? avEditable('persona', e._id, e.persona, e.avatar, '', !isAdmin()) : av(e.persona, e.avatar)) + '<b>' + esc(e.persona) + '</b></span></td><td>' + esc(e.nombre || '') + (e.puesto ? '<span class="sub">' + esc(e.puesto) + '</span>' : '') + '</td><td>' + pill(ROLES[e.rol] || e.rol, ROL_COLOR[e.rol] || '--muted') + '</td><td>' + (e.email ? esc(e.email) : '<span class="muted">Sin acceso</span>') + '</td><td class="n">' + ab + '</td><td class="n">' + pr + '</td><td>' + (e.activo === false ? '<span class="tag">Inactiva/o</span>' : '<span class="pill" style="--c:var(--ok)">Activa/o</span>') + '</td></tr>';
   }).join('');
-  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Persona</th><th>Nombre completo</th><th>Rol</th><th>Email de acceso</th><th>Abonos</th><th>Proyectos abiertos</th><th>Estado</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Persona</th><th>Nombre completo</th><th>Rol</th><th>Email de acceso</th><th>Redes</th><th>Proyectos abiertos</th><th>Estado</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
 }
 
 function vComs() {
@@ -1099,14 +1146,15 @@ let RLJ = null;
 const rlj = () => RLJ || (RLJ = initReloj({ S, esc, opt, toast, data, $, today, cmp }));
 let INF = null;
 const inf = () => INF || (INF = initInformes({ marcaCtx: (c, ps) => fm().contexto(c, ps), S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
-const red = () => RED || (RED = initRedes({ autoBtn: p => aut().boton(p), toastAccion, masMenu, marcaCtx: (c, ps) => fm().contexto(c, ps), avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
+const red = () => RED || (RED = initRedes({ servChips: (c, o) => servChips(c, o), servAb: c => servicioRedes(c).redes, autoBtn: p => aut().boton(p), toastAccion, masMenu, marcaCtx: (c, ps) => fm().contexto(c, ps), avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
   cfgGet: (k, c) => integr().cfgGet(k, c), servicios: n => serviciosDe(n).map(x => x.tipo).join(', '),
   irMes: id => { S.view = 'redes'; S.rmFicha = id || null; S.ficha = null; S.pficha = null; try { history.replaceState(null, '', '#redes' + (id ? '/' + id : '')); } catch (e) { } render(); window.scrollTo(0, 0); } }));
 const moneyFmt = (n, m) => { try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: m || 'ARS', maximumFractionDigits: 0 }).format(+n || 0); } catch (e) { return (m || '') + ' ' + n; } };
 const tk = () => TKS || (TKS = initTickets({ autoBtn: p => aut().boton(p), S, esc, opt, toast, data, render, $, av, fotoDe, personas, fmt, fmtShort, today, thisMonth, isStaff, isAdmin, cmp, norm, emptyBox, hil, clienteOpts, closeForm, reload, ISO, money: moneyFmt, copyText, waNum, openMail: o => MAIL && MAIL.open(o) }));
 const vTickets = () => tk().vTickets();
 const vBriefs = () => tk().vBriefs();
-const vRedes = () => S.rmFicha ? red().vMes(S.rmFicha) : red().vLista();
+const redTabs = () => subnav('redes', [['meses', 'El mes'], ['planes', 'Clientes y planes']]);
+const vRedes = () => S.rmFicha ? red().vMes(S.rmFicha) : redTabs() + (S.tab.redes === 'planes' ? vPlanes() : red().vLista());
 let ENT = null;
 const ent = () => ENT || (ENT = initEntregas({ S, esc, opt, toast, data, render, $, fmt, isStaff, emptyBox, hil, closeForm, reload: () => reload(), avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
 // Aviso por email a los contactos con acceso al portal cuando algo queda para revisar (mes de redes o entrega).
@@ -1129,11 +1177,18 @@ function gcalUrl(titulo, fecha, detalle) {
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titulo) + '&dates=' + d + '/' + n.toISOString().slice(0, 10).replace(/-/g, '') + '&details=' + encodeURIComponent(detalle || 'àndale Operaciones');
 }
 const calBtn = (titulo, fecha, detalle, cls) => integ('calendario') && fecha ? '<a class="btn ' + (cls || '') + '" href="' + esc(gcalUrl(titulo, fecha, [detalle, integr().cfgGet('calendario', 'aviso')].filter(Boolean).join(' · '))) + '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅 Al calendario</a>' : '';
-const VIEW_FN = { inicio: vInicio, redes: () => vRedes(), tickets: () => vTickets(), briefs: () => vBriefs(), proyectos: vProyectos, abonos: vAbonos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, integraciones: vIntegraciones };
+const VIEW_FN = { inicio: vInicio, redes: () => vRedes(), tickets: () => vTickets(), briefs: () => vBriefs(), proyectos: vProyectos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, integraciones: vIntegraciones };
 
 /* ---------- Render ---------- */
 document.addEventListener('change', e => { if (e.target.id === 'k-portal') { const b = document.querySelector('.k-inv'); if (b) b.hidden = !e.target.checked; } });
-document.addEventListener('change', e => { if (e.target.matches && e.target.matches('[data-srvab="Redes"]')) { const b = document.getElementById('srvplan'); if (b) b.hidden = !e.target.checked; } });
+// Alta de cliente: Ads arrastra Redes (no hay Ads sin Redes) y sacar Redes saca Ads.
+document.addEventListener('change', e => {
+  const t = e.target; if (!t.matches || !t.matches('[data-srvab]')) return;
+  const r = document.querySelector('[data-srvab="Redes"]'), a = document.querySelector('[data-srvab="Ads"]');
+  if (t === a && a.checked && r) r.checked = true;
+  if (t === r && !r.checked && a) a.checked = false;
+  const b = document.getElementById('srvplan'); if (b && r) b.hidden = !r.checked;
+});
 function kbFlechas(kb) {
   const w = kb && kb.parentElement; if (!w) return;
   kb.style.setProperty('--kb-top', Math.round(kb.getBoundingClientRect().top + window.scrollY + 24) + 'px');
@@ -1177,13 +1232,14 @@ function render() {
   const vs = new Map(views().map(v => [v[0], v[1]]));
   const secAct = seccionDe(S.view);
   S.secLast = S.secLast || {}; S.secLast[secAct] = S.view;
-  if (!S.navOpen) { let g = null; try { g = JSON.parse(localStorage.getItem('navOpen') || 'null'); } catch (e) { /* sin storage */ } S.navOpen = new Set(Array.isArray(g) ? g : []); }
+  // Acordeón: queda abierta una sola sección. Al entrar a otra sección se abre esa; con un clic en el título se abre o se cierra.
+  if (S.navUlt !== secAct) { S.navUlt = secAct; S.navSec = secAct; }
   const hot = k => k === 'cobros';
   const cnt = k => counts[k] && !['proyectos', 'abonos', 'clientes'].includes(k) ? '<span class="snav-n' + (hot(k) ? ' hot' : '') + '">' + counts[k] + '</span>' : '';
   $('#nav').innerHTML = SECCIONES.map(([k, l, ic, ks]) => {
     const its = ks.filter(x => vs.has(x)); if (!its.length) return '';
     if (its.length === 1 && k === 'inicio') return '<button class="snav-i" data-act="go" data-view="inicio"' + (S.view === 'inicio' ? ' aria-current="page"' : '') + '>' + ICON.inicio + '<span class="snav-l">Inicio</span></button>';
-    const abierta = secAct === k || S.navOpen.has(k), n = its.reduce((a, x) => a + (cnt(x) ? counts[x] : 0), 0);
+    const abierta = S.navSec === k, n = its.reduce((a, x) => a + (cnt(x) ? counts[x] : 0), 0);
     return (k === 'finanzas' ? '<span class="snav-sep" aria-hidden="true"></span>' : '') +
       '<div class="snav-sec' + (abierta ? ' open' : '') + (secAct === k ? ' act' : '') + '"><button class="snav-i snav-h" data-act="secTog" data-s="' + k + '" aria-expanded="' + abierta + '">' + (ICON[ic] || '') + '<span class="snav-l">' + l + '</span>' +
       (!abierta && n ? '<span class="snav-n' + (k === 'finanzas' ? ' hot' : '') + '">' + n + '</span>' : '') + '<span class="snav-chev" aria-hidden="true"></span></button>' +
@@ -1265,9 +1321,9 @@ const FORMS = {
     { k: 'canva', label: 'Canva', type: 'url', ph: 'https://', adv: 1 },
     { k: 'notas', label: 'Notas', type: 'textarea', full: 1, adv: 1 },
   ], masLabel: 'Links, entregables y notas', defaults: () => ({ estado: 'Por empezar', fechaInicio: today(), responsables: [] }), can: rec => rec ? canEditProj(rec) : isStaff() },
-  abono: { arr: 'A', title: 'abono', nuevo: 'Nuevo abono', label: a => a.cliente + ' · ' + abonoLabel(a), fields: [
+  abono: { arr: 'A', title: 'servicio de Redes', nuevo: 'Cliente en Redes', label: a => a.cliente + ' · ' + abonoLabel(a), fields: [
     { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, full: 1 },
-    { k: 'tipo', label: 'Tipo', type: 'select', opts: () => S.L.tiposAbono, req: 1 },
+    { k: 'tipo', label: 'Servicio', type: 'select', opts: () => S.L.tiposAbono, req: 1, hint: 'Ads va siempre junto con Redes: el cliente tiene que tener Redes.' },
     { k: 'plan', label: 'Plan', type: 'select', opts: () => S.L.planes, blank: 'Sin plan' },
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
     { k: 'desde', label: 'Desde (mes)', type: 'month' },
@@ -1346,7 +1402,7 @@ function openForm(kind, id, preset) {
   else foot = '<span id="delzone">' + (rec && (isStaff() && (kind !== 'persona' || isAdmin())) ? '<button type="button" class="btn ghost danger" data-act="del">Eliminar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="savebtn">' + (rec ? 'Guardar cambios' : 'Crear ' + def.title) + '</button></span>';
   let adminBtn = '';
   if (isAdmin() && rec && kind === 'proyecto') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aProyAdm" data-id="' + esc(rec._id) + '">Precio y cobro</button></div>';
-  if (isAdmin() && rec && kind === 'abono') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aPrecio" data-abono="' + esc(rec._id) + '">Precio del abono (administración)</button>' + (rec.tipo === 'Ads' ? '<button type="button" class="btn sm" data-act="aAds" data-abono="' + esc(rec._id) + '">Pauta de Ads (administración)</button>' : '') + '</div>';
+  if (isAdmin() && rec && kind === 'abono') adminBtn = '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aPrecio" data-abono="' + esc(rec._id) + '">Precio (administración)</button>' + (rec.tipo === 'Ads' ? '<button type="button" class="btn sm" data-act="aAds" data-abono="' + esc(rec._id) + '">Pauta de Ads (administración)</button>' : '') + '</div>';
   let servBox = '';
   if (kind === 'cliente' && !ro) {
     const tAb = S.L.tiposAbono || ['Redes', 'Ads'], tPr = (S.L.tipos || []).filter(t => !tAb.includes(t));
@@ -1394,6 +1450,8 @@ async function saveForm() {
     if (out.desde && !/^\d{4}-\d{2}$/.test(out.desde)) showErr('desde', 'Usá el formato AAAA-MM');
     if (out.hasta && !/^\d{4}-\d{2}$/.test(out.hasta)) showErr('hasta', 'Usá el formato AAAA-MM');
     if (out.estado === 'Baja' && !out.hasta) out.hasta = thisMonth();
+    const otros = S.A.filter(a => a.cliente === out.cliente && a._id !== id && vivo(a));
+    if (out.tipo === 'Ads' && out.estado !== 'Baja' && !otros.some(a => a.tipo === 'Redes')) showErr('tipo', 'Ads va siempre con Redes: ' + (out.cliente || 'este cliente') + ' no tiene Redes. Cargá primero Redes.');
   }
   if (bad) return;
   if (kind === 'proyecto' && out.estado === 'Entregado' && !out.entregaReal) out.entregaReal = today();
@@ -1408,6 +1466,7 @@ async function saveForm() {
     let tks = null;
     if (kind === 'proyecto' && S.T && Array.isArray(out.etapas)) { tks = out.etapas; delete out.etapas; }
     const nid = await data.save(kind, id, out, prev ? resp(prev) : []);
+    if (kind === 'abono' && out.tipo === 'Redes' && out.estado === 'Baja') await bajaAds(out.cliente, out.hasta);
     if (tks) await data.tareasSync(nid, prev ? etapasDe(prev) : [], tks);
     if (kind === 'cliente' && !prev && conTabla() && (out.contacto || out.email || out.tel)) {
       try { await data.ins('contactos', { cliente_id: nid, nombre: out.contacto || '', email: (out.email || '').toLowerCase(), tel: out.tel || '', principal: true, cobros: true, orden: 0 }); } catch (e) { toast(e.message); }
@@ -1428,6 +1487,12 @@ async function delRecord() {
   if (!S.form || !S.form.id) return;
   try { await data.remove(S.form.kind, S.form.id); if (S.form.kind === 'cliente') S.ficha = null; closeForm(); toast('Eliminado'); await reload(); }
   catch (err) { toast(err.message); }
+}
+// Si Redes se da de baja, Ads se va con Redes.
+async function bajaAds(cliente, hasta) {
+  const ads = S.A.filter(a => a.cliente === cliente && a.tipo === 'Ads' && vivo(a)); if (!ads.length) return;
+  for (const a of ads) await data.update('abono', a._id, { estado: 'Baja', hasta: a.hasta || hasta || thisMonth() });
+  toast('También se dio de baja Ads de ' + cliente + ' (va con Redes)');
 }
 async function upd(kind, id, patch, prevResp, quiet) {
   try { await data.update(kind, id, patch, prevResp); if (!quiet) toast('Actualizado'); await reload(); }
@@ -1451,10 +1516,7 @@ async function saveListas(k, arr) {
 function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('Copiado'), () => toast(v)); } catch (e) { toast(v); } }
 const ACT = {
   soloMio: t => { const yo = S.me.alias; if (t.dataset.p === 'proyectos') S.f.resp = S.f.resp === yo ? '' : yo; else if (t.dataset.p === 'redes') { S.rf = S.rf || { q: '', resp: '', estado: '', pend: false }; S.rf.resp = S.rf.resp === yo ? '' : yo; } render(); },
-  secTog: t => { const k = t.dataset.s; S.navOpen = S.navOpen || new Set(); const enEsta = seccionDe(S.view) === k;
-    if (enEsta) { const sec = t.closest('.snav-sec'); const sub = sec && sec.querySelector('.snav-sub'); if (sub) { const ab = sub.hidden; sub.hidden = !ab; sec.classList.toggle('open', ab); t.setAttribute('aria-expanded', String(ab)); } return; }
-    if (S.navOpen.has(k)) S.navOpen.delete(k); else S.navOpen.add(k);
-    try { localStorage.setItem('navOpen', JSON.stringify([...S.navOpen])); } catch (e) { /* sin storage */ } render(); },
+  secTog: t => { const k = t.dataset.s; S.navSec = S.navSec === k ? null : k; render(); },
   sec: t => { const sec = SECCIONES.find(x => x[0] === t.dataset.s); if (!sec) return; const vs = new Set(views().map(v => v[0])); const last = S.secLast && S.secLast[sec[0]];
     go(last && vs.has(last) && last !== S.view ? last : (sec[3].find(k => vs.has(k) && k !== 'mis') || sec[3].find(k => vs.has(k)))); },
   go: t => { if (t.dataset.pend) S.mf.pend = true; if (t.dataset.tab) S.tab[t.dataset.view] = t.dataset.tab; go(t.dataset.view); },
@@ -1489,6 +1551,7 @@ const ACT = {
   clearF: () => { S.f = { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true }; render(); },
   cfEstado: t => { S.cf.estado = t.dataset.estado; render(); },
   afTipo: t => { S.af.tipo = t.dataset.tipo; render(); },
+  sumarAds: t => { const r = servicioRedes(t.dataset.c).redes; openForm('abono', null, { cliente: t.dataset.c, tipo: 'Ads', plan: '', responsables: r ? resp(r).slice() : [], desde: thisMonth() }); },
   ctab: t => { S.ctab = t.dataset.t; render(); },
   ficha: t => { S.ctab = t.dataset.tab || (S.ficha !== t.dataset.cliente ? 'resumen' : S.ctab); S.ficha = t.dataset.cliente; S.pficha = null; S.view = 'clientes'; try { history.replaceState(null, '', '#clientes/' + encodeURIComponent(S.ficha)); } catch (e) { } render(); window.scrollTo(0, 0); },
   back: () => { S.ficha = null; try { history.replaceState(null, '', '#clientes'); } catch (e) { } render(); },
@@ -1613,7 +1676,12 @@ document.addEventListener('change', async e => {
     const kind = t.dataset.upd, field = t.dataset.field, val = t.type === 'checkbox' ? t.checked : t.value;
     const patch = { [field]: val };
     if (kind === 'proyecto' && field === 'estado' && val === 'Entregado') { const p = S.P.find(x => x._id === t.dataset.id); if (p && !p.entregaReal) patch.entregaReal = today(); }
-    if (kind === 'abono' && field === 'estado' && val === 'Baja') { const a = S.A.find(x => x._id === t.dataset.id); if (a && !a.hasta) patch.hasta = thisMonth(); }
+    if (kind === 'abono' && field === 'estado') {
+      const a = S.A.find(x => x._id === t.dataset.id);
+      if (val === 'Baja' && a && !a.hasta) patch.hasta = thisMonth();
+      if (a && a.tipo === 'Ads' && val !== 'Baja' && !S.A.some(x => x.cliente === a.cliente && x.tipo === 'Redes' && vivo(x))) { toast('Ads va siempre con Redes: ' + a.cliente + ' no tiene Redes activo.'); render(); return; }
+      if (a && a.tipo === 'Redes' && val === 'Baja') { (async () => { await data.update('abono', a._id, patch); await bajaAds(a.cliente, patch.hasta || a.hasta); await reload(); })().catch(err => { toast(err.message); reload(); }); return; }
+    }
     upd(kind, t.dataset.id, patch);
   }
 });
