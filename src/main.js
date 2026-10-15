@@ -277,7 +277,7 @@ async function guardarTareas(p, next, msg) { p.etapas = next; render(); await up
 const kpiBtn = (n, label, sub, attrs, cls) => '<button class="kpi ' + (cls || '') + '" ' + attrs + '><span class="eyebrow">' + label + '</span><b>' + n + '</b><span>' + sub + '</span></button>';
 
 function vInicio() {
-  const t = today(), open = S.P.filter(isOpen);
+  const t = today(), open = S.P.filter(isOpen), yo = S.me.alias;
   const late = open.filter(p => p.entrega && p.entrega < t);
   const in7 = open.filter(p => plazoOk(p, '7dias'));
   const pend = pendientes();
@@ -285,46 +285,88 @@ function vInicio() {
   const abR = ab.filter(a => a.tipo === 'Redes').length, abA = ab.filter(a => a.tipo === 'Ads').length;
   const conf = S.P.filter(p => p.estado === 'A confirmar').length;
   const sinResp = open.filter(p => !resp(p).length).length + ab.filter(a => !resp(a).length).length;
-
+  const mias = tareasDe(yo), miasHoy = mias.filter(x => x.x.fecha && diff(x.x.fecha) <= 0);
+  const cobVenc = isAdmin() && ADM ? (ADM.counts().cobros || 0) : 0;
   const hora = new Date().getHours(), saludo = hora < 13 ? 'Buen día' : hora < 20 ? 'Buenas tardes' : 'Buenas noches';
-  let h = '<div class="head"><div><h1>' + saludo + ', ' + esc(S.me.alias) + '</h1><p>' + esc(cap1(new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }))) + (late.length ? ' · <b style="color:var(--crit)">' + late.length + ' entregas atrasadas</b>' : '') + '</p></div></div>' +
-    (IA ? IA.inicioHtml() : '') +
-    '<section class="kpis">' +
-    kpiBtn(ab.length, 'Abonos activos', abR + ' de redes · ' + abA + ' de Ads', 'data-act="go" data-view="abonos"') +
-    kpiBtn(open.length, 'Proyectos abiertos', S.P.filter(p => p.estado === 'En curso').length + ' en curso', 'data-act="goProy"') +
-    kpiBtn(late.length, 'Atrasados', in7.length + ' entregan en 7 días', 'data-act="goProy" data-plazo="' + (late.length ? 'atrasados' : '7dias') + '"', late.length ? 'alert' : (in7.length ? 'warn' : '')) +
-    kpiBtn(pend.length, 'Próximos pasos', 'Pendientes con clientes', 'data-act="go" data-view="comunicaciones" data-pend="1"') +
+  const icon = (k, c) => '<span class="hk-i" style="--c:var(' + c + ')">' + (ICON[k] || '') + '</span>';
+
+  // 1. Portada: saludo, resumen del día, Mr. Piggy y accesos rápidos
+  const resumen = [
+    miasHoy.length ? '<b>' + miasHoy.length + '</b> tarea' + (miasHoy.length > 1 ? 's' : '') + ' para hoy' : (mias.length ? '<b>' + mias.length + '</b> tareas pendientes' : 'sin tareas pendientes'),
+    in7.length ? '<b>' + in7.length + '</b> entrega' + (in7.length > 1 ? 's' : '') + ' esta semana' : '',
+    late.length ? '<b class="rojo">' + late.length + ' atrasada' + (late.length > 1 ? 's' : '') + '</b>' : '',
+    pend.length ? '<b>' + pend.length + '</b> paso' + (pend.length > 1 ? 's' : '') + ' con clientes' : '',
+  ].filter(Boolean);
+  const rapidos = [
+    isStaff() ? '<button class="hq" data-act="new" data-kind="proyecto">' + ICON.proyectos + 'Proyecto</button>' : '',
+    '<button class="hq" data-act="new" data-kind="comunicacion">' + ICON.comunicaciones + 'Anotar charla</button>',
+    isStaff() ? '<button class="hq" data-act="mail">✉<span>Escribir mail</span></button>' : '',
+    isAdmin() && ADM ? '<button class="hq" data-act="aMov">' + ICON.caja + 'Gasto o ingreso</button>' : '',
+    '<button class="hq" data-act="go" data-view="mis">' + ICON.mis + 'Mis trabajos</button>',
+  ].join('');
+  let h = '<section class="hero"><div class="hero-t"><span class="hero-f">' + esc(cap1(new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }))) + '</span>' +
+    '<h1>' + saludo + ', ' + esc(yo) + '</h1><p>' + (resumen.length ? 'Hoy tenés ' + resumen.join(' · ') + '.' : 'Todo al día.') + '</p></div>' +
+    '<div class="hero-iso" aria-hidden="true">' + ISO + '</div>' +
+    (IA ? '<div class="hero-ia">' + IA.inicioHtml() + '</div>' : '') +
+    '<div class="hero-q">' + rapidos + '</div></section>';
+
+  // 2. Indicadores con color e ícono
+  const estados = S.L.estadosProyecto.map(e => [e, open.filter(p => p.estado === e).length]).filter(x => x[1]);
+  const mini = arr => '<span class="hk-bar">' + arr.map(([e, n]) => '<i style="flex:' + n + ';background:var(' + stVar(e) + ')" title="' + esc(e + ': ' + n) + '"></i>').join('') + '</span>';
+  const kpi = (k, c, n, label, sub, attrs, extra, cls) => '<button class="hk ' + (cls || '') + '" ' + attrs + '>' + icon(k, c) + '<span class="hk-t"><span class="hk-l">' + label + '</span><b>' + n + '</b><span class="hk-s">' + sub + '</span>' + (extra || '') + '</span></button>';
+  h += '<section class="hks">' +
+    kpi('mis', '--accent', mias.length, 'Tus tareas', miasHoy.length ? miasHoy.length + ' para hoy o vencidas' : 'nada vence hoy', 'data-act="go" data-view="mis"', '', miasHoy.length ? 'warn' : '') +
+    kpi('proyectos', '--s-curso', open.length, 'Proyectos abiertos', S.P.filter(p => p.estado === 'En curso').length + ' en curso', 'data-act="goProy"', mini(estados)) +
+    kpi('abonos', '--s-entregado', ab.length, 'Abonos activos', abR + ' de redes · ' + abA + ' de Ads', 'data-act="go" data-view="abonos"', '<span class="hk-bar"><i style="flex:' + (abR || 0) + ';background:var(--t-rosa)"></i><i style="flex:' + (abA || 0) + ';background:var(--t-ambar)"></i></span>') +
+    (isAdmin() && ADM ? kpi('cobros', '--p-urgente', cobVenc, 'Cobros vencidos', cobVenc ? 'para reclamar' : 'nada vencido', 'data-act="go" data-view="cobros"', '', cobVenc ? 'alert' : '')
+      : kpi('comunicaciones', '--s-confirmar', pend.length, 'Pasos con clientes', 'pendientes', 'data-act="go" data-view="comunicaciones" data-pend="1"')) +
     '</section>';
 
-  if (conf || sinResp) {
-    const parts = [];
-    if (conf) parts.push('<b>' + conf + ' proyectos sin estado definido</b>: elegí en qué estado están');
-    if (sinResp) parts.push('<b>' + sinResp + '</b> trabajos abiertos no tienen responsable');
-    h += '<section class="callout"><p>' + parts.join('. ') + '. Estado y responsables se cambian directo en la fila de cada lista.</p><button class="btn" data-act="goProy" data-estado="' + (conf ? 'A confirmar' : '') + '">Revisar proyectos</button></section>';
-  }
+  // 3. La semana: entregas y tareas por día
+  const lunes = new Date(); lunes.setHours(12, 0, 0, 0); lunes.setDate(lunes.getDate() - ((lunes.getDay() + 6) % 7));
+  const dias = Array.from({ length: 7 }, (_, i) => { const d = new Date(lunes); d.setDate(d.getDate() + i); return d.toISOString().slice(0, 10); });
+  const tksSemana = []; S.P.filter(isOpen).forEach(p => etapasDe(p).forEach((x, i) => { if (!x.ok && x.fecha && dias.includes(x.fecha) && (!isExt() || x.resp === yo)) tksSemana.push({ p, x, i }); }));
+  const semana = '<div class="wk">' + dias.map((d, i) => {
+    const ents = open.filter(p => p.entrega === d), tk = tksSemana.filter(o => o.x.fecha === d), hoy = d === t, pasado = d < t;
+    const lab = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][i];
+    return '<div class="wk-d' + (hoy ? ' hoy' : '') + (pasado ? ' pas' : '') + (i > 4 ? ' fin' : '') + '"><div class="wk-h"><span>' + lab + '</span><b>' + +d.slice(8) + '</b></div><div class="wk-b">' +
+      ents.map(p => '<button class="wk-e" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--accent') + ')" data-act="pver" data-id="' + esc(p._id) + '" title="Entrega: ' + esc(p.proyecto + ' · ' + p.cliente) + '"><b>Entrega</b><span>' + esc(p.proyecto) + '</span><small>' + esc(p.cliente) + '</small></button>').join('') +
+      tk.slice(0, 4).map(o => '<button class="wk-t' + (o.x.resp === yo ? ' mia' : '') + '" data-act="gqTarea" data-id="' + esc(o.p._id) + '" data-i="' + o.i + '" title="' + esc(o.x.n + ' · ' + o.p.proyecto) + '">' + (o.x.resp ? av(o.x.resp, fotoDe(o.x.resp)) : '') + '<span>' + esc(o.x.n) + '</span></button>').join('') +
+      (tk.length > 4 ? '<span class="wk-mas">+' + (tk.length - 4) + ' tareas</span>' : '') +
+      (!ents.length && !tk.length ? '<span class="wk-v">—</span>' : '') + '</div></div>';
+  }).join('') + '</div>';
 
-  const mias = tareasDe(S.me.alias);
-  if (mias.length) h += '<section class="sheet"><div class="sheet-h"><h2>Tus tareas</h2><button class="btn ghost sm" data-act="go" data-view="mis">Ver todas (' + mias.length + ')</button></div><div class="sheet-b"><div class="tks mis">' + mias.slice(0, 6).map(({ p, x, i }) =>
-    '<div class="tk"><input type="checkbox" class="tk-ok" aria-label="Marcar hecha" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"><button class="tk-n tk-lnk" data-act="pver" data-id="' + esc(p._id) + '"><b>' + esc(x.n) + '</b><span>' + esc(p.proyecto + ' · ' + p.cliente) + '</span></button>' + prioFlag(p.prioridad) + fechaTarea(x.fecha) + '</div>').join('') + '</div></div></section>';
-  const estados = S.L.estadosProyecto.map(e => [e, S.P.filter(p => p.estado === e).length]).filter(x => x[1]);
-  const maxE = Math.max(1, ...estados.map(x => x[1]));
-  const tipos = S.L.tipos.map(t => [t, open.filter(p => p.tipo === t).length]).filter(x => x[1]);
-  const maxT = Math.max(1, ...tipos.map(x => x[1]));
-  const bars = (arr, max, colorFn, attr) => '<div class="bars">' + arr.map(([k, n]) => '<button class="bar" data-act="goProy" ' + attr + '="' + esc(k) + '" style="--c:var(' + colorFn(k) + ')"><span class="lab">' + esc(k) + '</span><span class="track"><span class="fill" style="width:' + (n / max * 100).toFixed(1) + '%"></span></span><span class="n">' + n + '</span></button>').join('') + '</div>';
-  h += '<div class="grid2">' +
-    '<section class="sheet"><div class="sheet-h"><h2>Proyectos por estado</h2><span class="muted num">' + S.P.length + ' en total</span></div><div class="sheet-b"><div class="stbar">' + estados.map(([e, n]) => '<span style="flex:' + n + ';background:var(' + stVar(e) + ')" title="' + esc(e + ': ' + n) + '"></span>').join('') + '</div>' + bars(estados, maxE, stVar, 'data-estado') + '</div></section>' +
-    '<section class="sheet"><div class="sheet-h"><h2>Proyectos abiertos por tipo</h2><span class="muted num">' + open.length + ' abiertos</span></div><div class="sheet-b">' + (tipos.length ? bars(tipos, maxT, t => TIPO_COLOR[t] || '--accent', 'data-tipo') : emptyBox('Sin proyectos abiertos', '')) + '</div></section>' +
-    '</div>';
+  // 4. Proyectos en curso con avance
+  const enCurso = open.filter(p => p.estado !== 'A confirmar').sort((a, b) => (PRIOS.indexOf(a.prioridad) + 1 || 9) - (PRIOS.indexOf(b.prioridad) + 1 || 9) || sortByEntrega(a, b)).slice(0, 6);
+  const ring = pct => '<svg viewBox="0 0 36 36" class="ring" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--line)" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--s-entregado)" stroke-width="4" stroke-linecap="round" stroke-dasharray="' + (pct * 0.9425).toFixed(1) + ' 100" transform="rotate(-90 18 18)"/></svg>';
+  const pcards = enCurso.length ? '<div class="pcs">' + enCurso.map(p => { const pct = avance(p), e = etapasDe(p); return '<button class="pc" style="--t:var(' + (TIPO_COLOR[p.tipo] || '--accent') + ')" data-act="pver" data-id="' + esc(p._id) + '"><span class="pc-top"><span class="pc-cli">' + esc(p.cliente) + '</span>' + prioFlag(p.prioridad) + '</span><b class="pc-n">' + esc(p.proyecto) + '</b>' +
+    '<span class="pc-m"><span class="pc-r">' + ring(pct) + '<i>' + pct + '%</i></span><span class="pc-d">' + stPill(p.estado) + '<span>' + (e.length ? e.filter(x => x.ok).length + ' de ' + e.length + ' tareas' : 'Sin tareas') + '</span>' + (p.entrega ? '<span>Entrega ' + fmtShort(p.entrega) + ' ' + daysBadge(p) + '</span>' : '') + '</span></span>' +
+    '<span class="pc-f">' + (resp(p).length ? '<span class="avs">' + resp(p).map(a => av(a, fotoDe(a))).join('') + '</span>' : '<span class="muted">Sin responsable</span>') + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + '</span></button>'; }).join('') + '</div>'
+    : emptyBox('No hay proyectos abiertos', '');
 
-  const prox = open.filter(p => p.entrega).sort(sortByEntrega).slice(0, 12);
-  const proxHtml = prox.length ? '<div class="rows">' + prox.map(p => '<button class="row" data-act="pver" data-id="' + esc(p._id) + '"><span class="d">' + fmt(p.entrega) + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc(p.cliente) + ' · ' + (resp(p).length ? esc(resp(p).join(', ')) : 'sin responsable') + '</span></span>' + daysBadge(p) + '</button>').join('') + '</div>'
-    : emptyBox('Todavía no hay fechas de entrega cargadas', 'Cargá la entrega pactada en cada proyecto y acá aparece lo que viene.');
-  const pasosHtml = pend.length ? '<div class="rows">' + pend.slice(0, 12).map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : 'sin fecha') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + (m.responsable ? ' · ' + esc(m.responsable) : '') + '</span></span>' + (m.fechaProximo && diff(m.fechaProximo) < 0 ? '<span class="days late">Vencido</span>' : '') + '</button>').join('') + '</div>'
-    : emptyBox('No hay pasos pendientes', 'Registrá reuniones y acuerdos en Seguimiento con un próximo paso.');
-  h += '<div class="grid2">' +
-    '<section class="sheet"><div class="sheet-h"><h2>Próximas entregas</h2><button class="btn ghost sm" data-act="calendar">Ver calendario</button></div>' + proxHtml + '</section>' +
-    '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos con clientes</h2>' + addBtn('comunicacion', 'Charla') + '</div>' + pasosHtml + '</section>' +
-    '</div>';
+  // 5. Equipo: carga de cada persona
+  const gente = personas().map(a => ({ a, tk: tareasDe(a).length, pr: open.filter(p => hasResp(p, a)).length, ab: ab.filter(x => hasResp(x, a)).length })).filter(g => g.tk || g.pr || g.ab).sort((x, y) => (y.tk + y.pr) - (x.tk + x.pr));
+  const maxC = Math.max(1, ...gente.map(g => g.tk + g.pr + g.ab));
+  const equipo = gente.length ? '<div class="eqs">' + gente.map(g => '<button class="eq" data-act="verDe" data-p="' + esc(g.a) + '">' + av(g.a, fotoDe(g.a)) + '<span class="eq-t"><b>' + esc(g.a) + '</b><span class="eq-bar"><i style="width:' + ((g.tk) / maxC * 100).toFixed(1) + '%;background:var(--accent)"></i><i style="width:' + (g.pr / maxC * 100).toFixed(1) + '%;background:var(--s-curso)"></i><i style="width:' + (g.ab / maxC * 100).toFixed(1) + '%;background:var(--s-entregado)"></i></span><small>' + [g.tk ? g.tk + ' tareas' : '', g.pr ? g.pr + ' proyectos' : '', g.ab ? g.ab + ' abonos' : ''].filter(Boolean).join(' · ') + '</small></span></button>').join('') + '</div><p class="eq-ley"><i style="background:var(--accent)"></i>Tareas <i style="background:var(--s-curso)"></i>Proyectos <i style="background:var(--s-entregado)"></i>Abonos</p>'
+    : emptyBox('Sin trabajos asignados', 'Asigná responsables en proyectos y abonos.');
+
+  // 6. Próximos pasos con clientes
+  const pasosHtml = pend.length ? '<div class="rows">' + pend.slice(0, 6).map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmtShort(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + (m.responsable ? ' · ' + esc(m.responsable) : '') + '</span></span>' + (m.fechaProximo && diff(m.fechaProximo) < 0 ? '<span class="days late">Vencido</span>' : '') + '</button>').join('') + '</div>'
+    : emptyBox('No hay pasos pendientes', 'Anotá las charlas con un próximo paso y aparecen acá.');
+
+  const orden = (conf || sinResp) ? '<section class="sheet hordenar"><div class="sheet-h"><h2>Para ordenar</h2></div><div class="sheet-b"><div class="ho-l">' +
+    (conf ? '<button class="ho" data-act="goProy" data-estado="A confirmar"><b>' + conf + '</b><span>proyectos sin estado definido</span><span class="ho-a">Revisar →</span></button>' : '') +
+    (sinResp ? '<button class="ho" data-act="goProy" data-resp="__none"><b>' + sinResp + '</b><span>trabajos sin responsable</span><span class="ho-a">Asignar →</span></button>' : '') + '</div></div></section>' : '';
+
+  h += '<div class="hgrid"><div class="stack">' +
+    '<section class="sheet"><div class="sheet-h"><h2>Esta semana</h2><button class="btn ghost sm" data-act="calendar">Ver calendario</button></div><div class="sheet-b">' + semana + '</div></section>' +
+    '<section class="sheet"><div class="sheet-h"><h2>Proyectos en marcha</h2><button class="btn ghost sm" data-act="goProy">Ver todos (' + open.length + ')</button></div><div class="sheet-b">' + pcards + '</div></section>' +
+    '</div><div class="stack">' +
+    (mias.length ? '<section class="sheet"><div class="sheet-h"><h2>Tus tareas</h2><button class="btn ghost sm" data-act="go" data-view="mis">Ver todas (' + mias.length + ')</button></div><div class="sheet-b"><div class="tks mis">' + mias.slice(0, 5).map(({ p, x, i }) =>
+      '<div class="tk"><input type="checkbox" class="tk-ok" aria-label="Marcar hecha" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"><button class="tk-n tk-lnk" data-act="gqTarea" data-id="' + esc(p._id) + '" data-i="' + i + '"><b>' + esc(x.n) + '</b><span>' + esc(p.proyecto + ' · ' + p.cliente) + '</span></button>' + prioFlag(x.prio || p.prioridad) + fechaTarea(x.fecha) + '</div>').join('') + '</div></div></section>' : '') +
+    '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos con clientes</h2>' + addBtn('comunicacion', 'Charla', null, 'ghost sm') + '</div>' + pasosHtml + '</section>' +
+    (isStaff() ? '<section class="sheet"><div class="sheet-h"><h2>Equipo</h2><span class="muted num">quién tiene qué</span></div><div class="sheet-b">' + equipo + '</div></section>' : '') +
+    orden + '</div></div>';
   return h;
 }
 
@@ -1126,7 +1168,8 @@ const ACT = {
   grpTog: t => { const g = t.dataset.g; if (S.gcl.has(g)) S.gcl.delete(g); else S.gcl.add(g); lsSet('gcl', JSON.stringify([...S.gcl])); render(); },
   kbMover: t => { const kb = document.querySelector('.kb'); if (kb) kb.scrollBy({ left: +t.dataset.d * Math.max(260, kb.clientWidth * .8), behavior: 'smooth' }); },
   tab: t => { S.tab[t.dataset.hub] = t.dataset.t; if (ADM) ADM.resetView(); render(); window.scrollTo(0, 0); },
-  goProy: t => { S.f = { q: '', estado: t.dataset.estado || '', tipo: t.dataset.tipo || '', resp: '', cliente: '', plazo: t.dataset.plazo || '', abiertos: !(t.dataset.estado && CERRADOS.has(t.dataset.estado)) }; S.mode = 'lista'; go('proyectos'); },
+  verDe: t => { S.yo = t.dataset.p; lsSet('yo', S.yo); go('mis'); },
+  goProy: t => { S.f = { q: '', estado: t.dataset.estado || '', tipo: t.dataset.tipo || '', resp: t.dataset.resp || '', cliente: '', plazo: t.dataset.plazo || '', abiertos: !(t.dataset.estado && CERRADOS.has(t.dataset.estado)) }; S.mode = 'lista'; go('proyectos'); },
   calendar: () => { S.mode = 'calendario'; lsSet('mode', 'calendario'); go('proyectos'); },
   mode: t => { S.mode = t.dataset.mode; lsSet('mode', S.mode); render(); },
   clearF: () => { S.f = { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true }; render(); },
