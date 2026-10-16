@@ -2311,3 +2311,14 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,input[type="month"]:
 .fm-fuentes{grid-column:1/-1;margin:2px 0 0;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
 .fm-fuentes svg{width:14px;height:14px}
 label.btn.disabled{opacity:.55;pointer-events:none}
+
+/* Roles en las cuentas de Redes */
+.rol-lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px 18px}
+.rol-f{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px}
+.rol-f>span{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.rol-f .av{width:24px;height:24px;font-size:10px}
+.rol-f select{width:220px;max-width:60%}
+.menu.menu-rol{min-width:340px;display:grid;gap:6px;padding:10px 12px}
+.row-cta .d .av{width:34px;height:34px}
+.row-cta .cta-eq{display:block;font-size:12.5px;color:var(--muted);margin-top:4px}
+.row-cta .cta-eq strong{color:var(--fg);font-weight:600}

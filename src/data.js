@@ -28,7 +28,7 @@ const idx = { clienteId: new Map(), clienteName: new Map(), personaId: new Map()
 const month = d => (d ? String(d).slice(0, 7) : '');
 
 /** Columnas nuevas que puede no tener todavía la base (hasta correr su SQL). */
-export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true };
+export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true };
 function toRow(kind, ui) {
   const row = {};
   for (const [k, v] of Object.entries(ui)) {
@@ -88,6 +88,9 @@ export async function loadAll() {
   if (d.clientes.length) cols.clienteRedes = 'redes' in d.clientes[0];
   const respOf = (rows, key) => { const m = new Map(); rows.forEach(r => { const a = idx.personaAlias.get(r.persona_id); if (!a) return; if (!m.has(r[key])) m.set(r[key], []); m.get(r[key]).push(a); }); return m; };
   const rp = respOf(d.proyecto_responsables, 'proyecto_id'), ra = respOf(d.abono_responsables, 'abono_id'), rc = respOf(d.cliente_responsables, 'cliente_id');
+  // Rol de cada persona en cada cuenta (SQL 0029): { abonoId: { alias: rol } }
+  if (d.abono_responsables.length) cols.abonoRol = 'rol' in d.abono_responsables[0];
+  const rolA = new Map(); d.abono_responsables.forEach(r => { const a = idx.personaAlias.get(r.persona_id); if (!a || !r.rol) return; if (!rolA.has(r.abono_id)) rolA.set(r.abono_id, {}); rolA.get(r.abono_id)[a] = r.rol; });
   const cname = id => idx.clienteName.get(id) || '(cliente sin acceso)';
   const tks = new Map();
   if (trows) trows.forEach(t => { if (!tks.has(t.proyecto_id)) tks.set(t.proyecto_id, []); tks.get(t.proyecto_id).push(tareaUI(t)); });
@@ -96,7 +99,7 @@ export async function loadAll() {
   return {
     E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, avatar: p.avatar_url || '', prefs: p.prefs || {}, ...meta(p) })),
     C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, desde: month(c.desde), estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, telFijo: c.tel_fijo || '', web: c.web, redes: (c.redes && typeof c.redes === 'object' && !Array.isArray(c.redes)) ? c.redes : {}, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', marca: 'marca' in c ? (c.marca || {}) : undefined, responsables: rc.get(c.id) || [], ...meta(c) })),
-    A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, responsables: ra.get(a.id) || [], ...meta(a) })),
+    A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, responsables: ra.get(a.id) || [], roles: rolA.get(a.id) || {}, ...meta(a) })),
     P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: trows ? (tks.get(p.id) || []) : (Array.isArray(p.etapas) ? p.etapas : []), etapaActual: p.etapa_actual || '', prioridad: p.prioridad || '', responsables: rp.get(p.id) || [], ...meta(p) })),
     M: d.comunicaciones.map(m => ({ _id: m.id, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
     L: Object.fromEntries(d.listas.map(l => [l.clave, l.valores])),
@@ -394,7 +397,18 @@ async function guardar(kind, id, ui, row, prevResp) {
   if (id) check(await sb.from(T[kind].table).update(row).eq('id', id));
   else rid = check(await sb.from(T[kind].table).insert(row).select('id').single()).id;
   if ('responsables' in ui && JSON.stringify([...(ui.responsables || [])].sort()) !== JSON.stringify([...(prevResp || [])].sort())) await syncResp(kind, rid, ui.responsables, id ? prevResp : []);
+  if (kind === 'abono' && ui.roles) await syncRoles(rid, ui.roles, ui.rolesPrev || {});
   return rid;
+}
+// Rol de cada persona en la cuenta (solo lo que cambió). Sin el SQL 0029 se guarda igual, sin roles.
+export async function syncRoles(abonoId, roles, prev) {
+  if (!cols.abonoRol) return;
+  for (const [alias, rol] of Object.entries(roles)) {
+    if ((prev[alias] || '') === (rol || '')) continue;
+    const pid = idx.personaId.get(alias); if (!pid) continue;
+    const { error } = await sb.from('abono_responsables').update({ rol: rol || '' }).eq('abono_id', abonoId).eq('persona_id', pid);
+    if (error) { if (/rol/.test(error.message || '')) { cols.abonoRol = false; return; } throw new Error(error.message); }
+  }
 }
 export async function update(kind, id, patch, prevResp) {
   const { responsables, ...rest } = patch;

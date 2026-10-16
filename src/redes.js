@@ -22,6 +22,11 @@ export function initRedes(ctx) {
   const mesDe = id => meses().find(m => m._id === id);
   const mesCliente = (cliente, mes) => meses().find(m => m.cliente === cliente && m.mes === mes);
   const abonoRedes = cliente => S.A.find(a => a.cliente === cliente && a.tipo === 'Redes' && a.estado === 'Activo');
+  // Roles de la cuenta (Dirección, Cuentas y programación, Diseño, Ads…): a quién va el mes y a quién las piezas.
+  const conRol = (cliente, re, tipo) => { for (const a of S.A.filter(x => x.cliente === cliente && x.estado === 'Activo' && (!tipo || x.tipo === tipo))) { const r = Object.entries(a.roles || {}).find(([al, rol]) => re.test(rol) && (a.responsables || []).includes(al)); if (r) return r[0]; } return ''; };
+  const respMes = (cliente, ab) => conRol(cliente, /cuenta|community|programa/i, 'Redes') || ((ab && (ab.responsables || [])[0]) || '');
+  const respPieza = (cliente, z) => (z && z.ads === 'solo' ? conRol(cliente, /^ads/i) : '') || conRol(cliente, /diseñ/i) || '';
+  const insPiezas = (m, lista) => data.piezasIns(m, lista.map(u => (u.resp ? u : { ...u, resp: respPieza(m.cliente, u) })));
   const planDeAbono = a => { const pl = a && a.plan ? S.L['plan:' + a.plan] : null; const o = {}; (pl || []).forEach(x => { const [f, n] = x.split('='); if (f && +n > 0) o[f] = +n; }); return o; };
   const clientesMes = mes => {
     const cs = new Set(S.A.filter(a => a.tipo === 'Redes' && a.estado === 'Activo').map(a => a.cliente));
@@ -259,7 +264,7 @@ export function initRedes(ctx) {
   async function arrancar(cliente, mes, base) {
     const ab = abonoRedes(cliente);
     const plan = base ? { ...(base.plan || {}) } : planDeAbono(ab);
-    const m = await data.mesCrear({ cliente, mes, abonoId: ab ? ab._id : null, plan, resp: base ? base.resp : ((ab && (ab.responsables || [])[0]) || ''), estado: 'Planificación' });
+    const m = await data.mesCrear({ cliente, mes, abonoId: ab ? ab._id : null, plan, resp: base && base.resp ? base.resp : respMes(cliente, ab), estado: 'Planificación' });
     S.RM = [...meses(), m];
     // Las piezas fijas (las que se repiten un día de la semana) se crean solas.
     let nuevas = [];
@@ -270,7 +275,7 @@ export function initRedes(ctx) {
       fijas.forEach(z => { const k = z.fijo + '|' + z.formato + '|' + norm(z.tema); if (vistas.has(k)) return; vistas.add(k);
         const dow = DIAS.indexOf(z.fijo); for (let d = 1; d <= diasMes(mes); d++) { const f = fechaMes(mes, d); if (new Date(f + 'T12:00').getDay() === dow) nuevas.push({ formato: z.formato, red: z.red, tema: z.tema, hashtags: z.hashtags, hora: z.hora, fecha: f, fijo: z.fijo, resp: z.resp, estado: 'Idea' }); } });
     }
-    const ins = nuevas.length ? await data.piezasIns(m, nuevas) : [];
+    const ins = nuevas.length ? await insPiezas(m, nuevas) : [];
     P.set(m._id, ins);
     if (cfgGet && cfgGet('dropbox', 'crear') === 'si') data.dropbox({ accion: 'carpeta_mes', mes_id: m._id }).then(r => { m.carpeta = r.carpeta; m.carpetaUrl = r.carpeta_url; render(); }, () => {});
     return m;
@@ -319,7 +324,7 @@ export function initRedes(ctx) {
       const nuevas = (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && x.tema).map(x => ({ formato: formatos().includes(x.formato) ? x.formato : (formatos().find(f => norm(f).startsWith(norm(x.formato).slice(0, 4))) || formatos()[0]), tema: String(x.tema).slice(0, 200), copy: x.copy || '', hashtags: x.hashtags || '',
         fecha: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : '', estado: 'Idea', extra: !Object.keys(faltan).length }));
       if (!nuevas.length) { toast('Mr. Piggy no propuso nada. Probá de nuevo.'); }
-      else { const ins = await data.piezasIns(m, nuevas); P.set(m._id, [...ps, ...ins]); toast('Mr. Piggy propuso ' + ins.length + ' piezas. Quedaron como “Idea”: revisalas.'); }
+      else { const ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]); toast('Mr. Piggy propuso ' + ins.length + ' piezas. Quedaron como “Idea”: revisalas.'); }
     } catch (e) { toast(e.message); }
     btn.disabled = false; btn.innerHTML = t0; render();
   }
@@ -359,7 +364,7 @@ export function initRedes(ctx) {
         if (c.detalle) await data.comentar({ entidad: 'pieza', id: z._id, clienteId: m.cliente, texto: (c.accion === 'aprobada' ? '✓ Aprobada (por WhatsApp): ' : c.accion === 'cambios' ? 'Cambios pedidos (por WhatsApp): ' : 'Nota del cliente: ') + c.detalle, interno: true }).catch(() => {});
       }
       const nuevas = (Array.isArray(r.nuevas) ? r.nuevas : []).filter(x => x && x.tema).map(x => ({ formato: formatos().includes(x.formato) ? x.formato : formatos()[0], tema: x.tema, copy: x.copy || '', fecha: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') ? x.fecha : '', extra: true, estado: 'Idea' }));
-      if (nuevas.length) { const ins = await data.piezasIns(m, nuevas); P.set(m._id, [...ps, ...ins]); nu = ins.length; }
+      if (nuevas.length) { const ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]); nu = ins.length; }
       ctx.closeForm(); toast([ap ? ap + ' aprobadas' : '', ca ? ca + ' con cambios' : '', nu ? nu + ' nuevas (extra)' : ''].filter(Boolean).join(' · ') || 'No encontré cambios en ese chat'); render();
     } catch (e) { toast(e.message); b.disabled = false; b.textContent = 'Repartir en las piezas'; }
   }
@@ -392,7 +397,7 @@ export function initRedes(ctx) {
       const ps = piezas(m._id) || [], ya = enPlan(ps).filter(z => z.formato === fo).length, pl = +(m.plan || {})[fo] || 0, uso = f.elements.u ? f.elements.u.value : '';
       if (uso === 'solo' && data.cols && data.cols.piezaAds === false) { toast('Para marcar piezas de Ads falta correr el SQL 0028 en Supabase'); return; }
       const nuevas = Array.from({ length: n }, (_, i) => ({ formato: fo, estado: 'Idea', extra: uso !== 'solo' && pl > 0 && ya + i >= pl, red: 'Instagram', ...(uso ? { ads: uso } : {}) }));
-      try { const ins = await data.piezasIns(m, nuevas); P.set(m._id, [...ps, ...ins]); toast(n === 1 ? 'Pieza agregada' : n + ' piezas agregadas'); render(); } catch (er) { toast(er.message); }
+      try { const ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]); toast(n === 1 ? 'Pieza agregada' : n + ' piezas agregadas'); render(); } catch (er) { toast(er.message); }
     }
   }, true);
   document.addEventListener('change', async e => {

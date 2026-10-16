@@ -43,8 +43,9 @@ const DEF = {
   rubros: ['Ads', 'Programación', 'Fotografía', 'Audiovisual', 'Contenido', 'Diseño', 'Contable', 'Otro'],
   monedas: ['ARS', 'USD', 'EUR', 'GBP'],
   formatosRedes: ['Reels', 'Posts', 'Historias', 'Carruseles'],
+  rolesCuenta: ['Dirección', 'Cuentas y programación', 'Diseño', 'Ads', 'Contenido', 'Branding', 'Otro'],
 };
-const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores', monedas: 'Monedas (código de 3 letras: ARS, USD, EUR, GBP…)', formatosRedes: 'Formatos de redes (son también las carpetas de cada mes en Dropbox)' };
+const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores', monedas: 'Monedas (código de 3 letras: ARS, USD, EUR, GBP…)', formatosRedes: 'Formatos de redes (son también las carpetas de cada mes en Dropbox)', rolesCuenta: 'Roles en las cuentas de Redes y Ads' };
 const ESTADOS_ABONO = ['Activo', 'Pausado', 'Baja'];
 const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
 const CERRADOS = new Set(['Entregado', 'Cancelado']);
@@ -188,6 +189,33 @@ function picker(kind, o) {
   const ps = personas(); const all = [...ps, ...sel.filter(p => !ps.includes(p))];
   return '<details class="pick" data-pick="' + esc(key) + '"' + (S.openPick === key ? ' open' : '') + '><summary title="Cambiar responsables">' + whos(sel) + '</summary><div class="menu">' +
     all.map(p => '<label class="chk"><input type="checkbox" data-rtoggle="' + kind + '" data-id="' + esc(o._id) + '" value="' + esc(p) + '"' + (sel.includes(p) ? ' checked' : '') + '> ' + esc(p) + '</label>').join('') + '</div></details>';
+}
+/* ---------- Roles en las cuentas de Redes y Ads ---------- */
+const rolesCuenta = () => (S.L.rolesCuenta && S.L.rolesCuenta.length ? S.L.rolesCuenta : DEF.rolesCuenta);
+const rolDe = (a, alias) => (a && a.roles && a.roles[alias]) || '';
+const ordenRol = r => { const i = rolesCuenta().indexOf(r); return i < 0 ? 99 : i; };
+const equipoFijo = () => (S.L.equipoFijo || []).map(x => { const i = String(x).indexOf('='); return i > 0 ? { a: x.slice(0, i), rol: x.slice(i + 1) } : null; }).filter(x => x && personas().includes(x.a));
+// El equipo de un cliente en Redes y Ads: quién está y con qué rol (el de Redes manda si está en las dos).
+function equipoCuenta(cliente) {
+  const m = new Map();
+  S.A.filter(a => a.cliente === cliente && vivo(a) && (a.tipo === 'Redes' || a.tipo === 'Ads')).sort((x, y) => (x.tipo === 'Redes' ? 0 : 1) - (y.tipo === 'Redes' ? 0 : 1))
+    .forEach(ab => resp(ab).forEach(x => { const e = m.get(x) || { a: x, rol: '', tipos: [] }; e.rol = e.rol || rolDe(ab, x); e.tipos.push(ab.tipo); m.set(x, e); }));
+  return [...m.values()].sort((p, q) => ordenRol(p.rol) - ordenRol(q.rol) || cmp(p.a, q.a));
+}
+const conRolTxt = e => esc(e.a) + (e.rol ? ' <span class="muted">(' + esc(e.rol) + ')</span>' : '');
+// Selector de equipo con rol, para la tabla de Redes y Ads
+function pickerRol(o) {
+  const sel = [...resp(o)].sort((x, y) => ordenRol(rolDe(o, x)) - ordenRol(rolDe(o, y))), key = 'abono:' + o._id;
+  const resumen = sel.length ? '<span class="whos"><span class="avs">' + sel.map(p => av(p + (rolDe(o, p) ? ' · ' + rolDe(o, p) : ''), fotoDe(p))).join('') + '</span><span class="wn">' + esc(sel.join(', ')) + '</span></span>' : '<span class="muted">Sin asignar</span>';
+  if (!isStaff()) return resumen;
+  const ps = personas(), all = [...ps, ...sel.filter(p => !ps.includes(p))];
+  return '<details class="pick" data-pick="' + esc(key) + '"' + (S.openPick === key ? ' open' : '') + '><summary title="Quién trabaja en esta cuenta">' + resumen + '</summary><div class="menu menu-rol">' +
+    all.map(p => '<label class="rol-f"><span>' + av(p, fotoDe(p)) + esc(p) + '</span><select class="in sm" data-rrol="' + esc(o._id) + '" data-a="' + esc(p) + '" aria-label="Rol de ' + esc(p) + '">' + opt('', '—', sel.includes(p) ? '__' : '') + opt('__', 'Está, sin rol', sel.includes(p) && !rolDe(o, p) ? '__' : '') + rolesCuenta().map(r => opt(r, r, sel.includes(p) ? rolDe(o, p) : '')).join('') + '</select></label>').join('') + '</div></details>';
+}
+function equipoField(id, sel, roles, dis) {
+  const ps = personas(), all = [...ps, ...sel.filter(p => !ps.includes(p))];
+  const val = p => sel.includes(p) ? (roles[p] || '__') : '';
+  return '<div class="rol-lista" id="' + id + '">' + (all.length ? all.map(p => '<label class="rol-f"><span>' + av(p, fotoDe(p)) + esc(p) + '</span><select class="in sm" data-eqa="' + esc(p) + '"' + dis + ' aria-label="Rol de ' + esc(p) + '">' + opt('', 'No está en la cuenta', val(p)) + opt('__', 'Está, sin rol', val(p)) + rolesCuenta().map(r => opt(r, r, val(p))).join('') + '</select></label>').join('') : '<span class="muted">Cargá personas en Equipo.</span>') + '</div>';
 }
 function daysBadge(p) {
   if (!p.entrega || !isOpen(p)) return '';
@@ -962,7 +990,7 @@ function vPlanes() {
     return '<tr><td class="name"><span class="who1">' + av(f.c, cl(f.c).avatar, 'sq') + '<span><button class="btn link" data-act="ficha" data-cliente="' + esc(f.c) + '">' + esc(f.c) + '</button>' + (!vivo(r) && vivo(f.ads) ? '<span class="sub"><span class="sv" style="--c:var(--crit)">Ads sin Redes</span></span>' : '') + '</span></span></td>' +
       '<td>' + (r ? svChip(r.plan ? 'Plan ' + r.plan : 'Sin plan', '--t-rosa') : '<span class="muted">—</span>') + '</td>' +
       '<td>' + adsBtn(f) + '</td>' + precioCelda(f) +
-      '<td>' + picker('abono', f.base) + '</td>' +
+      '<td>' + pickerRol(f.base) + '</td>' +
       '<td class="mono">' + (f.base.desde ? esc(fmt(f.base.desde)) : '<span class="muted">—</span>') + (f.base.hasta ? ' → ' + esc(fmt(f.base.hasta)) : '') + '</td>' +
       '<td><select class="cellsel st" style="--c:var(' + (AB_COLOR[f.base.estado] || '--muted') + ')" aria-label="Estado de ' + esc(f.c) + '" data-upd="abono" data-id="' + esc(f.base._id) + '" data-field="estado"' + dis + '>' + optsFrom(ESTADOS_ABONO, f.base.estado || '') + '</select></td>' +
       '<td class="r nowrap">' + (m ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(m._id) + '">Ver el mes</button>' : '') + '<button class="btn ghost sm" data-act="edit" data-kind="abono" data-id="' + esc(f.base._id) + '">' + (isStaff() ? 'Editar' : 'Ver') + '</button></td></tr>'; }).join('');
@@ -990,8 +1018,9 @@ function vMis() {
   const others = o => resp(o).length > 1 ? ' · con ' + esc(resp(o).filter(x => x !== yo).join(', ')) : '';
   const group = (title, arr) => arr.length ? '<section class="sheet"><div class="sheet-h"><h2>' + title + '</h2><span class="muted num">' + arr.length + '</span></div><div class="rows">' + arr.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.cliente, p.tipo, etapaTxt(p)].filter(Boolean).join(' · ')) + others(p) + '</span></span>' + (daysBadge(p) || stPill(p.estado)) + '</button>').join('') + '</div></section>' : '';
   const misCl = [...new Set(cuentas.map(a => a.cliente))];
-  const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Redes</h2><span class="muted num">' + misCl.length + '</span></div>' + (misCl.length ? '<div class="rows">' + misCl.map(c => { const sv = servicioRedes(c), a = sv.redes || sv.ads, m = red().mesCliente(c, thisMonth());
-    return '<button class="row" ' + (m ? 'data-act="rmAbrir" data-id="' + esc(m._id) + '"' : 'data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"') + '><span class="d">Redes</span><span class="t"><b>' + esc(c) + '</b><span>' + servChips(c) + others(a) + '</span></span><span></span></button>'; }).join('') + '</div>' : emptyBox('Sin clientes de Redes a cargo', '')) + '</section>';
+  const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Cuentas de Redes</h2><span class="muted num">' + misCl.length + '</span></div>' + (misCl.length ? '<div class="rows">' + misCl.map(c => { const sv = servicioRedes(c), a = sv.redes || sv.ads, m = red().mesCliente(c, thisMonth()), eq = equipoCuenta(c), yoE = eq.find(e => e.a === yo), otrosE = eq.filter(e => e.a !== yo);
+    return '<button class="row row-cta" ' + (m ? 'data-act="rmAbrir" data-id="' + esc(m._id) + '"' : 'data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"') + '><span class="d">' + av(c, (S.C.find(x => x.nombre === c) || {}).avatar, 'sq') + '</span><span class="t"><b>' + esc(c) + '</b><span>' + servChips(c) + '</span>' +
+      '<span class="cta-eq">' + (yoE && yoE.rol ? '<strong>' + esc(yoE.rol) + '</strong>' : '') + (otrosE.length ? (yoE && yoE.rol ? ' · ' : '') + 'con ' + otrosE.map(conRolTxt).join(', ') : '') + '</span></span><span></span></button>'; }).join('') + '</div>' : emptyBox('Sin cuentas de Redes a cargo', '')) + '</section>';
   h += '<div class="grid2"><div class="stack">' + tkHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
     '<div class="stack">' + cuentasHtml +
     '<section class="sheet"><div class="sheet-h"><h2>Próximos pasos</h2>' + addBtn('comunicacion', 'Charla', null, 'sm') + '</div>' + (steps.length ? '<div class="rows">' + steps.map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Sin pasos pendientes', '')) + '</section>' +
@@ -1229,7 +1258,15 @@ function vListas() {
       arr.map((v, i) => '<span class="chip">' + esc(v) + (isStaff() && !(k === 'estadosProyecto' && CERRADOS.has(v)) ? '<button aria-label="Quitar ' + esc(v) + '" data-act="listDel" data-k="' + k + '" data-i="' + i + '">×</button>' : '<span style="width:8px"></span>') + '</span>').join('') +
       '</div>' + (isStaff() ? '<form class="addrow" data-list="' + k + '"><input class="in" id="li-' + k + '" placeholder="Agregar valor" value="' + esc(S.listDraft[k] || '') + '" data-bind="listDraft.' + k + '"><button class="btn" type="submit">Agregar</button></form>' : '') + '</div></section>';
   }
-  return h + '</div>' + (S.FL ? trab().flujosHtml() + planesHtml() : '');
+  return h + '</div>' + equipoFijoHtml() + (S.FL ? trab().flujosHtml() + planesHtml() : '');
+}
+// Quiénes están en todas las cuentas de Redes y con qué rol (se suman solos a cada cuenta nueva).
+function equipoFijoHtml() {
+  const fijo = equipoFijo(), rolF = a => (fijo.find(x => x.a === a) || {}).rol || '';
+  const staff = S.E.filter(e => e.activo !== false && e.persona && e.rol !== 'externo').map(e => e.persona).sort(cmp);
+  return '<h2 style="margin:24px 0 0">Equipo de las cuentas de Redes</h2><p class="muted" style="margin:0">Quién está en todas las cuentas y con qué rol. Se suman solos a cada cuenta nueva; el resto (diseño, Ads) se elige en cada cuenta.</p>' +
+    '<section class="sheet" style="margin-top:12px"><div class="rol-lista" style="padding:12px 16px">' + staff.map(a => '<label class="rol-f"><span>' + av(a, fotoDe(a)) + esc(a) + '</span><select class="in sm" data-eqfijo="' + esc(a) + '"' + (isStaff() ? '' : ' disabled') + ' aria-label="Rol fijo de ' + esc(a) + '">' + opt('', 'Según cada cuenta', rolF(a)) + rolesCuenta().map(r => opt(r, 'En todas · ' + r, rolF(a))).join('') + '</select></label>').join('') + '</div>' +
+    (isStaff() && fijo.length ? '<div class="count" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>' + esc(fijo.map(x => x.a + ' (' + x.rol + ')').join(', ')) + '</span><button class="btn sm" data-act="equipoFijoAplicar">Sumarlos a las cuentas activas</button></div>' : '') + '</section>';
 }
 
 // Piezas que incluye cada plan de redes (con eso arranca cada mes).
@@ -1443,12 +1480,12 @@ const FORMS = {
     { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, full: 1 },
     { k: 'tipo', label: 'Servicio', type: 'select', opts: () => [...new Set([...(S.L.tiposAbono || ['Redes', 'Ads']), ...(S.L.tipos || [])])], req: 1, hint: 'Lo que se cobra todos los meses con precio fijo: Redes, Ads o, si va mes a mes, Audiovisual, Diseño… Ads va siempre junto con Redes.' },
     { k: 'plan', label: 'Plan', type: 'select', opts: () => S.L.planes, blank: 'Sin plan' },
-    { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
+    { k: 'responsables', label: 'Quién trabaja en esta cuenta', type: 'equipo', full: 1, hint: 'Elegí el rol de cada persona. El mes de Redes se asigna a quien está en Cuentas y las piezas nuevas a quien está en Diseño.' },
     { k: 'desde', label: 'Desde (mes)', type: 'month' },
     { k: 'hasta', label: 'Hasta (mes, si se dio de baja)', type: 'month' },
     { k: 'estado', label: 'Estado', type: 'select', opts: () => ESTADOS_ABONO },
     { k: 'notas', label: 'Notas', type: 'textarea', full: 1 },
-  ], defaults: () => ({ tipo: 'Redes', estado: 'Activo', desde: thisMonth(), responsables: [] }), can: () => isStaff() },
+  ], defaults: () => ({ tipo: 'Redes', estado: 'Activo', desde: thisMonth(), responsables: equipoFijo().map(x => x.a), roles: Object.fromEntries(equipoFijo().map(x => [x.a, x.rol])) }), can: () => isStaff() },
   cliente: { arr: 'C', title: 'cliente', nuevo: 'Nuevo cliente', label: c => c.nombre, fields: [
     { k: 'nombre', label: 'Cliente', req: 1, full: 1 },
     { k: 'desde', label: 'Cliente desde (mes y año)', type: 'month', hint: 'Cuándo empezó a trabajar con àndale. No hace falta el día.' },
@@ -1521,6 +1558,7 @@ function fieldHtml(f, v, ro) {
   const id = 'f-' + f.k, dis = (ro || (f.staffOnly && !isStaff())) ? ' disabled' : '';
   const hint = f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '';
   if (f.type === 'check') return '<label class="chk ' + (f.full ? 'full' : '') + '"><input type="checkbox" id="' + id + '"' + (v ? ' checked' : '') + dis + '> ' + esc(f.label) + '</label>';
+  if (f.type === 'equipo') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span>' + equipoField(id, Array.isArray(v) ? v : [], (S.form && S.form.roles) || {}, dis) + hint + '</div>';
   if (f.type === 'multi') {
     const sel = Array.isArray(v) ? v : (v ? [v] : []); const ps = personas(); const all = [...ps, ...sel.filter(p => !ps.includes(p))];
     return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span><div class="multi" id="' + id + '">' + (all.length ? all.map(p => '<label><input type="checkbox" value="' + esc(p) + '"' + (sel.includes(p) ? ' checked' : '') + dis + '> ' + esc(p) + '</label>').join('') : '<span class="muted">Cargá personas en Equipo.</span>') + '</div></div>';
@@ -1540,6 +1578,7 @@ function openForm(kind, id, preset) {
   const ro = !def.can(rec);
   S.form = { kind, id: id || null, ro };
   const vals = rec ? Object.assign({}, rec) : Object.assign(def.defaults(), preset || {});
+  if (kind === 'abono') { S.form.roles = Object.assign({}, vals.roles || {}); S.form.rolesPrev = rec ? Object.assign({}, rec.roles || {}) : {}; }
   if (kind === 'cliente' && rec && !rec.estadoManual) vals.estado = '__auto';
   if (kind === 'cliente') vals.redes = Object.assign({}, vals.redes || {}, { web: vals.web || '' });
   let foot;
@@ -1583,6 +1622,7 @@ async function saveForm() {
     if (f.type === 'etapas') { out[f.k] = S.form.etapas || []; continue; }
     if (!el) continue;
     if (f.type === 'multi') out[f.k] = [...el.querySelectorAll('input:checked')].map(i => i.value);
+    else if (f.type === 'equipo') { const ss = [...el.querySelectorAll('select[data-eqa]')].filter(x => x.value); out[f.k] = ss.map(x => x.dataset.eqa); out.roles = Object.fromEntries(ss.map(x => [x.dataset.eqa, x.value === '__' ? '' : x.value])); out.rolesPrev = (S.form && S.form.rolesPrev) || {}; }
     else if (f.type === 'redes') { const o = {}; el.querySelectorAll('input[data-red]').forEach(i => { if (i.value.trim()) o[i.dataset.red] = i.value.trim(); }); out.web = o.web || ''; delete o.web; out[f.k] = o; }
     else out[f.k] = f.type === 'check' ? el.checked : el.value.trim();
     const e = $('#e-' + f.k); if (e) e.hidden = true;
@@ -1704,7 +1744,22 @@ const ACT = {
   clearF: () => { S.f = { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true }; render(); },
   cfEstado: t => { S.cf.estado = t.dataset.estado; render(); },
   afTipo: t => { S.af.tipo = t.dataset.tipo; render(); },
-  sumarAds: t => { const r = servicioRedes(t.dataset.c).redes; openForm('abono', null, { cliente: t.dataset.c, tipo: 'Ads', plan: '', responsables: r ? resp(r).slice() : [], desde: thisMonth() }); },
+  equipoFijoAplicar: async t => {
+    const fijo = equipoFijo(); if (!fijo.length) return; t.disabled = true; let n = 0;
+    try {
+      for (const a of S.A.filter(x => vivo(x) && x.tipo === 'Redes')) {
+        const antes = resp(a), next = [...new Set([...antes, ...fijo.map(x => x.a)])], roles = {};
+        fijo.forEach(x => { if (!rolDe(a, x.a)) roles[x.a] = x.rol; });
+        if (next.length === antes.length && !Object.keys(roles).length) continue;
+        if (next.length !== antes.length) await data.update('abono', a._id, { responsables: next }, antes);
+        if (Object.keys(roles).length) await data.syncRoles(a._id, roles, a.roles || {});
+        n++;
+      }
+      toast(n ? 'Listo: ' + n + (n === 1 ? ' cuenta actualizada' : ' cuentas actualizadas') : 'Ya estaban en todas');
+    } catch (err) { toast(err.message); }
+    await reload();
+  },
+  sumarAds: t => { const r = servicioRedes(t.dataset.c).redes; openForm('abono', null, { cliente: t.dataset.c, tipo: 'Ads', plan: '', responsables: r ? resp(r).slice() : [], roles: r ? Object.assign({}, r.roles || {}) : {}, desde: thisMonth() }); },
   ctab: t => { S.ctab = t.dataset.t; render(); },
   mlF: t => { S.mlF = t.dataset.f; S.mlAbierto = null; render(); },
   mlVer: t => { S.mlAbierto = S.mlAbierto === t.dataset.id ? null : t.dataset.id; render(); },
@@ -1802,6 +1857,17 @@ document.addEventListener('change', async e => {
     return;
   }
   if (t.dataset.bind && (t.type === 'checkbox' || t.tagName === 'SELECT')) { setBind(t.dataset.bind, t.type === 'checkbox' ? t.checked : t.value); render(); return; }
+  if (t.dataset.rrol) { // rol de una persona en una cuenta (tabla de Redes)
+    const rec = S.A.find(x => x._id === t.dataset.rrol), a = t.dataset.a; if (!rec) return;
+    const v = t.value, antes = resp(rec), next = v ? [...new Set([...antes, a])] : antes.filter(x => x !== a);
+    try { await data.update('abono', rec._id, { responsables: next }, antes); if (v) await data.syncRoles(rec._id, { [a]: v === '__' ? '' : v }, rec.roles || {}); toast(v ? a + (v === '__' ? ' está en la cuenta' : ': ' + v) : a + ' ya no está en la cuenta'); }
+    catch (err) { toast(err.message); }
+    await reload(); return;
+  }
+  if (t.dataset.eqfijo !== undefined) { // equipo fijo de Redes (Opciones)
+    const a = t.dataset.eqfijo, otros = equipoFijo().filter(x => x.a !== a);
+    saveListas('equipoFijo', [...otros, ...(t.value ? [{ a, rol: t.value }] : [])].map(x => x.a + '=' + x.rol)); return;
+  }
   if (t.dataset.rtoggle) {
     const kind = t.dataset.rtoggle, arr = S[FORMS[kind].arr];
     const rec = arr.find(x => x._id === t.dataset.id); if (!rec) return;
@@ -1943,6 +2009,7 @@ async function reload() {
     for (const [k, v] of Object.entries(d.L || {})) if ((k.startsWith('etapas:') || k.startsWith('plan:')) && Array.isArray(v)) L[k] = [...v];
     L.integraciones = Array.isArray(d.L.integraciones) ? [...d.L.integraciones] : [...INTEG_DEF];
     L.integraciones_cfg = Array.isArray(d.L.integraciones_cfg) ? [...d.L.integraciones_cfg] : [];
+    L.equipoFijo = Array.isArray(d.L.equipoFijo) ? [...d.L.equipoFijo] : [];
     Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, K: Array.isArray(d.K) ? d.K : null, L, status: 'ok', T: !!d.T, FL: d.FL || null, sinHilos: !d.T });
     if (Array.isArray(d.N)) S.N = d.N;
     Object.assign(S, { RM: d.RM === undefined ? null : d.RM, PD: d.PD === undefined ? null : d.PD, BF: d.BF === undefined ? null : d.BF, EN: d.EN === undefined ? null : d.EN, SI: d.SI === undefined ? null : d.SI });
