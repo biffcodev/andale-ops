@@ -43,6 +43,13 @@ export function initAumentos(ctx, k, h) {
     const p = conAum.pct != null ? conAum.pct : (ant && ant.monto ? (conAum.monto / ant.monto - 1) * 100 : null);
     return fmt(conAum.desde) + (p != null ? ' · ' + pctTxt(Math.round(p * 10) / 10) : '') + (conAum.motivo ? ' · ' + conAum.motivo : '');
   };
+  // Último monto cargado de cada uno y el primer mes en que puede regir un aumento (el siguiente a ese).
+  const ultimaFila = c => AD.RM.filter(r => r.colaborador_id === c.id).sort((a, b) => b.desde.localeCompare(a.desde))[0] || null;
+  const puedeDesde = c => { const u = ultimaFila(c); const sig = addMonth(thisMonth(), 1); return u && addMonth(u.desde, 1) > sig ? addMonth(u.desde, 1) : sig; };
+  function sugerido(a) {
+    const cs = candidatos(a).filter(ultimaFila); if (!cs.length) return addMonth(thisMonth(), 1);
+    return cs.map(puedeDesde).sort()[0];
+  }
   function calc(c, s) {
     const b = base(c, s); if (!b.r) return { b };
     const v = parseMonto(s.valor), propio = s.pctPor[c.id] != null && s.pctPor[c.id] !== '' ? parseMonto(s.pctPor[c.id]) : null;
@@ -62,6 +69,7 @@ export function initAumentos(ctx, k, h) {
   /* ---------- vista ---------- */
   function vista(a) {
     const s = st(a), cs = candidatos(a), q = norm(s.q);
+    if (!s.desdeTocado && !s.edit) s.desde = sugerido(a);
     const grupos = [...new Set(cs.map(c => grupoDe(a, c)))];
     const vis = cs.filter(c => !q || norm(c.nombre).includes(q));
     const eligibles = cs.filter(c => { const b = base(c, s); return b.r && !b.choque; });
@@ -72,9 +80,9 @@ export function initAumentos(ctx, k, h) {
       const pctVal = s.pctPor[c.id] != null ? s.pctPor[c.id] : (x.pct != null ? pctN(x.pct) : '');
       return '<tr class="' + (on ? '' : 'lt-off') + '"><td><input type="checkbox" data-ausel="' + esc(c.id) + '" data-au-a="' + a + '"' + (on ? ' checked' : '') + (ok ? '' : ' disabled') + ' aria-label="Elegir a ' + esc(c.nombre) + '"></td>' +
         '<td><b>' + esc(c.nombre) + '</b><span class="sub">' + esc(tipo) + '</span></td>' +
-        '<td class="r">' + (b.r ? '<span class="money">' + money(b.r.monto, b.r.moneda) + '</span><span class="sub">' + esc(b.r.moneda) + ' · ' + esc(b.concepto) + '</span>' : '<span class="muted">' + (a === 'sueldos' ? 'sin sueldo cargado' : 'por trabajo') + '</span>') + '</td>' +
+        '<td class="r">' + (b.r ? '<span class="money">' + money(b.r.monto, b.r.moneda) + '</span><span class="sub">' + esc(b.r.moneda) + ' · ' + esc(b.concepto) + '</span>' : ultimaFila(c) ? '<span class="money">' + money(ultimaFila(c).monto, ultimaFila(c).moneda) + '</span><span class="sub">arranca ' + esc(fmt(ultimaFila(c).desde)) + '</span>' : '<span class="muted">' + (a === 'sueldos' ? 'sin sueldo cargado' : 'por trabajo') + '</span>') + '</td>' +
         '<td>' + esc(ultimo(c)) + '</td>' +
-        '<td class="r">' + (b.choque ? '<span class="muted">ya cambia en ' + esc(fmt(s.desde)) + '</span>' : on ? '<input class="lt-pin' + (x.propio ? ' mod' : '') + '" id="au-pct-' + esc(c.id) + '" data-aupct="' + esc(c.id) + '" data-au-a="' + a + '" inputmode="decimal" data-nofmt value="' + esc(pctVal) + '" aria-label="Porcentaje para ' + esc(c.nombre) + '">' : '—') + '</td>' +
+        '<td class="r">' + (!ok && ultimaFila(c) ? '<span class="muted" title="Un aumento rige después de que arranca el monto actual">desde ' + esc(fmt(puedeDesde(c))) + '</span>' : on ? '<input class="lt-pin' + (x.propio ? ' mod' : '') + '" id="au-pct-' + esc(c.id) + '" data-aupct="' + esc(c.id) + '" data-au-a="' + a + '" inputmode="decimal" data-nofmt value="' + esc(pctVal) + '" aria-label="Porcentaje para ' + esc(c.nombre) + '">' : '—') + '</td>' +
         '<td class="r">' + (on && x.nuevo != null ? '<b class="money">' + money(x.nuevo, b.r.moneda) + '</b>' : '<span class="muted">' + (on ? '—' : 'no cambia') + '</span>') + '</td>' +
         '<td class="r">' + (on && x.nuevo != null ? '<span class="lt-dif">' + (x.dif >= 0 ? '+' : '−') + esc(money(Math.abs(x.dif), b.r.moneda)) + '</span>' : '—') + '</td></tr>';
     }).join('');
@@ -82,7 +90,8 @@ export function initAumentos(ctx, k, h) {
     const antes = {}, despues = {}, dif = {}; sel.forEach(o => { add(antes, o.x.b.r.moneda, o.x.b.r.monto); add(despues, o.x.b.r.moneda, o.x.nuevo); add(dif, o.x.b.r.moneda, o.x.dif); });
     const tA = Object.values(antes).reduce((p, v) => p + v, 0), tD = Object.values(despues).reduce((p, v) => p + v, 0);
     const editando = s.edit && loteDe(s.edit);
-    let out = (editando ? '<section class="callout"><p><b>Editando el lote desde ' + esc(fmt(editando.desde)) + '</b>' + (editando.motivo ? ' · ' + esc(editando.motivo) : '') + '. Al guardar se reemplaza por lo que ves acá.</p><button class="btn" data-act="auCancelar" data-a="' + a + '">Cancelar edición</button></section>' : '') +
+    const sug = sugerido(a);
+    let out = (!eligibles.length && cs.some(ultimaFila) ? '<section class="callout"><p><b>Nadie puede tener un aumento desde ' + esc(monthLabel(s.desde)) + '.</b> Un aumento rige después de que arranca el monto actual' + (sug !== s.desde ? ': el primer mes posible es ' + esc(monthLabel(sug)) + '.' : '.') + '</p>' + (sug !== s.desde ? '<button class="btn primary" data-act="auSet" data-a="' + a + '" data-k="desde" data-v="' + sug + '">Usar ' + esc(monthLabel(sug)) + '</button>' : '') + '</section>' : '') + (editando ? '<section class="callout"><p><b>Editando el lote desde ' + esc(fmt(editando.desde)) + '</b>' + (editando.motivo ? ' · ' + esc(editando.motivo) : '') + '. Al guardar se reemplaza por lo que ves acá.</p><button class="btn" data-act="auCancelar" data-a="' + a + '">Cancelar edición</button></section>' : '') +
       '<div class="lt-lay"><section class="sheet lt-tab"><div class="lt-sel"><div class="lt-chips">' +
       '<button class="lt-chip" data-act="auSel" data-a="' + a + '" data-g="*">Todos</button><button class="lt-chip" data-act="auSel" data-a="' + a + '" data-g="">Ninguno</button>' +
       grupos.map(g => '<button class="lt-chip' + (eligibles.filter(c => grupoDe(a, c) === g).length && eligibles.filter(c => grupoDe(a, c) === g).every(c => s.sel.has(c.id)) ? ' on' : '') + '" data-act="auSel" data-a="' + a + '" data-g="' + esc(g) + '">' + esc(g) + '</button>').join('') +
@@ -131,7 +140,7 @@ export function initAumentos(ctx, k, h) {
       try { await data.insMany('remuneraciones', rows); }
       catch (e) { if (!s.edit) await data.del('lotes_aumento', lid).catch(() => {}); throw e; }
       toast((s.edit ? 'Lote actualizado: ' : 'Lote aplicado: ') + (filas.length === 1 ? '1 persona' : filas.length + ' personas'));
-      AD.au[a] = { ...nuevoEstado(), desde: s.desde };
+      AD.au[a] = { ...nuevoEstado(), desde: s.desde, desdeTocado: true };
       await ctx.reload();
     } catch (e) { toast(/candado|ya rige|lote/i.test(e.message || '') ? e.message : 'No se pudo guardar: ' + e.message); }
   }
@@ -170,7 +179,7 @@ export function initAumentos(ctx, k, h) {
     auSel: t => { const a = t.dataset.a, s = st(a), g = t.dataset.g; const el = candidatos(a).filter(c => { const b = base(c, s); return b.r && !b.choque; });
       if (g === '*') el.forEach(c => s.sel.add(c.id)); else if (g === '') s.sel.clear(); else { const del = el.filter(c => grupoDe(a, c) === g); const todos = del.every(c => s.sel.has(c.id)); del.forEach(c => todos ? s.sel.delete(c.id) : s.sel.add(c.id)); }
       ctx.render(); },
-    auSet: t => { const s = st(t.dataset.a); s[t.dataset.k] = t.dataset.v; if (t.dataset.k === 'modo') s.valor = ''; ctx.render(); },
+    auSet: t => { const s = st(t.dataset.a); s[t.dataset.k] = t.dataset.v; if (t.dataset.k === 'desde') s.desdeTocado = true; if (t.dataset.k === 'modo') s.valor = ''; ctx.render(); },
     auOk: t => aplicar(t.dataset.a),
     auEdit: t => editar(t.dataset.a, t.dataset.id),
     auCancelar: t => { AD.au[t.dataset.a] = nuevoEstado(); ctx.render(); },
@@ -185,7 +194,7 @@ export function initAumentos(ctx, k, h) {
     const t = e.target; if (!t || !t.dataset) return;
     if (t.dataset.ausel) { const s = st(t.dataset.auA); if (t.checked) s.sel.add(t.dataset.ausel); else s.sel.delete(t.dataset.ausel); ctx.render(); return; }
     if (t.dataset.aupct) { const s = st(t.dataset.auA); s.pctPor[t.dataset.aupct] = t.value; if (e.type === 'change' || t.value === '') ctx.render(); else { clearTimeout(onInput.tm); onInput.tm = setTimeout(ctx.render, 350); } return; }
-    if (t.dataset.auk) { const s = st(t.dataset.auA); s[t.dataset.auk] = t.value; if (t.dataset.auk !== 'motivo') { clearTimeout(onInput.tm); onInput.tm = setTimeout(ctx.render, t.dataset.auk === 'q' ? 150 : 350); } }
+    if (t.dataset.auk) { const s = st(t.dataset.auA); s[t.dataset.auk] = t.value; if (t.dataset.auk === 'desde') s.desdeTocado = true; if (t.dataset.auk !== 'motivo') { clearTimeout(onInput.tm); onInput.tm = setTimeout(ctx.render, t.dataset.auk === 'q' ? 150 : 350); } }
   };
   document.addEventListener('input', onInput); document.addEventListener('change', e => { if (e.target && e.target.dataset && e.target.dataset.ausel) return; if (e.target && e.target.dataset && (e.target.dataset.aupct || e.target.dataset.auk === 'desde')) onInput(e); });
   return { vista, actions, timeline, editar, loteDe };

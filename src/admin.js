@@ -26,7 +26,7 @@ export function initAdmin(ctx) {
     pp: { sel: new Set(), pct: '', desde: addMonth(thisMonth(), 1), motivo: '' }, form: null };
 
   /* ---------- utilidades de plata ---------- */
-  function money(n, cur) { if (n === null || n === undefined || n === '' || isNaN(n)) return '—'; try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: cur || 'ARS', maximumFractionDigits: 2, minimumFractionDigits: 0 }).format(n); } catch (e) { return (cur || '') + ' ' + n; } }
+  function money(n, cur) { if (n === null || n === undefined || n === '' || isNaN(n)) return '—'; try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: cur || 'ARS', maximumFractionDigits: 2, minimumFractionDigits: Math.abs(Math.round(n * 100)) % 100 ? 2 : 0 }).format(n); } catch (e) { return (cur || '') + ' ' + n; } }
   // Punto o coma: el símbolo que se use es el decimal (ver formato.js).
   const parseMonto = leerNumero;
   const r2 = n => Math.round(n * 100) / 100;
