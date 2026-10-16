@@ -82,8 +82,10 @@ Deno.serve(async req => {
   let from = (cfgMail && cfgMail.from) || Deno.env.get('EMAIL_FROM') || 'àndale <administracion@weareandale.com>';
   let replyTo = (cfgMail && cfgMail.reply_to) || Deno.env.get('EMAIL_REPLY_TO') || ((from.match(/<([^>]+)>/) || [, from])[1]) || 'administracion@weareandale.com';
   if (tipo === 'Mensaje') {
-    // Sale con el nombre de quien escribe y las respuestas le llegan a esa persona.
-    const { data: p } = await adm.from('personas').select('alias, nombre, email').eq('id', yo.id).maybeSingle();
+    // Sale con el nombre de quien firma (quien escribe o la persona elegida en "Firma") y las respuestas le llegan a esa persona.
+    const pide = typeof b.firmante_id === 'string' && /^[0-9a-f-]{36}$/i.test(b.firmante_id) ? b.firmante_id : yo.id;
+    let { data: p } = await adm.from('personas').select('alias, nombre, email, activo, rol').eq('id', pide).maybeSingle();
+    if (!p || p.activo === false || p.rol === 'externo') ({ data: p } = await adm.from('personas').select('alias, nombre, email, activo, rol').eq('id', yo.id).maybeSingle());
     const dir = (from.match(/<([^>]+)>/) || [, from])[1];
     const nombre = String((p && (p.nombre || p.alias)) || yo.alias || '').replace(/[<>"]/g, '').trim();
     if (nombre) from = nombre + ' · àndale <' + dir + '>';

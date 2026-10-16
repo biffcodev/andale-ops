@@ -1,7 +1,7 @@
 // Mails libres a clientes (fuera de cobranza y documentos): novedades, pedir material, coordinar, avisos.
 // Los puede mandar todo el equipo. Salen con el nombre de quien escribe y las respuestas le llegan a esa persona.
 // Mr. Piggy ayuda a redactar, mejorar, acortar o pasar al inglés.
-import { firmaDe } from './firma.js';
+import { firmaDe, firmanteDe, firmaSelect, personaIdDe } from './firma.js';
 import * as E from './emails.js';
 
 // Datos de marca para el pie cuando no hay acceso a Ajustes (equipo): sin datos bancarios.
@@ -45,7 +45,8 @@ export function initMails(ctx) {
   }
   const nombreDe = n => (n ? destino(n).nombre : '');
   const mailDe = n => destino(n).para.join(', ');
-  const firma = () => firmaDe(S);
+  const firma = () => (st.firmante === '' ? null : firmaDe(S, st.firmante || undefined));
+  const saleComo = () => { const e = (S.E || []).find(x => x.persona === (st.firmante || (S.me && S.me.alias))) || {}; return (e.nombre || e.persona || (S.me && (S.me.nombre || S.me.alias)) || '') + ' · àndale'; };
   const marca = () => (ctx.marca && ctx.marca()) || MARCA_DEF;
   const personal = (t, n) => String(t || '').replace(/\{nombre\}/g, nombreDe(n) || '').replace(/Hola ,/g, 'Hola,');
   const val = id => (($('#ml-' + id) || {}).value || '').trim();
@@ -85,7 +86,7 @@ export function initMails(ctx) {
 
   function open(o = {}) {
     st.clientes = (o.clientes || []).filter(n => S.C.some(c => c.nombre === n));
-    st.modo = 'principal'; st.sel = new Set(); st.selDe = null;
+    st.modo = 'principal'; st.sel = new Set(); st.selDe = null; st.firmante = o.firmante !== undefined ? o.firmante : firmanteDe(S, 'Mensaje');
     if (st.clientes.length === 1) porDefecto(st.clientes[0], o.para);
     const p = $('#panel');
     const pl = PLANTILLAS.map(([k, l]) => opt(k, l, '')).join('');
@@ -107,8 +108,9 @@ export function initMails(ctx) {
       '<div class="field"><label for="ml-boton">Texto del botón</label><input id="ml-boton" placeholder="Ver más"></div>' +
       '<div class="field full"><label for="ml-cc">CC</label><input id="ml-cc" placeholder="Opcional"></div>' +
       '<label class="chk full"><input type="checkbox" id="ml-copia" checked> Mandarme una copia</label></div></details>' +
+      '<div class="field full"><label for="ml-firma">Firma</label>' + firmaSelect('ml-firma', S, st.firmante, esc) + '<span class="hint">Quién firma. Si firma otra persona, el mail sale con su nombre y las respuestas le llegan a ella.</span></div>' +
       '<div class="field full"><span class="lbl">Vista previa</span><iframe id="ml-prev" title="Vista previa del mail" style="width:100%;height:520px;border:1px solid var(--line);border-radius:8px;background:#f1f1f1"></iframe></div>' +
-      '</div><div class="panel-f"><span class="muted" style="font-size:13px">Sale como ' + esc((S.me && (S.me.nombre || S.me.alias)) || '') + ' · àndale</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="ml-send">Enviar</button></span></div></form>';
+      '</div><div class="panel-f"><span class="muted" style="font-size:13px" id="ml-sale">Sale como ' + esc(saleComo()) + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="ml-send">Enviar</button></span></div></form>';
     p.hidden = false; $('#scrim').hidden = false;
     chips();
   }
@@ -150,7 +152,7 @@ export function initMails(ctx) {
       btn.textContent = 'Enviando ' + (ok + errs.length + 1) + ' de ' + (destinos.length - sin.length) + '…';
       const b = build(d.n);
       try {
-        await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(d.n) || null, para: d.para, cc: val('cc'), asunto: b.asunto, html: b.html, texto: b.texto, copia: $('#ml-copia') ? $('#ml-copia').checked : true });
+        await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(d.n) || null, para: d.para, cc: val('cc'), asunto: b.asunto, html: b.html, texto: b.texto, copia: $('#ml-copia') ? $('#ml-copia').checked : true, firmante_id: st.firmante ? personaIdDe(S, st.firmante) : null });
         ok++;
       } catch (e) { errs.push(d.n + ': ' + e.message); }
     }
@@ -169,6 +171,7 @@ export function initMails(ctx) {
     }
     if (t.dataset && t.dataset.mlk) { if (t.checked) st.sel.add(t.dataset.mlk); else st.sel.delete(t.dataset.mlk); preview(); return; }
     if (t.id === 'ml-modo') { st.modo = t.value; chips(); return; }
+    if (t.id === 'ml-firma') { st.firmante = t.value; const s2 = $('#ml-sale'); if (s2) s2.textContent = 'Sale como ' + saleComo(); preview(); return; }
     if (t.id === 'ml-tpl') { const x = PLANTILLAS.find(p => p[0] === t.value); if (x) { if (x[2]) $('#ml-asunto').value = x[2]; $('#ml-mensaje').value = x[3]; preview(); } return; }
   });
   document.addEventListener('input', e => {

@@ -1,7 +1,7 @@
 // Administración: precios y aumentos, cierre de mes (resumen → comprobante → cobro → recordatorio), facturas.
 // Solo para administradores. La base de datos además lo impide para otros roles.
 import { leerNumero, cuit as fmtCuit } from './formato.js';
-import { firmaDe } from './firma.js';
+import { firmaDe, firmanteDe, firmaSelect, personaIdDe } from './firma.js';
 import * as data from './data.js';
 import * as E from './emails.js';
 import { initEquipo } from './equipo.js';
@@ -257,7 +257,9 @@ export function initAdmin(ctx) {
     const l = ks.length ? ks.map(k => k.email) : [cadm(cliente).email_facturacion || c.email || ''];
     return [...new Set(l.flatMap(x => String(x).split(/[,;\s]+/)).map(x => x.trim().toLowerCase()).filter(Boolean))].join(', ');
   };
-  const firma = () => firmaDe(S);
+  // Firma del mail que se está armando: AD.firmante = alias de quien firma, '' = sin firma (se elige en cada mail).
+  const firma = () => (AD.firmante === '' ? null : firmaDe(S, AD.firmante || undefined));
+  const firmaBox = () => '<div class="field full"><label for="mail-firma">Firma</label>' + firmaSelect('mail-firma', S, AD.firmante, esc) + '<span class="hint">Quién firma este mail. El de cada tipo se elige en Configuración › Opciones.</span></div>';
   const pdfLib = () => import('./docs.js');
   const estiloDoc = () => ((AD.AJ && AD.AJ.documentos) || {}).estilo || 'editorial';
   const hoyDMY = () => { const [y, m, d] = today().split('-'); return d + '/' + m + '/' + y; };
@@ -284,6 +286,7 @@ export function initAdmin(ctx) {
   // Compositor: vista previa en vivo del email con la marca, edición de destinatarios, asunto y mensaje.
   let prevT;
   function openComposer(o) {
+    AD.firmante = o.firmante !== undefined ? o.firmante : firmanteDe(S, o.tipo);
     const base = o.build({ mensaje: o.mensaje || '', ...(o.values || {}) });
     const vals = Object.assign({ para: o.para || '', cc: '', asunto: o.asunto || base.asunto, mensaje: o.mensaje || '', copia: true }, o.values || {});
     const adj = o.adjuntos || [];
@@ -299,14 +302,14 @@ export function initAdmin(ctx) {
         { k: 'mensaje', label: 'Mensaje', type: 'textarea', rows: 7, full: 1 },
         { k: 'copia', label: 'Mandarme una copia a administracion@weareandale.com', type: 'check' },
       ],
-      extra: '<div class="field full" id="mail-adj">' + adjHtml(adj, o) + '</div>' +
+      extra: '<div class="field full" id="mail-adj">' + adjHtml(adj, o) + '</div>' + firmaBox() +
         '<div class="field full"><span class="lbl">Vista previa</span><iframe id="mail-prev" title="Vista previa del email" style="width:100%;height:560px;border:1px solid var(--line);border-radius:8px;background:#f1f1f1"></iframe></div>' +
         '<div class="toolbar" style="grid-column:1/-1"><button type="button" class="btn sm" data-act="aMailCopy">Copiar texto (WhatsApp)</button>' + (o.extraBtns || '') + '</div>',
       onSave: async v => {
         if (o.pideAdjunto && !adj.length && !AD.sinAdjOk) { AD.sinAdjOk = true; throw new Error('No tiene el PDF adjunto: adjuntalo con “Adjuntar archivo”. Si igual querés mandarlo así, tocá Enviar otra vez.'); }
         const b = o.build(v);
         const r = await data.sendEmail({ tipo: o.tipo, cliente_id: o.cliente ? data.ids.cliente(o.cliente) : null, periodo: o.periodo ? o.periodo + '-01' : null, factura_id: o.factura_id || null,
-          para: v.para, cc: v.cc, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia, adjuntos: adj.map(a => ({ nombre: a.nombre, base64: a.base64 })) });
+          para: v.para, cc: v.cc, asunto: v.asunto, html: b.html, texto: b.texto, copia: v.copia, adjuntos: adj.map(a => ({ nombre: a.nombre, base64: a.base64 })), firmante_id: AD.firmante ? personaIdDe(S, AD.firmante) : null });
         if (o.onSent) await o.onSent(v, r);
         toast('Email enviado a ' + v.para);
       },
@@ -316,6 +319,8 @@ export function initAdmin(ctx) {
   }
   const adjHtml = (adj, o) => (adj.length || (o && o.adjuntar) ? '<span class="lbl">Adjuntos</span><div class="tags" style="gap:6px;align-items:center">' + adj.map((a, i) => '<span class="adj-ch"><button type="button" class="btn sm" data-act="aAdjVer" data-i="' + i + '">' + ICON.clip + esc(a.nombre) + '</button><button type="button" class="btn ghost sm" data-act="aAdjQuitar" data-i="' + i + '" aria-label="Quitar adjunto">✕</button></span>').join('') +
     ((o && o.adjuntar) || adj.length ? '<label class="btn sm ghost">' + ICON.clip + 'Adjuntar archivo<input type="file" data-mailadj="1" accept="application/pdf,image/*" multiple hidden></label>' : '') + '</div>' : '');
+  // Cambiar quién firma el mail que se está armando
+  document.addEventListener('change', e => { if (e.target && e.target.id === 'mail-firma') { AD.firmante = e.target.value; refreshPreview(); } });
   // Adjuntar desde la compu (por ejemplo el PDF de la factura de ARCA).
   document.addEventListener('change', async e => {
     const t = e.target; if (!t.dataset || !t.dataset.mailadj || !AD.form || !AD.form.composer) return;
@@ -342,6 +347,7 @@ export function initAdmin(ctx) {
 
   // Envío masivo: misma plantilla para varios clientes, uno por uno, con su PDF si corresponde.
   function openBulk(o) {
+    AD.firmante = firmanteDe(S, o.tipo || 'Resumen de cuenta');
     const conMail = o.items.filter(i => i.para);
     openPanel({
       title: o.titulo, eyebrow: 'Envío por email', saveLabel: 'Enviar', busyLabel: 'Enviando…',
@@ -354,7 +360,7 @@ export function initAdmin(ctx) {
       ],
       extra: '<div class="field full"><span class="lbl">Destinatarios</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' +
         o.items.map((it, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-bulk="' + i + '"' + (it.para ? ' checked' : ' disabled') + '><span class="t"><b>' + esc(it.label) + '</b><span>' + esc(it.para || 'sin email · cargalo en Datos de facturación') + (it.sub ? ' · ' + esc(it.sub) : '') + '</span></span><span class="days far" id="bulk-st-' + i + '"></span></label>').join('') + '</div></div>' +
-        '<p class="formnote" id="bulk-prog" style="grid-column:1/-1" aria-live="polite"></p>',
+        firmaBox() + '<p class="formnote" id="bulk-prog" style="grid-column:1/-1" aria-live="polite"></p>',
       onSave: async v => {
         const sel = o.items.map((it, i) => [it, i]).filter(([it, i]) => it.para && ($('[data-bulk="' + i + '"]') || {}).checked);
         if (!sel.length) throw new Error('No hay destinatarios seleccionados');
@@ -472,6 +478,7 @@ export function initAdmin(ctx) {
     });
   }
   function epConfirmarPanel(e) {
+    AD.firmante = firmanteDe(S, 'Resumen de cuenta');
     const m = e.periodo, o = bulkResumenes(m), items = (o ? o.items : []).filter(it => e.resumen_ids.includes(it.r.id));
     if (!items.length) { toast('Esos resúmenes ya no están pendientes de enviar'); return; }
     openPanel({
@@ -479,7 +486,7 @@ export function initAdmin(ctx) {
       intro: 'Salen el <b>' + esc(cuandoTxt(e.enviar_el)) + '</b>. Revisá cada uno (tocá <b>Ver PDF</b>) y, si está todo bien, confirmá. Se manda exactamente esto; si después cambiás algún resumen, ese no sale hasta que vuelvas a confirmar.',
       values: {}, fields: [],
       extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + items.map(it => '<div class="row" style="cursor:default"><span class="t"><b>' + esc(it.label) + '</b><span>' + esc(it.para || 'sin email: no sale') + '</span></span><span class="money">' + esc(it.sub) + '</span><button type="button" class="btn sm" data-act="epVer" data-id="' + esc(it.r.id) + '">Ver PDF</button></div>').join('') + '</div>' +
-        '<p class="formnote">Asunto: <b>' + esc(e.asunto) + '</b></p><p class="formnote" id="ep-prog" aria-live="polite"></p></div>',
+        '<p class="formnote">Asunto: <b>' + esc(e.asunto) + '</b></p></div>' + firmaBox() + '<p class="formnote" id="ep-prog" aria-live="polite" style="grid-column:1/-1"></p>',
       onSave: async () => {
         await data.del('envios_items', e.id, 'envio_id');
         const filas = []; let n = 0;
@@ -575,7 +582,7 @@ export function initAdmin(ctx) {
           titulo: 'Invoice ' + (f.numero || ''), eyebrow: f.cliente, tipo: 'Factura enviada', cliente: f.cliente, periodo: f.periodo || null, factura_id: f.id,
           para: mailsDe(f.cliente), asunto: 'Invoice ' + (f.numero || '') + ' · àndale',
           mensaje: 'Hi' + (nom ? ' ' + nom : '') + ',\n\nPlease find attached invoice ' + (f.numero || '') + ' for ' + PDFm(f.monto, f.moneda) + (f.vencimiento ? ', due ' + new Date(f.vencimiento + 'T12:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '') + '. Payment details are included in the PDF.\n\nThank you!',
-          build: v => E.libreEmail({ cfg: cfgMarca(), cuenta: f.cliente, titulo: 'Invoice ' + (f.numero || ''), mensaje: v.mensaje, firma: firmaDe(S), asunto: v.asunto }),
+          build: v => E.libreEmail({ cfg: cfgMarca(), cuenta: f.cliente, titulo: 'Invoice ' + (f.numero || ''), mensaje: v.mensaje, firma: firma(), asunto: v.asunto }),
         });
         return;
       }

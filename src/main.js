@@ -20,7 +20,7 @@ import { initInformes } from './informes.js';
 import { initReloj } from './reloj.js';
 import { initFichaMarca } from './fichamarca.js';
 import { initAutomatizar } from './automatizar.js';
-import { firmaDe } from './firma.js';
+import { firmaDe, firmanteDe, firmaConfig, firmantes, personaIdDe, FIRMA_YO, FIRMA_NO } from './firma.js';
 import { initPerfil, aplicarTema, temaGuardado } from './perfil.js';
 import { masMenu, vistaSel, vistaDe, guardarVista, toastAccion, uiActs, filtrosMenu, reabrir } from './ui.js';
 import * as E from './emails.js';
@@ -1260,7 +1260,16 @@ function vListas() {
       arr.map((v, i) => '<span class="chip">' + esc(v) + (isStaff() && !(k === 'estadosProyecto' && CERRADOS.has(v)) ? '<button aria-label="Quitar ' + esc(v) + '" data-act="listDel" data-k="' + k + '" data-i="' + i + '">×</button>' : '<span style="width:8px"></span>') + '</span>').join('') +
       '</div>' + (isStaff() ? '<form class="addrow" data-list="' + k + '"><input class="in" id="li-' + k + '" placeholder="Agregar valor" value="' + esc(S.listDraft[k] || '') + '" data-bind="listDraft.' + k + '"><button class="btn" type="submit">Agregar</button></form>' : '') + '</div></section>';
   }
-  return h + '</div>' + equipoFijoHtml() + (S.FL ? trab().flujosHtml() + planesHtml() : '');
+  return h + '</div>' + firmasHtml() + equipoFijoHtml() + (S.FL ? trab().flujosHtml() + planesHtml() : '');
+}
+// Quién firma los mails (se puede cambiar en cada mail antes de mandarlo).
+function firmasHtml() {
+  const c = firmaConfig(S), ps = firmantes(S);
+  const sel = (k, v) => '<select class="in" data-firmacfg="' + k + '"' + (isStaff() ? '' : ' disabled') + '>' + opt(FIRMA_YO, 'Quien lo manda', v) + ps.map(e => opt(e.persona, (e.nombre || e.persona) + (e.puesto ? ' · ' + e.puesto : ''), v)).join('') + opt(FIRMA_NO, 'Sin firma', v) + '</select>';
+  return '<h2 style="margin:24px 0 0">Firma de los mails</h2><p class="muted" style="margin:0">Con qué firma salen los mails. Todos llevan además los datos de àndale al pie. En cada mail se ve la firma y se puede cambiar antes de mandarlo.</p>' +
+    '<section class="sheet" style="margin-top:12px"><div class="sheet-b" style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">' +
+    '<div class="field"><label>Cobranza: resúmenes, facturas, recordatorios y aumentos</label>' + sel('cobranza', c.cobranza) + '</div>' +
+    '<div class="field"><label>El resto: mensajes a clientes, avisos del portal, proveedores y presupuestos</label>' + sel('otros', c.otros) + '<span class="hint">Si firma otra persona, el mail sale con su nombre y las respuestas le llegan a ella.</span></div></div></section>';
 }
 // Quiénes están en todas las cuentas de Redes y con qué rol (se suman solos a cada cuenta nueva).
 function equipoFijoHtml() {
@@ -1314,8 +1323,9 @@ async function avisarCliente(cliente, tipo, info) {
   if (!await confirmar('Le llega un mail a ' + ks.map(k => nomContacto(k) + (k.email ? ' (' + k.email + ')' : '')).join(', ') + (tipo === 'informe' ? ' avisando que ya puede ver ' : ' avisando que tiene para revisar ') + que + ', con el link a su portal.', { titulo: '¿Avisamos a ' + cliente + '?', ok: 'Mandar el mail', tipo: 'mail' })) return false;
   const nombres = ks.map(k => (k.nombre || '').split(' ')[0]).filter(Boolean);
   const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\n' + (tipo === 'informe' ? 'Ya está en el portal de àndale ' + que + ': cómo fue el mes, qué funcionó mejor y qué proponemos para el que viene.' : 'Ya tenés para revisar ' + que + ' en el portal de àndale. Desde ahí podés aprobar o pedirnos cambios, y comentar lo que quieras.') + '\n\nEntrás con tu email, sin contraseña.';
-  const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: tipo === 'redes' ? 'Tus redes del mes, listas para revisar' : tipo === 'informe' ? 'Tu informe de redes de ' + mesTxt : 'Tenés una entrega para revisar', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ir al portal', firma: firmaDe(S), asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : tipo === 'informe' ? 'Informe de redes de ' + mesTxt + ' · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
-  try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); return true; }
+  const fir = firmanteDe(S, 'Mensaje');
+  const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: tipo === 'redes' ? 'Tus redes del mes, listas para revisar' : tipo === 'informe' ? 'Tu informe de redes de ' + mesTxt : 'Tenés una entrega para revisar', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ir al portal', firma: fir ? firmaDe(S, fir) : null, asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : tipo === 'informe' ? 'Informe de redes de ' + mesTxt + ' · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
+  try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false, firmante_id: fir ? personaIdDe(S, fir) : null }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); return true; }
   catch (e) { toast('No se pudo mandar el aviso: ' + e.message); return false; }
 }
 const hil = () => HIL || (HIL = initHilos({ S, esc, toast, data, $, av, fotoDe, personas, go, abrirLink }));
@@ -1867,6 +1877,7 @@ document.addEventListener('change', async e => {
     catch (err) { toast(err.message); }
     await reload(); return;
   }
+  if (t.dataset.firmacfg) { const c = { ...firmaConfig(S), [t.dataset.firmacfg]: t.value }; saveListas('firmas', Object.entries(c).map(([k, v]) => k + '=' + v)); return; }
   if (t.dataset.eqfijo !== undefined) { // equipo fijo de Redes (Opciones)
     const a = t.dataset.eqfijo, otros = equipoFijo().filter(x => x.a !== a);
     saveListas('equipoFijo', [...otros, ...(t.value ? [{ a, rol: t.value }] : [])].map(x => x.a + '=' + x.rol)); return;
@@ -2013,6 +2024,7 @@ async function reload() {
     L.integraciones = Array.isArray(d.L.integraciones) ? [...d.L.integraciones] : [...INTEG_DEF];
     L.integraciones_cfg = Array.isArray(d.L.integraciones_cfg) ? [...d.L.integraciones_cfg] : [];
     L.equipoFijo = Array.isArray(d.L.equipoFijo) ? [...d.L.equipoFijo] : [];
+    L.firmas = Array.isArray(d.L.firmas) ? [...d.L.firmas] : [];
     Object.assign(S, { P: d.P, C: d.C, E: d.E, M: d.M, A: d.A, K: Array.isArray(d.K) ? d.K : null, L, status: 'ok', T: !!d.T, FL: d.FL || null, sinHilos: !d.T });
     if (Array.isArray(d.N)) S.N = d.N;
     Object.assign(S, { RM: d.RM === undefined ? null : d.RM, PD: d.PD === undefined ? null : d.PD, BF: d.BF === undefined ? null : d.BF, EN: d.EN === undefined ? null : d.EN, SI: d.SI === undefined ? null : d.SI });
