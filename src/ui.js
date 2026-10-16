@@ -19,7 +19,7 @@ export function masMenu(items, etiqueta) {
 const VISTAS = { lista: ['Lista', 'barras'], cuadricula: ['Cuadrícula', 'grilla'], tablero: ['Tablero', 'tablero'], calendario: ['Calendario', 'calendario'] };
 export const vistaDe = (pantalla, opciones, def) => { const v = lsGet('vista:' + pantalla); return opciones.includes(v) ? v : (def || opciones[0]); };
 export function vistaSel(pantalla, opciones, actual) {
-  return '<div class="seg vsel" role="group" aria-label="Ver como">' + opciones.map(k => '<button data-act="uiVista" data-p="' + esc(pantalla) + '" data-v="' + k + '" aria-pressed="' + (actual === k) + '" title="' + esc(VISTAS[k][0]) + '">' + (ICON[VISTAS[k][1]] || '') + '<span>' + esc(VISTAS[k][0]) + '</span></button>').join('') + '</div>';
+  return '<div class="seg vsel" role="group" aria-label="Ver como">' + opciones.map(k => '<button data-act="uiVista" data-p="' + esc(pantalla) + '" data-v="' + k + '" aria-pressed="' + (actual === k) + '" title="Ver en ' + esc(VISTAS[k][0].toLowerCase()) + '" aria-label="' + esc(VISTAS[k][0]) + '">' + (ICON[VISTAS[k][1]] || '') + '</button>').join('') + '</div>';
 }
 export const guardarVista = (p, v) => lsSet('vista:' + p, v);
 
@@ -35,7 +35,7 @@ export const uiActs = {
 
 // Filtros secundarios en un desplegable "Filtros (n)": la barra queda con la búsqueda y uno o dos filtros a la vista.
 export function filtrosMenu(clave, html, activos) {
-  return '<details class="share fmenu" data-keep="f:' + esc(clave) + '"><summary class="btn' + (activos ? ' on' : '') + '">' + ICON.filtro + '<span>Filtros' + (activos ? ' · ' + activos : '') + '</span></summary><div class="menu-pop fpop">' + html + '</div></details>';
+  return '<details class="share fmenu" data-keep="f:' + esc(clave) + '"><summary class="btn ico-b' + (activos ? ' on' : '') + '" title="Filtros' + (activos ? ' (' + activos + ' activos)' : '') + '" aria-label="Filtros' + (activos ? ', ' + activos + ' activos' : '') + '">' + ICON.filtro + (activos ? '<span class="ico-n">' + activos + '</span>' : '') + '</summary><div class="menu-pop fpop">' + html + '</div></details>';
 }
 // Los desplegables con data-keep siguen abiertos después de volver a dibujar la pantalla.
 const ABIERTOS = new Set();

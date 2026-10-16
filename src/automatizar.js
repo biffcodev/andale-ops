@@ -42,7 +42,7 @@ export function initAutomatizar(ctx) {
     if (!isStaff() || !reglas(p).length) return '';
     if (st.lista === undefined) setTimeout(() => cargar(), 0);
     const n = reglas(p).filter(r => de(r.clave).activa).length;
-    return '<button class="btn auto-b' + (n ? ' on' : '') + '" data-act="autoAbrir" data-p="' + esc(p) + '" title="Cosas que se hacen solas">' + ICON.rayo + '<span>' + (n ? n + ' automática' + (n > 1 ? 's' : '') : 'Automatizar') + '</span></button>';
+    return '<button class="btn ico-b auto-b' + (n ? ' on' : '') + '" data-act="autoAbrir" data-p="' + esc(p) + '" title="' + (n ? n + ' automática' + (n > 1 ? 's' : '') + ' prendida' + (n > 1 ? 's' : '') : 'Automatizar') + '" aria-label="' + (n ? 'Automatizar: ' + n + ' prendida' + (n > 1 ? 's' : '') : 'Automatizar') + '">' + ICON.rayo + (n ? '<span class="ico-n">' + n + '</span>' : '') + '</button>';
   }
   const fecha = iso => { if (!iso) return ''; const d = new Date(iso); return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }); };
   function tarjeta(r) {

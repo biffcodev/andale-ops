@@ -219,7 +219,7 @@ function waHref(tel, nombre, txt) {
   return 'https://wa.me/' + n + (m ? '?text=' + encodeURIComponent(m) : '');
 }
 const WA_ICO = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="' + siWhatsapp.path + '"/></svg>';
-function waBtn(c, txt) { const h = waHref(c.tel, c.contacto, txt); return h ? '<a class="btn wa-btn" data-act="ext" href="' + h + '" target="_blank" rel="noopener">' + WA_ICO + 'WhatsApp</a>' : ''; }
+function waBtn(c, txt) { const h = waHref(c.tel, c.contacto, txt); return h ? '<a class="btn ico-b wa-btn" data-act="ext" href="' + h + '" target="_blank" rel="noopener" title="Abrir WhatsApp" aria-label="Abrir WhatsApp">' + WA_ICO + '</a>' : ''; }
 
 // Contactos del cliente (dueña, marketing, administración…). Si la tabla todavía no existe, se usa el contacto cargado en el cliente.
 const ROLES_CONTACTO = ['Dueña/o', 'Gerencia', 'Marketing', 'Comunicación', 'Administración', 'Diseño', 'Ventas', 'RRHH', 'Agencia o proveedor'];
@@ -768,7 +768,7 @@ function vProyectoFicha() {
   else if (tab === 'plata') body = ADM.proyectoSection(p);
   return '<div class="pf-head" style="--t:var(' + (TIPO_COLOR[p.tipo] || '--accent') + ')">' +
     '<div class="pf-top"><button class="pf-logo" data-act="ficha" data-cliente="' + esc(p.cliente) + '" title="Ficha de ' + esc(p.cliente) + '">' + av(p.cliente, cliC.avatar, 'xl sq') + '</button><div class="pf-tit"><button class="btn link pf-cli" data-act="ficha" data-cliente="' + esc(p.cliente) + '">' + esc(p.cliente) + '</button><h1>' + esc(p.proyecto) + '</h1></div>' +
-    '<div class="toolbar pf-acc">' + (isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(p.cliente) + '">✉ Mail al cliente</button>' : '') + calBtn('Entrega: ' + p.proyecto + ' · ' + p.cliente, isOpen(p) ? p.entrega : '', 'Entrega pactada del proyecto ' + p.proyecto + ' (' + p.cliente + ')') + (can ? '<button class="btn primary" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar proyecto</button>' : '') + '</div></div>' +
+    '<div class="toolbar pf-acc">' + (isStaff() ? '<button class="btn ico-b" data-act="mail" data-cliente="' + esc(p.cliente) + '" title="Escribirle un mail a ' + esc(p.cliente) + '" aria-label="Escribirle un mail a ' + esc(p.cliente) + '">' + ICON.mail + '</button>' : '') + calBtn('Entrega: ' + p.proyecto + ' · ' + p.cliente, isOpen(p) ? p.entrega : '', 'Entrega pactada del proyecto ' + p.proyecto + ' (' + p.cliente + ')') + (can ? '<button class="btn primary" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar proyecto</button>' : '') + '</div></div>' +
     '<div class="pf-meta">' + estado + (p.etapaActual ? '<span class="pf-etapa" title="Etapa del flujo">Etapa: <b>' + esc(p.etapaActual) + '</b></span>' : '') + prioSelect(p) + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + fechas + daysBadge(p) +
     '<span class="pf-prog" title="' + pct + '% de las tareas hechas"><span class="pf-bar"><i style="width:' + pct + '%"></i></span><b>' + pct + '%</b><span class="muted">' + e.filter(x => x.ok).length + '/' + e.length + '</span></span></div>' +
     '<nav class="pf-tabs" aria-label="Secciones del proyecto">' + tabs.map(([k, l]) => '<button data-act="ptab" data-t="' + k + '"' + (tab === k ? ' aria-current="page"' : '') + '>' + l + '</button>').join('') + '</nav></div>' + body;
@@ -1086,7 +1086,7 @@ function mailsHtml(c) {
         '<button class="btn ghost sm danger" data-act="mlDel" data-id="' + esc(m.id) + '">Borrar del historial</button></div></div>' : '') + '</div>';
   };
   return '<section class="sheet"><div class="sheet-h"><div><h2>Mails</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Lo que se le mandó a ' + esc(c.nombre) + ' desde la app: novedades, resúmenes, facturas y recordatorios. Las respuestas le llegan a la casilla de quien lo mandó; si importa, anotala acá.</p></div>' +
-    '<button class="btn primary sm" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button></div>' +
+    '<button class="btn ico-b" data-act="mail" data-cliente="' + esc(c.nombre) + '" title="Escribir un mail" aria-label="Escribir un mail">' + ICON.mail + '</button></div>' +
     (ms.length ? '<div class="sheet-b ml-fil"><div class="subnav">' + chip('todos', 'Todos') + chip('novedades', 'Novedades') + chip('cobranza', 'Cobranza') + chip('archivados', 'Archivados') + '</div></div>' : '') +
     (vis.length ? '<div class="ml-l">' + vis.map(fila).join('') + '</div>' : emptyBox(f === 'archivados' ? 'No hay mails archivados' : 'Todavía no se le mandó nada', f === 'archivados' ? '' : 'Los mails que salen desde la app quedan acá, con su texto y si los abrió.')) + '</section>';
 }
@@ -1150,7 +1150,7 @@ function vFicha() {
   const tabs = [['resumen', 'Resumen'], ...(isAdmin() && ADM ? [['cuenta', 'Facturación']] : []), ['trabajos', 'Trabajos'], ...(isStaff() ? [['marca', 'Marca y voz' + (c.marca && Object.values(c.marca).some(Boolean) ? '' : ' <span class="tab-dot" title="Sin completar"></span>')]] : []),
     ['charlas', 'Charlas' + (pendN ? ' <span class="snav-n hot">' + pendN + '</span>' : '')], ...(conTabla() && (isStaff() || contactosDe(c.nombre).length) ? [['contactos', 'Contactos']] : []), ...(isStaff() ? [['mails', 'Mails'], ['seguimiento', 'Seguimiento']] : [])];
   const tab = tabs.some(t => t[0] === S.ctab) ? S.ctab : 'resumen';
-  const acciones = isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button>' + waBtn(c) + '<button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' +
+  const acciones = isStaff() ? '<button class="btn ico-b" data-act="mail" data-cliente="' + esc(c.nombre) + '" title="Escribirle un mail" aria-label="Escribirle un mail a ' + esc(c.nombre) + '">' + ICON.mail + '</button>' + waBtn(c) + '<button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' +
     masMenu([{ act: 'edit', label: 'Editar cliente', attrs: ' data-kind="cliente" data-id="' + esc(c._id) + '"', icon: 'clientes' }, { act: 'new', label: 'Anotar charla', attrs: ' data-kind="comunicacion" data-preset="' + preset + '"', icon: 'charla' }, { act: 'new', label: 'Sumar a Redes', attrs: ' data-kind="abono" data-preset="' + preset + '"', icon: 'abonos' }])
     : addBtn('comunicacion', 'Charla', { cliente: c.nombre });
   let body = '';
@@ -1285,7 +1285,7 @@ function gcalUrl(titulo, fecha, detalle) {
   if (!fecha) return ''; const d = fecha.replace(/-/g, ''); const n = new Date(fecha + 'T12:00'); n.setDate(n.getDate() + 1);
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titulo) + '&dates=' + d + '/' + n.toISOString().slice(0, 10).replace(/-/g, '') + '&details=' + encodeURIComponent(detalle || 'àndale Operaciones');
 }
-const calBtn = (titulo, fecha, detalle, cls) => integ('calendario') && fecha ? '<a class="btn ' + (cls || '') + '" href="' + esc(gcalUrl(titulo, fecha, [detalle, integr().cfgGet('calendario', 'aviso')].filter(Boolean).join(' · '))) + '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅 Al calendario</a>' : '';
+const calBtn = (titulo, fecha, detalle, cls) => integ('calendario') && fecha ? '<a class="btn ico-b ' + (cls || '') + '" href="' + esc(gcalUrl(titulo, fecha, [detalle, integr().cfgGet('calendario', 'aviso')].filter(Boolean).join(' · '))) + '" target="_blank" rel="noopener" title="Agregar a Google Calendar" aria-label="Agregar a Google Calendar">' + ICON.calendario + '</a>' : '';
 const VIEW_FN = { inicio: vInicio, redes: () => vRedes(), tickets: () => vTickets(), briefs: () => vBriefs(), proyectos: vProyectos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, integraciones: vIntegraciones };
 
 /* ---------- Render ---------- */
