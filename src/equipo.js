@@ -455,7 +455,7 @@ export function initEquipo(ctx, k) {
 
   /* ---------- acciones ---------- */
   const actions = {
-    pgMes: t => { const n = +t.dataset.d; AD.pg.mes = n ? addMonth(AD.pg.mes, n) : thisMonth(); ctx.render(); },
+    pgMes: t => { const n = +t.dataset.d; AD.pg.tocado = true; AD.pg.mes = n ? addMonth(AD.pg.mes, n) : thisMonth(); ctx.render(); },
     pgColab: t => formColaborador(t.dataset.id || null, t.dataset.pid || null, t.dataset.g === 'prov' ? true : t.dataset.g === 'eq' ? false : null),
     pgRem: t => formRem(t.dataset.id, t.dataset.from),
     pgRemEdit: t => formRemEdit(t.dataset.id),

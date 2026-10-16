@@ -38,6 +38,10 @@ export function initMantenimiento(ctx, k) {
     const ps = pasos(), listos = ps.filter(p => p[2]).length, mt = AD.mt;
     let h = '<section class="sheet sx" id="mt-carga"><div class="sx-h"><span class="sx-i">' + ICON.tarea + '</span><h2>Carga inicial <span class="sx-sub">(' + listos + ' de ' + ps.length + ' listos)</span></h2></div>' +
       '<div class="sx-panel"><div class="mt-pasos">' + ps.map(([key, l, ok, sub, v]) => '<button class="mt-paso' + (ok ? ' ok' : '') + '" data-act="go" data-view="' + esc(v) + '"' + (key === 'cajas' ? ' data-tab="bancos"' : '') + '><span class="mt-c">' + (ok ? ICON.check : '') + '</span><span class="mt-t"><b>' + esc(l) + '</b><small>' + esc(sub) + '</small></span><span class="mt-ir">Ir →</span></button>').join('') + '</div></div></section>';
+    const arr = (AD.AJ && AD.AJ.operacion && AD.AJ.operacion.desde) || '';
+    h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.calendario + '</span><h2>Desde qué mes cobramos con la app</h2></div><div class="sx-panel mt-b">' +
+      '<p class="sx-lead">Los meses anteriores se siguen manejando como hasta ahora: la app no pide preparar resúmenes, cargar precios ni pagar sueldos de esos meses, y Cobros del mes abre directo en este.</p>' +
+      '<div class="toolbar"><input class="in" type="month" id="aj-arranque" value="' + esc(arr) + '" aria-label="Mes de arranque" style="max-width:200px"><button class="btn primary" data-act="aArranque">Guardar</button></div></div></section>';
     const carga = h; h = '';
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.descargar + '</span><h2>Copia de seguridad</h2></div><div class="sx-panel mt-b">' +
       '<p class="sx-lead">Baja <b>todo</b> lo que hay en la base: clientes, proyectos, tareas, plata, redes y configuración. Guardala en un lugar seguro: tiene datos de clientes y de facturación.</p>' +

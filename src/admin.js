@@ -94,6 +94,9 @@ export function initAdmin(ctx) {
   }
   const ticketsAFacturar = (cliente, m) => (S.PD || []).filter(t => t.cliente === cliente && t.cobro === 'A facturar' && !t.facturado && t.estado !== 'Descartado' && String(t.cerrado || t.creado || '').slice(0, 7) <= m);
   const totalItems = items => items.filter(i => i.inc).reduce((s, i) => s + (parseMonto(i.monto) || 0), 0);
+  /** Mes desde el que àndale usa la app para cobrar (Ajustes → Carga inicial). Antes de ese mes no se pide preparar nada. */
+  function arranque() { const d = (AD.AJ && AD.AJ.operacion && AD.AJ.operacion.desde) || ''; return /^\d{4}-\d{2}$/.test(d) ? d : ''; }
+  const antesDeArrancar = m => !!arranque() && m < arranque();
   function clientesDelMes(m) {
     const s = new Set();
     S.A.forEach(a => { if (abonoEnMes(a, m) && a.cliente) s.add(a.cliente); });
@@ -139,7 +142,7 @@ export function initAdmin(ctx) {
   /* ---------- carga ---------- */
   async function load() {
     syncMonedas();
-    try { Object.assign(AD, await data.loadAdmin(), { ok: true }); }
+    try { Object.assign(AD, await data.loadAdmin(), { ok: true }); if (!AD.mesTocado && arranque() && AD.mes < arranque()) AD.mes = arranque(); if (AD.pg && !AD.pg.tocado && arranque() && AD.pg.mes < arranque()) AD.pg.mes = arranque(); }
     catch (err) { AD.ok = false; toast('Administración: ' + err.message); }
   }
 
@@ -153,6 +156,12 @@ export function initAdmin(ctx) {
     const env = rows.filter(r => r.res && r.res.estado === 'Enviado').length, conComp = rows.filter(r => r.facs.length).length;
     let h = '<div class="head"><div>' + lock + '<h1>Cobros del mes</h1><p>Para cada cliente: resumen, factura y cobro.</p></div>' +
       '<div class="toolbar"><div class="cal-h"><h2 style="min-width:170px">' + esc(cap(monthLabel(m))) + '</h2><button class="btn sm" data-act="aMes" data-d="-1" aria-label="Mes anterior">←</button><button class="btn sm" data-act="aMes" data-d="0">Este mes</button><button class="btn sm" data-act="aMes" data-d="1" aria-label="Mes siguiente">→</button></div>' + (ctx.autoBtn ? ctx.autoBtn('cobros') : '') + '</div></div>';
+    if (antesDeArrancar(m)) {
+      const hechos = rows.filter(r => r.res);
+      h += '<section class="callout"><p><b>Con la app arrancamos en ' + esc(monthLabel(arranque())) + '.</b> ' + esc(cap(monthLabel(m))) + ' se cobra como hasta ahora: acá no hace falta preparar nada.</p><button class="btn primary" data-act="aMesIr" data-m="' + esc(arranque()) + '">Ir a ' + esc(monthLabel(arranque()).split(' ')[0]) + '</button></section>';
+      if (hechos.length) h += '<section class="sheet"><div class="sheet-h"><h2>Resúmenes cargados de este mes</h2><span class="muted">' + hechos.length + '</span></div><div class="rows">' + hechos.map(r => '<button class="row" data-act="aCuenta" data-cliente="' + esc(r.cliente) + '"><span class="t"><b>' + esc(r.cliente) + '</b><span>' + esc(r.res.estado === 'Enviado' ? 'Enviado' : 'Preparado') + ' · si fue un error, abrilo y en Más → Borrar este resumen</span></span></button>').join('') + '</div></section>';
+      return h;
+    }
     // A fin de mes se arman los resúmenes del mes que viene (se pagan del 1 al 5): atajo para no quedarse en el mes equivocado.
     if (m === thisMonth() && +today().slice(8, 10) >= 20) { const sig = addMonth(m, 1); h += '<section class="callout"><p><b>¿Armando los resúmenes de ' + esc(monthLabel(sig).split(' ')[0]) + '?</b> Los que se mandan a fin de mes son del mes que viene.</p><button class="btn primary" data-act="aMes" data-d="1">Ir a ' + esc(monthLabel(sig).split(' ')[0]) + '</button></section>'; }
     h += '<section class="kpis">' +
@@ -1469,7 +1478,7 @@ export function initAdmin(ctx) {
   }
 
   /* ---------- Módulos: sueldos y pagos, asistente ---------- */
-  const kit = { cierre: { bulkResumenes, bulkRecordatorios, bulkAvisos, enviarDirecto, enviarFacturaDrive, envioAutoDrive }, estiloDoc, hoyDMY, cfgDocs, datosClienteDoc, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
+  const kit = { arranque, antesDeArrancar, cierre: { bulkResumenes, bulkRecordatorios, bulkAvisos, enviarDirecto, enviarFacturaDrive, envioAutoDrive }, estiloDoc, hoyDMY, cfgDocs, datosClienteDoc, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
     formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a),
     openComposer: o => openComposer(o), cfgMarca: () => cfgMarca(), firma: () => firma(), mailsDe: c => mailsDe(c), cuotasPlan };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;
@@ -1485,7 +1494,13 @@ export function initAdmin(ctx) {
     aCjCuenta: t => { AD.cj.cuenta = t.dataset.cuenta; ctx.render(); },
     aMov: t => formMovimiento(t.dataset.id || null),
     aReint: async t => { try { await data.upd('movimientos', t.dataset.id, { reintegrado: true }); toast('Listo: ya no figura como deuda con la socia'); await ctx.reload(); } catch (err) { toast(err.message); } },
-    aMes: t => { const n = +t.dataset.d; AD.mes = n ? addMonth(AD.mes, n) : thisMonth(); ctx.render(); },
+    aMes: t => { const n = +t.dataset.d; AD.mesTocado = true; AD.mes = n ? addMonth(AD.mes, n) : thisMonth(); ctx.render(); },
+    aMesIr: t => { AD.mesTocado = true; AD.mes = t.dataset.m; ctx.render(); window.scrollTo(0, 0); },
+    aArranque: async t => {
+      const v = (document.getElementById('aj-arranque') || {}).value || '';
+      try { await data.upsert('ajustes', { clave: 'operacion', valor: { ...(AD.AJ.operacion || {}), desde: v } }, 'clave'); AD.AJ.operacion = { ...(AD.AJ.operacion || {}), desde: v }; toast(v ? 'Listo: la app cobra desde ' + monthLabel(v) : 'Sin mes de arranque'); ctx.render(); }
+      catch (e) { toast(e.message); }
+    },
     aCuenta: t => openCuenta(t.dataset.cliente, AD.mes),
     aRtCh: async () => {
       const v = (($('#rt-ch') || {}).value || '').trim();

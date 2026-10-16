@@ -42,6 +42,8 @@ export function initAsistente(ctx, k) {
     return AD.MV.filter(v => (v.fecha || '').startsWith(anio) && v.cuenta === 'Proveedores' && v.egreso > 0 && v.egreso - (imp.get(v.id) || 0) > 0.009).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   }
   function checklist(m) {
+    // Antes del mes en que arrancamos con la app no se pide nada de ese mes (resúmenes, precios, sueldos); solo lo que ya está cargado y vence.
+    if (k.antesDeArrancar && k.antesDeArrancar(m)) return { periodo: m, clientes: 0, sinPrecio: [], sinArmar: [], borradores: [], sinComp: [], vencidas: AD.F.filter(f => k.estadoFactura(f) === 'Vencida'), aumentos: [], liqFalt: [], liqPend: [], sinImp: [], drive: AD.DA.filter(d => d.estado === 'Nuevo' || d.estado === 'Leído'), cuotas: [] };
     const cl = k.clientesDelMes(m), resM = AD.R.filter(r => r.periodo === m);
     const pf = AD.PF.filter(c => c.periodo === m);
     return {
