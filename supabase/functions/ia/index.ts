@@ -3,7 +3,7 @@
 // Equipo y admins. verify_jwt apagado: se valida el usuario con rpc('yo').
 //
 // Secretos: ANTHROPIC_API_KEY (el mismo del asistente) · IA_MODEL_RAPIDO opcional (default claude-haiku-5-5, el más rápido)
-// POST { modo: 'comando' | 'cliente' | 'charla' | 'tareas' | 'mail' | 'texto' | 'redes_ideas' | 'redes_copys' | 'redes_chat' | 'informe_redes' | 'rentabilidad' | 'presupuesto' | 'brief' | 'marca', texto?, contexto, tarea?, imagenes? }
+// POST { modo: 'comando' | 'cliente' | 'charla' | 'tareas' | 'mail' | 'texto' | 'redes_ideas' | 'redes_copys' | 'redes_chat' | 'informe_redes' | 'rentabilidad' | 'presupuesto' | 'brief' | 'marca', texto?, contexto, tarea?, imagenes?, documentos? (PDF), textos? }
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const CORS = {
@@ -26,7 +26,7 @@ async function cred(n: string) {
   credCache[n] = { v, t: Date.now() }; return v;
 }
 
-async function claude(sb: SupabaseClient, personaId: string | null, accion: string, o: { system: string; texto: string; tool: Record<string, unknown>; maxTokens?: number; imagenes?: { tipo: string; base64: string }[] }) {
+async function claude(sb: SupabaseClient, personaId: string | null, accion: string, o: { system: string; texto: string; tool: Record<string, unknown>; maxTokens?: number; imagenes?: { tipo: string; base64: string }[]; documentos?: { nombre: string; base64: string }[] }) {
   const cfg = await cred('anthropic');
   const key = (cfg && cfg.key) || Deno.env.get('ANTHROPIC_API_KEY');
   if (!key) throw new Aviso('La IA no está configurada todavía. Conectala en Configuración → Integraciones → Mr. Piggy.', 503);
@@ -37,7 +37,9 @@ async function claude(sb: SupabaseClient, personaId: string | null, accion: stri
     body: JSON.stringify({
       model: modelo, max_tokens: max,
       system: o.system + '\n\nRespondé únicamente llamando una vez a la herramienta ' + o.tool.name + ', sin texto antes ni después.',
-      messages: [{ role: 'user', content: [...(o.imagenes || []).map(im => ({ type: 'image', source: { type: 'base64', media_type: im.tipo, data: im.base64 } })), { type: 'text', text: o.texto }] }],
+      messages: [{ role: 'user', content: [
+        ...(o.documentos || []).map(d => ({ type: 'document', title: d.nombre, source: { type: 'base64', media_type: 'application/pdf', data: d.base64 } })),
+        ...(o.imagenes || []).map(im => ({ type: 'image', source: { type: 'base64', media_type: im.tipo, data: im.base64 } })), { type: 'text', text: o.texto }] }],
       tools: [o.tool], tool_choice: { type: 'tool', name: o.tool.name },
     }),
   });
@@ -245,8 +247,14 @@ const TOOL_MARCA = { name: 'ficha_marca', description: 'Ficha de marca y voz del
   emojis: { type: 'string', enum: ['', 'Sí, con ganas', 'Pocos y puntuales', 'No usa'] }, palabras_si: { type: 'string', description: 'palabras, muletillas o frases propias que usa' },
   palabras_no: { type: 'string', description: 'lo que no dice ni hace (temas, palabras, estilos)' }, pilares: { type: 'string', description: '3 a 6 pilares de contenido, uno por renglón' },
   hashtags: { type: 'string' }, fechas: { type: 'string', description: 'fechas importantes del rubro o la marca' }, referencias: { type: 'string' },
-  ejemplos: { type: 'string', description: '2 o 3 copys reales que mejor representan la voz, copiados tal cual de los aprobados (vacío si no hay)' } } } };
+  ejemplos: { type: 'string', description: '2 o 3 copys reales que mejor representan la voz, copiados tal cual de los aprobados o de los documentos (vacío si no hay)' },
+  colores: { type: 'string', description: 'paleta de la marca, un color por renglón: nombre, código HEX (y Pantone/CMYK si figura) y para qué se usa. Vacío si no hay documentos con eso' },
+  tipografias: { type: 'string', description: 'tipografías, una por renglón, con su uso (títulos, textos) y pesos si figuran' },
+  visual: { type: 'string', description: 'estilo visual: fotografía, ilustración, recursos gráficos y reglas de uso del logo, en pocas frases concretas' },
+  leido: { type: 'string', description: 'en una línea, qué documentos leíste y qué no se pudo leer o no traían (vacío si no hubo documentos)' } } } };
 const SYS_MARCA = QUIENES + ' Armás la ficha de marca y voz de un cliente de la agencia para que el equipo y vos escriban como la marca. Usá el brief, las notas, los servicios y sobre todo los copys ya aprobados (de ahí sacás el tono, el trato, los emojis y las palabras). ' +
+  'Si te pasan documentos de la marca (brandbook, manual de marca, presentación, guía de estilo, imágenes de sus páginas), son la fuente principal: de ahí sacás qué hace, público, tono, trato, palabras, lo que no hace, pilares, colores con sus códigos, tipografías y estilo visual. Si un documento contradice la ficha actual, gana el documento. ' +
+  'Escribí la ficha en español rioplatense aunque el documento esté en otro idioma, salvo los ejemplos de copys y las palabras propias de la marca, que van tal cual. ' +
   'No inventes: si un dato no surge de lo que te pasan, dejalo vacío. Si ya hay una ficha, mantené lo que tiene y completá o corregí solo con evidencia.';
 
 /* ---------- Brief del cliente (Tally) ---------- */
@@ -303,7 +311,17 @@ Deno.serve(async req => {
       }
       case 'rentabilidad': return json(await claude(sb, yo.id, 'rentabilidad', { system: SYS_RENTA, tool: TOOL_RENTA, maxTokens: 2500, texto: hoy + '\n\nDATOS:\n' + ctxTxt(b.contexto) }));
       case 'presupuesto': return json(await claude(sb, yo.id, 'presupuesto', { system: SYS_PRESU, tool: TOOL_PRESU, maxTokens: 1500, texto: hoy + '\n\nHISTORIAL Y VALOR HORA:\n' + ctxTxt(b.contexto) + '\n\nTRABAJO NUEVO:\n' + texto }));
-      case 'marca': return json(await claude(sb, yo.id, 'marca', { system: SYS_MARCA, tool: TOOL_MARCA, maxTokens: 2500, texto: hoy + '\n\nCLIENTE:\n' + ctxTxt(b.contexto) }));
+      case 'marca': {
+        // Documentos opcionales: PDF (brandbook, manual), textos ya extraídos (.docx, .txt) e imágenes de páginas.
+        const docs = (Array.isArray(b.documentos) ? b.documentos : []).slice(0, 3).filter((d: any) => d && typeof d.base64 === 'string' && d.base64.length > 100);
+        if (docs.reduce((a: number, d: any) => a + d.base64.length, 0) > 30_000_000) throw new Aviso('Los PDF son muy pesados (máx. 20 MB entre todos). Probá con una versión más liviana.', 413);
+        const imgs = (Array.isArray(b.imagenes) ? b.imagenes : []).slice(0, 8).filter((i: any) => i && /^image\/(png|jpeg|webp|gif)$/.test(i.tipo) && typeof i.base64 === 'string' && i.base64.length < 5_000_000);
+        const txts = (Array.isArray(b.textos) ? b.textos : []).slice(0, 5).map((t: any) => '--- ' + String(t.nombre || 'documento') + ' ---\n' + String(t.texto || '').slice(0, 60_000)).join('\n\n').slice(0, 150_000);
+        const hay = docs.length || imgs.length || txts;
+        return json(await claude(sb, yo.id, hay ? 'marca_documento' : 'marca', { system: SYS_MARCA, tool: TOOL_MARCA, maxTokens: hay ? 4000 : 2500,
+          documentos: docs.map((d: any) => ({ nombre: String(d.nombre || 'documento.pdf').slice(0, 200), base64: d.base64 })), imagenes: imgs,
+          texto: hoy + '\n\nCLIENTE:\n' + ctxTxt(b.contexto) + (hay ? '\n\nDOCUMENTOS DE LA MARCA: ' + [...docs.map((d: any) => d.nombre), ...(Array.isArray(b.textos) ? b.textos.map((t: any) => t.nombre) : []), imgs.length ? imgs.length + ' imagen(es)' : ''].filter(Boolean).join(', ') + '. Leelos completos y usalos como fuente principal.' : '') + (txts ? '\n\nTEXTO DE LOS DOCUMENTOS:\n' + txts : '') }));
+      }
       case 'brief': {
         if (!texto.trim()) throw new Aviso('El brief está vacío.');
         return json(await claude(sb, yo.id, 'brief', { system: SYS_BRIEF, tool: TOOL_BRIEF, maxTokens: 2000, texto: hoy + '\n\nCLIENTE:\n' + ctxTxt(b.contexto) + '\n\nRESPUESTAS:\n' + texto }));
