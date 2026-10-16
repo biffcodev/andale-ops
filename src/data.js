@@ -219,6 +219,13 @@ export async function informeGuardar(id, u, cliente, mes) {
   return check(await sb.from('informes_redes').upsert({ cliente_id: idx.clienteId.get(cliente), mes: mes + '-01', ...r }, { onConflict: 'cliente_id,mes' }).select('id').single()).id;
 }
 // Seguimiento de un cliente: mails abiertos y clics, visitas al portal, PDFs vistos o bajados, presupuestos abiertos.
+/** Mails que se le mandaron a un cliente desde la app (los admins ven todos; el equipo, sus mensajes). null = no se pudo leer. */
+export async function mailsCliente(cliente) {
+  const cid = idx.clienteId.get(cliente); if (!cid) return [];
+  const { data, error } = await sb.from('emails').select('*').eq('cliente_id', cid).order('created_at', { ascending: false }).limit(200);
+  if (error) { if (/42501|permission/i.test(error.code + ' ' + error.message)) return []; throw new Error(error.message); }
+  return data || [];
+}
 export async function seguimientoDe(cliente) {
   const cid = idx.clienteId.get(cliente); if (!cid) return [];
   const { data, error } = await sb.from('seguimiento').select('id, created_at, tipo, ref, detalle, quien, email_id').eq('cliente_id', cid).order('created_at', { ascending: false }).limit(300);

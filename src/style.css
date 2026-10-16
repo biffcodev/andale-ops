@@ -2243,3 +2243,24 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,input[type="month"]:
 .red-l b{font-weight:500;color:var(--muted);margin-right:4px;font-size:13px}
 .red-mas{margin:2px 0 0 -8px}
 @media (max-width:560px){.red-f{grid-template-columns:1fr auto}.red-f label{grid-column:1/-1}}
+
+/* Mails del cliente */
+.ml-fil{padding-bottom:0}
+.ml-l{display:flex;flex-direction:column}
+.ml-r{border-top:1px solid var(--line)}
+.ml-h{all:unset;box-sizing:border-box;width:100%;display:grid;grid-template-columns:130px 1fr auto;gap:12px;align-items:center;padding:12px 20px;cursor:pointer}
+.ml-h:hover{background:var(--surface-2,rgba(0,0,0,.02))}
+.ml-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ml-d{font:12.5px/1.4 var(--f-mono,monospace);color:var(--muted)}
+.ml-t{display:flex;flex-direction:column;min-width:0}
+.ml-t b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ml-t span{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ml-tags{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.ml-tipo{font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--accent-soft,#DDF4FF);color:var(--accent-text,#0B86C4)}
+.ml-tipo.cob{background:#FFF4D6;color:#8A5A00}
+.ml-r.err .ml-t b{color:var(--danger,#E5484D)}
+.ml-b{padding:0 20px 16px 162px;display:grid;gap:10px}
+.ml-b p{margin:0;font-size:13px}
+.ml-txt{white-space:pre-wrap;font-size:14px;line-height:1.55;background:var(--surface-2,#F6F7F9);border-radius:12px;padding:14px 16px;max-height:360px;overflow:auto}
+.ml-b .err-t{color:var(--danger,#E5484D)}
+@media (max-width:700px){.ml-h{grid-template-columns:1fr;gap:4px}.ml-tags{justify-content:flex-start}.ml-b{padding:0 16px 16px}}

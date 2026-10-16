@@ -853,7 +853,7 @@ export function initAdmin(ctx) {
   const mailDe = (cliente, tipo, per) => { const cid = data.ids.cliente(cliente); return AD.EM.find(x => x.cliente_id === cid && x.tipo === tipo && (!per || String(x.periodo || '').slice(0, 7) === per) && x.estado === 'Enviado'); };
   const vistoChip = m => { const sg = m && AD.SEGM && AD.SEGM.get(m.id); return sg && sg.abierto ? ' <span class="seg-p on sm" title="Lo abrió ' + esc(hora(sg.ultima)) + '">' + ICON.ojo + 'Visto</span>' : ''; };
   function emailsDe(cliente) {
-    const cid = data.ids.cliente(cliente), es = AD.EM.filter(x => x.cliente_id === cid).slice(0, 10);
+    const cid = data.ids.cliente(cliente), es = AD.EM.filter(x => x.cliente_id === cid && x.tipo !== 'Mensaje' && !x.archivado).slice(0, 10); // los de novedades viven en la pestaña Mails
     if (!es.length) return '';
     return '<div class="sheet-b" style="border-top:1px solid var(--line);display:grid;gap:6px"><b>Emails enviados</b><div class="rows">' + es.map(x => '<div class="row" style="cursor:default"><span class="d">' + fmt(String(x.created_at).slice(0, 10)) + '</span><span class="t"><b>' + esc(x.asunto) + '</b><span>' + esc(x.tipo + ' · ' + (x.para || []).join(', ') + (x.adjuntos && x.adjuntos.length ? ' · 📎 ' + x.adjuntos.join(', ') : '')) + (x.error ? ' · ' + esc(x.error) : '') + '</span></span>' + segMail(x) + '</div>').join('') + '</div></div>';
   }

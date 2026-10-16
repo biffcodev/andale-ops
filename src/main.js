@@ -1037,6 +1037,47 @@ function segDe(cliente) {
   return (S.SEG.get(cliente) || {}).r;
 }
 const haceTxt = iso => { const m = Math.round((Date.now() - new Date(iso)) / 60000); if (m < 1) return 'recién'; if (m < 60) return 'hace ' + m + ' min'; const h = Math.round(m / 60); if (h < 24) return 'hace ' + h + ' h'; const d = Math.round(h / 24); return d < 7 ? 'hace ' + d + (d === 1 ? ' día' : ' días') : fmt(String(iso).slice(0, 10)); };
+// ---------- Mails del cliente: lo que se le mandó desde la app, con su texto, si lo abrió, archivar y borrar ----------
+const MAIL_COBRO = ['Resumen de cuenta', 'Factura enviada', 'Recordatorio de pago', 'Aviso de aumento', 'Invoice'];
+const MAIL_TIPO = { Mensaje: 'Novedades', 'Resumen de cuenta': 'Resumen de cuenta', 'Factura enviada': 'Factura', 'Recordatorio de pago': 'Recordatorio de pago', 'Aviso de aumento': 'Aviso de aumento', Invoice: 'Invoice', Otro: 'Otro' };
+function mailsDe(cliente) {
+  S.MLS = S.MLS || new Map();
+  const x = S.MLS.get(cliente);
+  if (!x || (!x.pidiendo && Date.now() - x.t > 60_000)) {
+    S.MLS.set(cliente, { r: x ? x.r : undefined, t: Date.now(), pidiendo: true });
+    data.mailsCliente(cliente).then(r => { S.MLS.set(cliente, { r, t: Date.now() }); render(); }).catch(e => { S.MLS.set(cliente, { r: [], t: Date.now() }); toast(e.message); });
+  }
+  return (S.MLS.get(cliente) || {}).r;
+}
+const mailBuscar = id => { for (const [cl, x] of (S.MLS || new Map())) { const m = (x.r || []).find(y => y.id === id); if (m) return { m, cl }; } return {}; };
+function mailsHtml(c) {
+  const ms = mailsDe(c.nombre);
+  if (ms === undefined) return '<section class="sheet">' + emptyBox('Cargando…', '') + '</section>';
+  const ev = segDe(c.nombre) || [];
+  const abrio = id => ev.find(e => e.email_id === id && e.tipo === 'mail_abierto'), clics = id => ev.filter(e => e.email_id === id && e.tipo === 'mail_click').length;
+  const f = S.mlF || 'todos', esCobro = m => MAIL_COBRO.includes(m.tipo);
+  const n = { todos: ms.filter(m => !m.archivado).length, novedades: ms.filter(m => !m.archivado && !esCobro(m)).length, cobranza: ms.filter(m => !m.archivado && esCobro(m)).length, archivados: ms.filter(m => m.archivado).length };
+  const vis = ms.filter(m => f === 'archivados' ? m.archivado : !m.archivado && (f === 'todos' || (f === 'novedades' ? !esCobro(m) : esCobro(m))));
+  const quien = id => (S.E.find(e => e._id === id) || {}).persona || '';
+  const chip = (k, l) => (k === 'archivados' && !n.archivados) || (k === 'cobranza' && !n.cobranza) ? '' : '<button data-act="mlF" data-f="' + k + '"' + (f === k ? ' aria-current="page"' : '') + '>' + l + ' <span class="snav-n">' + n[k] + '</span></button>';
+  const fila = m => {
+    const ab = S.mlAbierto === m.id, sg = abrio(m.id), cl = clics(m.id);
+    const hh = new Date(m.created_at), cuando = fmt(String(m.created_at).slice(0, 10)) + ' · ' + hh.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    return '<div class="ml-r' + (ab ? ' on' : '') + (m.estado === 'Error' ? ' err' : '') + '"><button class="ml-h" data-act="mlVer" data-id="' + esc(m.id) + '" aria-expanded="' + ab + '">' +
+      '<span class="ml-d">' + esc(cuando) + '</span><span class="ml-t"><b>' + esc(m.asunto) + '</b><span>' + esc((m.para || []).join(', ')) + (quien(m.persona_id) ? ' · mandó ' + esc(quien(m.persona_id)) : '') + '</span></span>' +
+      '<span class="ml-tags"><span class="ml-tipo' + (esCobro(m) ? ' cob' : '') + '">' + esc(MAIL_TIPO[m.tipo] || m.tipo) + '</span>' + (m.estado === 'Error' ? '<span class="seg-p no sm">No salió</span>' : sg ? '<span class="seg-p on sm" title="Lo abrió ' + esc(new Date(sg.created_at).toLocaleString('es-AR')) + '">' + (ICON.ojo || '') + 'Visto</span>' : '') + (cl ? '<span class="seg-p clic sm">' + cl + (cl === 1 ? ' clic' : ' clics') + '</span>' : '') + '</span></button>' +
+      (ab ? '<div class="ml-b">' + ((m.cc || []).length ? '<p class="muted">Con copia a ' + esc(m.cc.join(', ')) + '</p>' : '') + ((m.adjuntos || []).length ? '<p class="muted">Adjuntos: ' + esc(m.adjuntos.join(', ')) + '</p>' : '') +
+        (m.texto ? '<div class="ml-txt">' + esc(m.texto) + '</div>' : '<p class="muted">El texto de este mail no quedó guardado: se mandó antes de que la app empezara a guardarlo. Lo tenés en la copia que te llegó a tu casilla.</p>') +
+        (m.estado === 'Error' && m.error ? '<p class="err-t">' + esc(m.error) + '</p>' : '') +
+        '<div class="toolbar">' + (m.estado === 'Enviado' ? '<button class="btn sm" data-act="mlResp" data-id="' + esc(m.id) + '">Anotar la respuesta</button>' : '') +
+        '<button class="btn ghost sm" data-act="mlArch" data-id="' + esc(m.id) + '">' + (m.archivado ? 'Sacar de archivados' : 'Archivar') + '</button>' +
+        '<button class="btn ghost sm danger" data-act="mlDel" data-id="' + esc(m.id) + '">Borrar del historial</button></div></div>' : '') + '</div>';
+  };
+  return '<section class="sheet"><div class="sheet-h"><div><h2>Mails</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Lo que se le mandó a ' + esc(c.nombre) + ' desde la app: novedades, resúmenes, facturas y recordatorios. Las respuestas le llegan a la casilla de quien lo mandó; si importa, anotala acá.</p></div>' +
+    '<button class="btn primary sm" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button></div>' +
+    (ms.length ? '<div class="sheet-b ml-fil"><div class="subnav">' + chip('todos', 'Todos') + chip('novedades', 'Novedades') + chip('cobranza', 'Cobranza') + chip('archivados', 'Archivados') + '</div></div>' : '') +
+    (vis.length ? '<div class="ml-l">' + vis.map(fila).join('') + '</div>' : emptyBox(f === 'archivados' ? 'No hay mails archivados' : 'Todavía no se le mandó nada', f === 'archivados' ? '' : 'Los mails que salen desde la app quedan acá, con su texto y si los abrió.')) + '</section>';
+}
 function segHtml(c) {
   const ev = segDe(c.nombre);
   if (ev === undefined) return '<section class="sheet">' + emptyBox('Cargando…', '') + '</section>';
@@ -1095,7 +1136,7 @@ function vFicha() {
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   const pendN = ms.filter(m => m.proximo && !m.hecho).length;
   const tabs = [['resumen', 'Resumen'], ...(isAdmin() && ADM ? [['cuenta', 'Facturación']] : []), ['trabajos', 'Trabajos'], ...(isStaff() ? [['marca', 'Marca y voz' + (c.marca && Object.values(c.marca).some(Boolean) ? '' : ' <span class="tab-dot" title="Sin completar"></span>')]] : []),
-    ['charlas', 'Charlas' + (pendN ? ' <span class="snav-n hot">' + pendN + '</span>' : '')], ...(conTabla() && (isStaff() || contactosDe(c.nombre).length) ? [['contactos', 'Contactos']] : []), ...(isStaff() ? [['seguimiento', 'Seguimiento']] : [])];
+    ['charlas', 'Charlas' + (pendN ? ' <span class="snav-n hot">' + pendN + '</span>' : '')], ...(conTabla() && (isStaff() || contactosDe(c.nombre).length) ? [['contactos', 'Contactos']] : []), ...(isStaff() ? [['mails', 'Mails'], ['seguimiento', 'Seguimiento']] : [])];
   const tab = tabs.some(t => t[0] === S.ctab) ? S.ctab : 'resumen';
   const acciones = isStaff() ? '<button class="btn" data-act="mail" data-cliente="' + esc(c.nombre) + '">✉ Escribir mail</button>' + waBtn(c) + '<button class="btn primary" data-act="new" data-kind="proyecto" data-preset="' + preset + '">+ Proyecto</button>' +
     masMenu([{ act: 'edit', label: 'Editar cliente', attrs: ' data-kind="cliente" data-id="' + esc(c._id) + '"', icon: 'clientes' }, { act: 'new', label: 'Anotar charla', attrs: ' data-kind="comunicacion" data-preset="' + preset + '"', icon: 'charla' }, { act: 'new', label: 'Sumar a Redes', attrs: ' data-kind="abono" data-preset="' + preset + '"', icon: 'abonos' }])
@@ -1107,7 +1148,7 @@ function vFicha() {
     (conTabla() ? '' : '<dt>Contacto</dt><dd>' + (c.contacto ? esc(c.contacto) : '<span class="muted">—</span>') + '</dd>' +
     '<dt>Email</dt><dd>' + copy(c.email) + '</dd>' +
     '<dt>WhatsApp</dt><dd>' + copy(c.tel) + '</dd>') +
-    (c.telFijo ? '<dt>Teléfono fijo</dt><dd>' + copy(c.telFijo) + '</dd>' : '') +
+    (!conTabla() && c.telFijo ? '<dt>Teléfono fijo</dt><dd>' + copy(c.telFijo) + '</dd>' : '') +
     '<dt>Web y redes</dt><dd>' + (redesLinks(c) ? '<div class="red-ls">' + redesLinks(c) + '</div>' : '') + (isStaff() ? '<button class="btn ghost sm red-mas" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">+ Agregar</button>' : (redesLinks(c) ? '' : '<span class="muted">—</span>')) + '</dd>' +
     '<dt>Carpeta</dt><dd>' + link(c.carpeta) + '</dd>' +
     '<dt>Notas</dt><dd>' + (c.notas ? '<span style="white-space:pre-wrap">' + esc(c.notas) + '</span>' : '<span class="muted">—</span>') + '</dd>' +
@@ -1123,6 +1164,7 @@ function vFicha() {
           : emptyBox('Todavía no hay charlas anotadas', 'Anotá reuniones, llamadas o WhatsApps. Si pegás el chat, Mr. Piggy completa todo.')) + '</section>'; })() + '';
   else if (tab === 'contactos') body = contactosHtml(c);
   else if (tab === 'seguimiento') body = segHtml(c);
+  else if (tab === 'mails') body = mailsHtml(c);
   else if (tab === 'cuenta') body = ADM.fichaSection(c) || '<section class="sheet">' + emptyBox('Sin datos de cuenta', '') + '</section>';
   return back +
     '<div class="head"><div class="head-av">' + (isStaff() ? avEditable('cliente', c._id, c.nombre, c.avatar, 'xl sq') : av(c.nombre, c.avatar, 'xl sq')) + '<div><span class="eyebrow">Ficha de cliente</span><h1 style="font-size:32px;margin-top:4px">' + esc(c.nombre) + '</h1><p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (isStaff() ? estadoSelect(c) : clPill(c.estado)) + servPills(c.nombre) + '</p></div></div>' +
@@ -1403,7 +1445,7 @@ const FORMS = {
     { k: 'contacto', label: 'Contacto principal (nombre)', alta: 1 },
     { k: 'email', label: 'Email', type: 'email', alta: 1 },
     { k: 'tel', label: 'WhatsApp / celular', type: 'tel', alta: 1, hint: 'Después sumás más contactos desde la ficha.' },
-    { k: 'telFijo', label: 'Teléfono fijo', type: 'tel', ph: 'Del local u oficina, si tiene' },
+    { k: 'telFijo', label: 'Teléfono fijo', type: 'tel', alta: 1, ph: 'Si tiene' },
     { k: 'redes', label: 'Web y redes', type: 'redes', full: 1 },
     { k: 'carpeta', label: 'Carpeta del cliente', type: 'url', ph: 'https://', full: 1, hint: 'La carpeta madre del cliente (Drive o Dropbox), donde está su marca y los entregables. El contenido mensual de redes va en las carpetas de Dropbox de cada mes.' },
     { k: 'notas', label: 'Notas', type: 'textarea', full: 1, hint: 'No guardes contraseñas acá: usá el gestor de contraseñas del equipo.' },
@@ -1505,7 +1547,8 @@ function openForm(kind, id, preset) {
         '<div id="srvplan" hidden style="margin-top:10px;max-width:260px"><label class="lbl" for="f-srvplan">Plan de redes</label><select id="f-srvplan">' + optsFrom(S.L.planes, '', '—') + '</select></div>' +
         '<span class="hint">Lo mensual (Redes, Ads o lo que elijas “mes a mes”) se cobra todos los meses con su precio. Lo puntual se crea como proyecto “Por empezar” y se cobra por presupuesto cada vez.</span></div>';
   }
-  const extra = servBox + adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
+  const notaTel = kind === 'cliente' && rec && conTabla() ? '<p class="formnote full">El WhatsApp, el fijo y el mail de cada persona se cargan en la pestaña <b>Contactos</b> de la ficha.</p>' : '';
+  const extra = notaTel + servBox + adminBtn + (rec && rec.creado ? '<p class="formnote">Cargado el ' + fmt(rec.creado.slice(0, 10)) + (rec.actualizado ? ' · última edición ' + fmt(rec.actualizado.slice(0, 10)) : '') + '</p>' : '');
   const p = $('#panel');
   p.innerHTML = '<form id="form" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + (rec ? (ro ? 'Ver ' : 'Editar ') + def.title : 'Alta') + '</span><h2 id="panel-title">' + (rec ? esc(def.label(rec) || def.title) : def.nuevo) + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
     '<div class="panel-b">' + (IA && kind === 'comunicacion' && !rec ? IA.charlaHtml() : '') + def.fields.filter(f => !f.adv && !(f.alta && rec && conTabla())).map(f => fieldHtml(f, vals[f.k], ro)).join('') +
@@ -1564,8 +1607,9 @@ async function saveForm() {
     const nid = await data.save(kind, id, out, prev ? resp(prev) : []);
     if (kind === 'abono' && out.tipo === 'Redes' && out.estado === 'Baja') await bajaAds(out.cliente, out.hasta);
     if (tks) await data.tareasSync(nid, prev ? etapasDe(prev) : [], tks);
-    if (kind === 'cliente' && !prev && conTabla() && (out.contacto || out.email || out.tel)) {
-      try { await data.ins('contactos', { cliente_id: nid, nombre: out.contacto || '', email: (out.email || '').toLowerCase(), tel: out.tel || '', principal: true, cobros: true, orden: 0 }); } catch (e) { toast(e.message); }
+    if (kind === 'cliente' && !prev && conTabla() && (out.contacto || out.email || out.tel || out.telFijo)) {
+      const k0 = { cliente_id: nid, nombre: out.contacto || '', email: (out.email || '').toLowerCase(), tel: out.tel || '', principal: true, cobros: true, orden: 0 };
+      try { if (out.telFijo && !(data.cols && data.cols.contactoFijo === false)) { try { await data.ins('contactos', { ...k0, tel_fijo: out.telFijo }); } catch (e) { await data.ins('contactos', k0); } } else await data.ins('contactos', k0); } catch (e) { toast(e.message); }
     }
     if (srvAb.length || srvPr.length) {
       await reload();
@@ -1650,6 +1694,20 @@ const ACT = {
   afTipo: t => { S.af.tipo = t.dataset.tipo; render(); },
   sumarAds: t => { const r = servicioRedes(t.dataset.c).redes; openForm('abono', null, { cliente: t.dataset.c, tipo: 'Ads', plan: '', responsables: r ? resp(r).slice() : [], desde: thisMonth() }); },
   ctab: t => { S.ctab = t.dataset.t; render(); },
+  mlF: t => { S.mlF = t.dataset.f; S.mlAbierto = null; render(); },
+  mlVer: t => { S.mlAbierto = S.mlAbierto === t.dataset.id ? null : t.dataset.id; render(); },
+  mlResp: t => { const { m, cl } = mailBuscar(t.dataset.id); if (!m) return; openForm('comunicacion', null, { cliente: cl, canal: 'Email', fecha: today(), conQuien: (m.para || []).join(', '), resumen: 'Respondió al mail “' + m.asunto + '”: ' }); },
+  mlArch: async t => {
+    const { m, cl } = mailBuscar(t.dataset.id); if (!m) return;
+    try { await data.upd('emails', m.id, { archivado: !m.archivado }); m.archivado = !m.archivado; S.mlAbierto = null; toast(m.archivado ? 'Mail archivado' : 'Volvió a la lista'); render(); }
+    catch (e) { toast(/archivado|column/i.test(e.message) ? 'Falta correr el SQL 0025 en Supabase para poder archivar.' : e.message); }
+  },
+  mlDel: async t => {
+    const { m, cl } = mailBuscar(t.dataset.id); if (!m) return;
+    if (!(await confirmar('Se borra de la app: de esta lista, del seguimiento y la charla que se anotó sola. El mail ya le llegó al cliente y eso no se puede deshacer.', { titulo: '¿Borrar “' + m.asunto + '” del historial?', ok: 'Borrar', tipo: 'peligro' }))) return;
+    try { await data.del('emails', m.id); const x = S.MLS.get(cl); if (x && x.r) x.r = x.r.filter(y => y.id !== m.id); if (S.SEG) S.SEG.delete(cl); S.mlAbierto = null; toast('Mail borrado del historial'); await reload(); }
+    catch (e) { toast(e.message); }
+  },
   ficha: t => { S.ctab = t.dataset.tab || (S.ficha !== t.dataset.cliente ? 'resumen' : S.ctab); S.ficha = t.dataset.cliente; S.pficha = null; S.view = 'clientes'; try { history.replaceState(null, '', '#clientes/' + encodeURIComponent(S.ficha)); } catch (e) { } render(); window.scrollTo(0, 0); },
   back: () => { S.ficha = null; try { history.replaceState(null, '', '#clientes'); } catch (e) { } render(); },
   pver: t => { const id = t.dataset.id; if (S.pficha !== id) S.ptab = 'tareas'; S.pficha = id; S.ficha = null; S.view = 'proyectos'; closeForm(); try { history.replaceState(null, '', '#proyectos/' + id); } catch (e) { } render(); window.scrollTo(0, 0); },

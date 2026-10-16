@@ -105,14 +105,18 @@ Deno.serve(async req => {
 
   const fila = { id: eid, persona_id: yo.id, cliente_id: b.cliente_id || null, factura_id: b.factura_id || null, tipo, periodo: b.periodo || null,
     para, cc, asunto, adjuntos: adjuntos.map((a: any) => a.filename), estado: ok ? 'Enviado' : 'Error', proveedor_id: ok ? out.id : null, error };
-  let { data: log, error: eLog } = await adm.from('emails').insert({ ...fila, links: tr.links }).select('id').single();
+  // Se guarda el texto para poder verlo después desde la ficha (columna "texto": SQL 0025). Si falta alguna columna, se guarda sin ella.
+  const texto = String(b.texto || '').slice(0, 20000);
+  let { data: log, error: eLog } = await adm.from('emails').insert({ ...fila, links: tr.links, texto }).select('id').single();
+  if (eLog) ({ data: log, error: eLog } = await adm.from('emails').insert({ ...fila, links: tr.links }).select('id').single());
   if (eLog) ({ data: log } = await adm.from('emails').insert(fila).select('id').single()); // sin la columna links (falta el SQL 0020)
 
   if (ok && b.cliente_id && b.registrar !== false && tipo === 'Mensaje') {
-    await adm.from('comunicaciones').insert({
-      cliente_id: b.cliente_id, fecha: hoyAR(), canal: 'Email', con_quien: para.join(', '), resumen: 'Mail: ' + asunto + (b.nota ? ' · ' + String(b.nota).slice(0, 400) : ''),
-      acuerdo: '', proximo: '', hecho: true, responsable_id: yo.id,
-    });
+    // La charla queda atada al mail: si se borra el mail del historial, se va con él (SQL 0025).
+    const charla = { cliente_id: b.cliente_id, fecha: hoyAR(), canal: 'Email', con_quien: para.join(', '), resumen: 'Mail: ' + asunto + (b.nota ? ' · ' + String(b.nota).slice(0, 400) : ''),
+      acuerdo: '', proximo: '', hecho: true, responsable_id: yo.id };
+    const { error: eC } = await adm.from('comunicaciones').insert({ ...charla, email_id: log ? log.id : null });
+    if (eC) await adm.from('comunicaciones').insert(charla);
   } else if (ok && b.cliente_id && b.registrar !== false) {
     await sb.from('gestiones').insert({
       cliente_id: b.cliente_id, factura_id: b.factura_id || null, periodo: b.periodo || null, tipo, fecha: hoyAR(), canal: 'Email',
