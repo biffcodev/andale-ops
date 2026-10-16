@@ -1023,7 +1023,7 @@ function vMis() {
   // Clientes de los que es responsable y que no están ya en sus cuentas de Redes (proyectos, branding…)
   const otrosCl = myCl.filter(c => !misCl.includes(c.nombre));
   const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Cuentas de Redes</h2><span class="muted num">' + misCl.length + '</span></div>' + (misCl.length ? '<div class="rows">' + misCl.map(c => { const sv = servicioRedes(c), a = sv.redes || sv.ads, m = red().mesCliente(c, thisMonth()), eq = equipoCuenta(c), yoE = eq.find(e => e.a === yo), otrosE = eq.filter(e => e.a !== yo);
-    return '<button class="row row-cta" ' + (m ? 'data-act="rmAbrir" data-id="' + esc(m._id) + '"' : 'data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"') + '><span class="d">' + av(c, (S.C.find(x => x.nombre === c) || {}).avatar, 'sq') + '</span><span class="t"><b>' + esc(c) + '</b><span>' + servChips(c) + '</span>' +
+    return '<button class="row row-cta" data-act="rmCuenta" data-c="' + esc(c) + '" title="' + (m ? 'Abrir el mes de Redes' : 'Ir a Redes') + '"><span class="d">' + av(c, (S.C.find(x => x.nombre === c) || {}).avatar, 'sq') + '</span><span class="t"><b>' + esc(c) + '</b><span>' + servChips(c) + '</span>' +
       '<span class="cta-eq">' + (yoE && yoE.rol ? '<strong>' + esc(yoE.rol) + '</strong>' : '') + (otrosE.length ? (yoE && yoE.rol ? ' · ' : '') + 'con ' + otrosE.map(conRolTxt).join(', ') : '') + '</span></span><span></span></button>'; }).join('') + '</div>' : emptyBox('Sin cuentas de Redes a cargo', '')) + '</section>';
   h += '<div class="grid2"><div class="stack">' + tkHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
     '<div class="stack">' + cuentasHtml +
@@ -1759,6 +1759,14 @@ const ACT = {
   cfEstado: t => { S.cf.estado = t.dataset.estado; render(); },
   afTipo: t => { S.af.tipo = t.dataset.tipo; render(); },
   cAuto: async t => { const c = S.C.find(x => x._id === t.dataset.id); if (!c) return; try { await data.update('cliente', c._id, { estadoManual: false }); toast(c.nombre + ' vuelve al estado automático'); } catch (err) { toast(err.message); } await reload(); },
+  // Abrir el trabajo de una cuenta de Redes: el mes actual; si todavía no se arrancó, Redes filtrado por el cliente (ahí se arranca).
+  rmCuenta: t => {
+    const c = t.dataset.c, m = (S.RM || []).find(x => x.cliente === c && x.mes === thisMonth());
+    S.ficha = null; S.pficha = null; S.view = 'redes';
+    if (m) { S.rmFicha = m._id; try { history.replaceState(null, '', '#redes/' + m._id); } catch (e) { } render(); window.scrollTo(0, 0); return; }
+    S.rmFicha = null; S.rf = Object.assign(S.rf || { resp: '', estado: '', pend: false }, { q: c }); if (S.tab) S.tab.redes = 'mes';
+    go('redes'); toast('Todavía no se arrancó ' + monthLabel(thisMonth()).split(' ')[0] + ' para ' + c + ': arrancalo desde acá');
+  },
   equipoFijoAplicar: async t => {
     const fijo = equipoFijo(); if (!fijo.length) return; t.disabled = true; let n = 0;
     try {
