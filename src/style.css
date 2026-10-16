@@ -2191,3 +2191,43 @@ svg line,svg path[fill="none"],svg polyline{vector-effect:non-scaling-stroke}
 @media (max-width:980px){.lt-lay{grid-template-columns:1fr}.lt-form{position:static}.lt-lote{grid-template-columns:1fr}.lt-acc{justify-content:flex-start}}
 .lt-tab .tbl{margin:0}.lt-t{width:100%}
 .lt-form .seg{display:flex;width:100%}.lt-form .seg button{flex:1;padding-left:6px;padding-right:6px;white-space:nowrap;font-size:12.5px}
+
+/* ---------- Controles con estilo propio: casillas, interruptores, desplegables y fechas ---------- */
+/* Casilla: cuadrado redondeado; tildada, fondo de color con el tilde blanco que aparece con un pop. */
+:root input[type="checkbox"]:not(#_){-webkit-appearance:none;appearance:none;width:20px;height:20px;min-width:20px;min-height:0;margin:0;padding:0;flex:none;
+  border:2px solid color-mix(in srgb,var(--fg) 24%,var(--surface));border-radius:7px;background:var(--surface,#fff);display:inline-grid;place-content:center;vertical-align:middle;cursor:pointer;
+  transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease,transform .1s ease}
+:root input[type="checkbox"]:not(#_)::after{content:"";width:12px;height:12px;background:#fff;transform:scale(0);transition:transform .18s cubic-bezier(.2,.9,.3,1.4);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.6l3.1 3.1L13 4.8' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.6l3.1 3.1L13 4.8' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat}
+:root input[type="checkbox"]:not(#_):hover{border-color:var(--cb,var(--accent,#1CB0F6))}
+:root input[type="checkbox"]:not(#_):active{transform:scale(.92)}
+:root input[type="checkbox"]:not(#_):checked{background:var(--cb,var(--accent,#1CB0F6));border-color:var(--cb,var(--accent,#1CB0F6))}
+:root input[type="checkbox"]:not(#_):checked::after{transform:scale(1)}
+:root input[type="checkbox"]:not(#_):indeterminate{background:var(--cb,var(--accent,#1CB0F6));border-color:var(--cb,var(--accent,#1CB0F6))}
+:root input[type="checkbox"]:not(#_):indeterminate::after{transform:scale(1);height:3px;border-radius:2px;-webkit-mask:none;mask:none}
+:root input[type="checkbox"]:not(#_):focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-soft,#DDF4FF)}
+:root input[type="checkbox"]:not(#_):disabled{opacity:.35;cursor:not-allowed;transform:none}
+.tk-ok{--cb:var(--s-entregado,#56CB01)}
+/* Interruptor: los sí/no de los formularios ("Activa/o", "Entra a la app", "Cobra aguinaldo"…) */
+:root label.chk.full > input[type="checkbox"]:not(#_){width:38px;min-width:38px;height:22px;border-radius:999px;border:0;background:color-mix(in srgb,var(--fg) 20%,var(--surface));display:inline-block;position:relative;place-content:normal}
+:root label.chk.full > input[type="checkbox"]:not(#_)::after{-webkit-mask:none;mask:none;position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transform:none;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .18s cubic-bezier(.2,.9,.3,1.2)}
+:root label.chk.full > input[type="checkbox"]:not(#_):checked{background:var(--cb,var(--accent,#1CB0F6))}
+:root label.chk.full > input[type="checkbox"]:not(#_):checked::after{left:19px}
+:root label.chk.full > input[type="checkbox"]:not(#_):active{transform:none}
+label.chk{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+/* Radio, por si aparece */
+:root input[type="radio"]:not(#_){-webkit-appearance:none;appearance:none;width:20px;height:20px;margin:0;border:2px solid color-mix(in srgb,var(--fg) 24%,var(--surface));border-radius:50%;background:var(--surface,#fff);display:inline-grid;place-content:center;cursor:pointer;transition:border-color .15s}
+:root input[type="radio"]:not(#_)::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--accent,#1CB0F6);transform:scale(0);transition:transform .18s cubic-bezier(.2,.9,.3,1.4)}
+:root input[type="radio"]:not(#_):checked{border-color:var(--accent,#1CB0F6)}
+:root input[type="radio"]:not(#_):checked::after{transform:scale(1)}
+/* Desplegables: flecha propia, redondeados */
+:is(select.in,.field select):not([multiple]):not(.cellsel):not(.tk-prio){-webkit-appearance:none;appearance:none;padding-right:36px;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%238A93A3' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;background-size:16px}
+:is(select.in,.field select):not([multiple]):not(.cellsel):not(.tk-prio):hover{border-color:color-mix(in srgb,var(--accent,#1CB0F6) 45%,var(--line))}
+/* Fechas y meses: el ícono del calendario más suave */
+input[type="date"]::-webkit-calendar-picker-indicator,input[type="month"]::-webkit-calendar-picker-indicator{opacity:.5;cursor:pointer;border-radius:6px;padding:2px;transition:opacity .15s,background-color .15s}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,input[type="month"]::-webkit-calendar-picker-indicator:hover{opacity:.9;background-color:var(--accent-soft,#DDF4FF)}
+:root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,:root[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator{filter:invert(1)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) input[type="date"]::-webkit-calendar-picker-indicator,:root:not([data-theme="light"]) input[type="month"]::-webkit-calendar-picker-indicator{filter:invert(1)}}
