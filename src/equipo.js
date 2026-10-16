@@ -154,7 +154,7 @@ export function initEquipo(ctx, k) {
       stc('azul', multi(pend), 'Falta pagar en ' + esc(monthLabel(m).split(' ')[0]), pl(lq.filter(l => !l.movimiento_id).length, 'pago pendiente', 'pagos pendientes')) +
       stc('', multi(pag), 'Pagado en el mes', pl(lq.filter(l => l.movimiento_id).length, 'pago', 'pagos')) +
       stc('tinta', multi(anio), 'Proveedores ' + esc(y), 'según Gastos e ingresos') + '</section>';
-    if (t === 'pagos') return h + vLiquidacion(m, lq, falt, true);
+    if (t === 'pagos') return h + saldosProv() + vLiquidacion(m, lq, falt, true);
     const list = integrantes(true).filter(x => AD.pg.inact || activoI(x)).sort((a, b) => (activoI(b) - activoI(a)) || cmp(nombreI(a), nombreI(b)));
     const rows = list.map(x => {
       const { c, p } = x, pagos = c ? pagosDe(c.id, y) : [], ult = pagos[0], tot = {}; pagos.forEach(v => add(tot, v.moneda, v.egreso));
@@ -164,11 +164,22 @@ export function initEquipo(ctx, k) {
         '<td class="r">' + (rs.length ? rs.map(r => '<span class="money">' + money(r.monto, r.moneda) + '</span><span class="sub">fijo por mes</span>').join('') : '<span class="muted">por trabajo</span>') + '</td>' +
         '<td class="r">' + (pagos.length ? '<span class="money">' + esc(multi(tot)) + '</span><span class="sub">' + pl(pagos.length, 'pago', 'pagos') + '</span>' : '<span class="muted">—</span>') + '</td>' +
         '<td>' + (ult ? '<span class="mono">' + fmt(ult.fecha) + '</span><span class="sub">' + esc(money(ult.egreso, ult.moneda)) + ' · ' + esc((ult.detalle || '').slice(0, 40)) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+        '<td class="r">' + (c && Object.keys(saldoDe(c.id)).length ? '<b class="money">' + esc(multi(saldoDe(c.id))) + '</b>' : '<span class="muted">—</span>') + '</td>' +
         '<td>' + (p && p.email && p.activo !== false ? pill(ROLES[p.rol] || p.rol, ROL_COLOR[p.rol] || '--muted') : '<span class="muted">no entra</span>') + '</td></tr>';
     }).join('');
-    return h + '<section class="sheet">' + (rows ? '<div class="tbl"><table><thead><tr><th>Proveedor</th><th class="r">Honorario</th><th class="r">Pagado en ' + esc(y) + '</th><th>Último pago</th><th>App</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : emptyBox('Todavía no hay proveedores', 'Sumalos con “+ Proveedor”: rubro, CUIT y datos para transferirles.')) +
+    return h + '<section class="sheet">' + (rows ? '<div class="tbl"><table><thead><tr><th>Proveedor</th><th class="r">Honorario</th><th class="r">Pagado en ' + esc(y) + '</th><th>Último pago</th><th class="r">Le debemos</th><th>App</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : emptyBox('Todavía no hay proveedores', 'Sumalos con “+ Proveedor”: rubro, CUIT y datos para transferirles.')) +
       '<div class="count">Para que un pago viejo de Gastos e ingresos cuente, el nombre tiene que coincidir con el del proveedor o con alguno de sus apodos.</div></section>';
   }
+
+  // Trabajos por proyecto con saldo: lo acordado menos lo pagado a cuenta (se carga en la ficha del proyecto › Precio y cobro).
+  function saldosProv() {
+    const cs = k.cxpAbiertos ? k.cxpAbiertos() : []; if (!cs.length) return '';
+    const tot = {}; cs.forEach(c => add(tot, c.moneda, c.saldo));
+    return '<section class="sheet"><div class="sheet-h"><h2>Saldos con proveedores</h2><span class="muted">Lo acordado por proyecto que falta pagar · <b class="money">' + esc(multi(tot)) + '</b></span></div><div class="rows cxp">' +
+      cs.map(c => '<div class="row" style="cursor:default"><span class="t"><b>' + esc(c.nombre) + ' · ' + esc(c.p.cliente) + ' · ' + esc(c.p.proyecto) + '</b><span>' + (c.concepto ? esc(c.concepto) + ' · ' : '') + 'acordado <span class="money">' + money(c.monto, c.moneda) + '</span> · pagado <span class="money">' + money(c.pagado, c.moneda) + '</span>' + (c.pagos.length ? ' (último ' + fmt(c.pagos[c.pagos.length - 1].fecha) + ')' : ' · sin pagos todavía') + '</span></span>' +
+        pill('Debe ' + money(c.saldo, c.moneda), '--s-revision') + '<span class="toolbar"><button class="btn sm" data-act="aCxpPagar" data-id="' + esc(c.id) + '">Pago a cuenta</button></span></div>').join('') + '</div></section>';
+  }
+  const saldoDe = cid => { const acc = {}; (k.cxpAbiertos ? k.cxpAbiertos() : []).filter(c => c.colaborador_id === cid).forEach(c => add(acc, c.moneda, c.saldo)); return acc; };
 
   /* ---------- pagos del mes (equipo o proveedores) ---------- */
   function vLiquidacion(m, lq, falt, prov) {

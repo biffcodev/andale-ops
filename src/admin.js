@@ -22,7 +22,7 @@ export function initAdmin(ctx) {
   const esExterior = m => m && m !== 'ARS' && m !== 'USD';
   const EMISORES = ['Fer', 'Jime'];
   const TIPOS_COMP = ['Factura ARCA', 'Invoice', 'Otro'];
-  const AD = { EP: [], EI: [], ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], LA: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'horas' },
+  const AD = { EP: [], EI: [], CXP: [], ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], LA: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'horas' },
     mes: thisMonth(), sel: null, rd: null, ff: { estado: 'abiertas', cliente: '', emisor: '', anio: String(new Date().getFullYear()) },
     pp: { sel: new Set(), pct: '', desde: addMonth(thisMonth(), 1), motivo: '' }, form: null };
 
@@ -688,8 +688,114 @@ export function initAdmin(ctx) {
     const programado = r2(cs.reduce((a, c) => a + (c.monto || 0), 0)), facturado = r2(cs.filter(c => env.has('pf:' + c.id)).reduce((a, c) => a + (c.monto || 0), 0));
     const presupuesto = fz.presupuesto != null ? fz.presupuesto : (programado || null);
     const cost = costos('proyecto', p._id), costMismo = cost[moneda] || 0, costOtras = Object.keys(cost).filter(k => k !== moneda);
-    const margen = presupuesto != null ? r2(presupuesto - costMismo) : null;
-    return { fz, cs, moneda, programado, facturado, presupuesto, cost, costMismo, costOtras, margen, pct: presupuesto ? Math.round(margen / presupuesto * 100) : null, env };
+    // Lo que todavía se le debe a cada proveedor (acordado − pagado) también es costo: así el margen no se infla con los pagos a cuenta.
+    const cxp = cxpDe(p._id).map(estadoCosto), pend = {}; cxp.forEach(c => add(pend, c.moneda, c.saldo));
+    const pendMismo = pend[moneda] || 0;
+    const margen = presupuesto != null ? r2(presupuesto - costMismo - pendMismo) : null;
+    const cobrado = cobradoProyecto(cs, env);
+    return { fz, cs, moneda, programado, facturado, presupuesto, cost, costMismo, costOtras, cxp, pend, pendMismo, cobrado, enCaja: r2(cobrado - costMismo), margen, pct: presupuesto ? Math.round(margen / presupuesto * 100) : null, env };
+  }
+  /* ---------- Acordado con proveedores y pagos a cuenta ---------- */
+  const colabDe = id => (AD.CO || []).find(c => c.id === id);
+  const cxpDe = proyId => (AD.CXP || []).filter(c => c.proyecto_id === proyId);
+  // Pagos de un acuerdo: los egresos asignados al proyecto con ese acuerdo, o (si no se marcó) los del mismo proveedor y moneda.
+  function estadoCosto(c) {
+    const pares = cxpDe(c.proyecto_id).filter(x => x.colaborador_id === c.colaborador_id && x.moneda === c.moneda), primero = pares[0] && pares[0].id === c.id;
+    const pagos = [];
+    AD.IMP.filter(i => i.proyecto_id === c.proyecto_id).forEach(i => {
+      const mv = movDe(i.movimiento_id); if (!mv || mv.moneda !== c.moneda) return;
+      if (i.costo_id === c.id || (!i.costo_id && primero && mv.colaborador_id === c.colaborador_id)) pagos.push({ fecha: mv.fecha, monto: i.monto, mv });
+    });
+    pagos.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    const pagado = r2(pagos.reduce((a, x) => a + x.monto, 0)), co = colabDe(c.colaborador_id), p = S.P.find(x => x._id === c.proyecto_id);
+    return { ...c, co, nombre: co ? co.nombre : '—', p, pagos, pagado, saldo: c.cerrado ? 0 : Math.max(0, r2(c.monto - pagado)), pasado: pagado > c.monto + 0.009 };
+  }
+  const cxpAbiertos = () => (AD.CXP || []).map(estadoCosto).filter(c => c.saldo > 0.009 && c.p && c.p.estado !== 'Cancelado').sort((a, b) => cmp(a.nombre, b.nombre) || cmp(a.p.cliente, b.p.cliente));
+  // Cuánto del proyecto pagó ya el cliente: cada cuota facturada cuenta en la proporción cobrada de las facturas de ese mes.
+  function cobradoProyecto(cs, env) {
+    let tot = 0;
+    cs.filter(c => env.has('pf:' + c.id)).forEach(c => {
+      const r = AD.R.find(x => x.estado === 'Enviado' && x.items.some(i => i.inc && i.ref === 'pf:' + c.id)); if (!r || !r.total) return;
+      const fs = AD.F.filter(f => f.cliente === r.cliente && f.periodo === r.periodo && f.moneda === r.moneda);
+      const ratio = Math.min(1, fs.reduce((a, f) => a + f.cobrado, 0) / r.total);
+      tot += (c.monto || 0) * ratio;
+    });
+    return r2(tot);
+  }
+  function cxpFilas(f, conAcciones) {
+    if (!f.cxp.length) return '';
+    return '<div class="rows cxp">' + f.cxp.map(c => '<div class="row" style="cursor:default"><span class="t"><b>' + esc(c.nombre) + (c.concepto ? ' · ' + esc(c.concepto) : '') + '</b><span>' +
+      'Acordado <strong class="money">' + money(c.monto, c.moneda) + '</strong> · pagado <span class="money">' + money(c.pagado, c.moneda) + '</span>' + (c.pagos.length ? ' en ' + c.pagos.length + (c.pagos.length === 1 ? ' pago' : ' pagos') + ' (' + esc(c.pagos.map(x => fmt(x.fecha).slice(0, 5) + ' ' + money(x.monto, c.moneda)).join(', ')) + ')' : '') +
+      (c.pasado ? ' · <strong style="color:var(--danger)">se pagó más de lo acordado</strong>' : '') + '</span></span>' +
+      (c.saldo > 0.009 ? pill('Debe ' + money(c.saldo, c.moneda), '--s-revision') : pill(c.cerrado && c.pagado < c.monto - 0.009 ? 'Cerrado' : 'Saldado', '--s-entregado')) +
+      (conAcciones ? '<span class="toolbar">' + (c.saldo > 0.009 ? '<button type="button" class="btn sm" data-act="aCxpPagar" data-id="' + esc(c.id) + '">Pago a cuenta</button>' : '') + '<button type="button" class="btn ghost sm" data-act="aCxp" data-id="' + esc(c.id) + '">Editar</button></span>' : '') + '</div>').join('') + '</div>';
+  }
+  function formCxp(proyId, id) {
+    const x = id ? (AD.CXP || []).find(c => c.id === id) : null, pid = x ? x.proyecto_id : proyId, p = S.P.find(z => z._id === pid); if (!p) return;
+    const provs = (AD.CO || []).filter(c => c.activo || (x && c.id === x.colaborador_id)).sort((a, b) => (a.tipo === 'Proveedor' ? 0 : 1) - (b.tipo === 'Proveedor' ? 0 : 1) || cmp(a.nombre, b.nombre));
+    if (!provs.length) { toast('Primero cargá al proveedor en Finanzas › Proveedores'); return; }
+    const st = x ? estadoCosto(x) : null;
+    openPanel({
+      title: x ? st.nombre + ' · ' + p.proyecto : 'Proveedor del proyecto', eyebrow: 'Acordado con proveedores · ' + p.cliente, saveLabel: x ? 'Guardar' : 'Agregar',
+      intro: 'Cuánto le vamos a pagar en total por este trabajo. Después le pagás a cuenta cuando entra plata o cuando lo pide, y la app lleva el saldo. El margen del proyecto se calcula contra lo acordado, no solo contra lo ya pagado.' + (st && st.pagos.length ? '<br><b>Ya se le pagó ' + esc(money(st.pagado, st.moneda)) + '.</b>' : ''),
+      values: x ? { colaborador_id: x.colaborador_id, concepto: x.concepto, monto: x.monto, moneda: x.moneda, cerrado: x.cerrado, notas: x.notas } : { moneda: (AD.PFZ.get(pid) || {}).moneda || cadm(p.cliente).moneda || 'ARS', cerrado: false },
+      fields: [
+        { k: 'colaborador_id', label: 'Proveedor', type: 'select', req: 1, html: v => opt('', 'Elegí', v) + provs.map(c => opt(c.id, c.nombre + (c.rubro ? ' · ' + c.rubro : '') + (c.tipo !== 'Proveedor' ? ' (' + c.tipo.toLowerCase() + ')' : ''), v)).join('') },
+        { k: 'concepto', label: 'Qué hace', ph: 'Desarrollo web, fotos de producto…' },
+        { k: 'monto', label: 'Total acordado', num: 1, req: 1 },
+        { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
+        ...(x ? [{ k: 'cerrado', label: 'Dar por saldado (ya no se le debe nada, aunque lo pagado sea menos)', type: 'check' }] : []),
+        { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2, ph: 'Ej.: anticipo al arrancar, el resto contra entrega' },
+      ],
+      onSave: async v => {
+        if (!v.colaborador_id) throw new Error('Elegí el proveedor');
+        if (!(v.monto > 0)) throw new Error('Poné el total acordado');
+        const row = { proyecto_id: pid, colaborador_id: v.colaborador_id, concepto: v.concepto || '', monto: v.monto, moneda: v.moneda, cerrado: !!v.cerrado, notas: v.notas || '' };
+        if (x) await data.upd('costos_acordados', x.id, row); else await data.ins('costos_acordados', row);
+        toast(x ? 'Guardado' : 'Proveedor agregado al proyecto');
+      },
+      onDelete: x ? async () => { await data.del('costos_acordados', x.id); toast('Quitado' + (st.pagos.length ? ': los pagos ya hechos siguen en Gastos e ingresos' : '')); } : null,
+    });
+  }
+  function formCxpPagar(id) {
+    const x = (AD.CXP || []).find(c => c.id === id); if (!x) return;
+    const c = estadoCosto(x), p = c.p, co = c.co; if (!p || !co) { toast('Falta el proyecto o el proveedor'); return; }
+    const f = finProyecto(p), cjs = cajasDe(c.moneda), mismo = f.moneda === c.moneda;
+    const ult = AD.MV.filter(v => v.colaborador_id === co.id && v.egreso > 0).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0];
+    const datosPago = [co.banco, co.cbu && 'CBU ' + co.cbu, co.alias_cbu && 'alias ' + co.alias_cbu, co.cuit && 'CUIT ' + co.cuit].filter(Boolean).join(' · ');
+    const nPago = c.pagos.length + 1;
+    openPanel({
+      title: 'Pago a cuenta a ' + c.nombre, eyebrow: p.cliente + ' · ' + p.proyecto, saveLabel: 'Registrar pago',
+      intro: 'Se carga como gasto en Gastos e ingresos, asignado a este proyecto y a cuenta de lo acordado.' + (datosPago ? '<br><b>Datos de pago:</b> ' + esc(datosPago) : ''),
+      top: '<div class="field full"><dl class="kv"><dt>Acordado</dt><dd class="money">' + money(c.monto, c.moneda) + '</dd><dt>Ya pagado</dt><dd class="money">' + money(c.pagado, c.moneda) + (c.pagos.length ? ' <span class="muted">(' + c.pagos.length + ')</span>' : '') + '</dd><dt>Saldo</dt><dd><b class="money">' + money(c.saldo, c.moneda) + '</b></dd>' +
+        (mismo ? '<dt>El cliente pagó</dt><dd class="money">' + money(f.cobrado, f.moneda) + (f.presupuesto ? ' <span class="muted">de ' + money(f.presupuesto, f.moneda) + '</span>' : '') + '</dd><dt>Plata del proyecto en caja</dt><dd class="money">' + money(f.enCaja, f.moneda) + ' <span class="muted">(cobrado − pagado a proveedores)</span></dd>' : '') + '</dl></div>',
+      values: { monto: c.saldo, fecha: today(), caja: cjs[0] ? cjs[0].id : '', cuenta: (ult && ult.cuenta) || 'Proveedores', subcuenta: (ult && ult.subcuenta) || '', detalle: (nPago === 1 ? 'Anticipo' : 'A cuenta') + ' · ' + p.proyecto + (c.concepto ? ' (' + c.concepto + ')' : '') },
+      fields: [
+        { k: 'monto', label: 'Monto', num: 1, req: 1, hint: 'Por defecto, todo el saldo. Si es un pago parcial, cambialo.' },
+        { k: 'fecha', label: 'Fecha de pago', type: 'date', req: 1 },
+        { k: 'caja', label: 'Sale de la cuenta', type: 'select', html: v => cjs.map(z => opt(z.id, z.nombre, v)).join('') || opt('', 'Sin cuentas en ' + c.moneda, v) },
+        { k: 'detalle', label: 'Detalle', full: 1 },
+        { k: 'cuenta', label: 'Categoría', type: 'select', opts: [...new Set(AD.PC.map(z => z.cuenta))].sort(cmp), adv: 1 },
+        { k: 'subcuenta', label: 'Detalle de la categoría', adv: 1 },
+      ],
+      masLabel: 'Categoría',
+      extra: '<p class="formnote" id="cxp-av" aria-live="polite"></p>',
+      onInput: () => {
+        const m = parseMonto(($('#af-monto') || {}).value) || 0, el = $('#cxp-av'); if (!el) return;
+        const av = [];
+        if (m > c.saldo + 0.009) av.push('Es más que el saldo: le quedarías pagando ' + money(r2(c.pagado + m), c.moneda) + ' de ' + money(c.monto, c.moneda) + ' acordados.');
+        if (mismo && m > f.enCaja + 0.009) av.push('Con este pago le estás pagando más de lo que el cliente ya pagó del proyecto: ' + money(r2(m - Math.max(0, f.enCaja)), c.moneda) + ' salen de otra plata.');
+        el.innerHTML = av.map(a => '<b style="color:var(--warn,#b45309)">' + esc(a) + '</b>').join('<br>');
+      },
+      onSave: async v => {
+        if (!(v.monto > 0)) throw new Error('Poné el monto');
+        const mv = await data.ins('movimientos', { fecha: v.fecha, cuenta: v.cuenta || 'Proveedores', subcuenta: v.subcuenta || '', contraparte: co.nombre, persona_id: co.persona_id || null, colaborador_id: co.id, cliente_id: data.ids.cliente(p.cliente), detalle: v.detalle, ingreso: 0, egreso: r2(v.monto), moneda: c.moneda, caja_id: v.caja || null });
+        await data.ins('imputaciones', { movimiento_id: mv.id, proyecto_id: p._id, monto: r2(v.monto), costo_id: c.id });
+        const queda = Math.max(0, r2(c.saldo - v.monto));
+        toast('Pago cargado en Gastos e ingresos · ' + (queda > 0.009 ? 'saldo ' + money(queda, c.moneda) : 'saldado'));
+      },
+    });
+    AD.form.onInput();
   }
   function formProyectoAdm(proyectoId) {
     const p = S.P.find(x => x._id === proyectoId); if (!p) return;
@@ -699,7 +805,8 @@ export function initAdmin(ctx) {
       '<dt>Precio total</dt><dd class="money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</dd>' +
       '<dt>Cobros planificados</dt><dd class="money">' + money(f.programado, f.moneda) + ' <span class="muted">(' + f.cs.length + ')</span></dd>' +
       '<dt>Ya incluido en resúmenes enviados</dt><dd class="money">' + money(f.facturado, f.moneda) + '</dd>' +
-      '<dt>Costos de proveedores</dt><dd class="money">' + esc(multi(f.cost)) + '</dd>' +
+      '<dt>Pagado a proveedores</dt><dd class="money">' + esc(multi(f.cost)) + '</dd>' +
+      (nada(f.pend) ? '' : '<dt>Falta pagar a proveedores</dt><dd class="money">' + esc(multi(f.pend)) + '</dd>') +
       '<dt>Margen</dt><dd><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? ' <span class="muted">' + f.pct + '%</span>' : '') + '</dd></dl></div>';
     const cuotasHtml = '<div class="field full"><span class="lbl">Cuotas cargadas</span>' + (f.cs.length ? '<div class="rows" style="border:1px solid var(--line);border-radius:8px">' + f.cs.map(c => '<div class="row" style="cursor:default"><span class="d">' + fmt(c.periodo) + '</span><span class="t"><b class="money">' + money(c.monto, c.moneda) + '</b><span>' + esc(c.concepto || '') + (f.env.has('pf:' + c.id) ? ' · <b style="color:var(--ok)">facturada</b>' : '') + '</span></span>' + (f.env.has('pf:' + c.id) ? '' : '<button type="button" class="btn ghost sm" data-act="aCuotaDel" data-id="' + esc(c.id) + '" aria-label="Quitar">✕</button>') + '</div>').join('') + '</div>' : '<span class="muted">Ninguna todavía.</span>') +
       '<span class="toolbar" style="margin-top:6px"><button type="button" class="btn ghost sm" data-act="aCuotas" data-id="' + esc(p._id) + '">+ Agregar cobro</button></span></div>';
@@ -764,14 +871,22 @@ export function initAdmin(ctx) {
     return AD.impDraft.length ? 'Asignado ' + esc(f(sum)) + ' de ' + esc(f(total)) + (sum > total + 0.01 ? ' · <b style="color:var(--danger)">supera el monto</b>' : sum < total - 0.01 ? ' · queda ' + esc(f(r2(total - sum))) + ' sin asignar' : ' ✓') : 'Opcional. Si este gasto es para un cliente (Ads, web, fotos), asignáselo para ver cuánto te deja.';
   }
   const updateImpSum = () => { const el = $('#imp-sum'); if (el) el.innerHTML = impSumHtml(); };
+  function saldosDe(quien) { // acuerdos con saldo del proveedor que se está pagando
+    const co = quien && EQ.colabPorNombre(quien); if (!co) return [];
+    const usados = new Set(AD.impDraft.map(i => i.costo_id).filter(Boolean));
+    return cxpAbiertos().filter(c => c.colaborador_id === co.id && !usados.has(c.id));
+  }
   function renderImp() {
     const box = $('#imp-box'); if (!box) return;
-    box.innerHTML = AD.impDraft.map((x, i) => '<div class="improw"><select class="in" aria-label="Cliente o proyecto" data-impi="' + i + '" data-impk="dest">' + destinosOpts(x.dest) + '</select><input class="in" inputmode="decimal" aria-label="Monto" placeholder="Monto" data-impi="' + i + '" data-impk="monto" value="' + esc(x.monto) + '"><button type="button" class="btn ghost sm" data-act="aImpDel" data-i="' + i + '" aria-label="Quitar">✕</button></div>').join('') +
+    const sug = saldosDe(($('#af-contraparte') || {}).value);
+    AD.impSug = sug;
+    box.innerHTML = (sug.length ? '<div class="tags" style="gap:6px;margin-bottom:6px">' + sug.map((c, i) => '<button type="button" class="btn sm" data-act="aImpCxp" data-i="' + i + '">A cuenta de ' + esc(c.p.proyecto) + ' · saldo ' + esc(money(c.saldo, c.moneda)) + '</button>').join('') + '</div>' : '') +
+      AD.impDraft.map((x, i) => '<div class="improw"><select class="in" aria-label="Cliente o proyecto" data-impi="' + i + '" data-impk="dest">' + destinosOpts(x.dest) + '</select><input class="in" inputmode="decimal" aria-label="Monto" placeholder="Monto" data-impi="' + i + '" data-impk="monto" value="' + esc(x.monto) + '"><button type="button" class="btn ghost sm" data-act="aImpDel" data-i="' + i + '" aria-label="Quitar">✕</button></div>').join('') +
       '<div class="toolbar"><button type="button" class="btn sm" data-act="aImpAdd">+ Otro cliente</button>' + (AD.impDraft.length > 1 ? '<button type="button" class="btn ghost sm" data-act="aImpSplit">Repartir en partes iguales</button>' : '') + (AD.impCopy ? '<button type="button" class="btn ghost sm" data-act="aImpCopy">Copiar reparto del pago anterior a ' + esc(AD.impCopy.contraparte) + '</button>' : '') + '<button type="button" class="btn ghost sm" id="imp-ia" data-act="aImpIA">✨ Sugerir reparto</button></div>' +
       '<span class="hint" id="imp-sum">' + impSumHtml() + '</span>';
   }
   async function guardarImp(movId) {
-    const rows = AD.impDraft.filter(x => x.dest && parseMonto(x.monto) > 0).map(x => ({ movimiento_id: movId, abono_id: x.dest.startsWith('a:') ? x.dest.slice(2) : null, proyecto_id: x.dest.startsWith('p:') ? x.dest.slice(2) : null, monto: r2(parseMonto(x.monto)) }));
+    const rows = AD.impDraft.filter(x => x.dest && parseMonto(x.monto) > 0).map(x => { const pid = x.dest.startsWith('p:') ? x.dest.slice(2) : null, cid = pid && x.costo_id && (AD.CXP || []).some(c => c.id === x.costo_id && c.proyecto_id === pid) ? x.costo_id : null; return { movimiento_id: movId, abono_id: x.dest.startsWith('a:') ? x.dest.slice(2) : null, proyecto_id: pid, monto: r2(parseMonto(x.monto)), ...(cid ? { costo_id: cid } : {}) }; });
     const prev = AD.IMP.filter(x => x.movimiento_id === movId);
     if (!prev.length && !rows.length) return;
     await data.del('imputaciones', movId, 'movimiento_id');
@@ -794,12 +909,12 @@ export function initAdmin(ctx) {
       '<div class="kpi ' + (sinImp.length ? 'warn' : '') + '"><span class="eyebrow">Pagos a proveedores sin asignar</span><b style="font-size:20px" class="money">' + esc(multi(accSin)) + '</b><span>' + sinImp.length + ' pagos · ' + esc(y) + '</span></div></section>';
     if (rt.ver === 'horas') h += rentHoras(R);
     else if (rt.ver === 'proyectos') {
-      const ps = S.P.filter(p => p.estado !== 'Cancelado' && (AD.PFZ.has(p._id) || AD.PF.some(c => c.proyecto_id === p._id) || AD.IMP.some(x => x.proyecto_id === p._id))).map(p => ({ p, f: finProyecto(p) })).sort((a, b) => cmp(a.p.cliente, b.p.cliente));
+      const ps = S.P.filter(p => p.estado !== 'Cancelado' && (AD.PFZ.has(p._id) || AD.PF.some(c => c.proyecto_id === p._id) || AD.IMP.some(x => x.proyecto_id === p._id) || cxpDe(p._id).length)).map(p => ({ p, f: finProyecto(p) })).sort((a, b) => cmp(a.p.cliente, b.p.cliente));
       const sinPres = S.P.filter(p => isOpenP(p) && !AD.PFZ.has(p._id) && !AD.PF.some(c => c.proyecto_id === p._id)).length;
       h += '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2>' + (sinPres ? '<span class="muted">' + sinPres + ' abiertos sin presupuesto cargado</span>' : '') + '</div>' + (ps.length ? '<div class="tbl"><table><thead><tr><th>Proyecto</th><th>Estado</th><th class="r">Presupuesto</th><th class="r">Facturado</th><th class="r">Falta facturar</th><th class="r">Costos</th><th class="r">Margen</th><th></th></tr></thead><tbody>' +
         ps.map(({ p, f }) => '<tr><td class="name">' + esc(p.proyecto) + '<span class="sub">' + esc(p.cliente) + (f.fz.plan_pago ? ' · ' + esc(f.fz.plan_pago) : '') + '</span></td><td>' + pill(p.estado, ctx.stVar ? ctx.stVar(p.estado) : '--muted') + '</td>' +
           '<td class="r money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</td><td class="r money">' + money(f.facturado, f.moneda) + '</td><td class="r money">' + (f.presupuesto != null ? money(r2(f.presupuesto - f.facturado), f.moneda) : '—') + '</td>' +
-          '<td class="r money">' + esc(multi(f.cost) || '—') + '</td><td class="r"><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? '<span class="sub">' + f.pct + '%</span>' : '') + '</td>' +
+          '<td class="r money">' + esc(multi(f.cost) || '—') + (nada(f.pend) ? '' : '<span class="sub">falta pagar ' + esc(multi(f.pend)) + '</span>') + '</td><td class="r"><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? '<span class="sub">' + f.pct + '%</span>' : '') + '</td>' +
           '<td class="r"><button class="btn ghost sm" data-act="aProyAdm" data-id="' + esc(p._id) + '">Editar</button></td></tr>').join('') + '</tbody></table></div>' : emptyBox('Todavía no hay proyectos con precio cargado', 'Abrí un proyecto → “Precio y cobro” y cargá cuánto se cobra y en cuántas veces.')) + '</section>';
     } else {
       const meses = []; for (let mm = R.desde.slice(0, 7); mm <= R.hasta.slice(0, 7) && mm <= m; mm = addMonth(mm, 1)) meses.push(mm);
@@ -1051,9 +1166,14 @@ export function initAdmin(ctx) {
       (f.presupuesto != null || f.cs.length ? '<div class="sheet-b"><dl class="kv">' +
         '<dt>Precio total</dt><dd><b class="money">' + (f.presupuesto != null ? money(f.presupuesto, f.moneda) : '—') + '</b>' + (f.fz.plan_pago ? ' <span class="muted">' + esc(f.fz.plan_pago) + '</span>' : '') + '</dd>' +
         '<dt>Facturado</dt><dd class="money">' + money(f.facturado, f.moneda) + (f.presupuesto != null && pend > 0.009 ? ' <span class="muted">· falta ' + money(pend, f.moneda) + '</span>' : '') + '</dd>' +
-        '<dt>Costos</dt><dd class="money">' + esc(multi(f.cost)) + '</dd>' +
-        '<dt>Margen</dt><dd><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? ' ' + pill(f.pct + '%', f.pct >= 50 ? '--s-entregado' : f.pct >= 25 ? '--s-revision' : '--s-cancelado') : '') + '</dd></dl></div>' + (cuotas ? '<div class="rows" style="border-top:1px solid var(--line)">' + cuotas + '</div>' : '')
-        : emptyBox('Todavía no cargaste cuánto se cobra', 'Poné el precio total y en cuántas veces: las cuotas aparecen solas en el resumen de cada mes.')) + '</section>';
+        (f.facturado ? '<dt>Cobrado</dt><dd class="money">' + money(f.cobrado, f.moneda) + ' <span class="muted">según lo cobrado de cada mes</span></dd>' : '') +
+        '<dt>Pagado a proveedores</dt><dd class="money">' + esc(multi(f.cost)) + '</dd>' +
+        (nada(f.pend) ? '' : '<dt>Falta pagar a proveedores</dt><dd class="money"><b>' + esc(multi(f.pend)) + '</b></dd>') +
+        (f.facturado || f.costMismo ? '<dt>Plata del proyecto en caja</dt><dd class="money">' + money(f.enCaja, f.moneda) + (f.pendMismo > 0.009 ? ' <span class="muted">· ' + (f.enCaja - f.pendMismo >= -0.009 ? 'libre después de pagar lo que se debe: ' + money(r2(f.enCaja - f.pendMismo), f.moneda) : 'faltan ' + money(r2(f.pendMismo - f.enCaja), f.moneda) + ' para cubrir lo que se debe a proveedores') + '</span>' : '') + '</dd>' : '') +
+        '<dt>Margen</dt><dd><b class="money">' + (f.margen != null ? money(f.margen, f.moneda) : '—') + '</b>' + (f.pct != null ? ' ' + pill(f.pct + '%', f.pct >= 50 ? '--s-entregado' : f.pct >= 25 ? '--s-revision' : '--s-cancelado') : '') + (f.pendMismo > 0.009 ? ' <span class="muted">contando lo que falta pagar</span>' : '') + '</dd></dl></div>' + (cuotas ? '<div class="rows" style="border-top:1px solid var(--line)">' + cuotas + '</div>' : '')
+        : emptyBox('Todavía no cargaste cuánto se cobra', 'Poné el precio total y en cuántas veces: las cuotas aparecen solas en el resumen de cada mes.')) + '</section>' +
+      '<section class="sheet"><div class="sheet-h"><h2>Proveedores</h2><button class="btn sm" data-act="aCxp" data-proy="' + esc(p._id) + '">+ Proveedor</button></div>' +
+      (f.cxp.length ? cxpFilas(f, true) : emptyBox('Sin proveedores cargados', 'Si alguien de afuera trabaja en este proyecto (web, fotos, video), cargá cuánto se le acordó: vas a ver lo pagado, el saldo y el margen real.')) + '</section>';
   }
 
   /* ---------- Formularios (panel lateral) ---------- */
@@ -1539,7 +1659,7 @@ export function initAdmin(ctx) {
     const s = $('#af-subcuenta'); if (s) s.setAttribute('list', 'dl-sub');
     const c = $('#af-contraparte'); if (c) c.setAttribute('list', 'dl-partes');
     usdToggle();
-    AD.impDraft = (x ? AD.IMP.filter(i => i.movimiento_id === x.id) : []).map(i => ({ dest: i.abono_id ? 'a:' + i.abono_id : 'p:' + i.proyecto_id, monto: String(i.monto) }));
+    AD.impDraft = (x ? AD.IMP.filter(i => i.movimiento_id === x.id) : []).map(i => ({ dest: i.abono_id ? 'a:' + i.abono_id : 'p:' + i.proyecto_id, monto: String(i.monto), costo_id: i.costo_id || null }));
     const prevMov = (contraparte) => AD.MV.filter(v => v.contraparte === contraparte && (!x || v.id !== x.id) && AD.IMP.some(i => i.movimiento_id === v.id)).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0];
     const setCopy = () => { const cp = ($('#af-contraparte') || {}).value; const pm = cp && prevMov(cp); AD.impCopy = pm ? { contraparte: cp, mov: pm } : null; };
     const tocados = new Set(Object.keys(preset || {}));
@@ -1554,7 +1674,9 @@ export function initAdmin(ctx) {
       const cj = AD.CJ.find(c => c.id === u.caja_id);
       if (h) h.textContent = '✓ Como la última vez (' + fmt(u.fecha) + '): ' + [u.cuenta, u.subcuenta, cj && cj.nombre].filter(Boolean).join(' · ');
     };
-    setCopy(); AD.form.onInput = () => { autocompletar(); const had = !!AD.impCopy; setCopy(); if (had !== !!AD.impCopy) renderImp(); else updateImpSum(); };
+    const sugKey = () => saldosDe(($('#af-contraparte') || {}).value).map(c => c.id).join(',');
+    let sugPrev = '';
+    setCopy(); AD.form.onInput = () => { autocompletar(); const had = !!AD.impCopy; setCopy(); const sk = sugKey(); if (had !== !!AD.impCopy || sk !== sugPrev) { sugPrev = sk; renderImp(); } else updateImpSum(); };
     const cpEl = $('#af-contraparte'); if (cpEl) { cpEl.addEventListener('input', () => AD.form && AD.form.onInput && AD.form.onInput()); cpEl.addEventListener('change', () => AD.form && AD.form.onInput && AD.form.onInput()); }
     if (preset && preset.contraparte) autocompletar();
     if (preset && preset.imp) AD.impDraft = preset.imp;
@@ -1562,7 +1684,7 @@ export function initAdmin(ctx) {
   }
 
   /* ---------- Módulos: sueldos y pagos, asistente ---------- */
-  const kit = { arranque, antesDeArrancar, cierre: { bulkResumenes, bulkRecordatorios, bulkAvisos, enviarDirecto, enviarFacturaDrive, envioAutoDrive }, estiloDoc, hoyDMY, cfgDocs, datosClienteDoc, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp,
+  const kit = { arranque, antesDeArrancar, cierre: { bulkResumenes, bulkRecordatorios, bulkAvisos, enviarDirecto, enviarFacturaDrive, envioAutoDrive }, estiloDoc, hoyDMY, cfgDocs, datosClienteDoc, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp, cxpAbiertos,
     formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a),
     openComposer: o => openComposer(o), cfgMarca: () => cfgMarca(), firma: () => firma(), mailsDe: c => mailsDe(c), cuotasPlan };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;
@@ -1699,6 +1821,18 @@ export function initAdmin(ctx) {
     aAds: t => formAds(t.dataset.abono),
     aRtVer: t => { AD.rt.ver = t.dataset.v; ctx.render(); },
     aImpAdd: () => { AD.impDraft.push({ dest: '', monto: '' }); renderImp(); },
+    aImpCxp: t => {
+      const c = (AD.impSug || [])[+t.dataset.i]; if (!c) return;
+      const total = parseMonto(($('#af-monto') || {}).value) || 0, asig = AD.impDraft.reduce((a, x) => a + (parseMonto(x.monto) || 0), 0);
+      const m = total ? Math.min(c.saldo, Math.max(0, r2(total - asig))) : c.saldo;
+      AD.impDraft = AD.impDraft.filter(x => x.dest || x.monto);
+      AD.impDraft.push({ dest: 'p:' + c.proyecto_id, monto: String(m).replace('.', ','), costo_id: c.id });
+      if (!total) { const el = $('#af-monto'); if (el) el.value = String(c.saldo).replace('.', ','); }
+      const d = $('#af-detalle'); if (d && !d.value.trim()) d.value = (c.pagos.length ? 'A cuenta' : 'Anticipo') + ' · ' + c.p.proyecto + (c.concepto ? ' (' + c.concepto + ')' : '');
+      renderImp();
+    },
+    aCxp: t => formCxp(t.dataset.proy, t.dataset.id),
+    aCxpPagar: t => formCxpPagar(t.dataset.id),
     aImpDel: t => { AD.impDraft.splice(+t.dataset.i, 1); renderImp(); },
     aImpSplit: () => { const total = parseMonto(($('#af-monto') || {}).value) || 0, n = AD.impDraft.length; if (!n || !total) return; const base = Math.floor(total / n * 100) / 100; AD.impDraft.forEach((x, i) => { x.monto = String(i === n - 1 ? r2(total - base * (n - 1)) : base); }); renderImp(); },
     aImpCopy: () => {

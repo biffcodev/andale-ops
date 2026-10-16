@@ -2291,3 +2291,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,input[type="month"]:
 .callout.ep.ok{background:color-mix(in srgb,var(--ok,#22A06B) 9%,var(--surface));border-color:color-mix(in srgb,var(--ok,#22A06B) 30%,var(--line))}
 .callout.ep.warn{background:color-mix(in srgb,#E5484D 7%,var(--surface));border-color:color-mix(in srgb,#E5484D 30%,var(--line))}
 .ep-warn{color:#C2410C;font-weight:600}
+
+/* Acordado con proveedores: nombre + detalle, saldo y acciones */
+.rows.cxp .row{grid-template-columns:minmax(0,1fr) auto auto;cursor:default}
+.rows.cxp .row .t b{white-space:normal}
+.rows.cxp .row .t span{line-height:1.45}
+@media (max-width:640px){.rows.cxp .row{grid-template-columns:minmax(0,1fr) auto}.rows.cxp .row .toolbar{grid-column:1/-1}}
