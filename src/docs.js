@@ -485,6 +485,26 @@ export async function informeDoc(i) {
     }
     D.y = top - alto - 4;
   }
+  // Publicidad (Ads)
+  const { adsDatos } = await import('./informe-vista.js');
+  const ads = adsDatos(d.ads);
+  if (ads) {
+    titulo('Publicidad en ' + ads.plat);
+    const n = ads.kp.length, gap = 10, tw = (CW - gap * (n - 1)) / n, th = 76; D.need(th + gap); const top = D.y;
+    ads.kp.forEach((k, j) => {
+      const c = ['#FF9600', '#1CB0F6', '#56CB01'][j % 3], xx = M + j * (tw + gap);
+      D.rect(xx, top - th, tw, th, mix(c, 0.14), 12); D.text(k.l, xx + 14, top - 20, F.s, 9.5, dark(c, 0.6));
+      const fs = Math.min(20, 20 * (tw - 28) / Math.max(1, D.wid(k.t, F.d, 20))); D.text(k.t, xx + 14, top - 46, F.d, fs, COL.ink);
+      if (k.d != null) { const good = k.bueno == null ? 0 : k.d * k.bueno, t = (k.d > 0 ? '+' : '') + k.d + '% vs. ' + k.ant; D.text(t, xx + 14, top - 64, F.s, 8.5, good > 0 ? UP : good < 0 ? DOWN : COL.muted); }
+    });
+    D.y = top - th - gap;
+    if (ads.segs.length) {
+      const mx = Math.max(...ads.segs.map(s => +s.resultados || 0)) || 1, lab = 120, bw = CW - lab - 150;
+      ads.segs.forEach((s, j) => { D.need(18); D.y -= 16; D.text(D.wrap(s.nombre, F.s, 9.5, lab - 6)[0], M, D.y, F.s, 9.5, COL.ink); const w = Math.max(4, (+s.resultados || 0) / mx * bw); D.rect(M + lab, D.y - 1, w, 9, hex(PALETA[(j + 1) % PALETA.length]), 4.5); D.text(corto(s.resultados) + (s.costo != null ? ' · ' + (ads.moneda && ads.moneda !== 'ARS' ? ads.moneda + ' ' : '$ ') + Number(s.costo).toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' c/u' : ''), M + lab + w + 6, D.y, F.r, 8.5, COL.soft); });
+      D.y -= 8;
+    }
+    if (ads.texto) { D.y -= 6; D.para(ads.texto, M, F.r, 10.5, CW, COL.soft, 1.55); D.y -= 8; }
+  }
   // Texto
   if (inf.texto) { titulo('Cómo fue el mes'); String(inf.texto).split(/\n\s*\n/).forEach(p => { D.para(p, M, F.r, 10.5, CW, COL.soft, 1.55); D.y -= 8; }); }
   // Lo que mejor funcionó

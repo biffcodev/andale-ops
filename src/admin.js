@@ -851,10 +851,17 @@ export function initAdmin(ctx) {
         { k: 'inversion', label: 'Inversión mensual en pauta', num: 1, hint: 'Valor habitual. Si un mes cambia, editalo en el resumen de ese mes.' },
         { k: 'inversion_moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
         { k: 'inversion_paga', label: 'Quién la paga', type: 'select', html: v => opt('Cliente', 'El cliente, con su tarjeta', v) + opt('àndale', 'La adelanta àndale y se cobra en el resumen', v), full: 1 },
-        { k: 'plataformas', label: 'Plataformas', ph: 'Meta + Google', full: 1 },
         { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2 },
       ],
-      onSave: async v => { await data.upsert('abono_finanzas', { abono_id: abonoId, inversion: v.inversion, inversion_moneda: v.inversion_moneda, inversion_paga: v.inversion_paga, plataformas: v.plataformas, notas: v.notas, updated_at: new Date().toISOString() }, 'abono_id'); toast('Pauta guardada'); },
+      // Plataformas: de la lista de Opciones (así quedan todas escritas igual). Lo viejo escrito a mano se reconoce.
+      extra: (() => {
+        const lista = (S.L.plataformasAds && S.L.plataformasAds.length ? S.L.plataformasAds : ['Meta', 'Google', 'TikTok', 'LinkedIn']);
+        const tiene = String(af.plataformas || '').split(/\s*[+,/;]\s*|\s+y\s+/i).map(x => x.trim()).filter(Boolean);
+        const elegidas = [...new Set(tiene.map(x => lista.find(l => l.toLowerCase() === x.toLowerCase()) || lista.find(l => x.toLowerCase().includes(l.toLowerCase())) || x))];
+        const todas = [...lista, ...elegidas.filter(x => !lista.includes(x))];
+        return '<div class="field full"><span class="lbl">Plataformas</span><div class="multi" id="ads-plat">' + todas.map(x => '<label><input type="checkbox" value="' + esc(x) + '"' + (elegidas.includes(x) ? ' checked' : '') + '> ' + esc(x) + '</label>').join('') + '</div><span class="hint">Se agregan o cambian en Configuración › Opciones.</span></div>';
+      })(),
+      onSave: async v => { const plat = [...document.querySelectorAll('#ads-plat input:checked')].map(i => i.value).join(' + '); await data.upsert('abono_finanzas', { abono_id: abonoId, inversion: v.inversion, inversion_moneda: v.inversion_moneda, inversion_paga: v.inversion_paga, plataformas: plat, notas: v.notas, updated_at: new Date().toISOString() }, 'abono_id'); toast('Pauta guardada'); },
     });
   }
 

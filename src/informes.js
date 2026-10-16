@@ -12,7 +12,11 @@ const IMG_MAX = 1600;
 export function initInformes(ctx) {
   const { S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff } = ctx;
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-  const st = { lista: new Map(), cargando: new Set(), rehacer: new Set(), archivos: new Map(), busy: false };
+  const st = { lista: new Map(), cargando: new Set(), rehacer: new Set(), archivos: new Map(), busy: false, adsBusy: false, adsRehacer: new Set() };
+  const tieneAds = cliente => (S.A || []).some(a => a.cliente === cliente && a.tipo === 'Ads' && a.estado === 'Activo');
+  const RES = () => (S.L && S.L.resultadosAds && S.L.resultadosAds.length ? S.L.resultadosAds : ['Conversaciones iniciadas', 'Mensajes', 'Clics', 'Leads', 'Compras']);
+  const delaLista = (lista, v) => lista.find(x => x.toLowerCase() === String(v || '').trim().toLowerCase()) || lista.find(x => String(v || '').toLowerCase().includes(x.toLowerCase())) || String(v || '').trim();
+  const PLAT = () => (S.L && S.L.plataformasAds && S.L.plataformasAds.length ? S.L.plataformasAds : ['Meta', 'Google', 'TikTok', 'LinkedIn']);
 
   async function cargar(cliente, forzar) {
     if (st.cargando.has(cliente) || (!forzar && st.lista.has(cliente))) return;
@@ -58,10 +62,53 @@ export function initInformes(ctx) {
         (pub ? '<button class="btn sm" data-act="infAvisar">Avisar al cliente</button><button class="btn sm ghost" data-act="infPublicar" data-v="0">Despublicar</button>' : '<button class="btn sm primary" data-act="infPublicar" data-v="1">Publicar en el portal</button>') + '</span>' : '') + '</div>' +
       '<section class="inf-prev"><p class="inf-prev-h">Así lo ve el cliente en su portal' + (pub ? '' : ' (cuando lo publiques)') + '</p>' + vista(m, inf) + '</section>' +
       (can ? '<section class="sheet"><div class="sheet-h"><div><h2>Métricas</h2><p class="muted" style="margin:4px 0 0;font-size:13px">“Mes anterior” es opcional: si está, el cliente ve cuánto subió o bajó.</p></div></div><div class="tbl"><table class="inf-met"><thead><tr><th>Métrica</th><th>Red</th><th class="r">Este mes</th><th class="r">Mes anterior</th><th></th></tr></thead><tbody>' + met.map(fila).join('') + '</tbody></table></div><div class="sheet-b"><button type="button" class="btn sm ghost" data-act="infMetAdd">+ Agregar métrica</button></div></section>' +
-        '<section class="sheet"><div class="sheet-h"><h2>Texto para el cliente</h2></div><div class="sheet-b"><div class="field full"><textarea id="inf-texto" rows="8" placeholder="Cómo fue el mes, qué funcionó y por qué.">' + esc(inf.texto) + '</textarea></div>' +
+        adsSheet(m, inf) + '<section class="sheet"><div class="sheet-h"><h2>Texto para el cliente</h2></div><div class="sheet-b"><div class="field full"><textarea id="inf-texto" rows="8" placeholder="Cómo fue el mes, qué funcionó y por qué.">' + esc(inf.texto) + '</textarea></div>' +
         '<div class="field full"><span class="lbl">Lo que mejor funcionó</span><div class="inf-dsts">' + dst.map(dfila).join('') + '</div><button type="button" class="btn sm ghost" data-act="infDstAdd" style="justify-self:start">+ Agregar</button></div>' +
         '<div class="field full"><label for="inf-rec">Para el mes que viene (una por renglón)</label><textarea id="inf-rec" rows="4">' + esc(rec.join('\n')) + '</textarea></div>' +
         '<div class="toolbar"><button class="btn primary" data-act="infGuardar">Guardar cambios</button><button class="btn ghost danger" data-act="infBorrar">Borrar informe</button></div></div></section>' : '') + '</div>';
+  }
+  // Publicidad (Ads): se pega el mail del proveedor y Mr. Piggy saca los números y un texto para el cliente.
+  function adsSheet(m, inf) {
+    const a = (inf.datos || {}).ads, idm = esc(m._id);
+    if (!a && !tieneAds(m.cliente)) return '';
+    const cab = '<div class="sheet-h"><div><h2>Publicidad (Ads)</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Los resultados de la pauta del mes, tal como los manda el proveedor. El cliente los ve en el informe.</p></div>' + (a ? '<span class="toolbar"><button type="button" class="btn sm ghost" data-act="infAdsOtra" data-id="' + idm + '">' + ICON.ia + 'Leer otro mail</button><button type="button" class="btn sm ghost danger" data-act="infAdsQuitar">Quitar del informe</button></span>' : '') + '</div>';
+    if (!a || st.adsRehacer.has(m._id)) return '<section class="sheet">' + cab + '<div class="sheet-b"><div class="field full"><label for="inf-ads-' + idm + '">Pegá el mail del proveedor de Ads</label><textarea id="inf-ads-' + idm + '" rows="7" placeholder="Hola, ¿cómo están? Les compartimos un breve resumen de los resultados de Meta Ads…"></textarea></div>' +
+      '<div class="toolbar"><button type="button" class="btn primary" data-act="infAdsLeer" data-id="' + idm + '"' + (st.adsBusy ? ' disabled' : '') + '>' + ICON.ia + (st.adsBusy ? 'Leyendo…' : 'Leer con Mr. Piggy') + '</button>' + (a ? '<button type="button" class="btn ghost" data-act="infAdsCancelar" data-id="' + idm + '">Cancelar</button>' : '<button type="button" class="btn ghost" data-act="infAdsVacio">Cargar a mano</button>') + '</div></div></section>';
+    const n = v => v == null ? '' : esc(String(v));
+    const inp = (k, v, ph, num) => '<input class="in sm' + (num ? ' r' : '') + '" data-ia="' + k + '"' + (num ? ' type="number" step="any"' : '') + ' value="' + n(v) + '" placeholder="' + esc(ph || '') + '">';
+    const segs = (a.segmentos || []);
+    return '<section class="sheet ads-ed">' + cab + '<div class="sheet-b">' +
+      '<div class="ads-g"><label>Plataforma<select class="in sm" data-ia="plataforma">' + [...new Set([...PLAT(), a.plataforma].filter(Boolean))].map(p => '<option' + (p === a.plataforma ? ' selected' : '') + '>' + esc(p) + '</option>').join('') + '</select></label>' +
+      '<label>Moneda<select class="in sm" data-ia="moneda">' + ['ARS', 'USD', 'EUR'].map(x => '<option' + (x === (a.moneda || 'ARS') ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>' +
+      '<label>Qué se mide<select class="in sm" data-ia="resultado">' + [...new Set([...RES(), a.resultado].filter(Boolean))].map(x => '<option' + (x === a.resultado ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></label></div>' +
+      '<div class="tbl"><table class="inf-met ads-met"><thead><tr><th></th><th class="r">Este mes</th><th class="r">Mes anterior</th></tr></thead><tbody>' +
+      '<tr><td>Inversión</td><td class="r">' + inp('inversion', a.inversion, '', 1) + '</td><td class="r">' + inp('inversion_anterior', a.inversion_anterior, '', 1) + '</td></tr>' +
+      '<tr><td>' + esc(a.resultado || 'Resultados') + '</td><td class="r">' + inp('resultados', a.resultados, '', 1) + '</td><td class="r">' + inp('resultados_anterior', a.resultados_anterior, '', 1) + '</td></tr>' +
+      '<tr><td>Costo por resultado</td><td class="r">' + inp('costo', a.costo, '', 1) + '</td><td class="r">' + inp('costo_anterior', a.costo_anterior, '', 1) + '</td></tr></tbody></table></div>' +
+      '<div class="field full"><span class="lbl">Por segmento o campaña</span><div class="ads-segs">' + segs.map((x, i) => '<div class="ads-seg" data-seg="' + i + '"><input class="in sm" data-is="nombre" value="' + n(x.nombre) + '" placeholder="Mayoristas"><input class="in sm r" type="number" step="any" data-is="resultados" value="' + n(x.resultados) + '" placeholder="Resultados"><input class="in sm r" type="number" step="any" data-is="costo" value="' + n(x.costo) + '" placeholder="Costo c/u"><button type="button" class="btn ghost sm" data-act="infAdsSegDel" data-i="' + i + '" aria-label="Quitar">✕</button></div>').join('') + '</div><button type="button" class="btn sm ghost" data-act="infAdsSegAdd" style="justify-self:start">+ Agregar</button></div>' +
+      '<div class="field full"><label>Texto para el cliente</label><textarea class="in" data-ia="texto" rows="4">' + esc(a.texto || '') + '</textarea></div>' +
+      ((a.pedidos || []).length ? '<div class="callout" style="margin:0"><p style="margin:0"><b>Lo que pide el proveedor</b> (no lo ve el cliente): ' + esc(a.pedidos.join(' · ')) + '</p></div>' : '') +
+      '</div></section>';
+  }
+  async function leerAds(m) {
+    const t = ((document.getElementById('inf-ads-' + m._id) || {}).value || '').trim();
+    if (!t) { toast('Pegá el mail del proveedor'); return; }
+    const inf = delMes(m); if (!inf) return;
+    const b = document.querySelector('[data-inf][data-mes="' + m._id + '"]'), base = b ? leer(b) : { datos: inf.datos, texto: inf.texto };
+    const prevA = ((anterior(m) || {}).datos || {}).ads || null;
+    st.adsBusy = true; render();
+    try {
+      const r = await data.ia({ modo: 'ads_mail', texto: t, contexto: { cliente: m.cliente, mes: monthLabel(m.mes), plataformas: PLAT(), resultados_posibles: RES(), mes_anterior: prevA } });
+      const nn = v => num(v);
+      const costo = nn(r.costo) ?? (nn(r.inversion) != null && nn(r.resultados) ? Math.round(r.inversion / r.resultados * 100) / 100 : null);
+      const ads = { plataforma: PLAT().find(p => String(r.plataforma || '').toLowerCase().includes(p.toLowerCase())) || r.plataforma || PLAT()[0], moneda: r.moneda || 'ARS', resultado: delaLista(RES(), r.resultado) || RES()[0],
+        inversion: nn(r.inversion), resultados: nn(r.resultados), costo,
+        inversion_anterior: nn(r.inversion_anterior) ?? (prevA ? prevA.inversion : null), resultados_anterior: nn(r.resultados_anterior) ?? (prevA ? prevA.resultados : null), costo_anterior: nn(r.costo_anterior) ?? (prevA ? prevA.costo : null),
+        otras: (r.otras || []).filter(x => x && x.nombre), segmentos: (r.segmentos || []).filter(x => x && x.nombre).map(x => ({ nombre: x.nombre, resultados: nn(x.resultados), costo: nn(x.costo) })), texto: r.texto || '', pedidos: r.pedidos || [] };
+      await data.informeGuardar(inf._id, { datos: { ...base.datos, ads }, texto: base.texto }, m.cliente, m.mes);
+      st.adsRehacer.delete(m._id); toast('Listo: revisá los números de Ads'); await cargar(m.cliente, true);
+    } catch (e) { toast(e.message); }
+    st.adsBusy = false; render();
   }
   // Vista del cliente (la misma que en el portal), con el botón para bajar el PDF.
   function vista(m, inf) {
@@ -112,10 +159,18 @@ export function initInformes(ctx) {
 
   /* ---------- Edición ---------- */
   function leer(box) {
-    const met = [...box.querySelectorAll('.inf-met tbody tr')].map(tr => { const g = k => tr.querySelector('[data-im="' + k + '"]').value.trim(); return { nombre: g('nombre'), red: g('red'), valor: num(g('valor')), anterior: num(g('anterior')) }; }).filter(x => x.nombre);
+    const met = [...box.querySelectorAll('.inf-met:not(.ads-met) tbody tr')].map(tr => { const g = k => tr.querySelector('[data-im="' + k + '"]').value.trim(); return { nombre: g('nombre'), red: g('red'), valor: num(g('valor')), anterior: num(g('anterior')) }; }).filter(x => x.nombre);
     const dst = [...box.querySelectorAll('.inf-dst')].map(r => ({ titulo: r.querySelector('[data-id2="titulo"]').value.trim(), por_que: r.querySelector('[data-id2="por_que"]').value.trim() })).filter(x => x.titulo);
     const rec = ((box.querySelector('#inf-rec') || {}).value || '').split('\n').map(x => x.replace(/^[-•\d.)\s]+/, '').trim()).filter(Boolean);
-    return { datos: { metricas: met, destacadas: dst, recomendaciones: rec }, texto: ((box.querySelector('#inf-texto') || {}).value || '').trim() };
+    const out = { datos: { metricas: met, destacadas: dst, recomendaciones: rec }, texto: ((box.querySelector('#inf-texto') || {}).value || '').trim() };
+    const inf = infDeCaja(box), prevAds = inf && inf.datos && inf.datos.ads;
+    if (box.querySelector('.ads-ed')) {
+      const g = k => { const el = box.querySelector('[data-ia="' + k + '"]'); return el ? el.value.trim() : ''; };
+      out.datos.ads = { ...(prevAds || {}), plataforma: g('plataforma'), moneda: g('moneda') || 'ARS', resultado: g('resultado'), texto: g('texto'),
+        ...Object.fromEntries(['inversion', 'resultados', 'costo', 'inversion_anterior', 'resultados_anterior', 'costo_anterior'].map(k => [k, num(g(k))])),
+        segmentos: [...box.querySelectorAll('.ads-seg')].map(r => { const q = k => r.querySelector('[data-is="' + k + '"]').value.trim(); return { nombre: q('nombre'), resultados: num(q('resultados')), costo: num(q('costo')) }; }).filter(x => x.nombre) };
+    } else if (prevAds && !box.dataset.sinAds) out.datos.ads = prevAds;
+    return out;
   }
   const caja = t => t.closest('[data-inf]');
   const mesDeCaja = b => (S.RM || []).find(x => x._id === b.dataset.mes);
@@ -153,6 +208,13 @@ export function initInformes(ctx) {
       t.disabled = false; t.innerHTML = txt;
     },
     infBorrar: async t => { const b = caja(t), m = mesDeCaja(b), inf = infDeCaja(b); if (!inf || !await confirmar('¿Borrar el informe de ' + monthLabel(m.mes) + '?')) return; try { await data.informeDel(inf._id); toast('Borrado'); await cargar(m.cliente, true); } catch (e) { toast(e.message); } },
+    infAdsLeer: t => { const m = (S.RM || []).find(x => x._id === t.dataset.id); if (m && !st.adsBusy) leerAds(m); },
+    infAdsOtra: t => { st.adsRehacer.add(t.dataset.id); render(); },
+    infAdsCancelar: t => { st.adsRehacer.delete(t.dataset.id); render(); },
+    infAdsVacio: t => editarLocal(caja(t), v => { v.datos.ads = { plataforma: PLAT()[0], moneda: 'ARS', resultado: RES()[0], inversion: null, resultados: null, costo: null, segmentos: [], texto: '' }; }),
+    infAdsQuitar: async t => { const b = caja(t); if (!await confirmar('¿Quitar la sección de Ads de este informe?')) return; b.dataset.sinAds = '1'; b.querySelector('.ads-ed') && b.querySelector('.ads-ed').remove(); guardar(b, null, 'Sección de Ads quitada'); },
+    infAdsSegAdd: t => editarLocal(caja(t), v => { (v.datos.ads.segmentos = v.datos.ads.segmentos || []).push({ nombre: ' ', resultados: null, costo: null }); }),
+    infAdsSegDel: t => editarLocal(caja(t), v => { v.datos.ads.segmentos.splice(+t.dataset.i, 1); }),
     infMetAdd: t => editarLocal(caja(t), v => v.datos.metricas.push({ nombre: ' ', red: '', valor: null, anterior: null })),
     infMetDel: t => editarLocal(caja(t), v => v.datos.metricas.splice(+t.dataset.i, 1)),
     infDstAdd: t => editarLocal(caja(t), v => v.datos.destacadas.push({ titulo: ' ', por_que: '' })),

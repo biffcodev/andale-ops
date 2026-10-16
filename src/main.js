@@ -44,8 +44,10 @@ const DEF = {
   monedas: ['ARS', 'USD', 'EUR', 'GBP'],
   formatosRedes: ['Reels', 'Posts', 'Historias', 'Carruseles'],
   rolesCuenta: ['Dirección', 'Cuentas y programación', 'Diseño', 'Ads', 'Contenido', 'Branding', 'Otro'],
+  plataformasAds: ['Meta', 'Google', 'TikTok', 'LinkedIn', 'YouTube'],
+  resultadosAds: ['Conversaciones iniciadas', 'Mensajes', 'Clics', 'Leads', 'Compras', 'Seguidores', 'Visitas al sitio'],
 };
-const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores', monedas: 'Monedas (código de 3 letras: ARS, USD, EUR, GBP…)', formatosRedes: 'Formatos de redes (son también las carpetas de cada mes en Dropbox)', rolesCuenta: 'Roles en las cuentas de Redes y Ads' };
+const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores', monedas: 'Monedas (código de 3 letras: ARS, USD, EUR, GBP…)', formatosRedes: 'Formatos de redes (son también las carpetas de cada mes en Dropbox)', rolesCuenta: 'Roles en las cuentas de Redes y Ads', plataformasAds: 'Plataformas de pauta (Ads)', resultadosAds: 'Qué se mide en Ads (resultado principal)' };
 const ESTADOS_ABONO = ['Activo', 'Pausado', 'Baja'];
 const ROLES = { admin: 'Administrador', equipo: 'Equipo', externo: 'Externo' };
 const CERRADOS = new Set(['Entregado', 'Cancelado']);

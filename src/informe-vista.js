@@ -35,6 +35,34 @@ function dona(filas) {
   return '<svg viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Reparto por red">' + h + '<text x="64" y="62" text-anchor="middle" class="ir-dn-b"' + (corto(tot).length > 7 ? ' style="font-size:' + Math.max(10, 15 - (corto(tot).length - 7) * 1.2).toFixed(1) + 'px"' : '') + '>' + esc(corto(tot)) + '</text><text x="64" y="78" text-anchor="middle" class="ir-dn-s">en total</text></svg>';
 }
 
+// Plata con su moneda, siempre completa
+export const plata = (v, mon) => v == null || isNaN(+v) ? '—' : (mon && mon !== 'ARS' ? mon + ' ' : '$ ') + Number(v).toLocaleString('es-AR', { maximumFractionDigits: Math.abs(+v) >= 1000 ? 0 : 2 });
+const varPct = (v, a) => (a && v != null && +a !== 0) ? Math.round((v / a - 1) * 100) : null;
+// Resultados de la pauta: inversión, resultado principal y costo por resultado (bajar el costo es bueno).
+export function adsDatos(a) {
+  if (!a || (a.inversion == null && a.resultados == null)) return null;
+  const kp = [
+    { l: 'Inversión', v: a.inversion, t: plata(a.inversion, a.moneda), d: varPct(a.inversion, a.inversion_anterior), bueno: null, ant: a.inversion_anterior != null ? plata(a.inversion_anterior, a.moneda) : '' },
+    { l: a.resultado || 'Resultados', v: a.resultados, t: corto(a.resultados), d: varPct(a.resultados, a.resultados_anterior), bueno: 1, ant: a.resultados_anterior != null ? corto(a.resultados_anterior) : '' },
+    { l: 'Costo por ' + ({ conversaciones: 'conversación', mensajes: 'mensaje', clics: 'clic', leads: 'contacto', contactos: 'contacto', compras: 'compra', seguidores: 'seguidor', ventas: 'venta' }[String(a.resultado || '').toLowerCase().split(/\s+/)[0]] || 'resultado'), v: a.costo, t: plata(a.costo, a.moneda), d: varPct(a.costo, a.costo_anterior), bueno: -1, ant: a.costo_anterior != null ? plata(a.costo_anterior, a.moneda) : '' },
+  ].filter(k => k.v != null);
+  const segs = (a.segmentos || []).filter(x => x && x.nombre && String(x.nombre).trim());
+  return { kp, segs, plat: a.plataforma || 'Ads', texto: a.texto || '', moneda: a.moneda };
+}
+function adsVista(a) {
+  const x = adsDatos(a); if (!x) return '';
+  let h = '<section class="ir-ads"><h3>Publicidad en ' + esc(x.plat) + '</h3><div class="ir-kpis" style="--cols:' + x.kp.length + '">' + x.kp.map((k, i) => {
+    const c = ['#FF9600', '#1CB0F6', '#56CB01'][i % 3], cls = k.d == null || k.bueno == null ? 'eq' : (k.d * k.bueno > 0 ? 'up' : k.d * k.bueno < 0 ? 'down' : 'eq');
+    return '<div class="ir-kpi" style="--c:' + c + '"><span class="ir-kl">' + esc(k.l) + '</span><b>' + esc(k.t) + '</b>' + (k.d != null ? '<span class="ir-d ' + cls + '">' + (k.d > 0 ? '▲ ' : k.d < 0 ? '▼ ' : '') + Math.abs(k.d) + '%<small> vs. ' + esc(k.ant) + '</small></span>' : '') + '</div>';
+  }).join('') + '</div>';
+  if (x.segs.length) {
+    const mx = Math.max(...x.segs.map(s => +s.resultados || 0)) || 1;
+    h += '<div class="ir-card ir-segs"><h3>Por segmento</h3>' + x.segs.map((s, i) => '<div class="ir-fb"><span>' + esc(s.nombre) + '</span><div class="ir-bar"><i style="width:' + Math.max(3, (+s.resultados || 0) / mx * 100).toFixed(1) + '%;background:' + PALETA[(i + 1) % PALETA.length] + '"></i><span>' + esc(corto(s.resultados)) + (s.costo != null ? ' · ' + esc(plata(s.costo, x.moneda)) + ' c/u' : '') + '</span></div></div>').join('') + '</div>';
+  }
+  if (x.texto) h += '<p class="ir-ads-t">' + esc(x.texto) + '</p>';
+  return h + '</section>';
+}
+
 /** o = { inf, cliente, mesLabel, piezas, descargar: html del botón, editable } */
 export function informeVista(o) {
   const inf = o.inf || {}, d = inf.datos || {}, met = (d.metricas || []).filter(x => x && x.nombre && String(x.nombre).trim());
@@ -83,6 +111,8 @@ export function informeVista(o) {
     }
     h += '</section>';
   }
+  // Publicidad (Ads)
+  h += adsVista(d.ads);
   // Texto
   if (inf.texto) h += '<section class="ir-txt"><h3>Cómo fue el mes</h3>' + esc(inf.texto).split(/\n\s*\n/).map(p => '<p>' + p.replace(/\n/g, '<br>') + '</p>').join('') + '</section>';
   if (dst.length) h += '<section class="ir-dst"><h3>Lo que mejor funcionó</h3><div class="ir-dst-g">' + dst.map((x, i) => '<div class="ir-dc" style="--c:' + PALETA[(i * 3 + 1) % PALETA.length] + '"><span class="ir-dn-n">' + (i + 1) + '</span><b>' + esc(x.titulo) + '</b>' + (x.por_que ? '<p>' + esc(x.por_que) + '</p>' : '') + '</div>').join('') + '</div></section>';
