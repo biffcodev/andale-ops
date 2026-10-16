@@ -37,7 +37,13 @@ export function initRedes(ctx) {
     faltan.forEach(id => st.cargando.delete(id));
     render();
   }
-  const conteoPorFormato = ps => { const o = {}; (ps || []).forEach(z => { o[z.formato] = (o[z.formato] || 0) + 1; }); return o; };
+  // Ads: una pieza puede ser solo para anuncios (no cuenta en el plan de Redes ni como extra) o del plan y además pautada.
+  const soloAds = z => z.ads === 'solo';
+  const enPlan = ps => (ps || []).filter(z => !soloAds(z));
+  const tieneAds = cliente => S.A.some(a => a.cliente === cliente && a.tipo === 'Ads' && a.estado === 'Activo');
+  const ADS_OPC = [['', 'No va en Ads'], ['tambien', 'Del plan, y también se pauta'], ['solo', 'Solo para Ads (no cuenta en el plan)']];
+  const adsTag = z => z.ads === 'solo' ? '<span class="rm-ads" title="Solo para Ads: no cuenta en el plan">Ads</span>' : z.ads === 'tambien' ? '<span class="rm-ads tb" title="Del plan, y también se pauta">+ Ads</span>' : '';
+  const conteoPorFormato = ps => { const o = {}; enPlan(ps).forEach(z => { o[z.formato] = (o[z.formato] || 0) + 1; }); return o; };
   const pzPill = e => '<span class="pzst" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')">' + esc(e) + '</span>';
   const mesPill = e => pill(e, MES_COLOR[e] || '--muted');
   const fechaMes = (mes, d) => mes + '-' + String(d).padStart(2, '0');
@@ -48,7 +54,7 @@ export function initRedes(ctx) {
     const cs = clientesMes(st.mes), ms = cs.map(c => mesCliente(c, st.mes)).filter(Boolean);
     const sinCargar = ms.filter(m => !P.has(m._id)).map(m => m._id); if (sinCargar.length) setTimeout(() => cargar(sinCargar), 0);
     let tot = 0, plan = 0, aprobar = 0, cambios = 0, extras = 0;
-    ms.forEach(m => { const ps = piezas(m._id) || []; tot += ps.length; plan += Object.values(m.plan || {}).reduce((a, n) => a + (+n || 0), 0); aprobar += ps.filter(z => z.estado === 'Para el cliente').length; cambios += ps.filter(z => z.estado === 'Cambios').length; extras += ps.filter(z => z.extra).length; });
+    ms.forEach(m => { const ps = piezas(m._id) || []; tot += enPlan(ps).length; plan += Object.values(m.plan || {}).reduce((a, n) => a + (+n || 0), 0); aprobar += ps.filter(z => z.estado === 'Para el cliente').length; cambios += ps.filter(z => z.estado === 'Cambios').length; extras += ps.filter(z => z.extra).length; });
     const nav = '<div class="rm-nav"><button class="btn ghost sm" data-act="rmMes" data-d="-1" aria-label="Mes anterior">←</button><b>' + esc(cap(monthLabel(st.mes))) + '</b><button class="btn ghost sm" data-act="rmMes" data-d="1" aria-label="Mes siguiente">→</button>' + (st.mes !== thisMonth() ? '<button class="btn ghost sm" data-act="rmMes" data-d="0">Este mes</button>' : '') + '</div>';
     const vista = vistaDe('redes', ['cuadricula', 'lista']);
     let h = '<div class="head"><div><h1>Redes</h1><p>El mes de cada cliente: qué hay que publicar, en qué está cada pieza y qué falta aprobar.</p></div><div class="toolbar">' + nav + vistaSel('redes', ['cuadricula', 'lista'], vista) + (ctx.autoBtn ? ctx.autoBtn('redes') : '') + '</div></div>';
@@ -73,7 +79,7 @@ export function initRedes(ctx) {
     if (vista === 'lista') {
       const fila = c => { const m = mesCliente(c, st.mes), cli = S.C.find(x => x.nombre === c) || {};
         if (!m) return '<tr><td class="name"><span class="who1">' + av(c, cli.avatar, 'sq') + esc(c) + '</span></td><td><span class="muted">Sin arrancar</span></td><td class="muted">—</td><td class="n muted">—</td><td class="n muted">—</td><td class="r">' + (isStaff() ? '<button class="btn sm" data-act="rmArrancar" data-c="' + esc(c) + '">Arrancar</button>' : '') + '</td></tr>';
-        const ps = piezas(m._id), n = ps ? ps.length : null, plan = Object.values(m.plan || {}).reduce((a, x) => a + (+x || 0), 0);
+        const ps = piezas(m._id), n = ps ? enPlan(ps).length : null, plan = Object.values(m.plan || {}).reduce((a, x) => a + (+x || 0), 0);
         const ap = ps ? ps.filter(z => z.estado === 'Para el cliente').length : 0, ca = ps ? ps.filter(z => z.estado === 'Cambios').length : 0;
         return '<tr class="click" data-act="rmAbrir" data-id="' + esc(m._id) + '"><td class="name"><span class="who1">' + av(c, cli.avatar, 'sq') + esc(c) + '</span></td><td>' + mesPill(m.estado) + '</td><td>' + (m.resp ? esc(m.resp) : '<span class="muted">—</span>') + '</td>' +
           '<td class="n num">' + (n == null ? '…' : n + (plan ? ' / ' + plan : '')) + '</td><td class="n">' + (ap ? '<span class="pzst" style="--c:var(--s-revision)">' + ap + ' a aprobar</span>' : '') + (ca ? ' <span class="pzst" style="--c:var(--s-cancelado)">' + ca + (ca > 1 ? ' cambios' : ' cambio') + '</span>' : '') + (!ap && !ca ? '<span class="muted">—</span>' : '') + '</td><td class="r">' + (m.visible ? '<span class="muted" title="El cliente lo ve en el portal">En el portal</span>' : '') + '</td></tr>'; };
@@ -89,7 +95,11 @@ export function initRedes(ctx) {
     return '<div class="rm-fs">' + fs.filter(f => pl[f] || cnt[f]).map(f => {
       const n = cnt[f] || 0, p = +pl[f] || 0, pct = p ? Math.min(100, Math.round(n / p * 100)) : 100, db = m && m.conteo && m.conteo[f] != null ? m.conteo[f] : null;
       return '<div class="rm-f"><span class="rm-fl">' + esc(f) + '</span><span class="rm-fb"><i style="width:' + pct + '%"></i></span><span class="rm-fn"><b>' + n + '</b>' + (p ? '/' + p : '') + (n > p && p ? ' <em>+' + (n - p) + '</em>' : '') + (db != null ? ' <span class="rm-db" title="Archivos en la carpeta de Dropbox">▣ ' + db + '</span>' : '') + '</span></div>';
-    }).join('') + '</div>';
+    }).join('') + adsLinea(ps) + '</div>';
+  }
+  function adsLinea(ps) {
+    const so = (ps || []).filter(soloAds).length, tb = (ps || []).filter(z => z.ads === 'tambien').length; if (!so && !tb) return '';
+    return '<p class="rm-adsl">' + adsTag({ ads: 'solo' }) + ' ' + [so ? so + (so === 1 ? ' pieza solo para Ads' : ' piezas solo para Ads') : '', tb ? tb + (tb === 1 ? ' del plan también se pauta' : ' del plan también se pautan') : ''].filter(Boolean).join(' · ') + '</p>';
   }
   function card(c, m) {
     const cli = S.C.find(x => x.nombre === c) || {};
@@ -144,7 +154,7 @@ export function initRedes(ctx) {
     const bulk = sel.size ? '<div class="bulkbar rm-bulk"><b>' + sel.size + ' seleccionada' + (sel.size > 1 ? 's' : '') + '</b><select class="in sm" id="rm-bk-est" aria-label="Cambiar estado">' + opt('', 'Cambiar estado…', '') + ESTADOS_PIEZA.map(e => opt(e, e, '')).join('') + '</select>' +
       '<select class="in sm" id="rm-bk-resp" aria-label="Asignar">' + opt('', 'Asignar a…', '') + opt('__nadie', 'Sin responsable', '') + personas().map(a => opt(a, a, '')).join('') + '</select>' +
       '<button class="btn sm" data-act="rmCopys"><span class="pig" aria-hidden="true">' + ISO + '</span> Escribir copys</button><button class="btn sm danger" data-act="rmBorrar">Borrar</button><button class="btn ghost sm" data-act="rmSelNada">Listo</button></div>' : '';
-    const tools = can ? '<div class="toolbar rm-tools"><form class="rm-add" data-rmadd="' + esc(m._id) + '"><span>+</span><input class="in sm" type="number" min="1" max="60" name="n" value="1" aria-label="Cantidad"><select class="in sm" name="f" aria-label="Formato">' + fs.map(f => opt(f, f, '')).join('') + '</select><button class="btn sm">Agregar</button></form>' +
+    const tools = can ? '<div class="toolbar rm-tools"><form class="rm-add" data-rmadd="' + esc(m._id) + '"><span>+</span><input class="in sm" type="number" min="1" max="60" name="n" value="1" aria-label="Cantidad"><select class="in sm" name="f" aria-label="Formato">' + fs.map(f => opt(f, f, '')).join('') + '</select>' + (tieneAds(m.cliente) ? '<select class="in sm" name="u" aria-label="Para qué">' + opt('', 'Del plan', '') + opt('solo', 'Solo para Ads', '') + '</select>' : '') + '<button class="btn sm">Agregar</button></form>' +
       '<button class="btn sm" data-act="rmIdeas" data-id="' + esc(m._id) + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido</button>' +
       '<button class="btn sm" data-act="rmChat" data-id="' + esc(m._id) + '">Pegar chat del cliente</button>' +
       (ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? '<button class="btn link sm rm-sinmarca" data-act="ficha" data-cliente="' + esc(m.cliente) + '" data-tab="marca" title="Sin ficha, Mr. Piggy escribe genérico">Completar la ficha de marca de ' + esc(m.cliente) + '</button>' : '') + '</div>' : '';
@@ -155,7 +165,7 @@ export function initRedes(ctx) {
         (can ? '<td class="sel"><input type="checkbox" data-rmsel="' + id + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar"></td>' : '') +
         '<td class="rm-art">' + arteMini(z) + '</td>' +
         '<td><input class="in sm rm-fe" type="date" value="' + esc(z.fecha) + '" data-pz="fecha" data-id="' + id + '"' + d + ' aria-label="Fecha"><input class="in sm rm-ho" type="time" value="' + esc(z.hora) + '" data-pz="hora" data-id="' + id + '"' + d + ' aria-label="Hora"></td>' +
-        '<td><select class="in sm" data-pz="formato" data-id="' + id + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>' + (z.extra ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + '</td>' +
+        '<td><select class="in sm" data-pz="formato" data-id="' + id + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>' + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + '</td>' +
         '<td class="rm-tema"><input class="in sm" value="' + esc(z.tema) + '" placeholder="Tema" data-pz="tema" data-id="' + id + '"' + d + ' aria-label="Tema"><button class="rm-copy" data-act="rmPieza" data-id="' + id + '">' + (z.copy ? esc(z.copy.slice(0, 90)) + (z.copy.length > 90 ? '…' : '') : '<span class="muted">+ copy</span>') + '</button>' + (z.respuesta && z.estado === 'Cambios' ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 120)) + '”</span>' : '') + '</td>' +
         '<td><select class="cellsel st" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-pz="estado" data-id="' + id + '"' + d + ' aria-label="Estado">' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></td>' +
         '<td><select class="in sm" data-pz="resp" data-id="' + id + '"' + d + ' aria-label="Responsable">' + opt('', '—', z.resp) + [...new Set([...personas(), z.resp].filter(Boolean))].map(a => opt(a, a, z.resp)).join('') + '</select></td>' +
@@ -219,6 +229,7 @@ export function initRedes(ctx) {
       '<div class="field full"><label for="pz-hashtags">Hashtags</label><input id="pz-hashtags" value="' + esc(z.hashtags) + '"' + d + '></div>' +
       '<div class="field"><label for="pz-fijo">Se repite cada</label><select id="pz-fijo"' + d + '>' + opt('', 'No se repite', z.fijo) + DIAS.map(x => opt(x, x, z.fijo)).join('') + '</select><span class="hint">Al arrancar el mes siguiente se crea sola en ese día.</span></div>' +
 
+      (z.ads || tieneAds(m.cliente) ? '<div class="field"><label for="pz-ads">Ads</label><select id="pz-ads"' + d + '>' + ADS_OPC.map(([k, l]) => opt(k, l, z.ads || '')).join('') + '</select><span class="hint">Si se diseñó aparte para los anuncios, va como “Solo para Ads”: no suma al plan ni como extra.</span></div>' : '') +
       '<label class="chk full"><input type="checkbox" id="pz-extra"' + (z.extra ? ' checked' : '') + d + '> Extra (fuera del plan)</label>' +
       '<div class="field full"><span class="lbl">Arte</span><div class="pz-artes">' + (artes || '<span class="muted">Sin arte todavía.</span>') + '</div>' + (can ? '<label class="btn sm" style="margin-top:8px;justify-self:start">Subir arte a Dropbox<input type="file" hidden data-rmup="' + esc(z._id) + '" multiple accept="image/*,video/*,application/pdf"></label>' : '') + '</div>' +
       '<div class="full">' + hil().html('pieza', z._id, { cliente: m.cliente, titulo: 'Comentarios', compacto: true, publico: true }) + '</div>' +
@@ -229,6 +240,7 @@ export function initRedes(ctx) {
     const f = st.fpz; if (!f) return;
     const g = k => ($('#pz-' + k) || {}).value;
     const u = { fecha: g('fecha') || '', hora: g('hora') || '', formato: g('formato'), red: g('red'), estado: g('estado'), resp: g('resp') || '', tema: (g('tema') || '').trim(), copy: (g('copy') || '').trim(), hashtags: (g('hashtags') || '').trim(), fijo: g('fijo') || '', extra: $('#pz-extra').checked };
+    if ($('#pz-ads')) { u.ads = g('ads') || ''; if (u.ads === 'solo') u.extra = false; }
     try { await data.piezasUpd([f.id], u); local(f.mesId, [f.id], u); ctx.closeForm(); toast('Pieza guardada'); render(); }
     catch (e) { toast(e.message); }
   }
@@ -377,8 +389,9 @@ export function initRedes(ctx) {
       e.preventDefault(); e.stopImmediatePropagation();
       const m = mesDe(f.dataset.rmadd); if (!m) return;
       const n = Math.max(1, Math.min(60, Math.round(+f.elements.n.value || 1))), fo = f.elements.f.value;
-      const ps = piezas(m._id) || [], ya = ps.filter(z => z.formato === fo).length, pl = +(m.plan || {})[fo] || 0;
-      const nuevas = Array.from({ length: n }, (_, i) => ({ formato: fo, estado: 'Idea', extra: pl > 0 && ya + i >= pl, red: 'Instagram' }));
+      const ps = piezas(m._id) || [], ya = enPlan(ps).filter(z => z.formato === fo).length, pl = +(m.plan || {})[fo] || 0, uso = f.elements.u ? f.elements.u.value : '';
+      if (uso === 'solo' && data.cols && data.cols.piezaAds === false) { toast('Para marcar piezas de Ads falta correr el SQL 0028 en Supabase'); return; }
+      const nuevas = Array.from({ length: n }, (_, i) => ({ formato: fo, estado: 'Idea', extra: uso !== 'solo' && pl > 0 && ya + i >= pl, red: 'Instagram', ...(uso ? { ads: uso } : {}) }));
       try { const ins = await data.piezasIns(m, nuevas); P.set(m._id, [...ps, ...ins]); toast(n === 1 ? 'Pieza agregada' : n + ' piezas agregadas'); render(); } catch (er) { toast(er.message); }
     }
   }, true);

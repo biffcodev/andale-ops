@@ -28,7 +28,7 @@ const idx = { clienteId: new Map(), clienteName: new Map(), personaId: new Map()
 const month = d => (d ? String(d).slice(0, 7) : '');
 
 /** Columnas nuevas que puede no tener todavía la base (hasta correr su SQL). */
-export const cols = { clienteRedes: true, contactoFijo: true };
+export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true };
 function toRow(kind, ui) {
   const row = {};
   for (const [k, v] of Object.entries(ui)) {
@@ -134,12 +134,13 @@ export async function mesUpd(id, u) { check(await sb.from('redes_meses').update(
 export async function mesDel(id) { check(await sb.from('redes_meses').delete().eq('id', id)); }
 export function piezaUI(z) {
   return { _id: z.id, mesId: z.mes_id, formato: z.formato || '', red: z.red || '', fecha: z.fecha || '', hora: z.hora ? String(z.hora).slice(0, 5) : '', tema: z.tema || '', copy: z.copy || '', hashtags: z.hashtags || '',
-    estado: z.estado, extra: !!z.extra, fijo: z.fijo || '', resp: idx.personaAlias.get(z.responsable_id) || '', arte: Array.isArray(z.arte) ? z.arte : [], orden: z.orden || 0,
+    estado: z.estado, extra: !!z.extra, ads: z.ads || '', fijo: z.fijo || '', resp: idx.personaAlias.get(z.responsable_id) || '', arte: Array.isArray(z.arte) ? z.arte : [], orden: z.orden || 0,
     horas: z.horas == null ? '' : +z.horas, respuesta: z.respuesta_cliente || '', respondida: z.respondida_at, creado: z.created_at };
 }
 function piezaRow(u) {
   const r = {};
   ['formato', 'red', 'tema', 'copy', 'hashtags', 'estado', 'extra', 'fijo', 'arte', 'orden'].forEach(k => { if (k in u) r[k] = u[k]; });
+  if ('ads' in u && cols.piezaAds) r.ads = u.ads || ''; // '' = del plan · 'tambien' = del plan y también se pauta · 'solo' = solo para Ads (SQL 0028)
   if ('fecha' in u) r.fecha = u.fecha || null;
   if ('hora' in u) r.hora = u.hora || null;
   if ('resp' in u) r.responsable_id = u.resp ? (idx.personaId.get(u.resp) || null) : null;
@@ -150,6 +151,7 @@ function piezaRow(u) {
 export async function piezasDe(mesIds) {
   const ids = Array.isArray(mesIds) ? mesIds : [mesIds]; if (!ids.length) return [];
   const rows = check(await sb.from('piezas').select('*').in('mes_id', ids).order('fecha', { nullsFirst: false }).order('orden').limit(10000)) || [];
+  if (rows.length) cols.piezaAds = 'ads' in rows[0];
   return rows.map(piezaUI);
 }
 export async function piezasIns(mes, lista) {
@@ -418,7 +420,7 @@ const opcional = p => p.catch(e => { if (/PGRST205|42P01|Could not find the tabl
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
   const desdeMes = new Date(); desdeMes.setDate(1); desdeMes.setHours(0, 0, 0, 0);
-  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il, prop, seg, la, ep, ei, cxp] = await Promise.all([
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il, prop, seg, la, ep, ei, cxp, ctp] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
     all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })), all('proyecto_finanzas'), all('abono_finanzas'), all('imputaciones'),
     opcional(all('colaboradores', q => q.order('nombre'))), opcional(all('remuneraciones')), opcional(all('conceptos_fijos')), opcional(all('liquidaciones')), opcional(all('drive_archivos', q => q.order('modificado', { ascending: false, nullsFirst: false }))),
@@ -429,6 +431,7 @@ export async function loadAdmin() {
     opcional(all('envios_programados', q => q.order('enviar_el', { ascending: false }))),
     opcional(all('envios_items', q => q.select('id, envio_id, resumen_id, cliente_id, para, estado, error, huella'))),
     opcional(all('costos_acordados', q => q.order('created_at'))),
+    opcional(all('contactos_proveedor', q => q.order('orden').order('created_at'))),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
@@ -453,6 +456,7 @@ export async function loadAdmin() {
     EP: ep.map(r => ({ ...r, periodo: month(r.periodo) })),
     EI: ei,
     CXP: cxp.map(r => ({ ...r, monto: num(r.monto) || 0 })),
+    CTP: ctp.map(r => ({ ...r, persona: idx.personaAlias.get(r.persona_id) || '' })),
     CF: cf.map(r => ({ ...r, desde: month(r.desde), hasta: month(r.hasta), monto: num(r.monto) })),
     LQ: lq.map(r => ({ ...r, periodo: month(r.periodo), monto: num(r.monto) })),
     DA: da.map(r => ({ ...r, datos: r.datos || {} })),

@@ -160,7 +160,7 @@ export function initEquipo(ctx, k) {
       const { c, p } = x, pagos = c ? pagosDe(c.id, y) : [], ult = pagos[0], tot = {}; pagos.forEach(v => add(tot, v.moneda, v.egreso));
       const rs = c ? remVig(c.id, thisMonth()) : [];
       const attr = c ? 'data-id="' + esc(c.id) + '"' : 'data-pid="' + esc(p._id) + '"';
-      return '<tr class="click" data-act="pgColab" ' + attr + ' data-g="prov"' + (activoI(x) ? '' : ' style="opacity:.55"') + '><td class="name">' + esc(nombreI(x)) + '<span class="sub">' + esc([c && c.rubro, c && c.vinculo].filter(Boolean).join(' · ') || (c ? '' : 'sin completar')) + '</span></td>' +
+      return '<tr class="click" data-act="pgColab" ' + attr + ' data-g="prov"' + (activoI(x) ? '' : ' style="opacity:.55"') + '><td class="name">' + esc(nombreI(x)) + '<span class="sub">' + esc([c && c.rubro, c && c.vinculo, c && ctcDe(c.id).map(z => z.nombre.split(' ')[0]).filter(Boolean).join(' y ')].filter(Boolean).join(' · ') || (c ? '' : 'sin completar')) + '</span></td>' +
         '<td class="r">' + (rs.length ? rs.map(r => '<span class="money">' + money(r.monto, r.moneda) + '</span><span class="sub">fijo por mes</span>').join('') : '<span class="muted">por trabajo</span>') + '</td>' +
         '<td class="r">' + (pagos.length ? '<span class="money">' + esc(multi(tot)) + '</span><span class="sub">' + pl(pagos.length, 'pago', 'pagos') + '</span>' : '<span class="muted">—</span>') + '</td>' +
         '<td>' + (ult ? '<span class="mono">' + fmt(ult.fecha) + '</span><span class="sub">' + esc(money(ult.egreso, ult.moneda)) + ' · ' + esc((ult.detalle || '').slice(0, 40)) + '</span>' : '<span class="muted">—</span>') + '</td>' +
@@ -198,7 +198,7 @@ export function initEquipo(ctx, k) {
       const tot = {}; its.forEach(i => add(tot, i.moneda, i.monto));
       const pend = its.filter(i => !i.movimiento_id), movs = [...new Set(its.filter(i => i.movimiento_id).map(i => i.movimiento_id))].map(movDe).filter(Boolean);
       const estado = !pend.length ? '<span class="days" style="color:var(--ok)">✓ Pagado ' + esc(movs.map(v => fmt(v.fecha).slice(0, 5)).join(', ')) + '</span>' : '<button class="btn sm primary" data-act="pgPagar" data-id="' + esc(c.id) + '">Pagar ' + esc(multi(pend.reduce((acc, i) => add(acc, i.moneda, i.monto), {}))) + '</button>';
-      return '<section class="sheet"><div class="sheet-h"><h2 style="font-size:17px"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button> <span class="muted" style="font-size:13px;font-weight:500">' + esc([prov ? c.rubro : (c.tipo)].filter(Boolean).join(' · ')) + '</span></h2><span class="toolbar">' + estado + '<button class="btn ghost sm" data-act="pgRecibo" data-id="' + esc(c.id) + '" title="Comprobante de pago en PDF">Recibo</button>' + (c.email ? '<button class="btn ghost sm" data-act="pgReciboMail" data-id="' + esc(c.id) + '" title="Mandar el comprobante de pago por email">Enviar</button>' : '') + '</span></div><div class="rows">' +
+      return '<section class="sheet"><div class="sheet-h"><h2 style="font-size:17px"><button class="btn link" data-act="pgColab" data-id="' + esc(c.id) + '">' + esc(c.nombre) + '</button> <span class="muted" style="font-size:13px;font-weight:500">' + esc([prov ? c.rubro : (c.tipo)].filter(Boolean).join(' · ')) + '</span></h2><span class="toolbar">' + estado + '<button class="btn ghost sm" data-act="pgRecibo" data-id="' + esc(c.id) + '" title="Comprobante de pago en PDF">Recibo</button>' + (mailsPagos(c) ? '<button class="btn ghost sm" data-act="pgReciboMail" data-id="' + esc(c.id) + '" title="Mandar el comprobante de pago por email">Enviar</button>' : '') + '</span></div><div class="rows">' +
         its.map(i => '<div class="row" style="cursor:default"><span class="d">' + esc(i.tipo) + '</span><span class="t"><b>' + esc(i.concepto) + '</b>' + (i.notas ? '<span>' + esc(i.notas) + '</span>' : '') + '</span><span class="toolbar"><span class="money">' + money(i.monto, i.moneda) + '</span>' + (i.movimiento_id ? '<span class="days" style="color:var(--ok)">✓</span>' : '<button class="btn ghost sm" data-act="pgItem" data-id="' + esc(i.id) + '">Editar</button>') + '</span></div>').join('') +
         '</div><div class="count" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Total <b class="money">' + esc(multi(tot)) + '</b></span><button class="btn ghost sm" data-act="pgItem" data-colab="' + esc(c.id) + '" data-g="' + g + '">+ Agregar pago</button></div></section>';
     }).join('');
@@ -209,6 +209,45 @@ export function initEquipo(ctx, k) {
 
   /* ---------- formularios ---------- */
   // Una sola ficha por persona: datos, cómo se le paga y si entra a la app.
+  // Contactos del proveedor: una empresa (Cronopia) o un equipo (MADS) con una o varias personas.
+  const ctcDe = cid => (AD.CTP || []).filter(x => x.colaborador_id === cid).sort((a, b) => (b.principal - a.principal) || (a.orden - b.orden) || cmp(a.nombre, b.nombre));
+  const mailsPagos = c => { const ks = ctcDe(c.id), ms = (ks.some(x => x.pagos) ? ks.filter(x => x.pagos) : ks).map(x => x.email).filter(Boolean); return ms.length ? [...new Set(ms)].join(', ') : (c.email || ''); };
+  const ctcIconos = k2 => '<span class="ctc-a">' + (k2.email ? '<button type="button" class="ctc-ic" data-act="pgCtcMail" data-id="' + esc(k2.id) + '" title="Escribirle un mail desde la app" aria-label="Mail a ' + esc(k2.nombre) + '">' + (ctx.icoMail || '✉') + '</button>' : '') +
+    (k2.tel && ctx.waHref && ctx.waHref(k2.tel, k2.nombre) ? '<a class="ctc-ic wa" data-act="ext" href="' + ctx.waHref(k2.tel, k2.nombre) + '" target="_blank" rel="noopener" title="Abrir WhatsApp" aria-label="WhatsApp a ' + esc(k2.nombre) + '">' + (ctx.WA_ICO || 'WA') + '</a>' : '') +
+    (k2.tel_fijo ? '<a class="ctc-ic" data-act="ext" href="tel:' + esc(String(k2.tel_fijo).replace(/[^\d+]/g, '')) + '" title="Llamar al fijo" aria-label="Llamar a ' + esc(k2.nombre) + '">' + (ctx.icoTel || '☎') + '</a>' : '') + '</span>';
+  function ctcLista(c) {
+    const ks = ctcDe(c.id);
+    if (!ks.length) return '<span class="muted">Sin contactos. Si es una empresa o un equipo, cargá a cada persona con la que hablan.</span>';
+    return '<div class="rows cxp" style="border:1px solid var(--line);border-radius:8px">' + ks.map(k2 => '<div class="row" style="cursor:default"><span class="t"><b>' + esc(k2.nombre || '—') + (k2.rol ? ' <span class="muted" style="font-weight:500">· ' + esc(k2.rol) + '</span>' : '') + '</b><span>' +
+      [k2.principal ? 'Principal' : '', k2.pagos ? 'Recibe los comprobantes' : '', k2.persona ? 'Entra a la app como ' + k2.persona : '', k2.email, k2.tel, k2.tel_fijo].filter(Boolean).map(esc).join(' · ') + '</span></span>' +
+      ctcIconos(k2) + '<button type="button" class="btn ghost sm" data-act="pgCtc" data-id="' + esc(k2.id) + '">Editar</button></div>').join('') + '</div>';
+  }
+  function formContacto(cid, kid) {
+    const c = colab(cid), x = kid ? (AD.CTP || []).find(y => y.id === kid) : null; if (!c) return;
+    const ext = S.E.filter(e => e.rol === 'externo' || (x && e._id === x.persona_id)).sort((a, b) => cmp(a.persona, b.persona));
+    const primero = !ctcDe(cid).length;
+    openPanel({
+      title: x ? (x.nombre || 'Contacto') : 'Nuevo contacto', eyebrow: 'Contacto de ' + c.nombre, saveLabel: x ? 'Guardar' : 'Agregar',
+      values: x ? { ...x } : { principal: primero, pagos: primero },
+      fields: [
+        { k: 'nombre', label: 'Nombre', req: 1 }, { k: 'rol', label: 'Qué hace', ph: 'Socia, diseño, administración…' },
+        { k: 'email', label: 'Email', type: 'email' }, { k: 'tel', label: 'WhatsApp / celular', type: 'tel' }, { k: 'tel_fijo', label: 'Teléfono fijo', type: 'tel', ph: 'Si tiene' },
+        { k: 'persona_id', label: 'Entra a la app como', type: 'select', html: v => opt('', 'No entra', v) + ext.map(e => opt(e._id, e.persona + (e.nombre && e.nombre !== e.persona ? ' (' + e.nombre + ')' : ''), v)).join(''), hint: 'Si trabaja en la app (le asignamos tareas o redes). El acceso se da desde la ficha de la persona.' },
+        { k: 'principal', label: 'Es con quien hablamos del día a día', type: 'check', full: 1 },
+        { k: 'pagos', label: 'Le mandamos los comprobantes de pago', type: 'check', full: 1 },
+        { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2 },
+      ],
+      onSave: async v => {
+        const row = { colaborador_id: cid, nombre: String(v.nombre || '').trim(), rol: v.rol || '', email: String(v.email || '').trim().toLowerCase(), tel: v.tel || '', tel_fijo: v.tel_fijo || '', persona_id: v.persona_id || null, principal: !!v.principal, pagos: !!v.pagos, notas: v.notas || '' };
+        if (x) await data.upd('contactos_proveedor', x.id, row); else await data.ins('contactos_proveedor', { ...row, orden: ctcDe(cid).length });
+        if (row.principal) for (const o of ctcDe(cid).filter(o => o.principal && (!x || o.id !== x.id))) await data.upd('contactos_proveedor', o.id, { principal: false });
+        toast(x ? 'Contacto guardado' : 'Contacto agregado');
+        AD.postSave = () => formColaborador(cid);
+      },
+      onDelete: x ? async () => { await data.del('contactos_proveedor', x.id); toast('Contacto borrado'); AD.postSave = () => formColaborador(cid); } : null,
+    });
+  }
+
   const COLS = ['nombre', 'tipo', 'rubro', 'cuit', 'alias_cbu', 'cbu', 'banco', 'email', 'tel', 'activo', 'vinculo', 'ingreso', 'egreso', 'aguinaldo', 'contrato', 'notas'];
   function formColaborador(id, pid, prov) {
     const c = id ? colab(id) : null, p = persona(c ? c.persona_id : pid);
@@ -225,8 +264,8 @@ export function initEquipo(ctx, k) {
     const box = (titulo, inner, btn) => '<div class="field full"><span class="lbl" style="display:flex;justify-content:space-between;align-items:center">' + titulo + (btn || '') + '</span>' + inner + '</div>';
     const lista = rows => rows.length ? '<div class="rows" style="border:1px solid var(--line);border-radius:8px">' + rows.join('') + '</div>' : '<span class="muted">Nada cargado.</span>';
     const pagRows = pagos.map(v => '<div class="row" style="cursor:default"><span class="d">' + fmt(v.fecha) + '</span><span class="t"><b class="money">' + money(v.egreso, v.moneda) + '</b><span>' + esc(v.detalle || v.subcuenta) + '</span></span><span></span></div>');
-    const extra = !c ? '<p class="formnote" style="grid-column:1/-1">Después de guardar vas a poder cargar ' + (esP ? 'su honorario fijo (si tiene) y sus pagos.' : 'el sueldo, los aumentos y los extras.') + '</p>' : esP
-      ? box('Honorario fijo por mes', AU.timeline(c) + '<span class="hint">Solo si cobra lo mismo todos los meses. Si cobra por trabajo, dejalo vacío y cargá cada trabajo en Pagos del mes.</span>', '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">+ Honorario</button>') + box('Últimos pagos', lista(pagRows))
+    const extra = !c ? '<p class="formnote" style="grid-column:1/-1">Después de guardar vas a poder cargar ' + (esP ? 'sus contactos, su honorario fijo (si tiene) y sus pagos.' : 'el sueldo, los aumentos y los extras.') + '</p>' : esP
+      ? box('Contactos', ctcLista(c), '<button type="button" class="btn sm" data-act="pgCtc" data-colab="' + esc(c.id) + '">+ Contacto</button>') + box('Honorario fijo por mes', AU.timeline(c) + '<span class="hint">Solo si cobra lo mismo todos los meses. Si cobra por trabajo, dejalo vacío y cargá cada trabajo en Pagos del mes.</span>', '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">+ Honorario</button>') + box('Últimos pagos', lista(pagRows))
       : (remVig(c.id, mesRef(c)).length ? box('Por mes se le transfiere', '<div><b class="money" style="font-size:20px">' + esc(multi(lineaRem(c, mesRef(c)).acc)) + '</b> <span class="muted">sueldo + extras' + (mesRef(c) > thisMonth() ? ', desde ' + fmt(mesRef(c)) : ' vigentes') + '</span></div>') : '') + box('Sueldo', AU.timeline(c), '<button type="button" class="btn sm" data-act="pgRem" data-id="' + esc(c.id) + '">' + (hist.length ? '+ Aumento' : '+ Sueldo') + '</button>') +
         box('Extras fijos', lista(ex.map(x => '<div class="row" data-act="pgExtra" data-id="' + esc(c.id) + '" data-x="' + esc(x.id) + '" title="Editar" style="cursor:pointer"><span class="d">' + (x.desde ? fmt(x.desde) : 'siempre') + '</span><span class="t"><b>' + esc(x.concepto) + ' · <span class="money">' + money(x.monto, x.moneda) + '</span></b><span>' + esc((x.hasta ? 'hasta ' + fmt(x.hasta) : 'sin fecha de fin') + (x.notas ? ' · ' + x.notas : '')) + '</span></span><button type="button" class="btn ghost sm" data-act="pgExtraDel" data-id="' + esc(x.id) + '" aria-label="Borrar">✕</button></div>')), '<button type="button" class="btn sm" data-act="pgExtra" data-id="' + esc(c.id) + '">+ Extra</button>') +
         box('Últimos pagos', lista(pagRows));
@@ -239,9 +278,9 @@ export function initEquipo(ctx, k) {
       { k: 'otros_nombres', label: 'Apodos (para reconocer pagos en el banco)', full: 1, hint: 'Separados por coma. Ej.: Vale, Valentina R.', adv: 1 },
       { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2, adv: 1 }];
     const fields = esP ? [
-      { k: 'nombre', label: 'Nombre o empresa', req: 1, full: 1 },
+      { k: 'nombre', label: 'Nombre o empresa', req: 1, full: 1, hint: 'Si es una empresa o un equipo (Cronopia, MADS), poné ese nombre y cargá a cada persona en Contactos.' },
       { k: 'rubro', label: 'Rubro', type: 'select', html: v => opt('', '—', v) + [...new Set([...((S.L && S.L.rubros) || RUBROS), v].filter(Boolean))].map(r => opt(r, r, v)).join(''), hint: 'Los rubros se cambian en Configuración › Opciones.' },
-      { k: 'vinculo', label: 'Cómo factura', type: 'select', opts: VINCULOS, blank: '—' },
+      { k: 'vinculo', label: 'Cómo factura', type: 'select', opts: VINCULOS, blank: '—', hint: 'Informal: no nos factura, le transferimos lo que nos pasa.' },
       ...fBanco,
       { k: 'email', label: 'Email', type: 'email' }, { k: 'tel', label: 'Teléfono' },
       { k: 'activo', label: 'Activo', type: 'check', full: 1 },
@@ -287,6 +326,8 @@ export function initEquipo(ctx, k) {
         }
         const row = {}; COLS.forEach(k2 => { if (k2 in v) row[k2] = v[k2]; });
         Object.assign(row, { persona_id: pid2 || null, ingreso: v.ingreso || null, egreso: v.egreso || null, otros_nombres: String(v.otros_nombres || '').split(',').map(s => s.trim()).filter(Boolean) });
+        // Si pasó de "Cintia Weker" a "Cronopia", el nombre anterior queda como apodo para seguir reconociendo sus pagos.
+        if (c && c.nombre && norm(c.nombre) !== norm(row.nombre || '') && !row.otros_nombres.some(o => norm(o) === norm(c.nombre))) row.otros_nombres.push(c.nombre);
         let cid = c && c.id;
         if (c) await data.upd('colaboradores', c.id, row); else cid = (await data.ins('colaboradores', row)).id;
         // Vincular pagos de Caja que todavía no tienen persona
@@ -475,11 +516,19 @@ export function initEquipo(ctx, k) {
     pgExtraDel: async t => { const x = AD.CF.find(y => y.id === t.dataset.id); try { await data.del('conceptos_fijos', t.dataset.id); await ctx.reload(); if (x) formColaborador(x.colaborador_id); } catch (err) { toast(err.message); } },
     pgItem: t => formItem(t.dataset.id || null, t.dataset.colab || null, t.dataset.g === 'prov' ? true : t.dataset.g === 'eq' ? false : null),
     pgPagar: t => formPagar(t.dataset.id),
+    pgCtc: t => { const x = t.dataset.id ? (AD.CTP || []).find(y => y.id === t.dataset.id) : null; formContacto(x ? x.colaborador_id : t.dataset.colab, x ? x.id : null); },
+    pgCtcMail: async t => {
+      const x = (AD.CTP || []).find(y => y.id === t.dataset.id), c = x && colab(x.colaborador_id); if (!x || !c) return;
+      const E = await import('./emails.js');
+      k.openComposer({ titulo: 'Mail a ' + x.nombre, eyebrow: c.nombre, tipo: 'Otro', cliente: null, para: x.email, asunto: '',
+        mensaje: 'Hola ' + (x.nombre || '').split(' ')[0] + ', ¿cómo estás?\n\n',
+        build: v => E.libreEmail({ cfg: k.cfgMarca(), contacto: x.nombre, cuenta: c.nombre, titulo: v.asunto, mensaje: v.mensaje, firma: k.firma(), asunto: v.asunto }) });
+    },
     pgRecibo: async t => { const w = window.open('', '_blank'); try { const { abrirPdf } = await import('./docs.js'); const p = await reciboPdf(t.dataset.id); abrirPdf(p.bytes, p.nombre.replace(/\.pdf$/, ''), w); } catch (err) { if (w) w.close(); toast(err.message); } },
     pgReciboMail: async t => {
       let p; try { toast('Preparando el PDF…'); p = await reciboPdf(t.dataset.id); } catch (err) { toast(err.message); return; }
-      const E = await import('./emails.js'), nom = p.c.nombre.split(' ')[0];
-      k.openComposer({ titulo: 'Enviar comprobante', eyebrow: p.c.nombre + ' · ' + p.periodo, tipo: 'Otro', cliente: null, para: p.c.email, asunto: 'Comprobante de pago · ' + p.periodo,
+      const E = await import('./emails.js'), kp = ctcDe(p.c.id).filter(x => x.pagos && x.email), nom = (kp.length ? kp.map(x => x.nombre.split(' ')[0]).join(' y ') : p.c.nombre.split(' ')[0]);
+      k.openComposer({ titulo: 'Enviar comprobante', eyebrow: p.c.nombre + ' · ' + p.periodo, tipo: 'Otro', cliente: null, para: mailsPagos(p.c), asunto: 'Comprobante de pago · ' + p.periodo,
         adjuntos: [{ nombre: p.nombre, base64: p.base64, bytes: p.bytes }],
         mensaje: 'Hola ' + nom + ', ¿cómo estás?\n\nTe mandamos adjunto el comprobante de ' + p.periodo + '.\n\nCualquier cosa, avisanos.',
         build: v => E.libreEmail({ cfg: k.cfgMarca(), contacto: p.c.nombre, cuenta: p.c.nombre, titulo: 'Comprobante de ' + p.periodo, mensaje: v.mensaje, firma: k.firma(), asunto: v.asunto }) });

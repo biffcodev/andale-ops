@@ -2297,3 +2297,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,input[type="month"]:
 .rows.cxp .row .t b{white-space:normal}
 .rows.cxp .row .t span{line-height:1.45}
 @media (max-width:640px){.rows.cxp .row{grid-template-columns:minmax(0,1fr) auto}.rows.cxp .row .toolbar{grid-column:1/-1}}
+
+/* Redes: piezas para Ads */
+.rm-ads{display:inline-block;margin:4px 4px 0 0;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;background:color-mix(in srgb,#F59E0B 16%,var(--surface));color:color-mix(in srgb,#B45309 85%,var(--text))}
+.rm-ads.tb{background:transparent;border:1px solid color-mix(in srgb,#F59E0B 45%,var(--line))}
+.rm-adsl{margin:6px 0 0;font-size:12.5px;color:var(--muted)}
+.rm-adsl .rm-ads{margin:0 4px 0 0}
