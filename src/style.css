@@ -2264,3 +2264,13 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,input[type="month"]:
 .ml-txt{white-space:pre-wrap;font-size:14px;line-height:1.55;background:var(--surface-2,#F6F7F9);border-radius:12px;padding:14px 16px;max-height:360px;overflow:auto}
 .ml-b .err-t{color:var(--danger,#E5484D)}
 @media (max-width:700px){.ml-h{grid-template-columns:1fr;gap:4px}.ml-tags{justify-content:flex-start}.ml-b{padding:0 16px 16px}}
+
+/* Acciones de cada contacto: íconos */
+.ctc-a{gap:6px}
+.ctc-ic{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--surface,#fff);color:var(--fg);cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s,color .15s}
+.ctc-ic:hover{background:var(--accent-soft,#DDF4FF);border-color:transparent;color:var(--accent-text,#0B86C4)}
+.ctc-ic.wa{color:#1FA855}
+.ctc-ic.wa:hover{background:#E3F7EA;color:#178A45}
+.ctc-ic:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wa-btn{display:inline-flex;align-items:center;gap:6px}
+.wa-btn svg{color:#1FA855}

@@ -1,6 +1,7 @@
 import './fonts.css';
 import './style.css';
-import { activarFormato } from './formato.js';
+import { activarFormato, telefono as fmtTel, telefonoFijo as fmtFijo } from './formato.js';
+import { siWhatsapp } from 'simple-icons';
 import { LOGO, ISO } from './marca.js';
 import { ICON, iconizar } from './iconos.js';
 import { initExportar } from './exportar.js';
@@ -202,14 +203,23 @@ function links(o) {
 }
 const emptyBox = (title, text) => '<div class="empty"><b>' + esc(title) + '</b>' + (text || '') + '</div>';
 // WhatsApp directo (sin API): abre el chat con el teléfono del cliente.
-function waNum(tel) { let d = String(tel || '').replace(/\D/g, ''); if (!d) return ''; if (d.startsWith('00')) d = d.slice(2); if (!d.startsWith('54') && d.length <= 11) d = '549' + d.replace(/^0/, '').replace(/^(\d{2,4})15/, '$1'); return d; }
+// Número para wa.me: Argentina siempre como celular (54 9 + área + número), sin el 0 ni el 15. 0351 15 705-3527 → 5493517053527
+function waNum(tel) {
+  let d = String(tel || '').replace(/\D/g, ''); if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  const sin15 = x => x.length === 12 ? x.replace(/^(\d{2,4})15(\d{6,8})$/, '$1$2') : x;
+  if (d.startsWith('54')) { let r = d.slice(2); if (r.startsWith('9')) return d; r = sin15(r.replace(/^0/, '')); return '549' + r; }
+  const ar = sin15(d.replace(/^0/, ''));
+  return ar.length === 10 ? '549' + ar : d; // si no parece argentino, va como está (con su código de país)
+}
 function waHref(tel, nombre, txt) {
   const n = waNum(tel); if (!n || !integ('whatsapp')) return '';
   const nom = String(nombre || '').split(/[,/]/)[0].trim().split(' ')[0];
   const m = txt || String(integr().cfgGet('whatsapp', 'msg') || '').replace(/\\n/g, '\n').replace(/\{nombre\}/g, nom).replace(/ ,/g, ',');
   return 'https://wa.me/' + n + (m ? '?text=' + encodeURIComponent(m) : '');
 }
-function waBtn(c, txt) { const h = waHref(c.tel, c.contacto, txt); return h ? '<a class="btn" href="' + h + '" target="_blank" rel="noopener">WhatsApp</a>' : ''; }
+const WA_ICO = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="' + siWhatsapp.path + '"/></svg>';
+function waBtn(c, txt) { const h = waHref(c.tel, c.contacto, txt); return h ? '<a class="btn wa-btn" data-act="ext" href="' + h + '" target="_blank" rel="noopener">' + WA_ICO + 'WhatsApp</a>' : ''; }
 
 // Contactos del cliente (dueña, marketing, administración…). Si la tabla todavía no existe, se usa el contacto cargado en el cliente.
 const ROLES_CONTACTO = ['Dueña/o', 'Gerencia', 'Marketing', 'Comunicación', 'Administración', 'Diseño', 'Ventas', 'RRHH', 'Agencia o proveedor'];
@@ -230,8 +240,9 @@ function contactosHtml(c) {
     '<div class="ctc-tags">' + (k.principal ? '<span class="ctag pri">Principal</span>' : '') + (k.cobros ? '<span class="ctag cob">Recibe cobros</span>' : '') + (k.portal ? '<span class="ctag por">Portal</span>' : '') + '</div>' +
     (k.email || k.tel || k.telFijo ? '<div class="ctc-l">' + [k.email, k.tel, k.telFijo ? 'Fijo ' + k.telFijo : ''].filter(Boolean).map(esc).join(' · ') + '</div>' : '') +
     (k.notas ? '<div class="ctc-n">' + esc(k.notas) + '</div>' : '') + '</div>' +
-    '<div class="ctc-a">' + (k.email && isStaff() ? '<button class="btn ghost sm" data-act="mail" data-cliente="' + esc(c.nombre) + '" data-para="' + esc(k.email) + '" title="Escribirle un mail" aria-label="Mail a ' + esc(nomContacto(k)) + '">✉</button><button class="btn ghost sm" data-act="copy" data-v="' + esc(k.email) + '" title="Copiar email" aria-label="Copiar email">⧉</button>' : '') +
-    (waHref(k.tel, k.nombre) ? '<a class="btn ghost sm" href="' + waHref(k.tel, k.nombre) + '" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp a ' + esc(nomContacto(k)) + '">WhatsApp</a>' : '') + '</div></div>';
+    '<div class="ctc-a">' + (k.email && isStaff() ? '<button class="ctc-ic" data-act="mail" data-cliente="' + esc(c.nombre) + '" data-para="' + esc(k.email) + '" title="Escribirle un mail desde la app" aria-label="Escribirle un mail a ' + esc(nomContacto(k)) + '">' + ICON.mail + '</button>' : '') +
+    (waHref(k.tel, k.nombre) ? '<a class="ctc-ic wa" data-act="ext" href="' + waHref(k.tel, k.nombre) + '" target="_blank" rel="noopener" title="Abrir WhatsApp" aria-label="WhatsApp a ' + esc(nomContacto(k)) + '">' + WA_ICO + '</a>' : '') +
+    (k.telFijo ? '<a class="ctc-ic" data-act="ext" href="tel:' + esc(String(k.telFijo).replace(/[^\d+]/g, '')) + '" title="Llamar al fijo" aria-label="Llamar al fijo de ' + esc(nomContacto(k)) + '">' + ICON.telefono + '</a>' : '') + '</div></div>';
   const cob = ks.filter(k => k.cobros && k.email).length;
   return '<section class="sheet"><div class="sheet-h"><div><h2>Contactos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">' + (ks.length ? ks.length + (ks.length === 1 ? ' persona' : ' personas') + (cob ? ' · ' + cob + ' reciben resúmenes y facturas' : '') : 'Con quién hablamos en ' + esc(c.nombre) + '.') + '</p></div>' + (can ? '<button class="btn sm" data-act="kNuevo" data-cliente="' + esc(c.nombre) + '">+ Contacto</button>' : '') + '</div>' +
     (ks.length ? '<div class="ctcs">' + ks.map(card).join('') + '</div>' : emptyBox('Sin contactos', can ? 'Sumá a las personas con las que hablamos: dueña, marketing, administración…' : '')) + '</section>';
@@ -271,7 +282,8 @@ async function sincPrincipal(cliente, k) {
 async function guardarContacto() {
   const f = S.kf; if (!f) return;
   const g = n => ((($('#k-' + n) || {}).value) || '').trim();
-  const row = { nombre: g('nombre'), rol: g('rol'), email: g('email').toLowerCase(), tel: g('tel'), ...(data.cols && data.cols.contactoFijo === false ? {} : { tel_fijo: g('telFijo') }), principal: f.principal || $('#k-principal').checked, cobros: $('#k-cobros').checked, notas: g('notas'), ...($('#k-portal') ? { portal: $('#k-portal').checked } : {}) };
+  const tel = g('tel') ? await fmtTel(g('tel')) : '', fijo = g('telFijo') ? await fmtFijo(g('telFijo')) : '';
+  const row = { nombre: g('nombre'), rol: g('rol'), email: g('email').toLowerCase(), tel, ...(data.cols && data.cols.contactoFijo === false ? {} : { tel_fijo: fijo }), principal: f.principal || $('#k-principal').checked, cobros: $('#k-cobros').checked, notas: g('notas'), ...($('#k-portal') ? { portal: $('#k-portal').checked } : {}) };
   if (row.portal && !row.email) { const e = $('#ke-email'); if (e) { e.textContent = 'Para entrar al portal necesita email'; e.hidden = false; } return; }
   document.querySelectorAll('#kform .err').forEach(e => { e.hidden = true; });
   const err = (n, m) => { const e = $('#ke-' + n); if (e) { e.textContent = m; e.hidden = false; } };

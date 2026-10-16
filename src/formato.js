@@ -49,6 +49,14 @@ export async function telefono(s) {
   return x && x.isValid() ? x.formatInternational() : t;
 }
 
+/** Teléfono fijo: se lee como número argentino tal cual (sin pasarlo a celular). 0351 412-3456 → +54 351 412 3456 */
+export async function telefonoFijo(s) {
+  const t = String(s ?? '').trim(); if (!t) return '';
+  const m = await lib(); if (!m) return t;
+  const x = m.parsePhoneNumberFromString(t.replace(/^00/, '+'), 'AR');
+  return x && x.isValid() ? x.formatInternational() : t;
+}
+
 const esMonto = el => el.tagName === 'INPUT' && el.getAttribute('inputmode') === 'decimal' && !el.hasAttribute('data-nofmt');
 const esTel = el => el.tagName === 'INPUT' && (el.type === 'tel' || /(^|-)tel$/.test(el.id || ''));
 const esCuit = el => el.tagName === 'INPUT' && /(^|-)(cuit|cuil)(-|$)/i.test(el.id || '');
@@ -58,7 +66,7 @@ async function formatear(el) {
   let nv = v;
   if (esMonto(el)) { const n = leerNumero(v); if (n != null) nv = numeroEnCampo(n); }
   else if (esCuit(el)) nv = cuit(v);
-  else if (esTel(el)) nv = await telefono(v);
+  else if (esTel(el)) nv = /fijo/i.test(el.id || '') ? await telefonoFijo(v) : await telefono(v);
   if (nv !== v && el.value === v) el.value = nv;
 }
 
