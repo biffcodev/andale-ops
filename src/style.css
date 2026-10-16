@@ -2323,3 +2323,4 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 .row-cta .d .av{width:34px;height:34px}
 .row-cta .cta-eq{display:block;font-size:12.5px;color:var(--muted);margin-top:4px}
 .row-cta .cta-eq strong{color:var(--fg);font-weight:600}
+.row.nod{grid-template-columns:minmax(0,1fr) auto}
