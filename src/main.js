@@ -408,7 +408,7 @@ function estadoSelect(c) {
   const auto = estadoAuto(c.nombre);
   return '<span class="estsel"><select class="cellsel st" style="--c:var(' + (CL_COLOR[c.estado] || '--muted') + ')" aria-label="Estado de ' + esc(c.nombre) + '" data-upd="cliente" data-id="' + esc(c._id) + '" data-field="estado">' +
     optsFrom(S.L.estadosCliente, c.estado || '', undefined, VER_CL) + (c.estadoManual ? opt('__auto', '↺ Volver a automático (' + (VER_CL[auto] || auto) + ')', '') : '') + '</select>' +
-    (c.estadoManual ? '<span class="fij" title="Fijado a mano. El automático diría: ' + esc(VER_CL[auto] || auto) + '">fijado</span>' : '') + '</span>';
+    (c.estadoManual && c.estado !== auto ? '<button type="button" class="fij" data-act="cAuto" data-id="' + esc(c._id) + '" title="Lo pusieron a mano. Según sus abonos y proyectos sería ' + esc(VER_CL[auto] || auto) + '. Tocá para volver al automático.">a mano ✕</button>' : '') + '</span>';
 }
 /* Etapas del proyecto: [{ n, ok }]. Plantillas por tipo en Listas (clave 'etapas:<Tipo>'). */
 const plantilla = tipo => trab().plantillaTareas(tipo).map(x => x.n);
@@ -1744,6 +1744,7 @@ const ACT = {
   clearF: () => { S.f = { q: '', estado: '', tipo: '', resp: '', cliente: '', plazo: '', abiertos: true }; render(); },
   cfEstado: t => { S.cf.estado = t.dataset.estado; render(); },
   afTipo: t => { S.af.tipo = t.dataset.tipo; render(); },
+  cAuto: async t => { const c = S.C.find(x => x._id === t.dataset.id); if (!c) return; try { await data.update('cliente', c._id, { estadoManual: false }); toast(c.nombre + ' vuelve al estado automático'); } catch (err) { toast(err.message); } await reload(); },
   equipoFijoAplicar: async t => {
     const fijo = equipoFijo(); if (!fijo.length) return; t.disabled = true; let n = 0;
     try {

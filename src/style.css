@@ -275,7 +275,8 @@ dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere;display:flex;gap:6px;align-
 th.sel,td.sel{width:34px;padding-right:0}
 
 .estsel{display:inline-flex;align-items:center;gap:4px}
-.fij{font-size:11px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 6px;cursor:help}
+.fij{font:inherit;font-size:11px;font-weight:600;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:0 6px;cursor:pointer;white-space:nowrap}
+.fij:hover{color:var(--accent-text);border-color:var(--accent)}
 .prog{display:inline-flex;gap:2px;vertical-align:middle}
 .prog i{display:block;width:8px;height:8px;border-radius:2px;background:var(--surface-2);border:1px solid var(--line)}
 .prog i.on{background:var(--ok);border-color:var(--ok)}
