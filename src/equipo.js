@@ -111,14 +111,14 @@ export function initEquipo(ctx, k) {
     const rows = list.map(x => {
       const { c, p } = x, alias = p ? p.persona : '';
       const mr = c ? mesRef(c) : thisMonth(), lr = c ? lineaRem(c, mr) : { rs: [], ex: [], acc: {} }, rs = lr.rs;
-      const ab = alias ? S.A.filter(a => a.estado === 'Activo' && (a.responsables || []).includes(alias)).length : 0, pr = alias ? S.P.filter(q => abiertoP(q) && (q.responsables || []).includes(alias)).length : 0;
+      const ab = alias ? new Set(S.A.filter(a => a.estado === 'Activo' && (a.responsables || []).includes(alias)).map(a => a.cliente)).size : 0, pr = alias ? S.P.filter(q => abiertoP(q) && (q.responsables || []).includes(alias)).length : 0;
       const attr = c ? 'data-id="' + esc(c.id) + '"' : 'data-pid="' + esc(p._id) + '"';
       return '<tr class="click" data-act="pgColab" ' + attr + ' data-g="eq"' + (activoI(x) ? '' : ' style="opacity:.55"') + '>' +
         '<td><span class="who1">' + (p && ctx.avEditable ? ctx.avEditable('persona', p._id, alias, p.avatar, '', false) : ctx.av ? ctx.av(alias || nombreI(x), p ? p.avatar : '') : '') + '<b>' + esc(alias || nombreI(x)) + '</b></span><span class="sub">' + esc([nombreI(x) !== alias ? nombreI(x) : '', p && p.puesto].filter(Boolean).join(' · ')) + '</span></td>' +
         '<td>' + (c ? esc(c.tipo) + '<span class="sub">' + esc([c.vinculo, c.ingreso ? 'desde ' + fmt(c.ingreso.slice(0, 7)) : ''].filter(Boolean).join(' · ')) + '</span>' : '<span class="muted">sin completar</span>') + '</td>' +
         '<td class="r"' + (lr.ex.length ? ' title="' + esc([...rs, ...lr.ex].map(x => x.concepto + ': ' + money(x.monto, x.moneda)).join(' · ')) + '"' : '') + '>' + (rs.length ? '<span class="money">' + esc(multi(lr.acc)) + '</span><span class="sub">' + esc(rs.map(r => r.concepto + ' ' + money(r.monto, r.moneda)).join(' + ') + (lr.ex.length ? ' + ' + (lr.ex.length === 1 ? lr.ex[0].concepto.toLowerCase() : lr.ex.length + ' extras') : '') + (mr > thisMonth() ? ' · desde ' + fmt(mr) : '')) + '</span>' : '<span class="pill" style="--c:var(--s-revision)">Cargar sueldo</span>') + '</td>' +
         '<td>' + (p && p.email && p.activo !== false ? pill(ROLES[p.rol] || p.rol, ROL_COLOR[p.rol] || '--muted') + '<span class="sub">' + esc(p.email) + '</span>' : '<span class="muted">sin acceso</span>') + '</td>' +
-        '<td class="r num">' + (ab || pr ? esc([ab ? ab + ' redes' : '', pr ? pr + ' proyectos' : ''].filter(Boolean).join(' · ')) : '<span class="muted">—</span>') + '</td></tr>';
+        '<td class="r num">' + (ab || pr ? esc([ab ? ab + (ab === 1 ? ' cuenta' : ' cuentas') : '', pr ? pr + ' proyectos' : ''].filter(Boolean).join(' · ')) : '<span class="muted">—</span>') + '</td></tr>';
     }).join('');
     return h + '<section class="sheet">' + (rows ? '<div class="tbl"><table><thead><tr><th>Persona</th><th>Relación</th><th class="r">Cobra por mes</th><th>Acceso a la app</th><th class="r">A cargo</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : emptyBox('Todavía no hay nadie en el equipo', 'Sumá a cada persona con “+ Persona”.')) + '</section>';
   }
