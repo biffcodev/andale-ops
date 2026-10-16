@@ -8,13 +8,22 @@ const MES_COLOR = { 'Planificación': '--s-empezar', 'Producción': '--s-curso',
 const REDES = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X'];
 const FORMATOS_DEF = ['Reels', 'Posts', 'Historias', 'Carruseles'];
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+// A quién le toca cada estado de una pieza, según el rol que tiene en la cuenta (se edita en Opciones → Flujo de Redes).
+// Varios roles en una etapa van con "+": "Revisión interna=Dirección+Cuentas y programación".
+export const FLUJO_DEF = ['Idea=Cuentas y programación', 'En diseño=Diseño', 'Revisión interna=Dirección', 'Para el cliente=Cuentas y programación', 'Cambios=Diseño', 'Aprobada=Cuentas y programación', 'Programada=Cuentas y programación', 'Publicada='];
+// Hora de publicación por formato (Opciones → Flujo de Redes). Si ese día ya hay otra del mismo formato a esa hora, se corre 3 h.
+export const HORAS_DEF = ['Historias=10:00', 'Posts=12:30', 'Carruseles=12:30', 'Reels=19:00'];
+// Un color por formato, para distinguir historias, posts, carruseles y reels de un vistazo.
+const FMT_COLOR = [[/reel/i, '#8b5cf6'], [/histori|stor/i, '#e0598b'], [/carrus/i, '#14a07a'], [/post/i, '#2f7de1'], [/tiktok/i, '#0f9fb5'], [/video|youtube/i, '#d9822b']];
+const FMT_OTROS = ['#b5893b', '#6b7fd7', '#c2569b', '#3f9a5f'];
+export const fmtColor = f => { const x = FMT_COLOR.find(([re]) => re.test(f || '')); if (x) return x[1]; let h = 0; for (const c of String(f || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return FMT_OTROS[h % FMT_OTROS.length]; };
 import { vistaSel, vistaDe, filtrosMenu } from './ui.js';
 import { confirmar } from './dialogo.js';
 const IMG = /\.(jpe?g|png|gif|webp|tiff?|bmp|heic)$/i;
 
 export function initRedes(ctx) {
   const { S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, cfgGet, lsSet, lsGet } = ctx;
-  const st = { mes: thisMonth(), sel: new Set(), tab: lsGet('rmTab') || 'planilla', cargando: new Set(), thumbs: new Map(), pidiendo: new Set(), fpz: null, abrirPieza: null };
+  const st = { mes: thisMonth(), sel: new Set(), fOff: new Set(), mio: false, vis: [], tab: lsGet('rmTab') || 'planilla', cargando: new Set(), thumbs: new Map(), pidiendo: new Set(), fpz: null, abrirPieza: null };
   const P = new Map(); // mesId -> piezas
 
   const formatos = () => (S.L.formatosRedes && S.L.formatosRedes.length ? S.L.formatosRedes : FORMATOS_DEF);
@@ -25,8 +34,41 @@ export function initRedes(ctx) {
   // Roles de la cuenta (Dirección, Cuentas y programación, Diseño, Ads…): a quién va el mes y a quién las piezas.
   const conRol = (cliente, re, tipo) => { for (const a of S.A.filter(x => x.cliente === cliente && x.estado === 'Activo' && (!tipo || x.tipo === tipo))) { const r = Object.entries(a.roles || {}).find(([al, rol]) => re.test(rol) && (a.responsables || []).includes(al)); if (r) return r[0]; } return ''; };
   const respMes = (cliente, ab) => conRol(cliente, /cuenta|community|programa/i, 'Redes') || ((ab && (ab.responsables || [])[0]) || '');
-  const respPieza = (cliente, z) => (z && z.ads === 'solo' ? conRol(cliente, /^ads/i) : '') || conRol(cliente, /diseñ/i) || '';
-  const insPiezas = (m, lista) => data.piezasIns(m, lista.map(u => (u.resp ? u : { ...u, resp: respPieza(m.cliente, u) })));
+  // Las piezas nuevas no se asignan a una persona: le tocan al rol de cada etapa (ver quienes). "resp" queda para elegir a alguien puntual.
+  const insPiezas = (m, lista) => data.piezasIns(m, lista);
+  const lista2 = (k, def) => (S.L[k] && S.L[k].length ? S.L[k] : def);
+  const flujo = () => { const o = {}; lista2('flujoRedes', FLUJO_DEF).forEach(x => { const i = String(x).indexOf('='); if (i > 0) o[x.slice(0, i)] = x.slice(i + 1).split('+').map(r => r.trim()).filter(Boolean); }); return o; };
+  const rolesEtapa = e => flujo()[e] || [];
+  const mismoRol = (a, b) => norm(a || '') === norm(b || '');
+  // El equipo de la cuenta: alias -> rol (el de Redes manda si está también en Ads).
+  function equipo(cliente) {
+    const m = new Map();
+    S.A.filter(a => a.cliente === cliente && a.estado === 'Activo' && (a.tipo === 'Redes' || a.tipo === 'Ads')).sort((x, y) => (x.tipo === 'Redes' ? 0 : 1) - (y.tipo === 'Redes' ? 0 : 1))
+      .forEach(a => (a.responsables || []).forEach(al => { if (!m.get(al)) m.set(al, (a.roles || {})[al] || ''); }));
+    return m;
+  }
+  // Quiénes tienen que mover la pieza en el estado en que está: todos los de ese rol en la cuenta.
+  // Si la pieza tiene a alguien elegido, reemplaza a los de su rol (o a diseño, si no tiene rol en la cuenta).
+  function quienes(cliente, z, eq) {
+    eq = eq || equipo(cliente);
+    let roles = rolesEtapa(z.estado);
+    if (soloAds(z) && [...eq.values()].some(r => /^ads/i.test(r))) roles = roles.map(r => (/diseñ/i.test(r) ? 'Ads' : r));
+    let gente = [...eq].filter(([, r]) => roles.some(x => mismoRol(x, r))).map(([a]) => a);
+    if (z.resp) {
+      const rp = eq.get(z.resp), rol = rp && roles.find(x => mismoRol(x, rp)) ? rp : !rp ? roles.find(x => /diseñ|^ads/i.test(x)) : null;
+      if (rol) gente = [z.resp, ...gente.filter(a => a !== z.resp && !mismoRol(eq.get(a), rol))];
+    }
+    return { roles, gente };
+  }
+  const horaDe = f => { const x = lista2('horasRedes', HORAS_DEF).find(y => norm(y.split('=')[0]) === norm(f || '')); return x ? x.slice(x.indexOf('=') + 1) : '12:00'; };
+  const pad2 = n => String(n).padStart(2, '0');
+  function horaLibre(ps, fecha, formato) {
+    const h = horaDe(formato); if (!fecha || !/^\d{1,2}:\d{2}/.test(h)) return h;
+    const usadas = new Set(ps.filter(z => z.fecha === fecha && z.hora && z.formato === formato).map(z => z.hora.slice(0, 5)));
+    let [hh, mm] = h.split(':').map(Number);
+    for (let i = 0; i < 6 && usadas.has(pad2(hh) + ':' + pad2(mm)); i++) hh = Math.min(23, hh + 3);
+    return pad2(hh) + ':' + pad2(mm);
+  }
   const planDeAbono = a => { const pl = a && a.plan ? S.L['plan:' + a.plan] : null; const o = {}; (pl || []).forEach(x => { const [f, n] = x.split('='); if (f && +n > 0) o[f] = +n; }); return o; };
   const clientesMes = mes => {
     const cs = new Set(S.A.filter(a => a.tipo === 'Redes' && a.estado === 'Activo').map(a => a.cliente));
@@ -154,30 +196,53 @@ export function initRedes(ctx) {
   }
 
   function planilla(m, ps, can) {
-    const fs = formatos(), sel = st.sel;
+    const fs = formatos(), sel = st.sel, eq = equipo(m.cliente), yo = S.me && S.me.alias;
     const ordenadas = [...ps].sort((a, b) => (a.fecha || '9999').localeCompare(b.fecha || '9999') || (a.hora || '').localeCompare(b.hora || '') || a.orden - b.orden);
     const bulk = sel.size ? '<div class="bulkbar rm-bulk"><b>' + sel.size + ' seleccionada' + (sel.size > 1 ? 's' : '') + '</b><select class="in sm" id="rm-bk-est" aria-label="Cambiar estado">' + opt('', 'Cambiar estado…', '') + ESTADOS_PIEZA.map(e => opt(e, e, '')).join('') + '</select>' +
-      '<select class="in sm" id="rm-bk-resp" aria-label="Asignar">' + opt('', 'Asignar a…', '') + opt('__nadie', 'Sin responsable', '') + personas().map(a => opt(a, a, '')).join('') + '</select>' +
+      '<select class="in sm" id="rm-bk-resp" aria-label="A cargo de">' + opt('', 'A cargo de…', '') + opt('__nadie', 'Según el flujo', '') + personas().map(a => opt(a, a, '')).join('') + '</select>' +
+      '<button class="btn sm" data-act="rmHoras" data-id="' + esc(m._id) + '" data-sel="1">Poner horarios</button>' +
       '<button class="btn sm" data-act="rmCopys"><span class="pig" aria-hidden="true">' + ISO + '</span> Escribir copys</button><button class="btn sm danger" data-act="rmBorrar">Borrar</button><button class="btn ghost sm" data-act="rmSelNada">Listo</button></div>' : '';
+    const sinHora = ps.filter(z => !z.hora).length;
     const tools = can ? '<div class="toolbar rm-tools"><form class="rm-add" data-rmadd="' + esc(m._id) + '"><span>+</span><input class="in sm" type="number" min="1" max="60" name="n" value="1" aria-label="Cantidad"><select class="in sm" name="f" aria-label="Formato">' + fs.map(f => opt(f, f, '')).join('') + '</select>' + (tieneAds(m.cliente) ? '<select class="in sm" name="u" aria-label="Para qué">' + opt('', 'Del plan', '') + opt('solo', 'Solo para Ads', '') + '</select>' : '') + '<button class="btn sm">Agregar</button></form>' +
       '<button class="btn sm" data-act="rmIdeas" data-id="' + esc(m._id) + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido</button>' +
       '<button class="btn sm" data-act="rmChat" data-id="' + esc(m._id) + '">Pegar chat del cliente</button>' +
+      (sinHora ? '<button class="btn sm" data-act="rmHoras" data-id="' + esc(m._id) + '" title="Pone la hora de cada formato (Opciones → Flujo de Redes) a las piezas que no tienen">Poner horarios (' + sinHora + ')</button>' : '') +
       (ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? '<button class="btn link sm rm-sinmarca" data-act="ficha" data-cliente="' + esc(m.cliente) + '" data-tab="marca" title="Sin ficha, Mr. Piggy escribe genérico">Completar la ficha de marca de ' + esc(m.cliente) + '</button>' : '') + '</div>' : '';
     if (!ps.length) return tools + '<section class="sheet">' + emptyBox('Todavía no hay piezas este mes', can ? 'Sumalas con “+ Agregar” (de a muchas), o pedile a Mr. Piggy que proponga el contenido según el plan.' : '') + '</section>';
+    // Filtro por formato (con check) y "lo que me toca"
+    const presentes = [...new Set([...fs.filter(f => ps.some(z => z.formato === f)), ...ps.map(z => z.formato).filter(Boolean)])];
+    const qz = new Map(ps.map(z => [z._id, quienes(m.cliente, z, eq)]));
+    const mias = ps.filter(z => yo && qz.get(z._id).gente.includes(yo));
+    const vis = ordenadas.filter(z => !st.fOff.has(z.formato) && (!st.mio || mias.includes(z)));
+    st.vis = vis.map(z => z._id);
+    const filtro = '<div class="rm-ff" role="group" aria-label="Qué mostrar">' + presentes.map(f => '<label class="rm-fc" style="--fc:' + fmtColor(f) + '"><input type="checkbox" data-rmff="' + esc(f) + '"' + (st.fOff.has(f) ? '' : ' checked') + '><i></i>' + esc(f) + ' <span class="num">' + ps.filter(z => z.formato === f).length + '</span></label>').join('') +
+      (yo && eq.has(yo) ? '<label class="rm-fc mio"><input type="checkbox" data-rmmio' + (st.mio ? ' checked' : '') + '><i></i>Lo que me toca <span class="num">' + mias.length + '</span></label>' : '') + '</div>';
+    const cols = can ? 7 : 6;
+    const lunes = f => { const d = new Date(f + 'T12:00'); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; };
+    const semTxt = f => { const l = lunes(f), dom = new Date(l); dom.setDate(l.getDate() + 6); const mesL = d => d.toLocaleDateString('es-AR', { month: 'short' }).replace('.', ''); return 'Semana del ' + l.getDate() + (l.getMonth() !== dom.getMonth() ? ' ' + mesL(l) : '') + ' al ' + dom.getDate() + ' ' + mesL(dom); };
+    const quien = z => { const q = qz.get(z._id);
+      if (!q.roles.length) return '<span class="muted">—</span>';
+      return '<div class="rm-quien">' + (q.gente.length ? '<span class="avs">' + q.gente.map(a => av(a, fotoDe(a))).join('') + '</span>' : '') + '<span class="rm-qt"><b>' + (q.gente.length ? esc(q.gente.join(', ')) : '<span class="muted">Nadie con ese rol</span>') + '</b><small>' + esc(q.roles.join(' + ')) + (z.resp && q.gente.includes(z.resp) ? ' · elegida' : '') + '</small></span></div>'; };
+    let semPrev = null;
     const fila = z => {
-      const id = esc(z._id), d = can ? '' : ' disabled';
-      return '<tr class="' + (sel.has(z._id) ? 'sel ' : '') + (z.estado === 'Cambios' ? 'cambios' : '') + '">' +
+      const id = esc(z._id), d = can ? '' : ' disabled', fc = fmtColor(z.formato);
+      const sem = z.fecha ? semTxt(z.fecha) : 'Sin fecha';
+      const cab = sem !== semPrev ? '<tr class="rm-sem"><td colspan="' + cols + '">' + esc(sem) + '</td></tr>' : ''; semPrev = sem;
+      const dia = z.fecha ? new Date(z.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '') : '';
+      return cab + '<tr class="rm-row ' + (sel.has(z._id) ? 'sel ' : '') + (z.estado === 'Cambios' ? 'cambios' : '') + '" style="--fc:' + fc + '">' +
         (can ? '<td class="sel"><input type="checkbox" data-rmsel="' + id + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar"></td>' : '') +
         '<td class="rm-art">' + arteMini(z) + '</td>' +
-        '<td><input class="in sm rm-fe" type="date" value="' + esc(z.fecha) + '" data-pz="fecha" data-id="' + id + '"' + d + ' aria-label="Fecha"><input class="in sm rm-ho" type="time" value="' + esc(z.hora) + '" data-pz="hora" data-id="' + id + '"' + d + ' aria-label="Hora"></td>' +
-        '<td><select class="in sm" data-pz="formato" data-id="' + id + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>' + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + '</td>' +
-        '<td class="rm-tema"><input class="in sm" value="' + esc(z.tema) + '" placeholder="Tema" data-pz="tema" data-id="' + id + '"' + d + ' aria-label="Tema"><button class="rm-copy" data-act="rmPieza" data-id="' + id + '">' + (z.copy ? esc(z.copy.slice(0, 90)) + (z.copy.length > 90 ? '…' : '') : '<span class="muted">+ copy</span>') + '</button>' + (z.respuesta && z.estado === 'Cambios' ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 120)) + '”</span>' : '') + '</td>' +
+        '<td class="rm-cuando">' + (dia ? '<span class="rm-dia">' + esc(dia) + '</span>' : '') + '<input class="in sm rm-fe" type="date" value="' + esc(z.fecha) + '" data-pz="fecha" data-id="' + id + '"' + d + ' aria-label="Fecha"><input class="in sm rm-ho" type="time" value="' + esc(z.hora) + '" data-pz="hora" data-id="' + id + '"' + d + ' aria-label="Hora"></td>' +
+        '<td class="rm-tema"><div class="rm-tags"><select class="rm-fsel" data-pz="formato" data-id="' + id + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>' + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + '</div>' +
+        '<input class="in sm rm-tin" value="' + esc(z.tema) + '" placeholder="Tema" data-pz="tema" data-id="' + id + '"' + d + ' aria-label="Tema">' +
+        '<button class="rm-copy' + (z.copy ? '' : ' vacio') + '" data-act="rmPieza" data-id="' + id + '">' + (z.copy ? esc(z.copy) : '+ Escribir el copy') + '</button>' + (z.respuesta && z.estado === 'Cambios' ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 160)) + '”</span>' : '') + '</td>' +
         '<td><select class="cellsel st" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-pz="estado" data-id="' + id + '"' + d + ' aria-label="Estado">' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></td>' +
-        '<td><select class="in sm" data-pz="resp" data-id="' + id + '"' + d + ' aria-label="Responsable">' + opt('', '—', z.resp) + [...new Set([...personas(), z.resp].filter(Boolean))].map(a => opt(a, a, z.resp)).join('') + '</select></td>' +
+        '<td class="rm-qc">' + quien(z) + '</td>' +
         '<td><button class="btn ghost sm" data-act="rmPieza" data-id="' + id + '" aria-label="Abrir pieza">⋯</button></td></tr>';
     };
-    pedirThumbs(ps);
-    return tools + bulk + '<section class="sheet"><div class="tbl rm-tbl"><table><thead><tr>' + (can ? '<th class="sel"><input type="checkbox" data-rmselall="' + esc(m._id) + '" aria-label="Seleccionar todas"></th>' : '') + '<th>Arte</th><th>Fecha y hora</th><th>Formato</th><th>Tema y copy</th><th>Estado</th><th>Quién</th><th></th></tr></thead><tbody>' + ordenadas.map(fila).join('') + '</tbody></table></div></section>';
+    pedirThumbs(vis);
+    return tools + bulk + filtro + '<section class="sheet"><div class="tbl rm-tbl"><table><thead><tr>' + (can ? '<th class="sel"><input type="checkbox" data-rmselall="' + esc(m._id) + '" aria-label="Seleccionar las que se ven"></th>' : '') + '<th>Arte</th><th>Cuándo</th><th>Pieza</th><th>Estado</th><th title="Según el rol de cada uno en la cuenta y el estado de la pieza">Le toca a</th><th></th></tr></thead><tbody>' +
+      (vis.length ? vis.map(fila).join('') : '<tr><td colspan="' + cols + '">' + emptyBox('No hay piezas con ese filtro', 'Marcá otro formato arriba.') + '</td></tr>') + '</tbody></table></div></section>';
   }
   function arteMini(z) {
     const a = (z.arte || [])[0];
@@ -200,11 +265,11 @@ export function initRedes(ctx) {
     for (let i = 0; i < off; i++) cells += '<div class="rm-cd vacia"></div>';
     for (let d = 1; d <= n; d++) {
       const f = fechaMes(m.mes, d), del = ps.filter(z => z.fecha === f).sort((a, b) => (a.hora || '').localeCompare(b.hora || ''));
-      cells += '<div class="rm-cd' + (f === today() ? ' hoy' : '') + '"><span class="rm-cdn">' + d + '</span>' + del.map(z => '<button class="rm-cp" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-act="rmPieza" data-id="' + esc(z._id) + '"><b>' + esc((z.hora ? z.hora + ' · ' : '') + z.formato) + '</b><span>' + esc(z.tema || 'Sin tema') + '</span></button>').join('') + '</div>';
+      cells += '<div class="rm-cd' + (f === today() ? ' hoy' : '') + '"><span class="rm-cdn">' + d + '</span>' + del.map(z => '<button class="rm-cp" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ');--fc:' + fmtColor(z.formato) + '" data-act="rmPieza" data-id="' + esc(z._id) + '"><b>' + esc((z.hora ? z.hora + ' · ' : '') + z.formato) + '</b><span>' + esc(z.tema || 'Sin tema') + '</span></button>').join('') + '</div>';
     }
     const sin = ps.filter(z => !z.fecha);
     return '<section class="sheet"><div class="sheet-b"><div class="rm-cal"><div class="rm-dow">' + ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => '<span>' + x + '</span>').join('') + '</div><div class="rm-grid">' + cells + '</div></div>' +
-      (sin.length ? '<p class="muted" style="margin:12px 0 6px">Sin fecha (' + sin.length + ')</p><div class="rm-sinf">' + sin.map(z => '<button class="rm-cp" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-act="rmPieza" data-id="' + esc(z._id) + '"><b>' + esc(z.formato) + '</b><span>' + esc(z.tema || 'Sin tema') + '</span></button>').join('') + '</div>' : '') + '</div></section>';
+      (sin.length ? '<p class="muted" style="margin:12px 0 6px">Sin fecha (' + sin.length + ')</p><div class="rm-sinf">' + sin.map(z => '<button class="rm-cp" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ');--fc:' + fmtColor(z.formato) + '" data-act="rmPieza" data-id="' + esc(z._id) + '"><b>' + esc(z.formato) + '</b><span>' + esc(z.tema || 'Sin tema') + '</span></button>').join('') + '</div>' : '') + '</div></section>';
   }
   function feed(m, ps) {
     const pubs = ps.filter(z => !/histori/i.test(z.formato)).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.hora || '').localeCompare(a.hora || ''));
@@ -228,7 +293,7 @@ export function initRedes(ctx) {
       '<div class="field"><label for="pz-formato">Formato</label><select id="pz-formato"' + d + '>' + [...new Set([...formatos(), z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select></div>' +
       '<div class="field"><label for="pz-red">Red</label><select id="pz-red"' + d + '>' + [...new Set([...REDES, z.red].filter(Boolean))].map(f => opt(f, f, z.red)).join('') + '</select></div>' +
       '<div class="field"><label for="pz-estado">Estado</label><select id="pz-estado"' + d + '>' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></div>' +
-      '<div class="field"><label for="pz-resp">Responsable</label><select id="pz-resp"' + d + '>' + opt('', 'Sin asignar', z.resp) + [...new Set([...personas(), z.resp].filter(Boolean))].map(a => opt(a, a, z.resp)).join('') + '</select></div>' +
+      '<div class="field"><label for="pz-resp">A cargo de esta pieza</label><select id="pz-resp"' + d + '>' + opt('', 'Según el flujo (el rol de cada etapa)', z.resp) + [...new Set([...personas(), z.resp].filter(Boolean))].map(a => opt(a, a + (equipo(m.cliente).get(a) ? ' · ' + equipo(m.cliente).get(a) : ''), z.resp)).join('') + '</select><span class="hint">Ahora le toca a ' + esc((q => q.gente.length ? q.gente.join(', ') : 'nadie') (quienes(m.cliente, z))) + '. Si elegís a alguien, reemplaza a los de su rol (p. ej. Cata en vez de Vale en el diseño).</span></div>' +
       '<div class="field full"><label for="pz-tema">Tema</label><input id="pz-tema" value="' + esc(z.tema) + '"' + d + '></div>' +
       '<div class="field full"><label for="pz-copy">Copy</label><textarea id="pz-copy" rows="6"' + d + '>' + esc(z.copy) + '</textarea>' + (can ? '<div class="toolbar" style="margin-top:6px"><span class="muted" style="font-size:13px">Mr. Piggy:</span><button type="button" class="btn ghost sm" data-act="rmCopyUno">' + (z.copy ? 'Mejorar' : 'Escribir') + ' el copy</button></div>' : '') + '</div>' +
       '<div class="field full"><label for="pz-hashtags">Hashtags</label><input id="pz-hashtags" value="' + esc(z.hashtags) + '"' + d + '></div>' +
@@ -311,22 +376,74 @@ export function initRedes(ctx) {
     try { await data.piezasUpd([id], { arte }); z.arte = arte; toast(nuevos.length === 1 ? 'Arte subido' : nuevos.length + ' archivos subidos'); render(); if (st.fpz && st.fpz.id === id) abrirPieza(id); contar(m, true); }
     catch (e) { toast(e.message); }
   }
+  // Mr. Piggy propone lo que falta del plan. A veces devuelve menos (o más) de lo pedido: se cuenta por formato,
+  // se le pide de nuevo lo que falta (hasta 2 veces más) y se descarta lo que sobra. Cada pieza sale con la hora de su formato.
   async function ideas(btn, m) {
     const ps = piezas(m._id) || [], plan = m.plan || {}, cnt = conteoPorFormato(ps);
     const faltan = Object.fromEntries(Object.entries(plan).map(([f, n]) => [f, Math.max(0, (+n || 0) - (cnt[f] || 0))]).filter(([, n]) => n > 0));
-    if (!Object.keys(faltan).length && !await confirmar('El plan del mes ya está completo. ¿Querés que Mr. Piggy proponga ideas extra igual?')) return;
+    const extras = !Object.keys(faltan).length;
+    if (extras && !await confirmar('El plan del mes ya está completo. ¿Querés que Mr. Piggy proponga ideas extra igual?')) return;
     btn.disabled = true; const t0 = btn.innerHTML; btn.innerHTML = '<span class="ia-dots"><i></i><i></i><i></i></span> Mr. Piggy está pensando el mes…';
     try {
       const prev = mesCliente(m.cliente, addMonth(m.mes, -1)), pp = prev ? (piezas(prev._id) || []) : [];
       const cli = S.C.find(x => x.nombre === m.cliente) || {};
-      const r = await data.ia({ modo: 'redes_ideas', texto: Object.keys(faltan).length ? 'Proponé estas piezas que faltan: ' + Object.entries(faltan).map(([f, n]) => n + ' ' + f).join(', ') + '.' : 'Proponé 3 ideas extra.',
-        contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, [...pp, ...ps]) : {}), notas_cliente: cli.notas || '', servicios: ctx.servicios ? ctx.servicios(m.cliente) : '', mes: m.mes, formatos: formatos(), plan, notas_del_mes: m.notas, ya_cargadas: ps.map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })), mes_anterior: pp.slice(0, 60).map(z => ({ formato: z.formato, tema: z.tema })) } });
-      const nuevas = (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && x.tema).map(x => ({ formato: formatos().includes(x.formato) ? x.formato : (formatos().find(f => norm(f).startsWith(norm(x.formato).slice(0, 4))) || formatos()[0]), tema: String(x.tema).slice(0, 200), copy: x.copy || '', hashtags: x.hashtags || '',
-        fecha: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : '', estado: 'Idea', extra: !Object.keys(faltan).length }));
+      const fmtDe = x => formatos().includes(x) ? x : (formatos().find(f => norm(f).startsWith(norm(x || '').slice(0, 4))) || formatos()[0]);
+      const pide = extras ? { _: 3 } : { ...faltan }, nuevas = [];
+      const resta = () => Object.entries(pide).filter(([, n]) => n > 0);
+      for (let vuelta = 0; vuelta < 3 && resta().length; vuelta++) {
+        const lista = resta().map(([f, n]) => n + ' ' + f).join(', '), total = resta().reduce((a, [, n]) => a + n, 0);
+        const texto = extras ? 'Proponé 3 ideas extra.' : (vuelta ? 'Todavía faltan piezas: proponé exactamente ' + lista + ' (' + total + ' en total), distintas a las que ya hay.' : 'Proponé exactamente estas piezas que faltan, ni más ni menos: ' + lista + ' (' + total + ' en total). Contá las de cada formato antes de responder.');
+        const r = await data.ia({ modo: 'redes_ideas', texto,
+          contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, [...pp, ...ps]) : {}), notas_cliente: cli.notas || '', servicios: ctx.servicios ? ctx.servicios(m.cliente) : '', mes: m.mes, formatos: formatos(), plan, notas_del_mes: m.notas, ya_cargadas: [...ps, ...nuevas].map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })), mes_anterior: pp.slice(0, 60).map(z => ({ formato: z.formato, tema: z.tema })) } });
+        let llegaron = 0;
+        for (const x of (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && x.tema)) {
+          const formato = fmtDe(x.formato), k = extras ? '_' : formato;
+          if (!(pide[k] > 0)) continue; // lo que sobra no se carga
+          if (nuevas.some(z => norm(z.tema) === norm(String(x.tema)))) continue;
+          const fecha = /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : '';
+          nuevas.push({ formato, tema: String(x.tema).slice(0, 200), copy: x.copy || '', hashtags: x.hashtags || '', fecha, hora: horaLibre([...ps, ...nuevas], fecha, formato), estado: 'Idea', extra: extras });
+          pide[k]--; llegaron++;
+        }
+        if (!llegaron) break;
+      }
       if (!nuevas.length) { toast('Mr. Piggy no propuso nada. Probá de nuevo.'); }
-      else { const ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]); toast('Mr. Piggy propuso ' + ins.length + ' piezas. Quedaron como “Idea”: revisalas.'); }
+      else {
+        const ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]);
+        const quedan = extras ? [] : resta();
+        toast('Mr. Piggy propuso ' + ins.length + ' piezas con su horario. Quedaron como “Idea”: revisalas.' + (quedan.length ? ' Faltaron ' + quedan.map(([f, n]) => n + ' ' + f).join(', ') + ': volvé a tocar “Proponer contenido”.' : ''));
+      }
     } catch (e) { toast(e.message); }
     btn.disabled = false; btn.innerHTML = t0; render();
+  }
+  // Pone la hora de su formato a las piezas sin hora (o a las seleccionadas, pisando la que tengan).
+  async function ponerHoras(m, soloSel) {
+    const ps = piezas(m._id) || [], obj = soloSel ? ps.filter(z => st.sel.has(z._id)) : ps.filter(z => !z.hora);
+    if (!obj.length) { toast('Todas las piezas ya tienen hora'); return; }
+    const resto = ps.filter(z => !obj.includes(z)).map(z => ({ ...z })), grupos = new Map();
+    [...obj].sort((a, b) => (a.fecha || '9').localeCompare(b.fecha || '9') || a.orden - b.orden).forEach(z => { const h = horaLibre(resto, z.fecha, z.formato); resto.push({ ...z, hora: h }); if (!grupos.has(h)) grupos.set(h, []); grupos.get(h).push(z._id); });
+    try { for (const [h, ids] of grupos) { await data.piezasUpd(ids, { hora: h }); local(m._id, ids, { hora: h }); } toast(obj.length + (obj.length === 1 ? ' pieza con horario' : ' piezas con horario') + ' (se cambian en Opciones → Flujo de Redes)'); render(); }
+    catch (e) { toast(e.message); render(); }
+  }
+  async function guardarLista(k, arr) {
+    const prev = S.L[k]; S.L[k] = arr; render();
+    try { await data.saveLista(k, arr); toast('Guardado'); } catch (e) { S.L[k] = prev; render(); toast(e.message); }
+  }
+  // Opciones → Flujo de Redes: a qué rol le toca cada estado y a qué hora sale cada formato.
+  function opcionesHtml() {
+    const f = flujo(), roles = (S.L.rolesCuenta && S.L.rolesCuenta.length ? S.L.rolesCuenta : ['Dirección', 'Cuentas y programación', 'Diseño', 'Ads']), dis = isStaff() ? '' : ' disabled';
+    return '<h2 style="margin:24px 0 0">Flujo de Redes</h2><p class="muted" style="margin:0">A quién le toca cada pieza según en qué estado está. Le toca a todas las personas de la cuenta con ese rol (los roles se eligen en cada cuenta, en Redes → Clientes y planes).</p>' +
+      '<section class="sheet" style="margin-top:12px"><div class="tbl"><table class="rm-flujo"><thead><tr><th>Estado de la pieza</th><th>Le toca a</th></tr></thead><tbody>' +
+      ESTADOS_PIEZA.map(e => '<tr><td>' + pzPill(e) + '</td><td><div class="rm-fl-r">' + roles.map(r => '<label class="chk"><input type="checkbox" data-flujo="' + esc(e) + '" value="' + esc(r) + '"' + ((f[e] || []).some(x => mismoRol(x, r)) ? ' checked' : '') + dis + '> ' + esc(r) + '</label>').join('') + '</div></td></tr>').join('') + '</tbody></table></div></section>' +
+      '<h2 style="margin:24px 0 0">Horario de publicación</h2><p class="muted" style="margin:0">La hora con la que sale cada formato cuando Mr. Piggy propone contenido o tocás “Poner horarios”. Si el mismo día hay dos del mismo formato, la segunda va 3 horas después.</p>' +
+      '<section class="sheet" style="margin-top:12px"><div class="sheet-b rm-hrs">' + formatos().map(fm => '<label class="field" style="--fc:' + fmtColor(fm) + '"><span class="lbl"><i class="rm-dot"></i>' + esc(fm) + '</span><input class="in" type="time" data-horared="' + esc(fm) + '" value="' + esc(horaDe(fm)) + '"' + dis + '></label>').join('') + '</div></section>';
+  }
+  // Para Mis trabajos: cuántas piezas del mes le tocan a una persona en una cuenta, por estado.
+  function tocaA(cliente, alias) {
+    const m = mesCliente(cliente, thisMonth()); if (!m) return null;
+    const ps = piezas(m._id); if (!ps) { setTimeout(() => cargar([m._id]), 0); return null; }
+    const eq = equipo(cliente), o = {};
+    ps.forEach(z => { if (quienes(cliente, z, eq).gente.includes(alias)) o[z.estado] = (o[z.estado] || 0) + 1; });
+    return ESTADOS_PIEZA.filter(e => o[e]).map(e => [e, o[e]]);
   }
   async function copys(ids, m, btn) {
     const ps = (piezas(m._id) || []).filter(z => ids.includes(z._id));
@@ -418,7 +535,17 @@ export function initRedes(ctx) {
       return;
     }
     if (t.dataset && t.dataset.rmsel) { if (t.checked) st.sel.add(t.dataset.rmsel); else st.sel.delete(t.dataset.rmsel); render(); return; }
-    if (t.dataset && t.dataset.rmselall) { (piezas(t.dataset.rmselall) || []).forEach(z => t.checked ? st.sel.add(z._id) : st.sel.delete(z._id)); render(); return; }
+    if (t.dataset && t.dataset.rmselall) { (piezas(t.dataset.rmselall) || []).filter(z => st.vis.includes(z._id)).forEach(z => t.checked ? st.sel.add(z._id) : st.sel.delete(z._id)); render(); return; }
+    if (t.dataset && t.dataset.rmff != null) { const f = t.dataset.rmff; if (t.checked) st.fOff.delete(f); else st.fOff.add(f); st.sel.clear(); render(); return; }
+    if (t.dataset && t.dataset.rmmio != null) { st.mio = t.checked; st.sel.clear(); render(); return; }
+    if (t.dataset && t.dataset.flujo) {
+      const e = t.dataset.flujo, f = flujo(); const rs = new Set(f[e] || []); if (t.checked) rs.add(t.value); else rs.delete(t.value);
+      f[e] = [...rs]; await guardarLista('flujoRedes', ESTADOS_PIEZA.map(x => x + '=' + (f[x] || []).join('+'))); return;
+    }
+    if (t.dataset && t.dataset.horared) {
+      const f = t.dataset.horared, v = t.value; const resto = lista2('horasRedes', HORAS_DEF).filter(x => norm(x.split('=')[0]) !== norm(f));
+      await guardarLista('horasRedes', [...resto, ...(v ? [f + '=' + v] : [])]); return;
+    }
     if (t.id === 'rm-bk-est' || t.id === 'rm-bk-resp') {
       const ids = [...st.sel], v = t.value; if (!v || !ids.length) return;
       const u = t.id === 'rm-bk-est' ? { estado: v } : { resp: v === '__nadie' ? '' : v };
@@ -456,6 +583,7 @@ export function initRedes(ctx) {
     },
     rmPlan: t => { const m = mesDe(t.dataset.id); if (m) abrirPlan(m); },
     rmIdeas: t => { const m = mesDe(t.dataset.id); if (m) ideas(t, m); },
+    rmHoras: t => { const m = mesDe(t.dataset.id); if (m) ponerHoras(m, !!t.dataset.sel); },
     rmChat: t => { const m = mesDe(t.dataset.id); if (m) abrirChat(m); },
     rmCopys: t => { const ids = [...st.sel]; const m = meses().find(x => (piezas(x._id) || []).some(z => ids.includes(z._id))); if (m) copys(ids, m, t); },
     rmCopyUno: async t => { const f = st.fpz; if (!f) return; const m = mesDe(f.mesId); const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!m || !z) return; z.tema = ($('#pz-tema').value || '').trim() || z.tema; await copys([z._id], m, t); const zz = piezas(f.mesId).find(x => x._id === f.id); if ($('#pz-copy') && zz) { $('#pz-copy').value = zz.copy; $('#pz-hashtags').value = zz.hashtags; } },
@@ -468,5 +596,5 @@ export function initRedes(ctx) {
   };
   // Cambio en vivo de piezas: se recargan solo las del mes afectado.
   function enVivo(ev) { const r = (ev && (ev.new && ev.new.mes_id ? ev.new : ev.old)) || {}; const id = r.mes_id || [...P.keys()].find(k => (P.get(k) || []).some(z => z._id === r.id)); if (id && P.has(id)) cargar([id], true); }
-  return { vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
+  return { opcionesHtml, tocaA, vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
 }

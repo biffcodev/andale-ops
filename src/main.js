@@ -13,7 +13,7 @@ import { initMails } from './mails.js';
 import { initIntegraciones } from './integraciones.js';
 import { initTrabajo } from './trabajo.js';
 import { initHilos } from './hilos.js';
-import { initRedes } from './redes.js';
+import { initRedes, FLUJO_DEF, HORAS_DEF, PZ_COLOR } from './redes.js';
 import { initTickets } from './tickets.js';
 import { initEntregas } from './entregas.js';
 import { initInformes } from './informes.js';
@@ -45,6 +45,8 @@ const DEF = {
   formatosRedes: ['Reels', 'Posts', 'Historias', 'Carruseles'],
   rolesCuenta: ['Dirección', 'Cuentas y programación', 'Diseño', 'Ads', 'Contenido', 'Branding', 'Otro'],
   plataformasAds: ['Meta', 'Google', 'TikTok', 'LinkedIn', 'YouTube'],
+  flujoRedes: FLUJO_DEF,
+  horasRedes: HORAS_DEF,
   resultadosAds: ['Conversaciones iniciadas', 'Mensajes', 'Clics', 'Leads', 'Compras', 'Seguidores', 'Visitas al sitio'],
 };
 const LIST_LABELS = { tipos: 'Tipos de proyecto', tiposAbono: 'Tipos de abono', estadosProyecto: 'Estados de proyecto', estadosCliente: 'Estados de cliente', canales: 'Canales de comunicación', servicios: 'Servicios', planes: 'Planes', rubros: 'Rubros de proveedores', monedas: 'Monedas (código de 3 letras: ARS, USD, EUR, GBP…)', formatosRedes: 'Formatos de redes (son también las carpetas de cada mes en Dropbox)', rolesCuenta: 'Roles en las cuentas de Redes y Ads', plataformasAds: 'Plataformas de pauta (Ads)', resultadosAds: 'Qué se mide en Ads (resultado principal)' };
@@ -999,6 +1001,11 @@ function vPlanes() {
   return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Plan</th><th>Ads</th>' + (isAdmin() && ADM && ADM.moneyFmt ? '<th class="r">Por mes</th>' : '') + '<th>Responsables</th><th>Desde</th><th>Estado</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div><div class="count num">' + list.length + ' clientes</div></section>';
 }
 
+// Las piezas del mes que le tocan a la persona en esa cuenta (según el flujo de Redes)
+function tocaHtml(c, yo) {
+  const t = red().tocaA(c, yo); if (!t || !t.length) return '';
+  return '<span class="cta-toca">Te toca: ' + t.map(([e, n]) => '<span class="pzst" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')">' + n + ' ' + esc(e) + '</span>').join(' ') + '</span>';
+}
 function vMis() {
   const ps = personas();
   if (isExt()) S.yo = S.me.alias;
@@ -1024,7 +1031,7 @@ function vMis() {
   const otrosCl = myCl.filter(c => !misCl.includes(c.nombre));
   const cuentasHtml = '<section class="sheet"><div class="sheet-h"><h2>Cuentas de Redes</h2><span class="muted num">' + misCl.length + '</span></div>' + (misCl.length ? '<div class="rows">' + misCl.map(c => { const sv = servicioRedes(c), a = sv.redes || sv.ads, m = red().mesCliente(c, thisMonth()), eq = equipoCuenta(c), yoE = eq.find(e => e.a === yo), otrosE = eq.filter(e => e.a !== yo);
     return '<button class="row row-cta" data-act="rmCuenta" data-c="' + esc(c) + '" title="' + (m ? 'Abrir el mes de Redes' : 'Ir a Redes') + '"><span class="d">' + av(c, (S.C.find(x => x.nombre === c) || {}).avatar, 'sq') + '</span><span class="t"><b>' + esc(c) + '</b><span>' + servChips(c) + '</span>' +
-      '<span class="cta-eq">' + (yoE && yoE.rol ? '<strong>' + esc(yoE.rol) + '</strong>' : '') + (otrosE.length ? (yoE && yoE.rol ? ' · ' : '') + 'con ' + otrosE.map(conRolTxt).join(', ') : '') + '</span></span><span></span></button>'; }).join('') + '</div>' : emptyBox('Sin cuentas de Redes a cargo', '')) + '</section>';
+      '<span class="cta-eq">' + (yoE && yoE.rol ? '<strong>' + esc(yoE.rol) + '</strong>' : '') + (otrosE.length ? (yoE && yoE.rol ? ' · ' : '') + 'con ' + otrosE.map(conRolTxt).join(', ') : '') + '</span>' + tocaHtml(c, yo) + '</span><span></span></button>'; }).join('') + '</div>' : emptyBox('Sin cuentas de Redes a cargo', '')) + '</section>';
   h += '<div class="grid2"><div class="stack">' + tkHtml + group('Atrasados', late) + group('Esta semana', week) + group('Más adelante', later) + group('Sin fecha pactada', nodate) + '</div>' +
     '<div class="stack">' + cuentasHtml +
     '<section class="sheet"><div class="sheet-h"><div><h2>Pendientes con clientes</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Lo que quedó por hacer después de una reunión, llamada o WhatsApp con un cliente.</p></div>' + addBtn('comunicacion', 'Charla', null, 'sm') + '</div>' + (steps.length ? '<div class="rows">' + steps.map(m => '<button class="row" data-act="edit" data-kind="comunicacion" data-id="' + esc(m._id) + '"><span class="d">' + (m.fechaProximo ? fmt(m.fechaProximo) : '—') + '</span><span class="t"><b>' + esc(m.proximo) + '</b><span>' + esc(m.cliente || '') + '</span></span><span></span></button>').join('') + '</div>' : emptyBox('Nada pendiente', 'Cuando anotás una charla con un próximo paso a tu cargo, aparece acá hasta que la marcás como hecha.')) + '</section>' +
@@ -1262,7 +1269,7 @@ function vListas() {
       arr.map((v, i) => '<span class="chip">' + esc(v) + (isStaff() && !(k === 'estadosProyecto' && CERRADOS.has(v)) ? '<button aria-label="Quitar ' + esc(v) + '" data-act="listDel" data-k="' + k + '" data-i="' + i + '">×</button>' : '<span style="width:8px"></span>') + '</span>').join('') +
       '</div>' + (isStaff() ? '<form class="addrow" data-list="' + k + '"><input class="in" id="li-' + k + '" placeholder="Agregar valor" value="' + esc(S.listDraft[k] || '') + '" data-bind="listDraft.' + k + '"><button class="btn" type="submit">Agregar</button></form>' : '') + '</div></section>';
   }
-  return h + '</div>' + firmasHtml() + equipoFijoHtml() + (S.FL ? trab().flujosHtml() + planesHtml() : '');
+  return h + '</div>' + firmasHtml() + equipoFijoHtml() + red().opcionesHtml() + (S.FL ? trab().flujosHtml() + planesHtml() : '');
 }
 // Quién firma los mails (se puede cambiar en cada mail antes de mandarlo).
 function firmasHtml() {
