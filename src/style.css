@@ -2283,3 +2283,11 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,input[type="month"]:
 .vsel button{padding:6px 9px}
 .vsel button svg{width:16px;height:16px}
 .wa-btn.ico-b svg{color:#1FA855}
+
+/* Envío programado de resúmenes */
+.callout.ep{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.callout.ep p{margin:0;flex:1 1 320px}
+.callout.ep .toolbar{flex-wrap:wrap}
+.callout.ep.ok{background:color-mix(in srgb,var(--ok,#22A06B) 9%,var(--surface));border-color:color-mix(in srgb,var(--ok,#22A06B) 30%,var(--line))}
+.callout.ep.warn{background:color-mix(in srgb,#E5484D 7%,var(--surface));border-color:color-mix(in srgb,#E5484D 30%,var(--line))}
+.ep-warn{color:#C2410C;font-weight:600}

@@ -418,7 +418,7 @@ const opcional = p => p.catch(e => { if (/PGRST205|42P01|Could not find the tabl
 const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 export async function loadAdmin() {
   const desdeMes = new Date(); desdeMes.setDate(1); desdeMes.setHours(0, 0, 0, 0);
-  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il, prop, seg, la] = await Promise.all([
+  const [ca, pr, pf, rs, fs, cj, pc, mv, gs, aj, em, pfz, abf, imp, co, rm, cf, lq, da, il, prop, seg, la, ep, ei] = await Promise.all([
     all('clientes_admin'), all('precios_abono'), all('proyecto_facturacion'), all('resumenes'), all('facturas_saldo'),
     all('cajas', q => q.order('orden')), all('plan_cuentas'), all('movimientos', q => q.order('fecha', { ascending: false })), all('gestiones'), all('ajustes'), all('emails', q => q.order('created_at', { ascending: false })), all('proyecto_finanzas'), all('abono_finanzas'), all('imputaciones'),
     opcional(all('colaboradores', q => q.order('nombre'))), opcional(all('remuneraciones')), opcional(all('conceptos_fijos')), opcional(all('liquidaciones')), opcional(all('drive_archivos', q => q.order('modificado', { ascending: false, nullsFirst: false }))),
@@ -426,6 +426,8 @@ export async function loadAdmin() {
     opcional(all('propuestas', q => q.order('fecha', { ascending: false }))),
     opcional(all('seguimiento', q => q.not('email_id', 'is', null))),
     opcional(all('lotes_aumento', q => q.order('created_at', { ascending: false }))),
+    opcional(all('envios_programados', q => q.order('enviar_el', { ascending: false }))),
+    opcional(all('envios_items', q => q.select('id, envio_id, resumen_id, cliente_id, para, estado, error, huella'))),
   ]);
   const cn = id => idx.clienteName.get(id) || '';
   return {
@@ -447,6 +449,8 @@ export async function loadAdmin() {
     CO: co.map(r => ({ ...r, persona: idx.personaAlias.get(r.persona_id) || '' })),
     RM: rm.map(r => ({ ...r, desde: month(r.desde), monto: num(r.monto), monto_anterior: num(r.monto_anterior), pct: num(r.pct), lote_id: r.lote_id || null })),
     LA: la.map(r => ({ ...r, desde: month(r.desde), valor: num(r.valor) })),
+    EP: ep.map(r => ({ ...r, periodo: month(r.periodo) })),
+    EI: ei,
     CF: cf.map(r => ({ ...r, desde: month(r.desde), hasta: month(r.hasta), monto: num(r.monto) })),
     LQ: lq.map(r => ({ ...r, periodo: month(r.periodo), monto: num(r.monto) })),
     DA: da.map(r => ({ ...r, datos: r.datos || {} })),
@@ -463,6 +467,8 @@ export async function upsert(table, row, onConflict) { check(await sb.from(table
 
 // ---------- Sesión ----------
 /** Envía un email por la Edge Function `enviar-email` (Resend). Solo admins. */
+/** Corre ya los envíos programados (los que estén confirmados y con la hora cumplida). */
+export async function enviosCorrer() { const { data, error } = await sb.functions.invoke('envios', { body: { accion: 'correr' } }); if (error) throw new Error(error.message); return data; }
 export async function sendEmail(payload) {
   const { data, error } = await sb.functions.invoke('enviar-email', { body: payload });
   if (error) {

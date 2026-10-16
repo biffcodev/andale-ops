@@ -22,7 +22,7 @@ export function initAdmin(ctx) {
   const esExterior = m => m && m !== 'ARS' && m !== 'USD';
   const EMISORES = ['Fer', 'Jime'];
   const TIPOS_COMP = ['Factura ARCA', 'Invoice', 'Otro'];
-  const AD = { ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], LA: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'horas' },
+  const AD = { EP: [], EI: [], ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], LA: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'horas' },
     mes: thisMonth(), sel: null, rd: null, ff: { estado: 'abiertas', cliente: '', emisor: '', anio: String(new Date().getFullYear()) },
     pp: { sel: new Set(), pct: '', desde: addMonth(thisMonth(), 1), motivo: '' }, form: null };
 
@@ -164,6 +164,7 @@ export function initAdmin(ctx) {
     }
     // A fin de mes se arman los resúmenes del mes que viene (se pagan del 1 al 5): atajo para no quedarse en el mes equivocado.
     if (m === thisMonth() && +today().slice(8, 10) >= 20) { const sig = addMonth(m, 1); h += '<section class="callout"><p><b>¿Armando los resúmenes de ' + esc(monthLabel(sig).split(' ')[0]) + '?</b> Los que se mandan a fin de mes son del mes que viene.</p><button class="btn primary" data-act="aMes" data-d="1">Ir a ' + esc(monthLabel(sig).split(' ')[0]) + '</button></section>'; }
+    h += epCard(m);
     h += '<section class="kpis">' +
       '<div class="kpi"><span class="eyebrow">A facturar</span><b style="font-size:22px;color:var(--money)">' + esc(multi(aFacturar)) + '</b><span>' + cl.length + ' clientes</span></div>' +
       '<div class="kpi"><span class="eyebrow">Resúmenes enviados</span><b>' + env + '</b><span>de ' + cl.length + '</span></div>' +
@@ -180,7 +181,7 @@ export function initAdmin(ctx) {
       const recTxt = r.rec ? '<span class="muted">' + fmt(r.rec.fecha) + '</span>' : (venc ? '<span class="days late">Mandar</span>' : '<span class="muted">—</span>');
       return '<tr class="click" data-act="aCuenta" data-cliente="' + esc(r.cliente) + '"><td class="name">' + esc(r.cliente) + '</td><td class="r"><span class="money"' + (r.res ? '' : ' style="opacity:.7"') + '>' + money(r.total, r.moneda) + '</span>' + (r.res ? '' : '<span class="sub">estimado</span>') + '</td><td>' + resTxt + '</td><td>' + compTxt + '</td><td>' + cobTxt + '</td><td>' + recTxt + '</td></tr>';
     }).join('');
-    h += '<section class="sheet"><div class="sheet-h"><h2>Clientes del mes</h2><div class="toolbar"><button class="btn sm primary" data-act="aMailResumenes">Enviar resúmenes por email</button>' + masMenu(['<div class="mm-otro"><label class="lbl" for="a-otro">Cuenta de otro cliente</label><span style="display:flex;gap:6px"><select class="in" id="a-otro" aria-label="Otro cliente">' + clienteOpts('', 'Elegí un cliente…') + '</select><button class="btn sm" data-act="aCuentaOtro">Abrir</button></span></div>', { act: 'aCSV', label: 'Descargar planilla (CSV)', icon: 'csv' }]) + '</div></div>' +
+    h += '<section class="sheet"><div class="sheet-h"><h2>Clientes del mes</h2><div class="toolbar"><button class="btn sm primary" data-act="aMailResumenes">Enviar resúmenes por email</button>' + (epDe(m) ? '' : '<button class="btn sm" data-act="epNuevo">' + (ICON.calendario || '') + 'Programar envío</button>') + '' + masMenu(['<div class="mm-otro"><label class="lbl" for="a-otro">Cuenta de otro cliente</label><span style="display:flex;gap:6px"><select class="in" id="a-otro" aria-label="Otro cliente">' + clienteOpts('', 'Elegí un cliente…') + '</select><button class="btn sm" data-act="aCuentaOtro">Abrir</button></span></div>', { act: 'aCSV', label: 'Descargar planilla (CSV)', icon: 'csv' }]) + '</div></div>' +
       (tr ? '<div class="tbl"><table><thead><tr><th>Cliente</th><th class="r">Total</th><th>Resumen</th><th>Factura</th><th>Cobro</th><th>Recordatorio</th></tr></thead><tbody>' + tr + '</tbody></table></div>' : emptyBox('Nada para facturar en ' + monthLabel(m), 'Cargá precios en los abonos activos o meses de cobro en los proyectos.')) + '</section>';
     return h;
   }
@@ -412,6 +413,89 @@ export function initAdmin(ctx) {
           await data.upd('resumenes', r.id, { estado: 'Enviado', enviado_el: today() });
         },
       };
+  }
+  /* ---------- Envío programado de resúmenes (con confirmación) ---------- */
+  const EP_VIVOS = ['Esperando confirmación', 'Confirmado', 'Enviando'];
+  const epDe = m => (AD.EP || []).find(e => e.periodo === m && EP_VIVOS.includes(e.estado));
+  const epReciente = m => (AD.EP || []).find(e => e.periodo === m && ['Vencido', 'Enviado', 'Con errores'].includes(e.estado) && Date.now() - new Date(e.enviado_at || e.enviar_el).getTime() < 4 * 86400_000);
+  const cuandoTxt = iso => { const d = new Date(iso), tz = 'America/Argentina/Cordoba'; return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz }) + ' a las ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }); };
+  const alias = id => (S.E.find(e => e._id === id) || {}).persona || '';
+  // Resúmenes que se cambiaron después de confirmar (la huella es el updated_at que tenían al confirmar).
+  const epCambiados = e => (AD.EI || []).filter(i => i.envio_id === e.id && i.estado === 'Pendiente').filter(i => { const r = AD.R.find(x => x.id === i.resumen_id); return r && String(r.updated_at) !== String(i.huella); }).map(i => (AD.R.find(x => x.id === i.resumen_id) || {}).cliente).filter(Boolean);
+  function epCard(m) {
+    const e = epDe(m) || epReciente(m); if (!e) return '';
+    const n = (e.resumen_ids || []).length, res = e.resultado || {};
+    if (e.estado === 'Esperando confirmación') return '<section class="callout ep"><p><b>Envío programado: ' + n + (n === 1 ? ' resumen' : ' resúmenes') + ' el ' + esc(cuandoTxt(e.enviar_el)) + '.</b> Falta tu confirmación: sin ella no sale nada. El día antes te llega un aviso.</p><div class="toolbar"><button class="btn primary" data-act="epConfirmar" data-id="' + esc(e.id) + '">Revisar y confirmar</button><button class="btn" data-act="epEditar" data-id="' + esc(e.id) + '">Cambiar</button><button class="btn ghost" data-act="epCancelar" data-id="' + esc(e.id) + '">Cancelar</button></div></section>';
+    if (e.estado === 'Confirmado') { const ch = epCambiados(e); return '<section class="callout ep ok"><p><b>Confirmado' + (alias(e.confirmado_por) ? ' por ' + esc(alias(e.confirmado_por)) : '') + ': salen ' + n + (n === 1 ? ' resumen' : ' resúmenes') + ' el ' + esc(cuandoTxt(e.enviar_el)) + '.</b>' + (ch.length ? ' <span class="ep-warn">Cambiaste ' + esc(ch.join(', ')) + ' después de confirmar: volvé a confirmar, o ' + (ch.length === 1 ? 'ese no sale' : 'esos no salen') + '.</span>' : ' Se manda solo, tal cual lo revisaste.') + '</p><div class="toolbar">' + (ch.length ? '<button class="btn primary" data-act="epConfirmar" data-id="' + esc(e.id) + '">Volver a confirmar</button>' : '') + '<button class="btn" data-act="epEditar" data-id="' + esc(e.id) + '">Cambiar fecha</button><button class="btn ghost" data-act="epCancelar" data-id="' + esc(e.id) + '">Cancelar</button></div></section>'; }
+    if (e.estado === 'Enviando') return '<section class="callout ep"><p><b>Mandando los resúmenes…</b> En unos minutos queda todo en la pestaña Mails de cada cliente.</p></section>';
+    if (e.estado === 'Vencido') return '<section class="callout ep warn"><p><b>No se mandaron los resúmenes programados para el ' + esc(cuandoTxt(e.enviar_el)) + ':</b> faltó la confirmación. Mandalos ahora o programalos de nuevo.</p><div class="toolbar"><button class="btn primary" data-act="aMailResumenes">Enviar ahora</button><button class="btn" data-act="epNuevo">Programar de nuevo</button></div></section>';
+    return '<section class="callout ep ' + (e.estado === 'Enviado' ? 'ok' : 'warn') + '"><p><b>Envío programado: ' + (res.ok || 0) + ' enviados.</b>' + ((res.cambiaron || []).length ? ' No salieron porque se cambiaron después de confirmar: ' + esc(res.cambiaron.join(', ')) + '.' : '') + ((res.errores || []).length ? ' Con error: ' + esc(res.errores.join(' · ')) + '.' : '') + '</p></section>';
+  }
+  function defEnvio(m) { // por defecto, el 28 del mes anterior a las 10
+    let f = addMonth(m, -1) + '-28';
+    if (new Date(f + 'T10:00:00-03:00').getTime() < Date.now() + 3600_000) { const d = new Date(Date.now() + 86400_000); f = d.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Cordoba' }); }
+    return { fecha: f, hora: '10:00' };
+  }
+  function epPanel(m, e) {
+    const o = bulkResumenes(m);
+    if (!o && !e) { toast('No hay resúmenes preparados de ' + monthLabel(m) + ' para programar. Preparalos primero.'); return; }
+    const items = o ? o.items : [], sel = new Set(e ? e.resumen_ids : items.filter(i => i.para).map(i => i.r.id));
+    const d = e ? { fecha: new Date(e.enviar_el).toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Cordoba' }), hora: new Date(e.enviar_el).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Cordoba' }) } : defEnvio(m);
+    openPanel({
+      title: 'Programar el envío de ' + periodoTit(m), eyebrow: 'Resúmenes de cuenta', saveLabel: e ? 'Guardar cambios' : 'Programar',
+      intro: 'Elegí el día y la hora. <b>El día antes te avisamos</b> (campanita y mail) para que los revises y confirmes. <b>Sin tu confirmación no se manda nada.</b> En el mensaje podés usar <b>{nombre}</b>, <b>{cuenta}</b> y <b>{periodo}</b>.',
+      values: { fecha: d.fecha, hora: d.hora, asunto: e ? e.asunto : o.asunto, mensaje: e ? e.mensaje : o.mensaje, copia: e ? e.copia : true },
+      fields: [
+        { k: 'fecha', label: 'Día', type: 'date', req: 1 }, { k: 'hora', label: 'Hora', type: 'time', req: 1 },
+        { k: 'asunto', label: 'Asunto', req: 1, full: 1 }, { k: 'mensaje', label: 'Mensaje', type: 'textarea', rows: 6, full: 1 },
+        { k: 'copia', label: 'Mandarme copia de cada uno', type: 'check' },
+      ],
+      extra: '<div class="field full"><span class="lbl">Qué resúmenes salen</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' +
+        (items.length ? items.map((it, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-epsel="' + esc(it.r.id) + '"' + (it.para && sel.has(it.r.id) ? ' checked' : '') + (it.para ? '' : ' disabled') + '><span class="t"><b>' + esc(it.label) + '</b><span>' + esc(it.para || 'sin email · cargalo en Contactos') + '</span></span><span class="money">' + esc(it.sub) + '</span></label>').join('') : '<p class="muted" style="padding:10px 12px;margin:0">No quedan resúmenes preparados sin enviar.</p>') + '</div></div>',
+      onSave: async v => {
+        const ids = [...document.querySelectorAll('[data-epsel]:checked')].map(x => x.dataset.epsel);
+        if (!ids.length) throw new Error('Elegí al menos un resumen');
+        const cuando = new Date(v.fecha + 'T' + v.hora + ':00-03:00');
+        if (!(cuando.getTime() > Date.now() + 5 * 60_000)) throw new Error('Elegí un día y una hora que todavía no pasaron');
+        const row = { periodo: m + '-01', enviar_el: cuando.toISOString(), resumen_ids: ids, asunto: v.asunto, mensaje: v.mensaje, copia: !!v.copia };
+        if (e) {
+          const mismos = ids.length === e.resumen_ids.length && ids.every(x => e.resumen_ids.includes(x)) && v.asunto === e.asunto && v.mensaje === e.mensaje && !!v.copia === !!e.copia;
+          const cambio = mismos ? {} : { estado: 'Esperando confirmación', confirmado_por: null, confirmado_at: null };
+          if (!mismos) await data.del('envios_items', e.id, 'envio_id');
+          await data.upd('envios_programados', e.id, { ...row, ...cambio, avisado_at: mismos ? e.avisado_at : null });
+          toast(mismos ? 'Listo: cambió la fecha, sigue confirmado' : 'Guardado. Como cambiaste qué sale, hay que volver a confirmar');
+        } else {
+          await data.ins('envios_programados', { ...row, creado_por: S.me.id });
+          toast('Programado. El día antes te avisamos para que lo confirmes');
+        }
+      },
+    });
+  }
+  function epConfirmarPanel(e) {
+    const m = e.periodo, o = bulkResumenes(m), items = (o ? o.items : []).filter(it => e.resumen_ids.includes(it.r.id));
+    if (!items.length) { toast('Esos resúmenes ya no están pendientes de enviar'); return; }
+    openPanel({
+      title: 'Confirmar el envío de ' + periodoTit(m), eyebrow: 'Resúmenes de cuenta', saveLabel: 'Confirmar envío', busyLabel: 'Preparando los PDF…',
+      intro: 'Salen el <b>' + esc(cuandoTxt(e.enviar_el)) + '</b>. Revisá cada uno (tocá <b>Ver PDF</b>) y, si está todo bien, confirmá. Se manda exactamente esto; si después cambiás algún resumen, ese no sale hasta que vuelvas a confirmar.',
+      values: {}, fields: [],
+      extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + items.map(it => '<div class="row" style="cursor:default"><span class="t"><b>' + esc(it.label) + '</b><span>' + esc(it.para || 'sin email: no sale') + '</span></span><span class="money">' + esc(it.sub) + '</span><button type="button" class="btn sm" data-act="epVer" data-id="' + esc(it.r.id) + '">Ver PDF</button></div>').join('') + '</div>' +
+        '<p class="formnote">Asunto: <b>' + esc(e.asunto) + '</b></p><p class="formnote" id="ep-prog" aria-live="polite"></p></div>',
+      onSave: async () => {
+        await data.del('envios_items', e.id, 'envio_id');
+        const filas = []; let n = 0;
+        for (const it of items.filter(x => x.para)) {
+          const prog = $('#ep-prog'); if (prog) prog.textContent = 'Preparando ' + (++n) + ' de ' + items.length + '…';
+          const r = it.r, its = itemsDe(r), fill = t => String(t || '').replace(/\{nombre\}/g, it.nombre || '').replace(/\{cuenta\}/g, it.label).replace(/\{periodo\}/g, it.periodo || '').replace(/Hola ,/g, 'Hola,');
+          const pdf = await pdfResumen({ id: r.id, numero: r.numero, cliente: r.cliente, m, moneda: r.moneda, items: r.items, nota: r.nota });
+          const b = E.resumenEmail({ cfg: cfgMarca(), contacto: contactoFull(r.cliente), cuenta: r.cliente, periodo: periodoTit(m), moneda: r.moneda, items: its, total: r2(its.reduce((a, i) => a + i.monto, 0)), nota: r.nota, mensaje: fill(e.mensaje), firma: firma(), asunto: fill(e.asunto) });
+          filas.push({ envio_id: e.id, resumen_id: r.id, cliente_id: r.cliente_id, para: it.para.split(/[,;\s]+/).filter(Boolean), asunto: fill(e.asunto), html: b.html, texto: b.texto || '', pdf_nombre: pdf.nombre, pdf_base64: pdf.base64, huella: String(r.updated_at || '') });
+        }
+        for (const f of filas) await data.ins('envios_items', f);
+        await data.upd('envios_programados', e.id, { estado: 'Confirmado', confirmado_por: S.me.id, confirmado_at: new Date().toISOString(), avisado_at: e.avisado_at || new Date().toISOString() });
+        toast('Confirmado: salen el ' + cuandoTxt(e.enviar_el));
+        if (new Date(e.enviar_el).getTime() <= Date.now()) { try { await data.enviosCorrer(); } catch (err) { toast(err.message); } }
+      },
+    });
   }
   function bulkAvisos() {
       const m = thisMonth();
@@ -1590,6 +1674,15 @@ export function initAdmin(ctx) {
     aRecordatorioManual: () => formGestion('Recordatorio de pago', recordatorioTexto(cuenta(AD.rd.cliente, AD.rd.m))),
     aMailResumen: () => mail.resumen(AD.rd),
     aMailResumenes: () => mail.resumenes(AD.mes),
+    epNuevo: () => epPanel(AD.mes),
+    epEditar: t => { const e = AD.EP.find(x => x.id === t.dataset.id); if (e) epPanel(e.periodo, e); },
+    epConfirmar: t => { const e = AD.EP.find(x => x.id === t.dataset.id); if (e) epConfirmarPanel(e); },
+    epVer: async t => { const r = AD.R.find(x => x.id === t.dataset.id); if (!r) return; const w = window.open('', '_blank'); try { const { abrirPdf } = await pdfLib(); const p = await pdfResumen({ id: r.id, numero: r.numero, cliente: r.cliente, m: r.periodo, moneda: r.moneda, items: r.items, nota: r.nota }); abrirPdf(p.bytes, p.nombre.replace(/\.pdf$/, ''), w); } catch (err) { if (w) w.close(); toast(err.message); } },
+    epCancelar: async t => {
+      const e = AD.EP.find(x => x.id === t.dataset.id); if (!e) return;
+      if (!(await confirmar('Se cancela el envío programado del ' + cuandoTxt(e.enviar_el) + '. Los resúmenes quedan preparados, sin enviar.', { titulo: '¿Cancelar el envío programado?', ok: 'Cancelar el envío', no: 'Volver', tipo: 'peligro' }))) return;
+      try { await data.del('envios_items', e.id, 'envio_id'); await data.upd('envios_programados', e.id, { estado: 'Cancelado' }); toast('Envío cancelado'); await ctx.reload(); } catch (err) { toast(err.message); }
+    },
     aMailFactura: t => { const f = AD.F.find(x => x.id === t.dataset.id); if (f) mail.factura(f); },
     aMailLibre: t => mail.libre(t.dataset.cliente || (AD.rd && AD.rd.cliente)),
     aAvisos: () => mail.avisos(),
