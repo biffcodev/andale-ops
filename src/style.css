@@ -2231,3 +2231,15 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="month"]::-webk
 input[type="date"]::-webkit-calendar-picker-indicator:hover,input[type="month"]::-webkit-calendar-picker-indicator:hover{opacity:.9;background-color:var(--accent-soft,#DDF4FF)}
 :root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,:root[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator{filter:invert(1)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) input[type="date"]::-webkit-calendar-picker-indicator,:root:not([data-theme="light"]) input[type="month"]::-webkit-calendar-picker-indicator{filter:invert(1)}}
+
+/* Web y redes del cliente */
+.redes{display:grid;gap:8px}
+.red-f{display:grid;grid-template-columns:110px 1fr 32px;gap:8px;align-items:center}
+.red-f label{font-size:13px;color:var(--muted);font-weight:500}
+.red-f input{min-width:0}
+.red-add{margin-top:8px;max-width:200px}
+.red-ls{display:flex;flex-direction:column;gap:4px}
+.red-l{font-size:14px;overflow-wrap:anywhere}
+.red-l b{font-weight:500;color:var(--muted);margin-right:4px;font-size:13px}
+.red-mas{margin:2px 0 0 -8px}
+@media (max-width:560px){.red-f{grid-template-columns:1fr auto}.red-f label{grid-column:1/-1}}

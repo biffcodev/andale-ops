@@ -228,7 +228,7 @@ function contactosHtml(c) {
   const card = k => '<div class="ctc' + (can ? ' click' : '') + '"' + (can ? ' data-act="kEdit" data-id="' + esc(k._id) + '" data-cliente="' + esc(c.nombre) + '"' : '') + '>' + av(nomContacto(k), '', '') +
     '<div class="ctc-b"><div class="ctc-t"><b>' + esc(nomContacto(k)) + '</b>' + (k.rol ? '<span class="ctc-rol">' + esc(k.rol) + '</span>' : '') + '</div>' +
     '<div class="ctc-tags">' + (k.principal ? '<span class="ctag pri">Principal</span>' : '') + (k.cobros ? '<span class="ctag cob">Recibe cobros</span>' : '') + (k.portal ? '<span class="ctag por">Portal</span>' : '') + '</div>' +
-    (k.email || k.tel ? '<div class="ctc-l">' + [k.email, k.tel].filter(Boolean).map(esc).join(' · ') + '</div>' : '') +
+    (k.email || k.tel || k.telFijo ? '<div class="ctc-l">' + [k.email, k.tel, k.telFijo ? 'Fijo ' + k.telFijo : ''].filter(Boolean).map(esc).join(' · ') + '</div>' : '') +
     (k.notas ? '<div class="ctc-n">' + esc(k.notas) + '</div>' : '') + '</div>' +
     '<div class="ctc-a">' + (k.email && isStaff() ? '<button class="btn ghost sm" data-act="mail" data-cliente="' + esc(c.nombre) + '" data-para="' + esc(k.email) + '" title="Escribirle un mail" aria-label="Mail a ' + esc(nomContacto(k)) + '">✉</button><button class="btn ghost sm" data-act="copy" data-v="' + esc(k.email) + '" title="Copiar email" aria-label="Copiar email">⧉</button>' : '') +
     (waHref(k.tel, k.nombre) ? '<a class="btn ghost sm" href="' + waHref(k.tel, k.nombre) + '" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp a ' + esc(nomContacto(k)) + '">WhatsApp</a>' : '') + '</div></div>';
@@ -245,14 +245,14 @@ function abrirContacto(cliente, id) {
   const k = id ? (S.K || []).find(x => x._id === id) : null;
   if (id && !k) { toast('Ese contacto ya no existe'); return; }
   const primero = !contactosDe(cliente).length;
-  const v = k || { nombre: '', rol: '', email: '', tel: '', principal: primero, cobros: primero, notas: '' };
+  const v = k || { nombre: '', rol: '', email: '', tel: '', telFijo: '', principal: primero, cobros: primero, notas: '' };
   S.form = null; S.kf = { cliente, id: id || null, principal: !!(k && k.principal) };
   const fld = (n, l, val, type, extra) => '<div class="field' + (extra && extra.full ? ' full' : '') + '"><label for="k-' + n + '">' + l + '</label><input id="k-' + n + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"' + (extra && extra.list ? ' list="' + extra.list + '"' : '') + (extra && extra.ph ? ' placeholder="' + esc(extra.ph) + '"' : '') + '>' + (extra && extra.hint ? '<span class="hint">' + esc(extra.hint) + '</span>' : '') + '<span class="err" id="ke-' + n + '" hidden></span></div>';
   const p = $('#panel');
   p.innerHTML = '<form id="kform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(cliente) + '</span><h2 id="panel-title">' + (k ? esc(nomContacto(k)) : 'Nuevo contacto') + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div><div class="panel-b">' +
     fld('nombre', 'Nombre', v.nombre, 'text', { ph: 'Ej.: Laura Pérez' }) + fld('rol', 'Rol', v.rol, 'text', { list: 'dl-roles', ph: 'Marketing, Dueña, Administración…' }) +
     '<datalist id="dl-roles">' + ROLES_CONTACTO.map(r => '<option value="' + esc(r) + '">').join('') + '</datalist>' +
-    fld('email', 'Email', v.email, 'email') + fld('tel', 'Teléfono / WhatsApp', v.tel, 'tel') +
+    fld('email', 'Email', v.email, 'email') + fld('tel', 'WhatsApp / celular', v.tel, 'tel') + fld('telFijo', 'Teléfono fijo', v.telFijo, 'tel', { ph: 'Si tiene' }) +
     '<label class="chk full"><input type="checkbox" id="k-principal"' + (v.principal ? ' checked' : '') + (k && k.principal ? ' disabled' : '') + '> <span><b>Contacto principal</b> <span class="muted">· con quien hablamos del día a día. Es el que aparece en la lista de clientes y en el botón de WhatsApp.' + (k && k.principal ? ' Para cambiarlo, marcá a otra persona como principal.' : '') + '</span></span></label>' +
     '<label class="chk full"><input type="checkbox" id="k-cobros"' + (v.cobros ? ' checked' : '') + '> <span><b>Recibe resúmenes de cuenta y facturas</b> <span class="muted">· le llegan los resúmenes, facturas, invoices y recordatorios de pago.</span></span></label>' +
     (Array.isArray(S.RM) ? '<label class="chk full"><input type="checkbox" id="k-portal"' + (v.portal ? ' checked' : '') + '> <span><b>Acceso al portal de clientes</b> <span class="muted">· entra con su email a ' + esc(PORTAL_URL.replace('https://', '')) + ' y ve lo que marquen como visible: redes para aprobar, entregas, su web, pedidos e informes.' + (k && k.portalUltimo ? ' Entró por última vez el ' + esc(fmt(String(k.portalUltimo).slice(0, 10))) + '.' : '') + '</span></span></label>' +
@@ -271,7 +271,7 @@ async function sincPrincipal(cliente, k) {
 async function guardarContacto() {
   const f = S.kf; if (!f) return;
   const g = n => ((($('#k-' + n) || {}).value) || '').trim();
-  const row = { nombre: g('nombre'), rol: g('rol'), email: g('email').toLowerCase(), tel: g('tel'), principal: f.principal || $('#k-principal').checked, cobros: $('#k-cobros').checked, notas: g('notas'), ...($('#k-portal') ? { portal: $('#k-portal').checked } : {}) };
+  const row = { nombre: g('nombre'), rol: g('rol'), email: g('email').toLowerCase(), tel: g('tel'), ...(data.cols && data.cols.contactoFijo === false ? {} : { tel_fijo: g('telFijo') }), principal: f.principal || $('#k-principal').checked, cobros: $('#k-cobros').checked, notas: g('notas'), ...($('#k-portal') ? { portal: $('#k-portal').checked } : {}) };
   if (row.portal && !row.email) { const e = $('#ke-email'); if (e) { e.textContent = 'Para entrar al portal necesita email'; e.hidden = false; } return; }
   document.querySelectorAll('#kform .err').forEach(e => { e.hidden = true; });
   const err = (n, m) => { const e = $('#ke-' + n); if (e) { e.textContent = m; e.hidden = false; } };
@@ -1106,8 +1106,9 @@ function vFicha() {
     '<dt>Responsables</dt><dd>' + whos(resp(c)) + '</dd>' +
     (conTabla() ? '' : '<dt>Contacto</dt><dd>' + (c.contacto ? esc(c.contacto) : '<span class="muted">—</span>') + '</dd>' +
     '<dt>Email</dt><dd>' + copy(c.email) + '</dd>' +
-    '<dt>Teléfono</dt><dd>' + copy(c.tel) + '</dd>') +
-    '<dt>Instagram / web</dt><dd>' + link(c.web) + '</dd>' +
+    '<dt>WhatsApp</dt><dd>' + copy(c.tel) + '</dd>') +
+    (c.telFijo ? '<dt>Teléfono fijo</dt><dd>' + copy(c.telFijo) + '</dd>' : '') +
+    '<dt>Web y redes</dt><dd>' + (redesLinks(c) ? '<div class="red-ls">' + redesLinks(c) + '</div>' : '') + (isStaff() ? '<button class="btn ghost sm red-mas" data-act="edit" data-kind="cliente" data-id="' + esc(c._id) + '">+ Agregar</button>' : (redesLinks(c) ? '' : '<span class="muted">—</span>')) + '</dd>' +
     '<dt>Carpeta</dt><dd>' + link(c.carpeta) + '</dd>' +
     '<dt>Notas</dt><dd>' + (c.notas ? '<span style="white-space:pre-wrap">' + esc(c.notas) + '</span>' : '<span class="muted">—</span>') + '</dd>' +
     '</dl></div></section>' + '</div><div class="stack">' +
@@ -1234,6 +1235,13 @@ const calBtn = (titulo, fecha, detalle, cls) => integ('calendario') && fecha ? '
 const VIEW_FN = { inicio: vInicio, redes: () => vRedes(), tickets: () => vTickets(), briefs: () => vBriefs(), proyectos: vProyectos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, integraciones: vIntegraciones };
 
 /* ---------- Render ---------- */
+document.addEventListener('change', e => {
+  const sa = e.target.closest && e.target.closest('select.red-add'); if (!sa || !sa.value) return;
+  const box = sa.parentElement.querySelector('.redes'); const k = sa.value;
+  if (box && !box.querySelector('[data-redk="' + k + '"]')) box.insertAdjacentHTML('beforeend', redFila(k, '', ''));
+  sa.querySelector('option[value="' + k + '"]').remove(); sa.value = '';
+  const inp = box && box.querySelector('[data-red="' + k + '"]'); if (inp) inp.focus();
+});
 document.addEventListener('change', e => { if (e.target.id === 'k-portal') { const b = document.querySelector('.k-inv'); if (b) b.hidden = !e.target.checked; } });
 // Alta de cliente: Ads arrastra Redes (no hay Ads sin Redes) y sacar Redes saca Ads.
 document.addEventListener('change', e => {
@@ -1394,9 +1402,10 @@ const FORMS = {
     { k: 'responsables', label: 'Responsables', type: 'multi', full: 1 },
     { k: 'contacto', label: 'Contacto principal (nombre)', alta: 1 },
     { k: 'email', label: 'Email', type: 'email', alta: 1 },
-    { k: 'tel', label: 'Teléfono / WhatsApp', type: 'tel', alta: 1, hint: 'Después sumás más contactos desde la ficha.' },
-    { k: 'web', label: 'Instagram / web', ph: 'https:// o @usuario' },
-    { k: 'carpeta', label: 'Carpeta del cliente', type: 'url', ph: 'https://' },
+    { k: 'tel', label: 'WhatsApp / celular', type: 'tel', alta: 1, hint: 'Después sumás más contactos desde la ficha.' },
+    { k: 'telFijo', label: 'Teléfono fijo', type: 'tel', ph: 'Del local u oficina, si tiene' },
+    { k: 'redes', label: 'Web y redes', type: 'redes', full: 1 },
+    { k: 'carpeta', label: 'Carpeta del cliente', type: 'url', ph: 'https://', full: 1, hint: 'La carpeta madre del cliente (Drive o Dropbox), donde está su marca y los entregables. El contenido mensual de redes va en las carpetas de Dropbox de cada mes.' },
     { k: 'notas', label: 'Notas', type: 'textarea', full: 1, hint: 'No guardes contraseñas acá: usá el gestor de contraseñas del equipo.' },
   ], defaults: () => ({ estado: '__auto', desde: thisMonth(), responsables: [] }), can: () => isStaff() },
   persona: { arr: 'E', title: 'persona', nuevo: 'Nueva persona', label: e => e.persona, fields: [
@@ -1429,7 +1438,31 @@ function etapasInner() {
     (ro ? '' : '<div class="etadd"><input class="in" id="f-etapa-nueva" placeholder="Agregar tarea"><button type="button" class="btn sm" data-act="fetAdd">Agregar</button>' + (plantilla(tipo).length ? '<button type="button" class="btn ghost sm" data-act="fetTpl">' + (e.length ? 'Reemplazar por' : 'Usar') + ' tareas modelo de ' + esc(tipo) + '</button>' : '') + '</div>');
 }
 function renderEtapasField() { const el = $('#f-etapas'); if (el) el.innerHTML = etapasInner(); }
+// Web y redes del cliente: Web e Instagram siempre a mano; las demás se suman con "+ Agregar red". Vacías no se guardan ni se muestran en la ficha.
+const REDES = [['web', 'Web', 'https://…'], ['instagram', 'Instagram', '@usuario'], ['facebook', 'Facebook', 'facebook.com/…'], ['linkedin', 'LinkedIn', 'linkedin.com/company/…'], ['tiktok', 'TikTok', '@usuario'], ['youtube', 'YouTube', 'youtube.com/@…'], ['behance', 'Behance', 'behance.net/…'], ['x', 'X (Twitter)', '@usuario'], ['pinterest', 'Pinterest', 'pinterest.com/…'], ['otra', 'Otra', 'https://…']];
+const BASE_RED = { instagram: 'https://instagram.com/', facebook: 'https://facebook.com/', tiktok: 'https://tiktok.com/@', x: 'https://x.com/', youtube: 'https://youtube.com/@', behance: 'https://behance.net/', pinterest: 'https://pinterest.com/', linkedin: 'https://linkedin.com/in/' };
+function redUrl(k, v) {
+  v = String(v || '').trim(); if (!v) return '';
+  if (/^https?:\/\//i.test(v)) return v;
+  if (/^[\w-]+(\.[\w-]+)+(\/|$)/.test(v)) return 'https://' + v;
+  const u = v.replace(/^@/, '');
+  return BASE_RED[k] ? BASE_RED[k] + (k === 'tiktok' || k === 'youtube' ? u.replace(/^@/, '') : u) : '';
+}
+const redFila = (k, v, dis) => { const r = REDES.find(x => x[0] === k) || [k, k, '']; return '<div class="red-f" data-redk="' + esc(k) + '"><label for="f-red-' + esc(k) + '">' + esc(r[1]) + '</label><input id="f-red-' + esc(k) + '" data-red="' + esc(k) + '" value="' + esc(v || '') + '" placeholder="' + esc(r[2]) + '"' + dis + '>' + (k === 'web' || k === 'instagram' || dis ? '' : '<button type="button" class="btn ghost sm" data-act="redQuitar" aria-label="Quitar ' + esc(r[1]) + '">✕</button>') + '</div>'; };
+function redesHtml(id, v, dis) {
+  const o = v || {}, ks = REDES.map(x => x[0]).filter(k => k === 'web' || k === 'instagram' || o[k]);
+  const resto = REDES.filter(x => !ks.includes(x[0]));
+  return '<div class="redes" id="' + id + '">' + ks.map(k => redFila(k, o[k], dis)).join('') + '</div>' +
+    (dis ? '' : '<select class="in sm red-add" aria-label="Agregar otra red"><option value="">+ Agregar red</option>' + resto.map(x => '<option value="' + x[0] + '">' + esc(x[1]) + '</option>').join('') + '</select>');
+}
+function redesLinks(c) {
+  const o = Object.assign({}, c.redes || {}, c.web ? { web: c.web } : {});
+  const ks = REDES.map(x => x[0]).filter(k => String(o[k] || '').trim());
+  return ks.map(k => { const u = redUrl(k, o[k]), l = REDES.find(x => x[0] === k)[1], t = esc(String(o[k]).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''));
+    return '<span class="red-l"><b>' + esc(l) + '</b> ' + (u ? '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + t + '</a>' : t) + '</span>'; }).join('');
+}
 function fieldHtml(f, v, ro) {
+  if (f.type === 'redes') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span>' + redesHtml('f-' + f.k, v, (ro || (f.staffOnly && !isStaff())) ? ' disabled' : '') + '<span class="hint">Si no tiene alguna, dejala vacía: en la ficha solo aparecen las que tienen algo.</span></div>';
   if (f.type === 'etapas') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span><div id="f-etapas" class="etapas"></div><span class="hint">El avance se ve por tareas hechas. Las tareas modelo de cada tipo se editan en Opciones.</span></div>';
   const id = 'f-' + f.k, dis = (ro || (f.staffOnly && !isStaff())) ? ' disabled' : '';
   const hint = f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '';
@@ -1454,6 +1487,7 @@ function openForm(kind, id, preset) {
   S.form = { kind, id: id || null, ro };
   const vals = rec ? Object.assign({}, rec) : Object.assign(def.defaults(), preset || {});
   if (kind === 'cliente' && rec && !rec.estadoManual) vals.estado = '__auto';
+  if (kind === 'cliente') vals.redes = Object.assign({}, vals.redes || {}, { web: vals.web || '' });
   let foot;
   if (ro) foot = '<span class="muted">Solo lectura.</span><button type="button" class="btn" data-act="close">Cerrar</button>';
   else foot = '<span id="delzone">' + (rec && (isStaff() && (kind !== 'persona' || isAdmin())) ? '<button type="button" class="btn ghost danger" data-act="del">Eliminar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="savebtn">' + (rec ? 'Guardar cambios' : 'Crear ' + def.title) + '</button></span>';
@@ -1494,6 +1528,7 @@ async function saveForm() {
     if (f.type === 'etapas') { out[f.k] = S.form.etapas || []; continue; }
     if (!el) continue;
     if (f.type === 'multi') out[f.k] = [...el.querySelectorAll('input:checked')].map(i => i.value);
+    else if (f.type === 'redes') { const o = {}; el.querySelectorAll('input[data-red]').forEach(i => { if (i.value.trim()) o[i.dataset.red] = i.value.trim(); }); out.web = o.web || ''; delete o.web; out[f.k] = o; }
     else out[f.k] = f.type === 'check' ? el.checked : el.value.trim();
     const e = $('#e-' + f.k); if (e) e.hidden = true;
     if (f.req && !out[f.k]) showErr(f.k, 'Completá este campo');
@@ -1587,6 +1622,7 @@ const ACT = {
   tkGrp: t => { const g = t.dataset.g, k = t.dataset.hecha ? g + ':open' : g; if (S.gcl.has(k)) S.gcl.delete(k); else S.gcl.add(k); lsSet('gcl', JSON.stringify([...S.gcl])); render(); },
   tkAbrir: t => abrirTarea(t.dataset.id, +t.dataset.i),
   tkVista: t => { S.tkVista = t.dataset.v; lsSet('tkVista', S.tkVista); render(); },
+  redQuitar: t => { const f = t.closest('.red-f'), k = f.dataset.redk, sa = f.closest('.field').querySelector('select.red-add'); f.remove(); const r = REDES.find(x => x[0] === k); if (sa && r) sa.insertAdjacentHTML('beforeend', '<option value="' + k + '">' + esc(r[1]) + '</option>'); },
   hrNo: () => { $('#horasbar').hidden = true; },
   hrSet: t => {
     const b = $('#horasbar'); b.hidden = true;

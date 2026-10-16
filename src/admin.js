@@ -8,6 +8,7 @@ import { initEquipo } from './equipo.js';
 import { initAsistente } from './asistente.js';
 import { initStats } from './stats.js';
 import { masMenu } from './ui.js';
+import { confirmar } from './dialogo.js';
 import { rango, enRango, selector } from './periodo.js';
 import { ICON } from './iconos.js';
 import { initMantenimiento } from './mantenimiento.js';
@@ -213,7 +214,7 @@ export function initAdmin(ctx) {
       '<div class="field"><label for="rd-pdf">Link al PDF del resumen (Drive)</label><input id="rd-pdf" data-rdk="link_pdf" value="' + esc(rd.link_pdf) + '" placeholder="https://drive.google.com/..."></div>' +
       '<div class="toolbar"><button class="btn sm" data-act="aRiAdd">+ Agregar línea</button></div>' +
       '<div class="toolbar res-acc"><button class="btn" data-act="aResSave" data-estado="' + (sent ? 'Enviado' : 'Borrador') + '">Guardar' + (sent ? ' cambios' : '') + '</button><button class="btn" data-act="aPrint">Ver PDF</button>' + (sent ? '' : '<button class="btn primary" data-act="aMailResumen">Enviar por email</button>') +
-      '<details class="share"><summary class="btn ghost" title="Más opciones">Más</summary><div class="menu-pop">' + (sent ? '<button class="btn ghost sm" data-act="aMailResumen">Volver a mandarlo por email</button>' : '') + '<button class="btn ghost sm" data-act="aCopy" data-what="resumen">Copiar el texto (para WhatsApp)</button>' + (sent ? '<button class="btn ghost sm" data-act="aResSave" data-estado="Borrador">Volver a editar</button>' : '<button class="btn ghost sm" data-act="aResSave" data-estado="Enviado">Ya lo mandé por otro lado</button>') + '</div></details></div></div></section></div>' +
+      '<details class="share"><summary class="btn ghost" title="Más opciones">Más</summary><div class="menu-pop">' + (sent ? '<button class="btn ghost sm" data-act="aMailResumen">Volver a mandarlo por email</button>' : '') + '<button class="btn ghost sm" data-act="aCopy" data-what="resumen">Copiar el texto (para WhatsApp)</button>' + (sent ? '<button class="btn ghost sm" data-act="aResSave" data-estado="Borrador">Volver a editar</button>' : '<button class="btn ghost sm" data-act="aResSave" data-estado="Enviado">Ya lo mandé por otro lado</button>') + (rd.id ? '<button class="btn ghost sm danger" data-act="aResDel">Borrar este resumen</button>' : '') + '</div></details></div></div></section></div>' +
       '<div class="stack">' +
       '<section class="sheet"><div class="sheet-h"><h2>2 · Facturas</h2><button class="btn sm primary" data-act="aFactura">+ Factura</button></div>' + (facs ? '<div class="rows">' + facs + '</div>' : emptyBox('Sin facturas este mes', 'Cargá la factura con su número y el link al PDF.')) +
       (c.facs.length ? '<div class="count">Facturado <b class="money">' + money(c.emitido, c.moneda) + '</b> · cobrado <b class="money">' + money(c.cobrado, c.moneda) + '</b> · falta cobrar <b class="money">' + money(c.saldo, c.moneda) + '</b></div>' : '') + '</section>' +
@@ -1530,6 +1531,18 @@ export function initAdmin(ctx) {
     aRiDel: t => { AD.rd.items.splice(+t.dataset.i, 1); ctx.render(); },
     aSugAdd: t => { const s = sugerencias(AD.rd.cliente, AD.rd.m).find(x => x.ref === t.dataset.ref); if (s) { AD.rd.items.push({ inc: true, origen: s.origen, ref: s.ref, concepto: s.concepto, monto: s.monto }); ctx.render(); } },
     aResSave: t => saveResumen(t.dataset.estado),
+    aResDel: async () => {
+      const rd = AD.rd; if (!rd || !rd.id) return;
+      const txt = rd.estado === 'Enviado'
+        ? 'Este resumen ya figura como enviado. Si lo borrás, desaparece de la app y del portal del cliente, pero el mail que ya le llegó no se puede recuperar.'
+        : 'Se borra el resumen de ' + monthLabel(rd.m) + ' de ' + rd.cliente + '. Las facturas y los cobros de ese mes no se tocan.';
+      if (!(await confirmar(txt, { titulo: '¿Borrar este resumen?', ok: 'Borrar', tipo: 'peligro' }))) return;
+      try {
+        await data.del('resumenes', rd.id);
+        AD.R = AD.R.filter(x => x.id !== rd.id);
+        toast('Resumen borrado'); await ctx.reload(); openCuenta(rd.cliente, rd.m); ctx.render();
+      } catch (err) { toast(err.message); }
+    },
     aCopy: () => ctx.copyText(resumenTexto(AD.rd)),
     aPiggyCampo: async t => {
       const f = ((AD.form && AD.form.fields) || []).find(x => x.k === t.dataset.k), el = $('#af-' + t.dataset.k); if (!f || !f.piggy || !el) return;

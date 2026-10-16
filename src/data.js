@@ -19,7 +19,7 @@ const T = {
 const FIELDS = {
   proyecto: { cliente: ['cliente_id', 'cliente'], proyecto: ['nombre'], tipo: ['tipo'], estado: ['estado'], fechaInicio: ['fecha_inicio', 'date'], entrega: ['entrega', 'date'], entregaReal: ['entrega_real', 'date'], entregables: ['entregables'], drive: ['drive'], slides: ['slides'], canva: ['canva'], notas: ['notas'], etapas: ['etapas', 'json'], prioridad: ['prioridad'] },
   abono: { cliente: ['cliente_id', 'cliente'], tipo: ['tipo'], plan: ['plan'], desde: ['desde', 'month'], hasta: ['hasta', 'month'], estado: ['estado'], notas: ['notas'] },
-  cliente: { nombre: ['nombre'], desde: ['desde', 'month'], estado: ['estado'], estadoManual: ['estado_manual', 'bool'], servicio: ['servicio'], plan: ['plan'], contacto: ['contacto'], email: ['email'], tel: ['tel'], web: ['web'], carpeta: ['carpeta'], notas: ['notas'] },
+  cliente: { nombre: ['nombre'], desde: ['desde', 'month'], estado: ['estado'], estadoManual: ['estado_manual', 'bool'], servicio: ['servicio'], plan: ['plan'], contacto: ['contacto'], email: ['email'], tel: ['tel'], telFijo: ['tel_fijo', 'col'], web: ['web'], redes: ['redes', 'obj'], carpeta: ['carpeta'], notas: ['notas'] },
   persona: { persona: ['alias'], nombre: ['nombre'], puesto: ['puesto'], email: ['email', 'nullable'], tel: ['tel'], rol: ['rol'], activo: ['activo', 'bool'], notas: ['notas'] },
   comunicacion: { fecha: ['fecha', 'date'], cliente: ['cliente_id', 'cliente'], canal: ['canal'], conQuien: ['con_quien'], resumen: ['resumen'], acuerdo: ['acuerdo'], proximo: ['proximo'], fechaProximo: ['fecha_proximo', 'date'], hecho: ['hecho', 'bool'], responsable: ['responsable_id', 'persona'] },
 };
@@ -27,6 +27,8 @@ const FIELDS = {
 const idx = { clienteId: new Map(), clienteName: new Map(), personaId: new Map(), personaAlias: new Map() };
 const month = d => (d ? String(d).slice(0, 7) : '');
 
+/** Columnas nuevas que puede no tener todavía la base (hasta correr su SQL). */
+export const cols = { clienteRedes: true, contactoFijo: true };
 function toRow(kind, ui) {
   const row = {};
   for (const [k, v] of Object.entries(ui)) {
@@ -37,6 +39,8 @@ function toRow(kind, ui) {
     else if (t === 'month') val = v ? (/^\d{4}-\d{2}$/.test(v) ? v + '-01' : v) : null;
     else if (t === 'bool') val = !!v;
     else if (t === 'json') val = Array.isArray(v) ? v : [];
+    else if (t === 'obj') { if (!cols.clienteRedes) continue; val = v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
+    else if (t === 'col') { if (!cols.clienteRedes) continue; val = v ?? ''; }
     else if (t === 'nullable') val = v ? String(v).trim().toLowerCase() : null;
     else if (t === 'cliente') { val = idx.clienteId.get(v) || null; if (v && !val) throw friendly({ message: 'El cliente "' + v + '" no existe.' }); }
     else if (t === 'persona') val = v ? (idx.personaId.get(v) || null) : null;
@@ -75,11 +79,13 @@ export async function loadAll() {
   const siq = tolerante(sb.from('sitios').select('*').limit(1000));
   const res = await Promise.all(names.map(n => sb.from(n).select('*').limit(5000)));
   const [krows, trows, frows, nrows, rmrows, pdrows, bfrows, enrows, sirows] = await Promise.all([kq, tq, fq, nq, rmq, pdq, bfq, enq, siq]);
+  if (krows && krows.length) cols.contactoFijo = 'tel_fijo' in krows[0];
   const d = {}; names.forEach((n, i) => { d[n] = check(res[i]) || []; });
 
   idx.clienteId.clear(); idx.clienteName.clear(); idx.personaId.clear(); idx.personaAlias.clear();
   d.personas.forEach(p => { idx.personaId.set(p.alias, p.id); idx.personaAlias.set(p.id, p.alias); });
   d.clientes.forEach(c => { idx.clienteId.set(c.nombre, c.id); idx.clienteName.set(c.id, c.nombre); });
+  if (d.clientes.length) cols.clienteRedes = 'redes' in d.clientes[0];
   const respOf = (rows, key) => { const m = new Map(); rows.forEach(r => { const a = idx.personaAlias.get(r.persona_id); if (!a) return; if (!m.has(r[key])) m.set(r[key], []); m.get(r[key]).push(a); }); return m; };
   const rp = respOf(d.proyecto_responsables, 'proyecto_id'), ra = respOf(d.abono_responsables, 'abono_id'), rc = respOf(d.cliente_responsables, 'cliente_id');
   const cname = id => idx.clienteName.get(id) || '(cliente sin acceso)';
@@ -89,7 +95,7 @@ export async function loadAll() {
 
   return {
     E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, avatar: p.avatar_url || '', prefs: p.prefs || {}, ...meta(p) })),
-    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, desde: month(c.desde), estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, web: c.web, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', marca: 'marca' in c ? (c.marca || {}) : undefined, responsables: rc.get(c.id) || [], ...meta(c) })),
+    C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, desde: month(c.desde), estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, telFijo: c.tel_fijo || '', web: c.web, redes: (c.redes && typeof c.redes === 'object' && !Array.isArray(c.redes)) ? c.redes : {}, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', marca: 'marca' in c ? (c.marca || {}) : undefined, responsables: rc.get(c.id) || [], ...meta(c) })),
     A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, responsables: ra.get(a.id) || [], ...meta(a) })),
     P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: trows ? (tks.get(p.id) || []) : (Array.isArray(p.etapas) ? p.etapas : []), etapaActual: p.etapa_actual || '', prioridad: p.prioridad || '', responsables: rp.get(p.id) || [], ...meta(p) })),
     M: d.comunicaciones.map(m => ({ _id: m.id, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
@@ -102,7 +108,7 @@ export async function loadAll() {
     SI: sirows ? sirows.map(sitioUI) : null,
     FL: frows ? Object.fromEntries(frows.map(f => [f.tipo, { etapas: Array.isArray(f.etapas) ? f.etapas : [], reglas: f.reglas || {} }])) : null,
     N: nrows ? nrows.map(n => ({ _id: n.id, tipo: n.tipo, titulo: n.titulo, cuerpo: n.cuerpo, link: n.link, leida: n.leida, actor: idx.personaAlias.get(n.actor_id) || '', creado: n.created_at })) : null,
-    K: krows ? krows.filter(k => idx.clienteName.has(k.cliente_id)).map(k => ({ _id: k.id, cliente: cname(k.cliente_id), nombre: k.nombre || '', rol: k.rol || '', email: k.email || '', tel: k.tel || '', principal: !!k.principal, cobros: !!k.cobros, portal: !!k.portal, portalUltimo: k.portal_ultimo || null, notas: k.notas || '', orden: k.orden || 0 })) : null,
+    K: krows ? krows.filter(k => idx.clienteName.has(k.cliente_id)).map(k => ({ _id: k.id, cliente: cname(k.cliente_id), nombre: k.nombre || '', rol: k.rol || '', email: k.email || '', tel: k.tel || '', telFijo: k.tel_fijo || '', principal: !!k.principal, cobros: !!k.cobros, portal: !!k.portal, portalUltimo: k.portal_ultimo || null, notas: k.notas || '', orden: k.orden || 0 })) : null,
   };
 }
 
