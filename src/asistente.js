@@ -26,6 +26,9 @@ export function initAsistente(ctx, k) {
   const cfgDrive = () => (AD.AJ && AD.AJ.drive) || {};
   const cfgEmisores = () => (AD.AJ && AD.AJ.emisores) || {};
   const cfgAsist = () => (AD.AJ && AD.AJ.asistente) || {};
+  // Facturación: día de corte para deducir el mes por la fecha y copia de respaldo de los PDF (Ajustes).
+  const cfgFact = () => (AD.AJ && AD.AJ.facturacion) || {};
+  const corteDia = () => Math.min(28, Math.max(1, Math.round(+cfgFact().corte) || 20));
   // Solo para mostrar: los estados guardados no cambian.
   const VER_DA = { Nuevo: 'Sin leer', 'Leído': 'Lista para cargar', Vinculado: 'Cargada', Ignorado: 'Descartada', Error: 'No se pudo leer' };
   const verConf = c => c === 'alta' ? '✓' : c ? 'Revisar' : '';
@@ -63,7 +66,8 @@ export function initAsistente(ctx, k) {
       cuotas: pf,
     };
   }
-  const pendientesCount = () => { const c = checklist(thisMonth()); return [c.sinPrecio, c.sinArmar, c.borradores, c.vencidas, c.liqPend.length ? [1] : c.liqFalt].filter(x => x.length).length; };
+  // sinVencidas: para el número de Cobros, donde las vencidas ya se cuentan aparte (pestaña Facturas).
+  const pendientesCount = (o = {}) => { const c = checklist(thisMonth()); return [c.sinPrecio, c.sinArmar, c.borradores, o.sinVencidas ? [] : c.vencidas, c.liqPend.length ? [1] : c.liqFalt].filter(x => x.length).length; };
   function checklistJSON(c) { // lo que viaja a la IA: nombres y montos, sin datos bancarios
     const nom = c.sinPrecio.map(a => a.cliente + ' (' + a.tipo + ')');
     return {
@@ -76,7 +80,7 @@ export function initAsistente(ctx, k) {
 
   /* ---------- Drive: reconocer cliente, emisor y comprobante ---------- */
   const nombreMes = p => monthLabel(p).replace(' de ', ' ');
-  const mesDe = (d, cliente, archivo) => mesFactura(d, cliente, archivo, { R: AD.R || [], F: AD.F || [] });
+  const mesDe = (d, cliente, archivo) => mesFactura(d, cliente, archivo, { R: AD.R || [], F: AD.F || [], corte: corteDia() });
   function matchArchivo(da) {
     const d = da.datos || {};
     const em = cfgEmisores(); const emisor = Object.keys(em).find(x => soloDig(em[x] && em[x].cuit) && soloDig(em[x].cuit) === soloDig(d.emisor_cuit)) || '';
@@ -152,11 +156,18 @@ export function initAsistente(ctx, k) {
       },
     });
   }
+  // Copia de respaldo del PDF en la app (si está activada). No frena la carga: si falla, avisa.
+  async function respaldar(ids) {
+    if (!cfgFact().respaldo || !ids.length) return null;
+    try { return await data.asistente({ accion: 'respaldar', archivo_ids: ids }); }
+    catch (e) { setTimeout(() => toast('No se guardó la copia del PDF: ' + e.message), 2600); return null; }
+  }
   function crearDesdeDrive(id) {
     const da = AD.DA.find(x => x.id === id); if (!da) return;
     k.formFactura(null, presetDesde(da), { archivo: da, onSaved: async (fid, v) => {
       await data.upd('drive_archivos', da.id, { factura_id: fid }); await aprender(da, v);
       const rn = await ordenarNombre(da, v.cliente, v.periodo, v.tipo); if (rn && !rn.ok) setTimeout(() => toast(rn.motivo), 2200);
+      await respaldar([da.id]);
       const r = await mandarAlCliente(fid, v.cliente, v.periodo, da, { id: fid, tipo: v.tipo, numero: v.numero, fecha: v.fecha, vencimiento: v.vencimiento, monto: v.monto, moneda: v.moneda, link_pdf: v.link_pdf });
       if (r) setTimeout(() => toast(r.ok ? 'Factura enviada a ' + r.para : 'No se mandó: ' + r.motivo), 900);
     } });
@@ -173,7 +184,7 @@ export function initAsistente(ctx, k) {
         { k: 'factura', label: 'Factura', type: 'select', req: 1, full: 1, html: v => opt('', 'Elegí', v) + libres.slice(0, 300).map(f => opt(f.id, f.cliente + ' · ' + verTipo(f.tipo) + ' ' + (f.numero || 'sin número') + ' · ' + money(f.monto, f.moneda) + ' · ' + fmt(f.fecha), v)).join('') },
         { k: 'link', label: 'Poner este PDF como link de la factura', type: 'check' },
       ],
-      onSave: async v => { await data.upd('drive_archivos', da.id, { factura_id: v.factura }); if (v.link) await data.upd('facturas', v.factura, { link_pdf: da.link }); toast('Unida a la factura'); },
+      onSave: async v => { await data.upd('drive_archivos', da.id, { factura_id: v.factura }); if (v.link) await data.upd('facturas', v.factura, { link_pdf: da.link }); await respaldar([da.id]); toast('Unida a la factura'); },
     });
   }
   async function leerArchivos(ids) {
@@ -195,6 +206,7 @@ export function initAsistente(ctx, k) {
     const p = x.p, f = await data.ins('facturas', { cliente_id: data.ids.cliente(p.cliente), tipo: p.tipo, emisor: p.emisor || '', numero: p.numero, periodo: p.periodo ? p.periodo + '-01' : null, fecha: p.fecha, vencimiento: p.vencimiento || null, moneda: p.moneda, monto: p.monto, concepto: p.concepto, link_pdf: p.link_pdf, notas: p.notas });
     await data.upd('drive_archivos', x.d.id, { factura_id: f.id }); await aprender(x.d, p);
     await ordenarNombre(x.d, p.cliente, p.periodo, p.tipo);
+    await respaldar([x.d.id]);
     return mandarAlCliente(f.id, p.cliente, p.periodo, x.d, f);
   }
   async function crearTodos() {
@@ -437,7 +449,7 @@ export function initAsistente(ctx, k) {
         const btns = d.estado === 'Nuevo' || d.estado === 'Error' ? '<button class="btn sm" data-act="asLeer" data-id="' + esc(d.id) + '"' + (st.ia ? '' : ' disabled') + '>Leer</button>' :
           d.estado === 'Leído' ? (mt.duplicado ? '<button class="btn sm primary" data-act="asIgn" data-id="' + esc(d.id) + '" title="Es el mismo comprobante que ' + esc(mt.duplicado.nombre) + ', que ya está unido a la factura">Descartar duplicado</button>' : mt.existente ? '<button class="btn sm primary" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>' : '<button class="btn sm primary" data-act="asCrear" data-id="' + esc(d.id) + '">Cargar factura</button><button class="btn ghost sm" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>') :
           sinFactura(d) ? '<button class="btn sm primary" data-act="asDesv" data-id="' + esc(d.id) + '" title="La factura a la que estaba unido se anuló. Vuelve a la lista para cargarlo de nuevo.">Volver a cargar</button>' :
-          d.estado === 'Vinculado' && f ? '<button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Ver factura</button><button class="btn ghost sm" data-act="asDesv" data-id="' + esc(d.id) + '">Separar</button>' : '';
+          d.estado === 'Vinculado' && f ? (f.pdf_respaldo && /^No está más/.test(d.error || '') ? '<button class="btn sm primary" data-act="asVerCopia" data-id="' + esc(f.id) + '" title="El PDF ya no está en Drive; esta es la copia guardada en la app">Ver copia</button>' : '') + '<button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Ver factura</button><button class="btn ghost sm" data-act="asDesv" data-id="' + esc(d.id) + '">Separar</button>' : '';
         return '<div class="row" style="cursor:default"><span class="d">' + (d.modificado ? fmt(String(d.modificado).slice(0, 10)) : '') + '</span><span class="t"><b><a href="' + esc(d.link) + '" target="_blank" rel="noopener">' + esc(d.nombre) + '</a></b><span>' + esc(d.carpeta || '') + (desc ? ' · ' + esc(desc) : '') + '</span>' + (reco ? '<span class="as-reco" style="margin-top:2px">' + reco + '</span>' : '') + (d.error ? '<span style="color:var(--crit)">' + esc(d.error) + '</span>' : '') + '</span><span class="toolbar">' + (sinFactura(d) ? pill('Factura anulada', '--warn') : d.estado === 'Leído' && mt && mt.duplicado ? pill('Duplicado', '--warn') : d.estado === 'Leído' && mt && mt.existente ? pill('Ya cargada', '--warn') : pill(VER_DA[d.estado] || d.estado, { Nuevo: '--s-empezar', 'Leído': '--s-revision', Vinculado: '--s-entregado', Ignorado: '--muted', Error: '--crit' }[d.estado])) + btns + (d.estado !== 'Ignorado' && d.estado !== 'Vinculado' ? '<button class="btn ghost sm" data-act="asIgn" data-id="' + esc(d.id) + '" aria-label="Descartar">✕</button>' : d.estado === 'Ignorado' ? '<button class="btn ghost sm" data-act="asRest" data-id="' + esc(d.id) + '">Restaurar</button>' : '') + '</span></div>';
       }).join('');
       inner = '<div class="sheet-b" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)"><span class="muted"><a href="' + esc(cfg.carpeta_url || 'https://drive.google.com/drive/folders/' + cfg.carpeta) + '" target="_blank" rel="noopener">Carpeta de facturas</a> <button class="btn link" data-act="asCarpetaCambiar" data-v="1" title="Usar otra carpeta de Drive">Cambiar</button>' + (cfg.ultima_sync ? ' · revisada ' + esc(horaLocal(cfg.ultima_sync)) : '') + ' · ' + AD.DA.length + (AD.DA.length === 1 ? ' archivo' : ' archivos') + '</span>' +
@@ -453,11 +465,22 @@ export function initAsistente(ctx, k) {
       '<div class="sheet-b"><p class="muted" style="margin:0 0 10px">Subí el resumen (PDF, Excel o CSV). La IA arma los gastos e ingresos con su categoría, reconoce clientes, equipo y proveedores, y marca los cobros de facturas y lo que ya está cargado.</p>' +
       '<div class="toolbar"><select class="in" id="as-caja" aria-label="Cuenta">' + opt('', '¿De qué cuenta es el resumen?', AD.as.concCaja) + cjs.map(x => opt(x.id, x.nombre + ' (' + x.moneda + ')', AD.as.concCaja)).join('') + '</select><label class="btn" style="cursor:pointer">📄 Elegir resumen<input type="file" id="as-file" accept=".pdf,.csv,.txt,.xlsx,.xls,image/*" hidden></label><span class="muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(AD.as.file ? AD.as.file.name : 'Ningún archivo elegido') + '</span><button class="btn primary" data-act="asConc"' + (AD.as.concBusy || !st.ia ? ' disabled' : '') + '>' + (AD.as.concBusy ? 'Analizando… (puede tardar un minuto)' : '✨ Leer el resumen con IA') + '</button></div></div>' + concHtml() + '</section>';
   }
+  const sinCopia = () => AD.DA.filter(d => d.factura_id && !/^No está más/.test(d.error || '')).filter(d => { const f = AD.F.find(x => x.id === d.factura_id); return f && !f.pdf_respaldo; });
+  function factHtml() {
+    const fc = cfgFact(), c = corteDia(), con = AD.F.filter(f => f.pdf_respaldo).length, falta = sinCopia().length;
+    return '<div><b>Facturas: de qué mes son</b><div class="muted" style="margin:2px 0 6px">Primero se usa el resumen de cuenta con el mismo monto, el período de la factura o el mes del detalle. Si no hay nada de eso, se decide por la fecha y la factura queda marcada para revisar.</div>' +
+      '<div class="toolbar"><span>Desde el día</span><input class="in" id="as-corte" type="number" min="1" max="28" step="1" value="' + c + '" style="width:76px" aria-label="Día de corte"><span>se toman como del mes siguiente.</span><button class="btn sm" data-act="asCorte">Guardar</button></div>' +
+      '<div class="muted" style="font-size:13px;margin-top:4px">Con ' + c + ': una factura del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre.</div></div>' +
+      '<div><b>Copia de respaldo de los PDF</b><div class="muted" style="margin:2px 0 6px">Cada factura que cargás desde Drive se guarda también en la app (Supabase). Si alguien la borra de Drive, se puede ver y mandar igual. Cada PDF pesa unos 100 KB: un año entero de facturas ocupa menos de 50 MB.</div>' +
+      '<div class="toolbar"><label class="chk"><input type="checkbox" data-asresp="1"' + (fc.respaldo ? ' checked' : '') + '> Guardar una copia de cada factura</label>' +
+      (fc.respaldo && falta ? '<button class="btn sm" data-act="asRespTodo">Copiar las ya cargadas (' + falta + ')</button>' : '') + '</div>' +
+      (con ? '<div class="muted" style="font-size:13px;margin-top:4px">' + con + (con === 1 ? ' factura tiene copia.' : ' facturas tienen copia.') + '</div>' : '') + '</div>';
+  }
   function configHtml(st) {
     const em = cfgEmisores(), cfg = cfgDrive(), ok = v => v ? '<b style="color:var(--ok)">✓ conectado</b>' : '<b style="color:var(--crit)">sin configurar</b>';
     const usos = AD.IL || [], tin = usos.reduce((a, x) => a + (x.tokens_in || 0), 0), tout = usos.reduce((a, x) => a + (x.tokens_out || 0), 0);
     const pasosIA = '<ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li>Entrá a console.anthropic.com con una cuenta de àndale y cargá crédito (Billing).</li><li>API keys → Create key.</li><li>Supabase → Edge Functions → Secrets → agregá <code>ANTHROPIC_API_KEY</code> con esa clave.</li></ol>';
-    const pasosDrive = '<ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li>console.cloud.google.com → proyecto nuevo “andale-ops”.</li><li>APIs y servicios → Biblioteca → habilitá <b>Google Drive API</b>.</li><li>IAM → Cuentas de servicio → Crear (sin roles) → Claves → Agregar clave → JSON.</li><li>Integraciones → Cuentas y claves → Google Drive → pegá el contenido completo del .json.</li><li>En Drive, compartí la carpeta de facturas con el email de la cuenta de servicio, como Lector.</li></ol>';
+    const pasosDrive = '<ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li>console.cloud.google.com → proyecto nuevo “andale-ops”.</li><li>APIs y servicios → Biblioteca → habilitá <b>Google Drive API</b>.</li><li>IAM → Cuentas de servicio → Crear (sin roles) → Claves → Agregar clave → JSON.</li><li>Integraciones → Cuentas y claves → Google Drive → pegá el contenido completo del .json.</li><li>En Drive, compartí la carpeta de facturas con el email de la cuenta de servicio, como Editor (así ordena los nombres).</li></ol>';
     return '<section class="sheet" id="as-config"><div class="sheet-h"><h2>IA, Drive y resumen por email</h2><span class="muted">IA ' + (st.ia ? '✓' : '✗') + ' · Drive ' + (st.drive ? '✓' : '✗') + '</span></div><div class="sheet-b" style="display:grid;gap:16px">' +
       (st.error ? '<p style="margin:0;color:var(--crit)">' + esc(st.error) + '</p>' : '') +
       '<div><b>IA (Claude)</b> · ' + ok(st.ia) + (st.ia ? '<div class="muted" style="margin-top:4px">Este mes: ' + usos.length + ' consultas · ' + usdIA(gastoIA(usos).usd) + ' estimados.</div>' : '<div class="muted" style="margin-top:4px">Para conectarla, mirá Configuración técnica, abajo.</div>') + '</div>' +
@@ -465,6 +488,7 @@ export function initAsistente(ctx, k) {
       '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta2" value="' + esc(cfg.carpeta_url || '') + '" placeholder="Link de la carpeta de facturas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta2">Guardar carpeta de facturas</button></div>' +
       '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta3" value="' + esc(cfg.carpeta_propuestas_url || '') + '" placeholder="Link de la carpeta de propuestas anteriores (opcional)" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta3" data-k="propuestas">Guardar carpeta de propuestas</button></div><span class="muted" style="display:block;font-size:13px;margin-top:6px">La IA toma de ahí hasta 3 propuestas viejas (Google Docs o PDF) como referencia de estilo y precios. Compartila también con el email de arriba.</span></div>' +
       '<div><b>CUIT de quien factura</b><div class="muted" style="margin:2px 0 6px">Para reconocer quién hizo cada factura. Se completa solo la primera vez que confirmás quién factura.</div><div class="toolbar">' + k.EMISORES.map(e => '<label class="field" style="gap:2px"><span class="lbl">' + esc(e) + '</span><input class="in" id="as-cuit-' + esc(e) + '" value="' + esc((em[e] || {}).cuit || '') + '" inputmode="numeric" placeholder="20-12345678-9" style="width:170px"></label>').join('') + '<button class="btn sm" data-act="asCuits" style="align-self:end">Guardar</button></div></div>' +
+      factHtml() +
       '<div><b>Resumen por email</b><div class="muted" style="margin:2px 0 6px">Los días 1 y 8 de cada mes, a las 9, el asistente les manda a los admins qué falta para cerrar.</div><div class="toolbar"><label class="chk"><input type="checkbox" data-asemail="1"' + (cfgAsist().email_activo !== false ? ' checked' : '') + '> Activado</label><button class="btn sm" data-act="asEmailYa">Mandarme uno ahora</button></div></div>' +
       '<p class="muted" style="margin:0;font-size:13px">Los PDFs y resúmenes del banco que lee la IA se envían a la API de Anthropic solo para procesarlos; no se usan para entrenar modelos. Nada se guarda en la app sin que lo confirmen.</p>' +
       '<details><summary style="cursor:pointer">Configuración técnica</summary><div class="muted" style="margin-top:8px;display:grid;gap:10px">' +
@@ -527,6 +551,26 @@ export function initAsistente(ctx, k) {
       const em = { ...cfgEmisores() }; k.EMISORES.forEach(e => { em[e] = { ...(em[e] || {}), cuit: soloDig(($('#as-cuit-' + e) || {}).value) }; });
       try { await data.upsert('ajustes', { clave: 'emisores', valor: em }, 'clave'); toast('CUIT guardados'); await ctx.reload(); } catch (err) { toast(err.message); }
     },
+    asCorte: async () => {
+      const v = Math.round(+((document.getElementById('as-corte') || {}).value));
+      if (!(v >= 1 && v <= 28)) { toast('Poné un día entre 1 y 28'); return; }
+      try { await data.upsert('ajustes', { clave: 'facturacion', valor: { ...cfgFact(), corte: v } }, 'clave'); toast('Listo: desde el día ' + v + ' se toman como del mes siguiente'); await ctx.reload(); } catch (err) { toast(err.message); }
+    },
+    asRespOn: async t => { try { await data.upsert('ajustes', { clave: 'facturacion', valor: { ...cfgFact(), respaldo: t.checked } }, 'clave'); toast(t.checked ? 'Se guarda una copia de cada factura que cargues' : 'Copia de respaldo desactivada (las copias guardadas quedan)'); await ctx.reload(); } catch (err) { toast(err.message); } },
+    asRespTodo: async t => {
+      const ids = sinCopia().map(d => d.id); let n = 0, aviso = '';
+      t.disabled = true;
+      for (let i = 0; i < ids.length; i += 5) {
+        t.textContent = 'Copiando ' + Math.min(i + 5, ids.length) + ' de ' + ids.length + '…';
+        try { const r = await data.asistente({ accion: 'respaldar', archivo_ids: ids.slice(i, i + 5) }); n += r.ok || 0; if (r.errores && r.errores.length) aviso = r.errores[0]; } catch (err) { aviso = err.message; break; }
+      }
+      toast(n + ' copias guardadas' + (aviso ? ' · ' + aviso : '')); await ctx.reload();
+    },
+    asVerCopia: async t => {
+      const w = window.open('', '_blank');
+      try { const r = await data.asistente({ accion: 'respaldo_url', factura_id: t.dataset.id }); if (w) w.location = r.url; else window.location.href = r.url; }
+      catch (err) { if (w) w.close(); toast(err.message); }
+    },
     asEmailOn: async t => { try { await data.upsert('ajustes', { clave: 'asistente', valor: { ...cfgAsist(), email_activo: t.checked } }, 'clave'); toast(t.checked ? 'Resumen por email activado' : 'Resumen por email desactivado'); await ctx.reload(); } catch (err) { toast(err.message); } },
     asEmailYa: async () => {
       const yo = (S.E.find(e => e.persona === S.me.alias) || {}).email; if (!yo) { toast('Tu usuario no tiene email cargado'); return; }
@@ -553,7 +597,7 @@ export function initAsistente(ctx, k) {
       if (t.type === 'checkbox') ctx.render();
     }
   });
-  document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.asemail) actions.asEmailOn(e.target); });
+  document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.asemail) actions.asEmailOn(e.target); if (e.target.dataset && e.target.dataset.asresp) actions.asRespOn(e.target); });
   document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.cc !== undefined && t.type !== 'checkbox' && AD.as.conc) { const x = AD.as.conc.movimientos[+t.dataset.cc]; if (x) x[t.dataset.cck] = t.value; } });
 
   function vAjustes() {
@@ -561,5 +605,5 @@ export function initAsistente(ctx, k) {
     return '<div class="head"><div><h1>Ajustes</h1><p>Conexiones con la IA y Drive, datos de facturación y el resumen mensual por email.</p></div></div>' + configHtml(AD.as.estado || {});
   }
 
-  return { actions, view: vAsistente, pendientesHtml, driveView, bancoView, driveCount, ajustes: vAjustes, count: pendientesCount, presetDesde, aprender, b64Bytes };
+  return { respaldar, actions, view: vAsistente, pendientesHtml, driveView, bancoView, driveCount, ajustes: vAjustes, count: pendientesCount, presetDesde, aprender, b64Bytes };
 }

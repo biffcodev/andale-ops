@@ -1324,7 +1324,7 @@ export function initAdmin(ctx) {
         let fid = f && f.id;
         if (f) await data.upd('facturas', f.id, row); else fid = (await data.ins('facturas', row)).id;
         if (opts.onSaved) await opts.onSaved(fid, v);
-        else if (archivo && !f) { await data.upd('drive_archivos', archivo.id, { factura_id: fid }); await AS.aprender(archivo, v); }
+        else if (archivo && !f) { await data.upd('drive_archivos', archivo.id, { factura_id: fid }); await AS.aprender(archivo, v); await AS.respaldar([archivo.id]); }
         else if (!f && AD.form && AD.form.archivoDatos) await AS.aprender({ datos: AD.form.archivoDatos }, v);
         toast(f ? 'Factura actualizada' : 'Factura cargada');
       },
@@ -2044,9 +2044,12 @@ export function initAdmin(ctx) {
   const filaPago = (kk, vv) => '<div class="bk-row"><input class="in" data-bk="k" list="dl-pago" value="' + esc(kk || '') + '" placeholder="Dato (ej.: Alias)" aria-label="Dato"><input class="in" data-bk="v" value="' + esc(vv || '') + '" placeholder="Valor" aria-label="Valor"><button type="button" class="btn ghost sm" data-act="bkQuitar" aria-label="Quitar este dato">✕</button></div>';
 
   /* ---------- pantallas con pestañas ---------- */
+  // Los números de las pestañas de Cobros; el del menú es la suma, así no se cuenta dos veces lo mismo.
+  // Este mes: pendientes del cierre (sin las vencidas) · Facturas: vencidas · Drive: archivos por revisar.
+  function cobrosBadges() { return [AS.count({ sinVencidas: true }), AD.F.filter(f => estadoFactura(f) === 'Vencida').length, AS.driveCount()]; }
   function vCobros() {
-    const venc = AD.F.filter(f => estadoFactura(f) === 'Vencida').length, drv = AS.driveCount();
-    const tabs = ctx.subnav('cobros', [['mes', 'Este mes'], ['facturas', 'Facturas', venc], ['drive', 'Facturas en Drive', drv]]);
+    const [mes, venc, drv] = cobrosBadges();
+    const tabs = ctx.subnav('cobros', [['mes', 'Este mes', mes], ['facturas', 'Facturas', venc], ['drive', 'Facturas en Drive', drv]]);
     const t = S.tab.cobros || 'mes';
     if (t === 'facturas') return tabs + vFacturas();
     if (t === 'drive') return tabs + AS.driveView();
@@ -2080,7 +2083,7 @@ export function initAdmin(ctx) {
     views: [['plata', 'Hoy y lo que viene', vPlata], ['cuentas', 'Saldos de clientes', vCuentas], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['sueldos', 'Sueldos', EQ.vSueldos], ['aumentos', 'Aumentos', EQ.vAumentos], ['proveedores', 'Proveedores', EQ.vProveedores], ['numeros', 'Estadísticas', vNumeros], ['ajustes', 'Ajustes', vAjustes],
       ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios a clientes', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
     equipoView: () => EQ.vPersonas(),
-    counts: () => (AD.ok ? { cobros: AD.F.filter(f => estadoFactura(f) === 'Vencida').length + AS.count() } : {}),
+    counts: () => (AD.ok ? { cobros: cobrosBadges().reduce((a, n) => a + n, 0) } : {}),
     resetView: () => { AD.sel = null; AD.rd = null; PZ.reset(); },
   };
 }

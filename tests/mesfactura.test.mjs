@@ -21,4 +21,8 @@ r = M(fac, 'Apromax', 'x.pdf', { R: [{ cliente: 'Apromax', periodo: '2026-10', t
 ok(r.periodo === '2026-10' && /detalle/.test(r.por), 'si ese resumen ya tiene factura, no lo usa (sigue por el detalle)');
 r = M({ fecha: '2026-10-28', total: 100 }, 'X', 'f.pdf', { R: [{ cliente: 'X', periodo: '2026-10', total: 100 }, { cliente: 'X', periodo: '2026-11', total: 100 }] });
 ok(r.periodo === '2026-11' && !r.seguro, 'dos resúmenes iguales sin factura: toma el del mes siguiente y pide revisar');
+r = M({ fecha: '2026-10-16', total: 1, concepto: 'Abono' }, 'X', 'f.pdf', { corte: 15 });
+ok(r.periodo === '2026-11' && /día 15/.test(r.por), 'corte configurado en 15: 16/10 → noviembre');
+r = M({ fecha: '2026-10-16', total: 1, concepto: 'Abono' }, 'X', 'f.pdf');
+ok(r.periodo === '2026-10', 'con el corte por defecto (20): 16/10 → octubre');
 console.log(fails ? fails + ' FALLAS' : 'TODO OK');

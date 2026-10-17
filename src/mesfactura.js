@@ -3,7 +3,7 @@
 // 1) el resumen de cuenta que factura (mismo cliente y monto, de ese mes o uno vecino, sin factura todavía);
 // 2) el período facturado del PDF, si está cargado de verdad (no es solo el día de la factura);
 // 3) el mes que nombra el detalle o el archivo ("Fee OCT", "APROMAX-OCT-2026");
-// 4) la fecha: del 20 en adelante, el mes siguiente; antes, el mismo mes. Este caso queda para revisar.
+// 4) la fecha: desde el día de corte (20 por defecto, se cambia en Ajustes) el mes siguiente; antes, el mismo mes. Este caso queda para revisar.
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const ABR = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12 };
 const ym = (y, m) => { const d = new Date(y, m - 1, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
@@ -12,8 +12,9 @@ const nombre = p => MESES[+p.slice(5, 7) - 1] + ' ' + p.slice(0, 4);
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const RE = /(?:^|[^a-z])(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic)(?![a-z])/g;
 
-export function mesFactura(d, cliente, archivo, { R = [], F = [] } = {}) {
+export function mesFactura(d, cliente, archivo, { R = [], F = [], corte = 20 } = {}) {
   d = d || {};
+  corte = Math.min(28, Math.max(1, Math.round(+corte) || 20));
   const f = String(d.fecha || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) return { periodo: '', por: '', seguro: false };
   const fm = f.slice(0, 7), dia = +f.slice(8, 10), tot = +d.total || 0;
@@ -22,7 +23,7 @@ export function mesFactura(d, cliente, archivo, { R = [], F = [] } = {}) {
       Math.abs((+r.total || 0) - tot) <= Math.max(1, tot * 0.005) &&
       !F.some(x => x.cliente === cliente && x.periodo && String(x.periodo).slice(0, 7) === r.periodo && !/cr[eé]dito/i.test(x.tipo || '')));
     if (cand.length === 1) return { periodo: cand[0].periodo, por: 'el resumen de cuenta de ' + nombre(cand[0].periodo) + ' (mismo monto)', seguro: true };
-    if (cand.length > 1) { const pref = dia >= 20 ? suma(fm, 1) : fm, c = cand.find(r => r.periodo === pref) || cand[0]; return { periodo: c.periodo, por: 'hay ' + cand.length + ' resúmenes con el mismo monto sin factura; se tomó el de ' + nombre(c.periodo), seguro: false }; }
+    if (cand.length > 1) { const pref = dia >= corte ? suma(fm, 1) : fm, c = cand.find(r => r.periodo === pref) || cand[0]; return { periodo: c.periodo, por: 'hay ' + cand.length + ' resúmenes con el mismo monto sin factura; se tomó el de ' + nombre(c.periodo), seguro: false }; }
   }
   const pd = String(d.periodo_desde || '').slice(0, 10), ph = String(d.periodo_hasta || '').slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(pd) && (pd !== f || (ph && ph !== pd))) return { periodo: pd.slice(0, 7), por: 'el período facturado del PDF', seguro: true };
@@ -33,6 +34,6 @@ export function mesFactura(d, cliente, archivo, { R = [], F = [] } = {}) {
     const p = [ym(y - 1, meses[0]), ym(y, meses[0]), ym(y + 1, meses[0])].sort((a, b) => dist(a) - dist(b))[0];
     if (dist(p) <= 2) return { periodo: p, por: 'el mes que figura en el detalle', seguro: true };
   }
-  if (dia >= 20) return { periodo: suma(fm, 1), por: 'la fecha: emitida a fin de mes, se toma el mes siguiente', seguro: false };
-  return { periodo: fm, por: 'la fecha: emitida a principio de mes, se toma ese mismo mes', seguro: false };
+  if (dia >= corte) return { periodo: suma(fm, 1), por: 'la fecha: emitida desde el día ' + corte + ', se toma el mes siguiente', seguro: false };
+  return { periodo: fm, por: 'la fecha: emitida antes del día ' + corte + ', se toma ese mismo mes', seguro: false };
 }

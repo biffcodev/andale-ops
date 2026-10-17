@@ -9,7 +9,7 @@
 //   RESEND_API_KEY / EMAIL_FROM   los mismos de `enviar-email`, para el resumen mensual
 //
 // Acciones (POST { accion, ... }):
-//   estado · drive_sync · drive_descargar · drive_renombrar · leer_factura · conciliar · imputar · propuesta · cierre · cierre_email · cron_cierre
+//   estado · drive_sync · drive_descargar · drive_renombrar · respaldar · respaldo_url · leer_factura · conciliar · imputar · propuesta · cierre · cierre_email · cron_cierre
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const CORS = {
@@ -146,7 +146,39 @@ async function descargar(fileId: string) {
   const res = await gdrive(`files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`);
   const buf = new Uint8Array(await res.arrayBuffer());
   if (buf.length > 9_000_000) throw new Aviso('El archivo pesa más de 9 MB.');
-  return { base64: encodeBase64(buf), mime: res.headers.get('content-type') || 'application/pdf', bytes: buf.length };
+  return { base64: encodeBase64(buf), mime: res.headers.get('content-type') || 'application/pdf', bytes: buf.length, buf };
+}
+
+/* ================= Copia de respaldo de los PDF (bucket privado `facturas`) ================= */
+const BUCKET = 'facturas';
+const svcClient = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+const faltaBucket = (m: string) => /bucket not found|not found/i.test(m) ? 'Falta crear el espacio para las copias: corré el SQL 0037 en Supabase.' : m;
+async function respaldar(ctx: Ctx, b: any) {
+  const ids: string[] = (Array.isArray(b.archivo_ids) ? b.archivo_ids : []).slice(0, 10);
+  if (!ids.length) throw new Aviso('No hay archivos para copiar.');
+  const rows = chk(await ctx.sb.from('drive_archivos').select('id,file_id,nombre,factura_id').in('id', ids)) as any[];
+  const svc = svcClient(); let ok = 0; const errores: string[] = [];
+  for (const r of rows) {
+    if (!r.factura_id) continue;
+    try {
+      const fac = chk(await ctx.sb.from('facturas').select('id,fecha').eq('id', r.factura_id).single()) as any;
+      const f = await descargar(r.file_id);
+      const path = (String(fac.fecha || '').slice(0, 4) || 'sin-fecha') + '/' + String(r.factura_id).slice(0, 8) + '-' + String(r.nombre || 'factura.pdf').replace(/[^\w.,()&+-]/g, '_');
+      const up = await svc.storage.from(BUCKET).upload(path, f.buf, { contentType: f.mime.split(';')[0], upsert: true });
+      if (up.error) throw new Aviso(faltaBucket(up.error.message), 500);
+      chk(await ctx.sb.from('facturas').update({ pdf_respaldo: path }).eq('id', r.factura_id));
+      ok++;
+    } catch (e) { errores.push(r.nombre + ': ' + (e as Error).message); if (/SQL 0037/.test((e as Error).message)) break; }
+  }
+  if (!ok && errores.length) throw new Aviso(errores[0], 502);
+  return { ok, errores };
+}
+async function bajarCopia(sb: SupabaseClient, facturaId: string) {
+  const fac = (await sb.from('facturas').select('pdf_respaldo').eq('id', facturaId).maybeSingle()).data as any;
+  if (!fac || !fac.pdf_respaldo) return null;
+  const { data, error } = await svcClient().storage.from(BUCKET).download(fac.pdf_respaldo);
+  if (error || !data) return null;
+  return { buf: new Uint8Array(await data.arrayBuffer()), mime: data.type || 'application/pdf' };
 }
 
 // Nombre de descarga de ARCA: CUITEMISOR_TIPO_PTOVTA_NUMERO.pdf  (011 = Factura C)
@@ -567,9 +599,13 @@ Deno.serve(async req => {
       }
       case 'drive_sync': return json(await driveSync(ctx));
       case 'drive_descargar': {
-        const r = chk(await sb.from('drive_archivos').select('file_id,nombre').eq('id', b.archivo_id).single()) as any;
-        const f = await descargar(r.file_id);
-        return json({ nombre: r.nombre, mime: f.mime, base64: f.base64 });
+        const r = chk(await sb.from('drive_archivos').select('file_id,nombre,factura_id').eq('id', b.archivo_id).single()) as any;
+        try { const f = await descargar(r.file_id); return json({ nombre: r.nombre, mime: f.mime, base64: f.base64 }); }
+        catch (e) { // si se borró de Drive, se usa la copia de respaldo (si hay)
+          if (!(e instanceof Aviso && e.status === 404) || !r.factura_id) throw e;
+          const c = await bajarCopia(sb, r.factura_id); if (!c) throw e;
+          return json({ nombre: r.nombre, mime: c.mime, base64: encodeBase64(c.buf), copia: true });
+        }
       }
       case 'drive_renombrar': {
         const nombre = String(b.nombre || '').trim();
@@ -581,6 +617,14 @@ Deno.serve(async req => {
         await renombrar(r.file_id, nombre);
         chk(await sb.from('drive_archivos').update({ nombre }).eq('id', b.archivo_id));
         return json({ ok: true, nombre, antes: real.name || r.nombre });
+      }
+      case 'respaldar': return json(await respaldar(ctx, b));
+      case 'respaldo_url': {
+        const fac = chk(await sb.from('facturas').select('pdf_respaldo').eq('id', b.factura_id).single()) as any;
+        if (!fac.pdf_respaldo) throw new Aviso('Esta factura no tiene copia guardada.', 404);
+        const { data, error } = await svcClient().storage.from(BUCKET).createSignedUrl(fac.pdf_respaldo, 600);
+        if (error || !data) throw new Aviso('No se pudo abrir la copia: ' + faltaBucket(error ? error.message : ''), 502);
+        return json({ url: data.signedUrl });
       }
       case 'leer_factura': return json(await leerFactura(ctx, b));
       case 'conciliar': return json(await conciliar(ctx, b));
