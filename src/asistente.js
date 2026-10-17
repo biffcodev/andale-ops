@@ -92,7 +92,8 @@ export function initAsistente(ctx, k) {
     const existente = numero ? AD.F.find(f => f.numero && (f.numero === numero || (nDig && soloDig(f.numero).replace(/^0+/, '').endsWith(nDig) && (!emisor || f.emisor === emisor) && Math.abs(f.monto - (d.total || 0)) < 1))) : null;
     const mes = mesDe(d, cliente, da.nombre), periodo = mes.periodo;
     const tipo = /invoice/i.test(d.tipo || '') ? 'Invoice' : /^factura/i.test(d.tipo || '') ? 'Factura ARCA' : 'Otro';
-    const duplicado = existente ? AD.DA.find(x => x.id !== da.id && x.factura_id === existente.id) || null : null;
+    // Duplicado: otro archivo de Drive ya está unido a esa factura (o es el PDF que figura en su link).
+    const duplicado = existente ? AD.DA.find(x => x.id !== da.id && (x.factura_id === existente.id || (x.file_id && String(existente.link_pdf || '').includes(x.file_id)))) || null : null;
     return { emisor, cliente, existente, duplicado, periodo, mesPor: mes.por, mesSeguro: mes.seguro, tipo, nota: /cr[eé]dito/i.test(d.tipo || '') };
   }
   function presetDesde(da) {
