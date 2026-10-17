@@ -24,7 +24,8 @@ import { firmaDe, firmanteDe, firmaConfig, firmantes, personaIdDe, FIRMA_YO, FIR
 import { initPerfil, aplicarTema, temaGuardado } from './perfil.js';
 import { masMenu, vistaSel, vistaDe, guardarVista, toastAccion, uiActs, filtrosMenu, reabrir } from './ui.js';
 import * as E from './emails.js';
-import { confirmar } from './dialogo.js';
+import { confirmar, avisar as avisarDlg } from './dialogo.js';
+import { initAtajos } from './atajos.js';
 initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
 let ADM = null, ADM_FN = {}, MAIL = null;
@@ -837,7 +838,7 @@ function ponerHerramientas() {
   if (isStaff() || isExt()) n.push('<button class="btn ghost sm" data-act="new" data-kind="comunicacion"' + (S.ficha ? ' data-preset="' + esc(JSON.stringify({ cliente: S.ficha })) + '"' : '') + '>Charla</button>');
   if (isStaff()) n.push('<button class="btn ghost sm" data-act="new" data-kind="cliente">Cliente</button>', '<button class="btn ghost sm" data-act="mail"' + (S.ficha ? ' data-cliente="' + esc(S.ficha) + '"' : '') + '>Mail a clientes</button>');
   if (isAdmin() && ADM) n.push('<button class="btn ghost sm" data-act="aMov">Gasto o ingreso</button>');
-  $('#tnew').innerHTML = n.length ? '<details class="share tnew"><summary class="btn primary sm">+ Nuevo</summary><div class="menu-pop">' + n.join('') + '</div></details>' : '';
+  $('#tnew').innerHTML = n.length ? '<details class="share tnew"><summary class="btn primary sm" title="Crear algo nuevo" data-kbd="N">+ Nuevo</summary><div class="menu-pop">' + n.join('') + '</div></details>' : '';
 }
 /* Buscador global */
 function buscar(q) {
@@ -1330,8 +1331,17 @@ let ENT = null;
 const ent = () => ENT || (ENT = initEntregas({ S, esc, opt, toast, data, render, $, fmt, isStaff, emptyBox, hil, closeForm, reload: () => reload(), avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
 // Aviso por email a los contactos con acceso al portal cuando algo queda para revisar (mes de redes o entrega).
 async function avisarCliente(cliente, tipo, info) {
-  const ks = contactosDe(cliente).filter(k => k.portal && k.email);
-  if (!ks.length) { toast('Ningún contacto de ' + cliente + ' tiene acceso al portal todavía: habilitalo en su ficha → Contactos.'); return false; }
+  let ks = contactosDe(cliente).filter(k => k.portal && k.email);
+  if (!ks.length) {
+    // Sin nadie con acceso al portal: se ofrece darle acceso al contacto con email (principal primero) y seguir con el aviso.
+    const cand = contactosDe(cliente).filter(k => k.email && k._id && !k._virt);
+    if (!cand.length) { await avisarDlg('Nadie de ' + cliente + ' puede recibir el aviso. Cargale un email a un contacto en su ficha (Contactos) y dale acceso al portal; después tocá “Enviar al cliente” de nuevo.', { titulo: 'Falta un contacto con email' }); return false; }
+    const k = cand[0];
+    if (!await confirmar('Nadie de ' + cliente + ' tiene acceso al portal todavía. ¿Le doy acceso a ' + nomContacto(k) + ' (' + k.email + ') y le mando el aviso? Entra al portal con ese email.', { titulo: 'Darle acceso al portal', ok: 'Dar acceso y avisar' })) return false;
+    try { await data.upd('contactos', k._id, { portal: true }); k.portal = true; try { await data.avisosFn({ accion: 'portal_alta', contacto_id: k._id }); } catch (e) { /* el aviso sale igual */ } }
+    catch (e) { toast('No pude darle acceso: ' + e.message); return false; }
+    ks = [k];
+  }
   const mesTxt = monthLabel(String(info.mes || '').slice(0, 7));
   const que = tipo === 'redes' ? 'el contenido de redes de ' + mesTxt : tipo === 'informe' ? 'el informe de redes de ' + mesTxt : '“' + info.titulo + '” de ' + info.proyecto;
   if (!await confirmar('Le llega un mail a ' + ks.map(k => nomContacto(k) + (k.email ? ' (' + k.email + ')' : '')).join(', ') + (tipo === 'informe' ? ' avisando que ya puede ver ' : ' avisando que tiene para revisar ') + que + ', con el link a su portal.', { titulo: '¿Avisamos a ' + cliente + '?', ok: 'Mandar el mail', tipo: 'mail' })) return false;
@@ -1431,7 +1441,7 @@ function render() {
   const sync = $('#sync');
   sync.className = 'sync ' + (S.status === 'ok' ? 'ok' : S.status === 'offline' ? 'err' : '');
   sync.lastElementChild.textContent = S.status === 'ok' ? 'En vivo' : S.status === 'offline' ? 'Sin conexión' : 'Conectando';
-  $('#me').innerHTML = '<button class="me-b" data-act="perfil" title="Tu perfil, avisos y tema">' + av(S.me.alias, fotoDe(S.me.alias), '') + '<span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>' + ICON.ajustes + '</button>';
+  $('#me').innerHTML = '<button class="me-b" data-act="perfil" title="Tu perfil, avisos y tema">' + av(S.me.alias, fotoDe(S.me.alias), '') + '<span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>' + ICON.ajustes + '</button>' + (isStaff() ? '<button class="me-kb" data-act="atajos" aria-label="Atajos de teclado" data-kbd="?">⌨</button>' : ''); atajos();
   if (S.status === 'loading') { $('#view').innerHTML = '<section class="sheet">' + emptyBox('Cargando datos del equipo…', '') + '</section>'; return; }
   $('#view').innerHTML = secTabs() + viewFn(S.view)();
   reabrir($('#view'));
@@ -1734,7 +1744,10 @@ async function saveListas(k, arr) {
   catch (err) { S.L[k] = prev; render(); toast(err.message); }
 }
 function copyText(v) { try { navigator.clipboard.writeText(v).then(() => toast('Copiado'), () => toast(v)); } catch (e) { toast(v); } }
+let ATAJ = null;
+const atajos = () => ATAJ || (ATAJ = initAtajos({ go, views, isStaff }));
 const ACT = {
+  atajos: () => atajos().ayuda(),
   soloMio: t => { const yo = S.me.alias; if (t.dataset.p === 'proyectos') S.f.resp = S.f.resp === yo ? '' : yo; else if (t.dataset.p === 'redes') { S.rf = S.rf || { q: '', resp: '', estado: '', pend: false }; S.rf.resp = S.rf.resp === yo ? '' : yo; } render(); },
   secTog: t => { const k = t.dataset.s; S.navSec = S.navSec === k ? null : k; render(); },
   sec: t => { const sec = SECCIONES.find(x => x[0] === t.dataset.s); if (!sec) return; const vs = new Set(views().map(v => v[0])); const last = S.secLast && S.secLast[sec[0]];

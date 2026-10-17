@@ -9,6 +9,7 @@ const CSS = `
 .dlg-ic svg{width:22px;height:22px}
 .dlg h2{margin:4px 0 0;font-size:18px;line-height:1.25;font-weight:750;letter-spacing:-.01em}
 .dlg p{margin:0;font-size:14.5px;line-height:1.5;color:var(--muted,#6b6d76);white-space:pre-line}
+.dlg-in{font:inherit;font-size:14.5px;width:100%;box-sizing:border-box;border:1px solid var(--line,#e3e3e8);border-radius:12px;padding:10px 12px;background:var(--surface,#fff);color:inherit;resize:vertical}
 .dlg-b{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
 .dlg-b button{font:inherit;font-size:14px;font-weight:650;border:0;border-radius:12px;padding:10px 18px;cursor:pointer;transition:filter .12s,background .12s}
 .dlg-no{background:var(--surface-2,#f1f1f4);color:var(--fg,#17171c)}
@@ -44,25 +45,26 @@ function partir(texto) {
   return [t, ''];
 }
 
-function abrir({ titulo, texto, ok, no, tipo }) {
+function abrir({ titulo, texto, ok, no, tipo, campo }) {
   css();
   return new Promise(resolve => {
     const prev = document.activeElement;
     const bg = document.createElement('div');
     bg.className = 'dlg-bg';
     bg.innerHTML = '<div class="dlg" role="' + (no ? 'alertdialog' : 'dialog') + '" aria-modal="true" aria-labelledby="dlg-t" aria-describedby="dlg-p" style="--dc:' + COLOR[tipo] + '">' +
-      '<span class="dlg-ic" aria-hidden="true">' + ICONOS[tipo] + '</span><h2 id="dlg-t">' + esc(titulo) + '</h2>' + (texto ? '<p id="dlg-p">' + esc(texto) + '</p>' : '') +
+      '<span class="dlg-ic" aria-hidden="true">' + ICONOS[tipo] + '</span><h2 id="dlg-t">' + esc(titulo) + '</h2>' + (texto ? '<p id="dlg-p">' + esc(texto) + '</p>' : '') + (campo ? '<textarea class="dlg-in" rows="3" placeholder="' + esc(campo.ph || '') + '">' + esc(campo.valor || '') + '</textarea>' : '') +
       '<div class="dlg-b">' + (no ? '<button type="button" class="dlg-no">' + esc(no) + '</button>' : '') + '<button type="button" class="dlg-si">' + esc(ok) + '</button></div></div>';
     const fin = v => { document.removeEventListener('keydown', key, true); bg.remove(); try { prev && prev.focus && prev.focus(); } catch (e) { /* nada */ } resolve(v); };
     const key = e => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fin(false); }
-      else if (e.key === 'Tab') { const bs = [...bg.querySelectorAll('button')]; const i = bs.indexOf(document.activeElement); e.preventDefault(); bs[(i + (e.shiftKey ? -1 : 1) + bs.length) % bs.length].focus(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fin(campo ? null : false); }
+      else if (e.key === 'Tab') { const bs = [...bg.querySelectorAll('button, textarea')]; const i = bs.indexOf(document.activeElement); e.preventDefault(); bs[(i + (e.shiftKey ? -1 : 1) + bs.length) % bs.length].focus(); }
     };
-    bg.addEventListener('click', e => { if (e.target === bg) fin(false); else if (e.target.closest('.dlg-si')) fin(true); else if (e.target.closest('.dlg-no')) fin(false); });
+    const val = () => campo ? (bg.querySelector('.dlg-in').value || '').trim() : true, nada = campo ? null : false;
+    bg.addEventListener('click', e => { if (e.target === bg) fin(nada); else if (e.target.closest('.dlg-si')) fin(val()); else if (e.target.closest('.dlg-no')) fin(nada); });
     document.addEventListener('keydown', key, true);
     document.body.appendChild(bg);
     // En borrados, el foco arranca en "Cancelar" para que un Enter distraído no borre nada.
-    (bg.querySelector(tipo === 'peligro' ? '.dlg-no' : '.dlg-si') || bg.querySelector('button')).focus();
+    (bg.querySelector(campo ? '.dlg-in' : tipo === 'peligro' ? '.dlg-no' : '.dlg-si') || bg.querySelector('button')).focus();
   });
 }
 
@@ -78,4 +80,9 @@ export function confirmar(texto, o = {}) {
 export function avisar(texto, o = {}) {
   const [t, d] = o.titulo ? [o.titulo, texto] : partir(texto);
   return abrir({ titulo: t, texto: d, ok: o.ok || 'Entendido', no: null, tipo: o.tipo || 'info' }).then(() => undefined);
+}
+/** Pide un texto corto (opcional). Devuelve el texto (puede ser '') o null si se cancela. o = { titulo, ok, ph, valor } */
+export function pedirTexto(texto, o = {}) {
+  const [t, d] = o.titulo ? [o.titulo, texto] : partir(texto);
+  return abrir({ titulo: t, texto: d, ok: o.ok || 'Listo', no: 'Cancelar', tipo: o.tipo || 'pregunta', campo: { ph: o.ph || '', valor: o.valor || '' } });
 }
