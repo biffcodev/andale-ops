@@ -29,7 +29,8 @@ export function initAsistente(ctx, k) {
   // Facturación: día de corte para deducir el mes por la fecha y copia de respaldo de los PDF (Ajustes).
   const cfgFact = () => (AD.AJ && AD.AJ.facturacion) || {};
   const aMesVencido = c => !!c && (k.cadm(c) || {}).facturacion === 'vencido';
-  const corteDia = () => Math.min(28, Math.max(1, Math.round(+cfgFact().corte) || 20));
+  const diaOk = v => Math.min(28, Math.max(1, Math.round(+v) || 20));
+  const corteDia = () => diaOk(cfgFact().corte), corteVencidoDia = () => diaOk(cfgFact().corte_vencido);
   // Solo para mostrar: los estados guardados no cambian.
   const VER_DA = { Nuevo: 'Sin leer', 'Leído': 'Lista para cargar', Vinculado: 'Cargada', Ignorado: 'Descartada', Error: 'No se pudo leer' };
   const verConf = c => c === 'alta' ? '✓' : c ? 'Revisar' : '';
@@ -82,7 +83,7 @@ export function initAsistente(ctx, k) {
 
   /* ---------- Drive: reconocer cliente, emisor y comprobante ---------- */
   const nombreMes = p => monthLabel(p).replace(' de ', ' ');
-  const mesDe = (d, cliente, archivo) => mesFactura(d, cliente, archivo, { R: AD.R || [], F: AD.F || [], corte: corteDia(), vencido: aMesVencido(cliente) });
+  const mesDe = (d, cliente, archivo) => mesFactura(d, cliente, archivo, { R: AD.R || [], F: AD.F || [], corte: aMesVencido(cliente) ? corteVencidoDia() : corteDia(), vencido: aMesVencido(cliente) });
   function matchArchivo(da) {
     const d = da.datos || {};
     const em = cfgEmisores(); const emisor = Object.keys(em).find(x => soloDig(em[x] && em[x].cuit) && soloDig(em[x].cuit) === soloDig(d.emisor_cuit)) || '';
@@ -471,16 +472,16 @@ export function initAsistente(ctx, k) {
   // Clientes a mes vencido: se guardan en los datos de facturación de cada cliente; acá se ven y se eligen todos juntos.
   const clientesVencido = () => S.C.filter(c => aMesVencido(c.nombre)).map(c => c.nombre).sort(cmp);
   function vencidosHtml() {
-    const cs = S.C.filter(c => c.estado !== 'Inactivo' || aMesVencido(c.nombre)).map(c => c.nombre).sort(cmp), nv = clientesVencido().length;
-    const op = (c, v, t, on) => '<label class="opcion"><input type="radio" name="asfc-' + esc(c) + '" data-asfc="' + esc(c) + '" value="' + v + '"' + (on ? ' checked' : '') + '><span><b>' + t + '</b></span></label>';
-    return '<div style="margin-top:12px"><b style="font-weight:600">Cómo se factura a cada cliente</b><div class="muted" style="margin:2px 0 4px"><b>Mes en curso</b>: a fin de mes por el mes siguiente, o a principio del mismo mes. <b>Mes vencido</b>: después del mes del servicio (en octubre, la de septiembre); para esos clientes todo se corre un mes para atrás.' + (nv ? ' Hoy: ' + nv + ' a mes vencido.' : '') + '</div>' +
-      '<div class="factc">' + cs.map(c => { const v = aMesVencido(c); return '<div class="factc-r"><b>' + esc(c) + '</b><div class="opciones inline" role="radiogroup" aria-label="' + esc(c) + '">' + op(c, 'adelantado', 'Mes en curso', !v) + op(c, 'vencido', 'Mes vencido', v) + '</div></div>'; }).join('') + '</div></div>';
+    const vs = clientesVencido();
+    return '<div class="muted" style="font-size:13px;margin-top:6px">Cada cliente se marca como mes en curso o mes vencido en sus Datos de facturación. ' + (vs.length ? 'Mes vencido: <b>' + vs.map(esc).join(', ') + '</b>.' : 'Hoy todos son mes en curso.') + '</div>';
   }
   function factHtml() {
-    const fc = cfgFact(), c = corteDia(), con = AD.F.filter(f => f.pdf_respaldo).length, falta = sinCopia().length;
+    const fc = cfgFact(), c = corteDia(), cv = corteVencidoDia(), con = AD.F.filter(f => f.pdf_respaldo).length, falta = sinCopia().length;
     return '<div><b>Facturas: de qué mes son</b><div class="muted" style="margin:2px 0 6px">Primero se usa el resumen de cuenta con el mismo monto, el período de la factura o el mes del detalle. Si no hay nada de eso, se decide por la fecha y la factura queda marcada para revisar.</div>' +
-      '<div class="toolbar"><span>Desde el día</span><input class="in" id="as-corte" type="number" min="1" max="28" step="1" value="' + c + '" style="width:76px" aria-label="Día de corte"><span>se toman como del mes siguiente.</span><button class="btn sm" data-act="asCorte">Guardar</button></div>' +
-      '<div class="muted" style="font-size:13px;margin-top:4px">Con ' + c + ': una factura del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre (clientes de mes en curso).</div>' + vencidosHtml() + '</div>' +
+      '<div class="cortes">' +
+      '<div><b style="font-weight:600">Facturación mes en curso</b><div class="toolbar"><span>Desde el día</span><input class="in" id="as-corte" type="number" min="1" max="28" step="1" value="' + c + '" aria-label="Día de corte, mes en curso"><span>se toman como del mes siguiente; antes, del mismo mes.</span></div><div class="muted" style="font-size:13px">Con ' + c + ': una del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre.</div></div>' +
+      '<div><b style="font-weight:600">Facturación mes vencido</b><div class="toolbar"><span>Desde el día</span><input class="in" id="as-corte-v" type="number" min="1" max="28" step="1" value="' + cv + '" aria-label="Día de corte, mes vencido"><span>se toman como del mismo mes; antes, del mes anterior.</span></div><div class="muted" style="font-size:13px">Con ' + cv + ': una del ' + Math.max(1, cv - 1) + '/10 es de septiembre; una del ' + cv + '/10, de octubre.</div></div>' +
+      '<div><button class="btn sm" data-act="asCorte">Guardar días</button></div></div>' + vencidosHtml() + '</div>' +
       '<div><b>Copia de respaldo de los PDF</b><div class="muted" style="margin:2px 0 6px">Cada factura que cargás desde Drive se guarda también en la app (Supabase). Si alguien la borra de Drive, se puede ver y mandar igual. Cada PDF pesa unos 100 KB: un año entero de facturas ocupa menos de 50 MB.</div>' +
       '<div class="toolbar"><label class="chk"><input type="checkbox" data-asresp="1"' + (fc.respaldo ? ' checked' : '') + '> Guardar una copia de cada factura</label>' +
       (fc.respaldo && falta ? '<button class="btn sm" data-act="asRespTodo">Copiar las ya cargadas (' + falta + ')</button>' : '') + '</div>' +
@@ -561,14 +562,10 @@ export function initAsistente(ctx, k) {
       const em = { ...cfgEmisores() }; k.EMISORES.forEach(e => { em[e] = { ...(em[e] || {}), cuit: soloDig(($('#as-cuit-' + e) || {}).value) }; });
       try { await data.upsert('ajustes', { clave: 'emisores', valor: em }, 'clave'); toast('CUIT guardados'); await ctx.reload(); } catch (err) { toast(err.message); }
     },
-    asFactCliente: async t => {
-      const c = t.dataset.asfc, v = t.value;
-      try { await data.upsert('clientes_admin', { cliente_id: data.ids.cliente(c), facturacion: v, updated_at: new Date().toISOString() }, 'cliente_id'); toast(c + ': facturación ' + (v === 'vencido' ? 'mes vencido' : 'mes en curso')); await ctx.reload(); } catch (err) { toast(err.message); }
-    },
     asCorte: async () => {
-      const v = Math.round(+((document.getElementById('as-corte') || {}).value));
-      if (!(v >= 1 && v <= 28)) { toast('Poné un día entre 1 y 28'); return; }
-      try { await data.upsert('ajustes', { clave: 'facturacion', valor: { ...cfgFact(), corte: v } }, 'clave'); toast('Listo: desde el día ' + v + ' se toman como del mes siguiente'); await ctx.reload(); } catch (err) { toast(err.message); }
+      const v = Math.round(+((document.getElementById('as-corte') || {}).value)), vv = Math.round(+((document.getElementById('as-corte-v') || {}).value));
+      if (!(v >= 1 && v <= 28) || !(vv >= 1 && vv <= 28)) { toast('Poné días entre 1 y 28'); return; }
+      try { await data.upsert('ajustes', { clave: 'facturacion', valor: { ...cfgFact(), corte: v, corte_vencido: vv } }, 'clave'); toast('Días guardados: ' + v + ' (mes en curso) y ' + vv + ' (mes vencido)'); await ctx.reload(); } catch (err) { toast(err.message); }
     },
     asRespOn: async t => { try { await data.upsert('ajustes', { clave: 'facturacion', valor: { ...cfgFact(), respaldo: t.checked } }, 'clave'); toast(t.checked ? 'Se guarda una copia de cada factura que cargues' : 'Copia de respaldo desactivada (las copias guardadas quedan)'); await ctx.reload(); } catch (err) { toast(err.message); } },
     asRespTodo: async t => {
@@ -611,7 +608,7 @@ export function initAsistente(ctx, k) {
       if (t.type === 'checkbox') ctx.render();
     }
   });
-  document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.asemail) actions.asEmailOn(e.target); if (e.target.dataset && e.target.dataset.asresp) actions.asRespOn(e.target); if (e.target.dataset && e.target.dataset.asfc) actions.asFactCliente(e.target); });
+  document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.asemail) actions.asEmailOn(e.target); if (e.target.dataset && e.target.dataset.asresp) actions.asRespOn(e.target); });
   document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.cc !== undefined && t.type !== 'checkbox' && AD.as.conc) { const x = AD.as.conc.movimientos[+t.dataset.cc]; if (x) x[t.dataset.cck] = t.value; } });
 
   function vAjustes() {
