@@ -262,8 +262,8 @@ export function initIntegraciones(ctx) {
     }
     if (x.k === 'ia' && adm) {
       const sel = cfgGet('ia', 'modelo_redes') || MODELO_REDES_DEF;
-      cfg += '<div class="field full"><label for="ig-modelo">Modelo para Redes <span class="muted">(planificar, copys, revisar y buscar fechas)</span></label><select id="ig-modelo">' +
-        MODELOS_IA.map(m => '<option value="' + esc(m.id) + '"' + (m.id === sel ? ' selected' : '') + '>' + esc(m.n + ' · ' + m.nota + ' (US$ ' + m.in + ' / ' + m.out + ' por millón de tokens)') + '</option>').join('') + '</select>' +
+      cfg += '<div class="field full"><label for="ig-modelo">Modelo para Redes <span class="muted">(planificar, copys y revisar)</span></label><select id="ig-modelo">' +
+        MODELOS_IA.map(m => '<option value="' + esc(m.id) + '"' + (m.id === sel ? ' selected' : '') + '>' + esc(m.n + ' · ' + m.nota + ' (US$ ' + String(m.in).replace('.', ',') + ' / ' + String(m.out).replace('.', ',') + ' por millón de tokens)') + '</option>').join('') + '</select>' +
         '<span class="hint">Es el que escribe temas, contenido, copys y revisiones. Buscar efemérides y noticias y proponer días y horarios van siempre con Haiku 5.5 (rápido y barato), igual que las tareas cortas. Si el modelo elegido no está disponible en la cuenta, se usa Sonnet 5.5.</span></div>' +
         '<div class="field full" id="ig-iagasto"><span class="lbl">Gasto</span><p class="muted" style="margin:0">Calculando…</p></div>';
     }

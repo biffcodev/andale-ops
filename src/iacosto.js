@@ -2,6 +2,7 @@
 // estimada a partir del registro de uso (ia_log). Es una estimación: el gasto real se ve en console.anthropic.com.
 // Precios de platform.claude.com/docs/en/about-claude/pricing (octubre de 2026).
 export const MODELOS_IA = [
+  { id: 'claude-haiku-5-5', n: 'Haiku 5.5', in: 0.1, out: 0.5, nota: 'El más barato y rápido · redacta más simple, conviene revisar más' },
   { id: 'claude-sonnet-5-5', n: 'Sonnet 5.5', in: 2, out: 10, nota: 'Equilibrio calidad y precio (recomendado)' },
   { id: 'claude-opus-5-5', n: 'Opus 5.5', in: 4, out: 20, nota: 'Mejor redacción · cuesta el doble que Sonnet' },
   { id: 'claude-fable-5-1', n: 'Fable 5.1', in: 10, out: 50, nota: 'El más potente · cuesta 5 veces Sonnet' },
