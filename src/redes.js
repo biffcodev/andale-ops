@@ -3,6 +3,8 @@
 // Mr. Piggy propone contenido, escribe copys y reparte lo que el cliente dice en un chat.
 export const ESTADOS_PIEZA = ['Idea', 'En diseño', 'Revisión interna', 'Para el cliente', 'Cambios', 'Aprobada', 'Programada', 'Publicada'];
 export const ESTADOS_MES = ['Planificación', 'Producción', 'Revisión interna', 'Con el cliente', 'Aprobado', 'Programado', 'Cerrado'];
+// Un solo nombre para la primera etapa: "Planificación" (en la base sigue guardada como 'Idea').
+export const pzNombre = e => (e === 'Idea' ? 'Planificación' : e);
 export const PZ_COLOR = { 'Idea': '--s-empezar', 'En diseño': '--s-curso', 'Revisión interna': '--s-confirmar', 'Para el cliente': '--s-revision', 'Cambios': '--s-cancelado', 'Aprobada': '--s-entregado', 'Programada': '--s-presup', 'Publicada': '--s-entregado' };
 const MES_COLOR = { 'Planificación': '--s-empezar', 'Producción': '--s-curso', 'Revisión interna': '--s-confirmar', 'Con el cliente': '--s-revision', 'Aprobado': '--s-entregado', 'Programado': '--s-presup', 'Cerrado': '--s-pausado' };
 const REDES = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X'];
@@ -151,7 +153,7 @@ export function initRedes(ctx) {
   const paraPegar = (txt, cliente) => /invisible/i.test(espaciado(cliente)) ? String(txt || '').replace(/\n(?=\n)/g, '\n⠀') : String(txt || '');
   const PH_CONT = f => /carrus/i.test(f) ? 'Slide 1: …\nSlide 2: …' : /reel/i.test(f) ? 'Gancho (0-3 s): …\n1. …\nAudio: …' : /histori/i.test(f) ? 'Texto: …\nSticker: encuesta (Sí / No)' : 'Título: …\nBajada: …\nImagen: …';
   const conteoPorFormato = ps => { const o = {}; enPlan(ps).forEach(z => { o[z.formato] = (o[z.formato] || 0) + 1; }); return o; };
-  const pzPill = e => '<span class="pzst" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')">' + esc(e) + '</span>';
+  const pzPill = e => '<span class="pzst" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')">' + esc(pzNombre(e)) + '</span>';
   const mesPill = e => pill(e, MES_COLOR[e] || '--muted');
   const fechaMes = (mes, d) => mes + '-' + String(d).padStart(2, '0');
   const diasMes = mes => { const [y, m] = mes.split('-').map(Number); return new Date(y, m, 0).getDate(); };
@@ -258,7 +260,7 @@ export function initRedes(ctx) {
   function planilla(m, ps, can) {
     const fs = formatos(), sel = st.sel, eq = equipo(m.cliente), yo = S.me && S.me.alias, ocupado = st.ia[m._id];
     const ordenadas = [...ps].sort((a, b) => (a.fecha || '9999').localeCompare(b.fecha || '9999') || (a.hora || '').localeCompare(b.hora || '') || a.orden - b.orden);
-    const bulk = sel.size ? '<div class="bulkbar rm-bulk"><b>' + sel.size + ' seleccionada' + (sel.size > 1 ? 's' : '') + '</b><select class="in sm" id="rm-bk-est" aria-label="Cambiar estado">' + opt('', 'Cambiar estado…', '') + ESTADOS_PIEZA.map(e => opt(e, e, '')).join('') + '</select>' +
+    const bulk = sel.size ? '<div class="bulkbar rm-bulk"><b>' + sel.size + ' seleccionada' + (sel.size > 1 ? 's' : '') + '</b><select class="in sm" id="rm-bk-est" aria-label="Cambiar estado">' + opt('', 'Cambiar estado…', '') + ESTADOS_PIEZA.map(e => opt(e, pzNombre(e), '')).join('') + '</select>' +
       '<select class="in sm" id="rm-bk-resp" aria-label="A cargo de">' + opt('', 'A cargo de…', '') + opt('__nadie', 'Según el flujo', '') + personas().map(a => opt(a, a, '')).join('') + '</select>' +
       '<button class="btn sm" data-act="rmHoras" data-id="' + esc(m._id) + '" data-sel="1">Poner horarios</button>' +
       '<button class="btn sm" data-act="rmCopys"><span class="pig" aria-hidden="true">' + ISO + '</span> Escribir copys</button><button class="btn sm danger" data-act="rmBorrar">Borrar</button><button class="btn ghost sm" data-act="rmSelNada">Listo</button></div>' : '';
@@ -283,11 +285,11 @@ export function initRedes(ctx) {
     const tools = '<div class="toolbar rm-tools">' + (can ? addPop +
       '<button class="btn sm' + (ocupado ? ' ocupado' : '') + '" data-act="rmIdeas" data-id="' + esc(m._id) + '"' + (ocupado ? ' disabled' : '') + ' title="Mr. Piggy propone lo que falta del plan">' + (ocupado ? '<span class="ia-dots"><i></i><i></i><i></i></span> ' + esc(ocupado) : '<span class="pig" aria-hidden="true">' + ISO + '</span> Proponer') + '</button>' +
       (ps.length ? btnIA('rmRevisar', '<span class="pig" aria-hidden="true">' + ISO + '</span>', 'Revisar', 'Mr. Piggy revisa las piezas que ya están: tono, copys, hashtags y el mes completo') + btnIA('rmAgenda', ICON.calendario, 'Fechas y horas', 'Mr. Piggy propone día y hora para cada pieza') : '') +
-      '<button class="btn sm ghost rm-w" data-act="rmChat" data-id="' + esc(m._id) + '" title="Pegá lo que dijo el cliente y se reparte en las piezas">' + ICON.charla + '<span>Pegar chat</span></button>' +
+      '<button class="btn sm ghost rm-w" data-act="rmChat" data-id="' + esc(m._id) + '" title="Chat, notas de reunión o transcripción de Meet: se reparte en las piezas">' + ICON.charla + '<span>Lo que dijo el cliente</span></button>' +
       (ctx.masMenu ? '<span class="rm-masw' + (sinHora || (ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca) ? ' siempre' : '') + '">' + ctx.masMenu([
         ps.length ? { act: 'rmRevisar', label: 'Revisar con Mr. Piggy', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'ia' } : null,
         ps.length ? { act: 'rmAgenda', label: 'Fechas y horas con Mr. Piggy', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'calendario' } : null,
-        { act: 'rmChat', label: 'Pegar chat del cliente', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'charla' },
+        { act: 'rmChat', label: 'Lo que dijo el cliente (chat o reunión)', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'charla' },
         sinHora ? { act: 'rmHoras', label: 'Poner horarios a ' + sinHora + (sinHora === 1 ? ' pieza' : ' piezas'), attrs: ' data-id="' + esc(m._id) + '"', icon: 'reloj' } : null,
         ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? { act: 'ficha', label: 'Completar la ficha de marca (sin ficha, Mr. Piggy escribe genérico)', attrs: ' data-cliente="' + esc(m.cliente) + '" data-tab="marca"', icon: 'marca' } : null]) + '</span>' : '') : '') +
       '<span class="rm-sp"></span>' + filtros + (ps.length ? vistaSel('redesPiezas', ['lista', 'cuadricula'], vista) : '') + '</div>';
@@ -344,7 +346,7 @@ export function initRedes(ctx) {
         '<td class="rm-tema">' + tags(z, d) + '<input class="in sm rm-tin" value="' + esc(z.tema) + '" placeholder="Tema" data-pz="tema" data-id="' + id + '"' + d + ' aria-label="Tema">' +
         (z.contenido && !esHistoria(z) ? '<div class="rm-cont" title="Qué va en la pieza">' + contenidoHtml(z.contenido) + '</div>' : '') + textos(z, 6) +
         (z.respuesta && z.estado === 'Cambios' ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 160)) + '”</span>' : '') + '</td>' +
-        '<td><select class="cellsel st" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-pz="estado" data-id="' + id + '"' + d + ' aria-label="Estado">' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></td>' +
+        '<td><select class="cellsel st" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-pz="estado" data-id="' + id + '"' + d + ' aria-label="Estado">' + ESTADOS_PIEZA.map(e => opt(e, pzNombre(e), z.estado)).join('') + '</select></td>' +
         '<td class="rm-qc">' + quien(z) + '</td>' +
         '<td><button class="btn ghost sm" data-act="rmPieza" data-id="' + id + '" aria-label="Abrir pieza">⋯</button></td></tr>';
     };
@@ -399,7 +401,7 @@ export function initRedes(ctx) {
       '<div class="field"><label for="pz-fecha">Fecha</label><input id="pz-fecha" type="date" value="' + esc(z.fecha) + '"' + d + '></div><div class="field"><label for="pz-hora">Hora</label><input id="pz-hora" type="time" value="' + esc(z.hora) + '"' + d + '></div>' +
       '<div class="field"><label for="pz-formato">Formato</label><select id="pz-formato"' + d + '>' + [...new Set([...formatos(), z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select></div>' +
       '<div class="field full"><span class="lbl">Redes</span>' + redChips('pz-red', redesDe(z.red), redesCuenta(m.cliente), d, esc) + '</div>' +
-      '<div class="field"><label for="pz-estado">Estado</label><select id="pz-estado"' + d + '>' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></div>' +
+      '<div class="field"><label for="pz-estado">Estado</label><select id="pz-estado"' + d + '>' + ESTADOS_PIEZA.map(e => opt(e, pzNombre(e), z.estado)).join('') + '</select></div>' +
       '<div class="field"><label for="pz-resp">A cargo de esta pieza</label><select id="pz-resp"' + d + '>' + opt('', 'Según el flujo (el rol de cada etapa)', z.resp) + [...new Set([...personas(), z.resp].filter(Boolean))].map(a => opt(a, a + (equipo(m.cliente).get(a) ? ' · ' + equipo(m.cliente).get(a) : ''), z.resp)).join('') + '</select><span class="hint">Ahora le toca a ' + esc((q => q.gente.length ? q.gente.join(', ') : 'nadie') (quienes(m.cliente, z))) + '. Si elegís a alguien, reemplaza a los de su rol (p. ej. Cata en vez de Vale en el diseño).</span></div>' +
       '<div class="field full"><label for="pz-tema">Tema</label><div class="cp-box"><textarea id="pz-tema" class="pz-ta" rows="' + filas(z.tema, 60, 1, 4) + '"' + d + '>' + esc(z.tema) + '</textarea>' + copiarBtn('#pz-tema') + '</div></div>' +
       (data.cols && data.cols.piezaContenido === false ? '' : '<div class="field full pz-cont' + (z.contenido ? ' ver' : '') + '"><div class="pz-lh"><label for="pz-contenido">' + (esHistoria(z) ? 'Texto de la historia' : 'Qué va en la pieza') + '</label>' + (z.contenido && can ? '<button type="button" class="btn ghost sm" data-act="rmContEditar">Editar</button>' : '') + '</div>' + (z.contenido ? '<div class="cp-box pz-cv">' + contenidoHtml(z.contenido) + copiarBtn('#pz-contenido') + '</div>' : '') + '<div class="cp-box pz-ce"><textarea id="pz-contenido" class="pz-ta" rows="' + filas(z.contenido, 60, 3, 40) + '" placeholder="' + esc(PH_CONT(z.formato)) + '"' + d + '>' + esc(z.contenido || '') + '</textarea>' + copiarBtn('#pz-contenido') + '</div>' + (can ? '<div class="toolbar pz-ia"><span class="hint" style="margin:0">Para quien diseña o graba.</span><button type="button" class="btn ghost sm" data-act="rmContUno"><span class="pig" aria-hidden="true">' + ISO + '</span> ' + (z.contenido ? 'Mejorar' : 'Escribir') + ' con Mr. Piggy</button></div>' : '<span class="hint">Para quien diseña o graba.</span>') + '</div>') +
@@ -575,7 +577,7 @@ export function initRedes(ctx) {
     const conCopy = ins.filter(z => !esHistoria(z)).map(z => z._id);
     const n = conCopy.length ? await copys(conCopy, m) : 0;
     trabajando(m, null);
-    toast('Mr. Piggy armó ' + ins.length + ' piezas' + (n ? ', escribió ' + n + ' copys' : '') + (agendo ? ' y eligió día y horario para cada una' : ' con día y horario') + '. Quedaron como “Idea”: revisalas.');
+    toast('Mr. Piggy armó ' + ins.length + ' piezas' + (n ? ', escribió ' + n + ' copys' : '') + (agendo ? ' y eligió día y horario para cada una' : ' con día y horario') + '. Quedaron en “Planificación”: revisalas.');
   }
   // Copys y hashtags de varias piezas: de a 4 por pedido, 3 pedidos a la vez. Devuelve cuántas escribió.
   async function copys(ids, m, btn) {
@@ -635,20 +637,32 @@ export function initRedes(ctx) {
     ps.forEach(z => { if (quienes(cliente, z, eq).gente.includes(alias)) o[z.estado] = (o[z.estado] || 0) + 1; });
     return ESTADOS_PIEZA.filter(e => o[e]).map(e => [e, o[e]]);
   }
-  function abrirChat(m) {
-    st.chatMes = m._id; S.form = null;
-    $('#panel').innerHTML = '<form id="rmchat" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + '</span><h2 id="panel-title">Pegar lo que dijo el cliente</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
-      '<div class="panel-b"><p class="formnote full">Pegá el chat de WhatsApp o el mail donde el cliente opina sobre las piezas. Mr. Piggy relaciona cada comentario con su pieza: marca las aprobadas, anota los cambios y suma las piezas nuevas que pida.</p>' +
-      '<div class="field full"><label for="rmchat-t">Chat o mail</label><textarea id="rmchat-t" rows="12" placeholder="[10/11 18:32] Laura: el posteo del lunes me encanta, el reel cambiale la música…"></textarea></div></div>' +
+  // Lo que dijo el cliente: chat de WhatsApp o mail, notas de una reunión o la transcripción de un Meet.
+  // Mr. Piggy lo reparte en las piezas (aprobadas, cambios, nuevas) y, si es una reunión, queda además como charla del cliente.
+  const TIPOS_CHAT = [['chat', 'Chat de WhatsApp o mail', 'WhatsApp', '[10/11 18:32] Laura: el posteo del lunes me encanta, el reel cambiale la música…'], ['reunion', 'Notas de una reunión', 'Reunión', 'Reunión con Laura y Pedro:\n- Les gustó el carrusel de consejos\n- Para noviembre quieren empujar las entregas a domicilio\n- Cambiar la foto del post del 12…'], ['meet', 'Transcripción de un Meet', 'Videollamada', 'Pegá acá la transcripción que deja Google Meet (o el resumen de Gemini)…']];
+  // Meses en Planificación que le toca revisar a una persona (por su rol en la cuenta y el flujo de Redes)
+  function planificacionesDe(alias) {
+    const roles = rolesEtapa('Idea'); if (!roles.length) return [];
+    return meses().filter(m => m.estado === 'Planificación' && m.mes >= addMonth(thisMonth(), -1)).filter(m => { const eq = equipo(m.cliente); return roles.some(r => mismoRol(r, eq.get(alias))); })
+      .sort((a, b) => a.mes.localeCompare(b.mes) || cmp(a.cliente, b.cliente)).map(m => ({ m, n: (piezas(m._id) || []).length, cargadas: !!piezas(m._id) }));
+  }
+  function abrirChat(m, tipo) {
+    st.chatMes = m._id; S.form = null; const tp = TIPOS_CHAT.find(x => x[0] === tipo) || TIPOS_CHAT[0];
+    $('#panel').innerHTML = '<form id="rmchat" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Lo que dijo el cliente</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="panel-b"><div class="field full"><span class="lbl">Qué vas a pegar</span><div class="seg rm-adds" role="group">' + TIPOS_CHAT.map(x => '<label><input type="radio" name="rmchat-tipo" value="' + x[0] + '"' + (x[0] === tp[0] ? ' checked' : '') + ' data-chattipo="' + esc(m._id) + '"><span>' + esc(x[1].replace(' de WhatsApp o mail', '').replace('Notas de una reunión', 'Notas de reunión').replace('Transcripción de un Meet', 'Transcripción de Meet')) + '</span></label>').join('') + '</div></div>' +
+      '<p class="formnote full">Mr. Piggy relaciona cada comentario con su pieza: marca las aprobadas, anota los cambios y suma las piezas nuevas que se pidan.' + (tp[0] !== 'chat' ? ' Además queda guardada como charla del cliente, con lo acordado y los próximos pasos.' : '') + '</p>' +
+      '<div class="field full"><label for="rmchat-t">' + esc(tp[1]) + '</label><textarea id="rmchat-t" rows="14" placeholder="' + esc(tp[3]) + '"></textarea></div>' +
+      (tp[0] !== 'chat' ? '<label class="chk full"><input type="checkbox" id="rmchat-charla" checked> Guardarla también en Charlas con clientes</label>' : '') + '</div>' +
       '<div class="panel-f"><span></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary" id="rmchat-b">Repartir en las piezas</button></span></div></form>';
-    $('#panel').hidden = false; $('#scrim').hidden = false; setTimeout(() => $('#rmchat-t').focus(), 30);
+    st.chatTipo = tp[0]; $('#panel').hidden = false; $('#scrim').hidden = false; setTimeout(() => $('#rmchat-t') && $('#rmchat-t').focus(), 30);
   }
   async function repartirChat() {
-    const m = mesDe(st.chatMes), t = ($('#rmchat-t') || {}).value || ''; if (!m || !t.trim()) { toast('Pegá el chat'); return; }
+    const m = mesDe(st.chatMes), t = ($('#rmchat-t') || {}).value || ''; if (!m || !t.trim()) { toast('Pegá el texto'); return; }
+    const tp = TIPOS_CHAT.find(x => x[0] === st.chatTipo) || TIPOS_CHAT[0], charla = tp[0] !== 'chat' && $('#rmchat-charla') && $('#rmchat-charla').checked;
     const b = $('#rmchat-b'); b.disabled = true; b.textContent = 'Leyendo…';
     try {
       const ps = piezas(m._id) || [];
-      const r = await data.ia({ modo: 'redes_chat', texto: t, contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, ps) : {}), formatos: formatos(), piezas: ps.map(z => ({ id: z._id, fecha: z.fecha, formato: z.formato, tema: z.tema, estado: z.estado })) } });
+      const r = await data.ia({ modo: 'redes_chat', texto: (tp[0] === 'chat' ? '' : (tp[0] === 'meet' ? 'TRANSCRIPCIÓN DE UNA VIDEOLLAMADA CON EL CLIENTE (tomá solo lo que se decidió o pidió sobre las piezas y el contenido):\n' : 'NOTAS DE UNA REUNIÓN CON EL CLIENTE:\n')) + t, contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, ps) : {}), formatos: formatos(), piezas: ps.map(z => ({ id: z._id, fecha: z.fecha, formato: z.formato, tema: z.tema, estado: z.estado })) } });
       let ap = 0, ca = 0, nu = 0;
       for (const c of Array.isArray(r.cambios) ? r.cambios : []) {
         const z = ps.find(x => x._id === c.id); if (!z) continue;
@@ -658,7 +672,8 @@ export function initRedes(ctx) {
       }
       const nuevas = (Array.isArray(r.nuevas) ? r.nuevas : []).filter(x => x && x.tema).map(x => ({ formato: formatos().includes(x.formato) ? x.formato : formatos()[0], tema: x.tema, copy: x.copy || '', fecha: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') ? x.fecha : '', extra: true, estado: 'Idea' }));
       if (nuevas.length) { const ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]); nu = ins.length; }
-      ctx.closeForm(); toast([ap ? ap + ' aprobadas' : '', ca ? ca + ' con cambios' : '', nu ? nu + ' nuevas (extra)' : ''].filter(Boolean).join(' · ') || 'No encontré cambios en ese chat'); render();
+      if (charla) { try { await data.save('comunicacion', null, { cliente: m.cliente, fecha: today(), canal: tp[2], conQuien: '', resumen: (tp[0] === 'meet' ? 'Transcripción de Meet' : 'Notas de reunión') + ' · Redes ' + monthLabel(m.mes) + '\n\n' + t.slice(0, 20000), acuerdo: [ap ? ap + ' piezas aprobadas' : '', ca ? ca + ' con cambios' : '', nu ? nu + ' piezas nuevas' : ''].filter(Boolean).join(', '), proximo: '', fechaProximo: '', hecho: false, responsable: (S.me && S.me.alias) || '' }); if (ctx.reload) ctx.reload(); } catch (e) { toast('Las piezas se actualizaron, pero no se pudo guardar la charla: ' + e.message); } }
+      ctx.closeForm(); toast([ap ? ap + ' aprobadas' : '', ca ? ca + ' con cambios' : '', nu ? nu + ' nuevas (extra)' : '', charla ? 'charla guardada' : ''].filter(Boolean).join(' · ') || 'No encontré cambios en ese chat'); render();
     } catch (e) { toast(e.message); b.disabled = false; b.textContent = 'Repartir en las piezas'; }
   }
   /* ---------- Versiones: volver atrás lo que cambió Mr. Piggy ---------- */
@@ -968,6 +983,7 @@ export function initRedes(ctx) {
       try { if (!await data.mesInvestigacion(m._id, m.investigacion)) st.invSinGuardar = true; } catch (er) { toast(er.message); }
       render(); return;
     }
+    if (t.dataset && t.dataset.chattipo) { const m = mesDe(t.dataset.chattipo), txt = ($('#rmchat-t') || {}).value || ''; if (m) { abrirChat(m, t.value); if ($('#rmchat-t')) $('#rmchat-t').value = txt; } return; }
     if (t.dataset && t.dataset.xcobro) {
       const id = t.dataset.xcobro, v = t.value, m = meses().find(x => (piezas(x._id) || []).some(z => z._id === id)); if (!m) return;
       try { await data.piezasUpd([id], { extraCobro: v }); local(m._id, [id], { extraCobro: v }); abrirExtras(m); render(); } catch (er) { toast(er.message); }
@@ -1032,6 +1048,11 @@ export function initRedes(ctx) {
     rmAgenda: t => { const m = mesDe(t.dataset.id); if (!m) return; if (!st.ag || st.ag.mesId !== m._id || !st.ag.busy) st.ag = null; abrirAgenda(m); },
     rmAgendaPedir: () => { const m = st.ag && mesDe(st.ag.mesId); if (m) { st.ag.res = null; pedirAgenda(m); } },
     rmHoras: t => { const m = mesDe(t.dataset.id); if (m) ponerHoras(m, !!t.dataset.sel); },
+    rmPlanOk: async t => {
+      const m = mesDe(t.dataset.id); if (!m) return;
+      if (!await confirmar('¿Planificación de ' + m.cliente + ' revisada? El mes pasa a “Producción” y las piezas siguen su flujo.')) { t.checked = false; return; }
+      try { await data.mesUpd(m._id, { estado: 'Producción' }); m.estado = 'Producción'; render(); if (ctx.toastAccion) ctx.toastAccion('Planificación de ' + m.cliente + ' revisada', 'Deshacer', async () => { await data.mesUpd(m._id, { estado: 'Planificación' }); m.estado = 'Planificación'; render(); }); } catch (e) { toast(e.message); t.checked = false; }
+    },
     rmChat: t => { const m = mesDe(t.dataset.id); if (m) abrirChat(m); },
     rmCopys: t => { const ids = [...st.sel]; const m = meses().find(x => (piezas(x._id) || []).some(z => ids.includes(z._id))); if (m) copys(ids, m, t); },
     rmInv: t => { const m = mesDe(t.dataset.id); if (m) abrirInvestigacion(m); },
@@ -1080,5 +1101,5 @@ export function initRedes(ctx) {
     const ps = piezas(m._id); if (!ps) { setTimeout(() => cargar([m._id]), 0); return null; }
     return extrasResumen(cliente, ps);
   }
-  return { extrasACobrar, opcionesHtml, tocaA, vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
+  return { planificacionesDe, extrasACobrar, opcionesHtml, tocaA, vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
 }
