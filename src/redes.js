@@ -32,6 +32,11 @@ export function redChips(id, sel, opciones, dis, esc) {
   return '<div class="rd-chips" id="' + e(id) + '">' + todas.map(r => { const [ab, c, ic] = redInfo(r); return '<label class="rd-chk" style="--rc:' + c + '"><input type="checkbox" value="' + e(r) + '"' + ((sel || []).includes(r) ? ' checked' : '') + (dis || '') + '><span class="rd">' + redIco(r, ab, ic) + '</span>' + e(r) + '</label>'; }).join('') + '</div>';
 }
 // "Qué va en la pieza" con jerarquía: cada "Etiqueta: texto" con la etiqueta en negrita, los detalles con flecha y aire entre bloques.
+// Arreglos de redacción que la IA a veces deja: "de el" → "del", "a el" → "al", palabras repetidas, espacios antes de la puntuación.
+export const pulir = t => String(t == null ? '' : t)
+  .replace(/\b([Dd])e el\b/g, '$1el').replace(/\b([Aa]) el\b/g, '$1l')
+  .replace(/\b(del|de|la|el|los|las|que|y|en|al|con|por|para)\s+\1\b/gi, '$1')
+  .replace(/[ \t]{2,}/g, ' ').replace(/ +([,.;:!?])/g, '$1').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')');
 export function contenidoHtml(txt) {
   const out = []; let hueco = false;
   String(txt || '').replace(/\r/g, '').split('\n').forEach(l0 => {
@@ -287,11 +292,11 @@ export function initRedes(ctx) {
     const btnIA = (act, ico, txt, tit) => '<button class="btn sm rm-w" data-act="' + act + '" data-id="' + esc(m._id) + '" title="' + esc(tit) + '"' + (ocupado ? ' disabled' : '') + '>' + ico + '<span>' + esc(txt) + '</span></button>';
     const tools = '<div class="toolbar rm-tools">' + (can ? addPop +
       '<button class="btn sm' + (ocupado ? ' ocupado' : '') + '" data-act="rmIdeas" data-id="' + esc(m._id) + '"' + (ocupado ? ' disabled' : '') + ' title="Mr. Piggy propone lo que falta del plan">' + (ocupado ? '<span class="ia-dots"><i></i><i></i><i></i></span> ' + esc(ocupado) : '<span class="pig" aria-hidden="true">' + ISO + '</span> Proponer') + '</button>' +
-      (ps.length ? btnIA('rmRevisar', '<span class="pig" aria-hidden="true">' + ISO + '</span>', 'Revisar', 'Mr. Piggy revisa las piezas que ya están: tono, copys, hashtags y el mes completo') + btnIA('rmAgenda', ICON.calendario, 'Fechas y horas', 'Mr. Piggy propone día y hora para cada pieza') : '') +
+      (ps.length ? btnIA('rmRevisar', '<span class="pig" aria-hidden="true">' + ISO + '</span>', 'Revisar', 'Mr. Piggy revisa las piezas que ya están: tono, copys, hashtags y el mes completo') + btnIA('rmAgenda', ICON.reloj, 'Días y horarios', 'Mr. Piggy propone día y hora de publicación para cada pieza (no cambia el contenido)') : '') +
       '<button class="btn sm ghost rm-w" data-act="rmChat" data-id="' + esc(m._id) + '" title="Chat, notas de reunión o transcripción de Meet: se reparte en las piezas">' + ICON.charla + '<span>Lo que dijo el cliente</span></button>' +
       (ctx.masMenu ? '<span class="rm-masw' + (sinHora || (ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca) ? ' siempre' : '') + '">' + ctx.masMenu([
         ps.length ? { act: 'rmRevisar', label: 'Revisar con Mr. Piggy', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'ia' } : null,
-        ps.length ? { act: 'rmAgenda', label: 'Fechas y horas con Mr. Piggy', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'calendario' } : null,
+        ps.length ? { act: 'rmAgenda', label: 'Días y horarios con Mr. Piggy', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'reloj' } : null,
         { act: 'rmChat', label: 'Lo que dijo el cliente (chat o reunión)', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'charla' },
         sinHora ? { act: 'rmHoras', label: 'Poner horarios a ' + sinHora + (sinHora === 1 ? ' pieza' : ' piezas'), attrs: ' data-id="' + esc(m._id) + '"', icon: 'reloj' } : null,
         ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? { act: 'ficha', label: 'Completar la ficha de marca (sin ficha, Mr. Piggy escribe genérico)', attrs: ' data-cliente="' + esc(m.cliente) + '" data-tab="marca"', icon: 'marca' } : null]) + '</span>' : '') : '') +
@@ -624,8 +629,8 @@ export function initRedes(ctx) {
     $('#panel').innerHTML = '<form id="rmprop" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b"><div class="field full prop-f"><span class="lbl">Qué va a proponer</span>' + (faltan.length ? '<div class="prop-fs">' + faltan.map(([f, n]) => '<span class="rm-fpill" style="--fc:' + fmtColor(f) + '">' + n + ' ' + esc(f) + '</span>').join('') + '</div><span class="hint">Lo que falta para completar el plan del mes.</span>' : '<p class="muted" style="margin:0">El plan del mes ya está completo: propone 3 ideas extra.</p>') + '</div>' +
       replChips(m, 'prop-redes') +
-      '<label class="chk full"><input type="checkbox" id="prop-web"' + (inv ? '' : ' checked') + '> ' + (inv ? 'Volver a buscar fechas y novedades en la web (ya hay ' + nInv + ' elegidas)' : 'Buscar antes fechas del mes y novedades del rubro en la web') + '</label>' +
-      (inv ? '<button type="button" class="btn link sm full" style="justify-self:start" data-act="rmInv" data-id="' + esc(m._id) + '">Ver las fechas y novedades elegidas</button>' : '') +
+      '<label class="chk full"><input type="checkbox" id="prop-web"' + (inv ? '' : ' checked') + '> ' + (inv ? 'Volver a buscar efemérides y noticias en la web (ya hay ' + nInv + ' elegidas)' : 'Buscar antes efemérides del mes y noticias del rubro en la web') + '</label>' +
+      (inv ? '<button type="button" class="btn link sm full" style="justify-self:start" data-act="rmInv" data-id="' + esc(m._id) + '">Ver las efemérides y noticias elegidas</button>' : '') +
       '</div><div class="panel-f"><span></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer</button></span></div></form>';
     st.propMes = m._id; $('#panel').hidden = false; $('#scrim').hidden = false;
   }
@@ -654,28 +659,44 @@ export function initRedes(ctx) {
     trabajando(m, 'Mr. Piggy está armando el plan…');
     let ins = [];
     // Primero las fechas y novedades del mes (búsqueda web), si todavía no se buscaron. Si falla, sigue sin ellas.
-    if (opts.buscar === true || (opts.buscar !== false && !m.investigacion && !st.invFallo)) { trabajando(m, 'Buscando fechas y novedades del mes…'); try { await investigar(m); } catch (e) { st.invFallo = true; toast('No pude buscar en la web (' + e.message + '). Sigo sin fechas ni novedades.'); } trabajando(m, 'Mr. Piggy está armando el plan…'); }
+    if (opts.buscar === true || (opts.buscar !== false && !m.investigacion && !st.invFallo)) { trabajando(m, 'Buscando efemérides y noticias del mes…'); try { await investigar(m); } catch (e) { st.invFallo = true; toast('No pude buscar en la web (' + e.message + '). Sigo sin fechas ni novedades.'); } trabajando(m, 'Mr. Piggy está armando el plan…'); }
     try {
       const fmtDe = x => formatos().includes(x) ? x : (formatos().find(f => norm(f).startsWith(norm(x || '').slice(0, 4))) || formatos()[0]);
-      const pide = extras ? { _: 3 } : { ...faltan }, nuevas = [];
+      const pide = extras ? { _: 3 } : { ...faltan }, nuevas = [], total0 = Object.values(pide).reduce((a, n) => a + n, 0);
       const resta = () => Object.entries(pide).filter(([, n]) => n > 0);
-      for (let vuelta = 0; vuelta < 3 && resta().length; vuelta++) {
-        const lista = resta().map(([f, n]) => n + ' ' + f).join(', '), total = resta().reduce((a, [, n]) => a + n, 0);
-        const texto = extras ? 'Proponé 3 ideas extra.' : (vuelta ? 'Todavía faltan piezas: proponé exactamente ' + lista + ' (' + total + ' en total), distintas a las que ya hay.' : 'Proponé exactamente estas piezas que faltan, ni más ni menos: ' + lista + ' (' + total + ' en total). Contá las de cada formato antes de responder.');
-        const c = ctxIA(m); const pp = c._pp; delete c._pp;
-        const inv = invElegidas(m);
+      // Se pide de a tandas chicas (cada pedido tiene que terminar en menos de 2 minutos): primero el feed, de a 6 y en orden
+      // (cada tanda ve lo anterior); después las historias, de a 8 y en paralelo, cada tanda con su parte del mes.
+      const ultimo = new Date(+m.mes.slice(0, 4), +m.mes.slice(5, 7), 0).getDate();
+      const tandas = (obj, de) => { const out = []; let cur = {}, n = 0; Object.entries(obj).forEach(([f, c]) => { let r = c; while (r > 0) { const t = Math.min(r, de - n); cur[f] = (cur[f] || 0) + t; n += t; r -= t; if (n >= de) { out.push(cur); cur = {}; n = 0; } } }); if (n) out.push(cur); return out; };
+      const pedirTanda = async (cuantos, extra) => {
+        const lista = Object.entries(cuantos).map(([f, n]) => n + ' ' + f).join(', '), total = Object.values(cuantos).reduce((a, n) => a + n, 0);
+        const texto = extras ? 'Proponé 3 ideas extra.' : 'Proponé exactamente estas piezas, ni más ni menos: ' + lista + ' (' + total + ' en total). ' + (total < total0 ? 'Son una parte del plan del mes: otras tandas arman el resto, así que elegí temas distintos a ya_cargadas. ' : '') + (extra || '') + 'Contá las de cada formato antes de responder.';
+        const c = ctxIA(m); const pp = c._pp; delete c._pp; const inv = invElegidas(m);
         const r = await data.ia({ modo: 'redes_ideas', texto, contexto: { ...c, redes: redesP, ...(inv ? { fechas_y_novedades: inv } : {}), ya_cargadas: [...ps, ...nuevas].map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })), mes_anterior: pp.slice(0, 60).map(z => ({ formato: z.formato, tema: z.tema })) } });
-        let llegaron = 0;
-        for (const x of (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && x.tema)) {
+        return (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && x.tema);
+      };
+      const tomar = xs => { let n = 0;
+        for (const x of xs) {
           const formato = fmtDe(x.formato), k = extras ? '_' : formato;
           if (!(pide[k] > 0)) continue; // lo que sobra no se carga
           if (nuevas.some(z => norm(z.tema) === norm(String(x.tema)))) continue;
           const fecha = /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : '';
-          nuevas.push({ formato, red: redesPara(formato, redesP).join(', '), fuentes: fuentesDe(m, x.fuentes), tema: String(x.tema).slice(0, 160), contenido: String(x.contenido || '').slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...ps, ...nuevas], fecha, formato, m.cliente) : '', estado: 'Idea', extra: extras });
-          pide[k]--; llegaron++;
+          nuevas.push({ formato, red: redesPara(formato, redesP).join(', '), fuentes: fuentesDe(m, x.fuentes), tema: pulir(String(x.tema)).slice(0, 160), contenido: pulir(String(x.contenido || '')).slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...ps, ...nuevas], fecha, formato, m.cliente) : '', estado: 'Idea', extra: extras });
+          pide[k]--; n++;
         }
-        if (!llegaron) break;
-        if (resta().length) trabajando(m, 'Faltaron algunas, le pido el resto…');
+        trabajando(m, 'Armando el plan… ' + nuevas.length + ' de ' + total0); return n; };
+      if (extras) tomar(await pedirTanda(pide));
+      else {
+        const feed = Object.fromEntries(resta().filter(([f]) => !/histori|stor/i.test(f))), hist = Object.fromEntries(resta().filter(([f]) => /histori|stor/i.test(f)));
+        trabajando(m, 'Armando el plan… 0 de ' + total0);
+        for (const t of tandas(feed, 6)) tomar(await pedirTanda(t, 'Las novedades elegidas van en el feed. '));
+        const th = tandas(hist, 8);
+        const rs = await Promise.allSettled(th.map((t, i) => { const d1 = Math.floor(i * ultimo / th.length) + 1, d2 = Math.floor((i + 1) * ultimo / th.length);
+          return pedirTanda(t, th.length > 1 ? 'Estas historias van entre el ' + d1 + ' y el ' + d2 + ' del mes (las otras fechas las cubre otra tanda); de las fechas elegidas, usá solo las de esos días. ' : ''); }));
+        rs.forEach(r => { if (r.status === 'fulfilled') tomar(r.value); });
+        if (!nuevas.length && rs.length && rs.every(r => r.status === 'rejected')) throw rs[0].reason;
+        // Lo que faltó, en una vuelta más
+        for (let v = 0; v < 2 && resta().length; v++) { trabajando(m, 'Faltaron algunas, le pido el resto…'); if (!tomar(await pedirTanda(Object.fromEntries(resta())))) break; }
       }
       if (!nuevas.length) { toast('Mr. Piggy no propuso nada. Probá de nuevo.'); trabajando(m, null); return; }
       // Todo lo que el equipo eligió en "Fechas y novedades" tiene que tener pieza: lo que quedó afuera reemplaza ideas genéricas.
@@ -734,7 +755,7 @@ export function initRedes(ctx) {
           // si el modelo cambió los ids pero respetó el orden, se toma por posición
           const z = t.find(y => y._id === (x && x.id)) || (rs.length === t.length ? t[i] : null);
           if (!z || !x || (!x.copy && !esHistoria(z)) || hechos.has(z._id)) return;
-          hechos.set(z._id, { copy: espaciar(x.copy, m.cliente), hashtags: String(x.hashtags || '').trim(), ...(x.contenido && !z.contenido ? { contenido: String(x.contenido).trim() } : {}) });
+          hechos.set(z._id, { copy: espaciar(pulir(x.copy), m.cliente), hashtags: String(x.hashtags || '').trim(), ...(x.contenido && !z.contenido ? { contenido: String(x.contenido).trim() } : {}) });
         });
       } catch (e) { fallo = e; }
       hechas += t.length; if (avance) avance(hechas, lista.length);
@@ -858,7 +879,7 @@ export function initRedes(ctx) {
       const r = await data.ia({ modo: 'redes_ideas', texto: 'Reemplazá esta pieza por UNA idea distinta, del mismo formato (' + z.formato + ')' + (z.fecha ? ' y para el mismo día (' + z.fecha + ')' : '') + '. La que hay ahora y NO va: "' + (z.tema || '') + '"' + (malas.length ? ', con fuente de ' + malas.join(', ') + ' (no la uses)' : '') + '.' + (pedido ? ' Lo que pide el equipo: ' + pedido + '.' : '') + ' Proponé exactamente 1 pieza.',
         contexto: { ...c, redes: redesDe(z.red), ...(invElegidas(m) ? { fechas_y_novedades: invElegidas(m) } : {}), ya_cargadas: (piezas(m._id) || []).filter(y => y._id !== z._id).map(y => ({ fecha: y.fecha, formato: y.formato, tema: y.tema })) } });
       const x = (Array.isArray(r.piezas) ? r.piezas : []).find(y => y && y.tema); if (!x) throw new Error('Mr. Piggy no propuso nada. Probá de nuevo.');
-      const nueva = { _id: z._id, formato: z.formato, red: z.red, fecha: z.fecha, tema: String(x.tema).slice(0, 160), contenido: String(x.contenido || '').slice(0, 3000), copy: '', hashtags: '', fuentes: fuentesDe(m, x.fuentes) };
+      const nueva = { _id: z._id, formato: z.formato, red: z.red, fecha: z.fecha, tema: pulir(String(x.tema)).slice(0, 160), contenido: pulir(String(x.contenido || '')).slice(0, 3000), copy: '', hashtags: '', fuentes: fuentesDe(m, x.fuentes) };
       if (!esHistoria(z)) { btn.textContent = 'Escribiendo el copy…'; const res = await copysIA(m, [nueva]); const u = res.hechos.get(z._id); if (u) Object.assign(nueva, u); }
       const u = { tema: nueva.tema, contenido: nueva.contenido, copy: nueva.copy, hashtags: nueva.hashtags, ...(data.cols && data.cols.piezaFuentes === false ? {} : { fuentes: nueva.fuentes }) };
       const antes = { ...antesDe(z, u), ...(u.fuentes ? { fuentes: z.fuentes || [] } : {}) };
@@ -993,7 +1014,7 @@ export function initRedes(ctx) {
       const formato = fmtDe(x.formato), it = faltan[i] || {};
       const fecha = /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : (/^\d{4}-\d{2}-\d{2}$/.test(it.fecha || '') && it.fecha.startsWith(m.mes) ? it.fecha : '');
       const fu = fuentesDe(m, Array.isArray(x.fuentes) && x.fuentes.length ? x.fuentes : [it.fuente].filter(Boolean));
-      out.push({ formato, red: redesPara(formato, redesP).join(', '), fuentes: fu, tema: String(x.tema).slice(0, 160), contenido: String(x.contenido || '').slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...base, ...out], fecha, formato, m.cliente) : '', estado: 'Idea', extra: false });
+      out.push({ formato, red: redesPara(formato, redesP).join(', '), fuentes: fu, tema: pulir(String(x.tema)).slice(0, 160), contenido: pulir(String(x.contenido || '')).slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...base, ...out], fecha, formato, m.cliente) : '', estado: 'Idea', extra: false });
     });
     return out;
   }
@@ -1020,8 +1041,8 @@ export function initRedes(ctx) {
     const r = await data.ia({ modo: 'redes_investigar', contexto: { cliente: m.cliente, mes: m.mes, marca: c.marca ? { rubro: c.marca.rubro, publico: c.marca.publico, pilares: c.marca.pilares, fechas: c.marca.fechas, competencia: c.marca.referencias } : null, notas_cliente: c.notas_cliente, servicios: c.servicios, redes: c.redes, fuentes_descartadas: fuentesNo() } });
     const url = u => /^https?:\/\//.test(u || '') && !descartada(u) ? String(u).slice(0, 500) : '';
     const fechas = (Array.isArray(r.fechas) ? r.fechas : []).filter(x => x && x.nombre && /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes))
-      .filter(x => !x.fuente || !descartada(x.fuente)).map(x => ({ fecha: x.fecha, nombre: String(x.nombre).slice(0, 120), tipo: TIPO_F[x.tipo] ? x.tipo : 'nacional', idea: String(x.idea || '').slice(0, 240), fuente: url(x.fuente), usar: true })).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 15);
-    const novedades = (Array.isArray(r.novedades) ? r.novedades : []).filter(x => x && x.titulo && x.fuente && !descartada(x.fuente)).map(x => ({ titulo: String(x.titulo).slice(0, 160), resumen: String(x.resumen || '').slice(0, 400), idea: String(x.idea || '').slice(0, 240), fuente: url(x.fuente), fecha: String(x.fecha || '').slice(0, 20), usar: true })).slice(0, 8);
+      .filter(x => !x.fuente || !descartada(x.fuente)).map(x => ({ fecha: x.fecha, nombre: pulir(String(x.nombre)).slice(0, 120), tipo: TIPO_F[x.tipo] ? x.tipo : 'nacional', idea: pulir(String(x.idea || '')).slice(0, 240), fuente: url(x.fuente), usar: true })).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 15);
+    const novedades = (Array.isArray(r.novedades) ? r.novedades : []).filter(x => x && x.titulo && x.fuente && !descartada(x.fuente)).map(x => ({ titulo: pulir(String(x.titulo)).slice(0, 160), resumen: pulir(String(x.resumen || '')).slice(0, 400), idea: pulir(String(x.idea || '')).slice(0, 240), fuente: url(x.fuente), fecha: String(x.fecha || '').slice(0, 20), usar: true })).slice(0, 8);
     const inv = { at: new Date().toISOString(), fechas, novedades };
     m.investigacion = inv;
     try { if (!await data.mesInvestigacion(m._id, inv)) st.invSinGuardar = true; } catch (e) { st.invSinGuardar = true; }
@@ -1040,7 +1061,7 @@ export function initRedes(ctx) {
         (fuentesNo().length ? '<p class="hint full">Sitios descartados: ' + fuentesNo().map(d => esc(d) + ' <button type="button" class="btn link sm" data-act="rmFuenteSi" data-d="' + esc(d) + '" title="Volver a permitirlo">✕</button>').join(' · ') + '</p>' : '') +
         '<p class="hint full">Buscado el ' + esc(fmt(inv.at.slice(0, 10))) + (st.invSinGuardar ? ' · para que quede guardado en el mes falta correr el SQL 0033' : '') + '.</p>';
     }
-    $('#panel').innerHTML = '<div style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Fechas y novedades</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+    $('#panel').innerHTML = '<div style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Efemérides y noticias</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b">' + body + '</div><div class="panel-f"><span>' + (inv && !busy ? '<button type="button" class="btn ghost" data-act="rmInvBuscar" data-id="' + esc(m._id) + '">Buscar de nuevo</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cerrar</button>' +
       (busy ? '' : inv && psInv.length && faltanSet.size ? '<button type="button" class="btn primary" data-act="rmInvSumar" data-id="' + esc(m._id) + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Armar ' + faltanSet.size + (faltanSet.size === 1 ? ' pieza' : ' piezas') + ' para lo que falta</button>' : inv ? '<button type="button" class="btn primary" data-act="rmInvProponer" data-id="' + esc(m._id) + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido con esto</button>' : '<button type="button" class="btn primary" data-act="rmInvBuscar" data-id="' + esc(m._id) + '">Buscar en la web</button>') + '</span></div></div>';
     st.invMes = m._id; $('#panel').hidden = false; $('#scrim').hidden = false;
@@ -1051,7 +1072,7 @@ export function initRedes(ctx) {
     st.invBusy = null; if (st.invMes === m._id && $('#panel') && !$('#panel').hidden) abrirInvestigacion(m); render();
   }
   const invBtn = m => { const v = m.investigacion, n = v ? (v.fechas || []).filter(x => x.usar !== false).length + (v.novedades || []).filter(x => x.usar !== false).length : 0;
-    return isStaff() ? '<button class="btn ghost sm" data-act="rmInv" data-id="' + esc(m._id) + '" title="Fechas del mes y novedades del rubro, buscadas en la web">' + ICON.calendario + ' ' + (v ? 'Fechas y novedades · ' + n : 'Buscar fechas y novedades') + '</button>' : ''; };
+    return isStaff() ? '<button class="btn ghost sm" data-act="rmInv" data-id="' + esc(m._id) + '" title="Efemérides del mes y noticias del rubro, buscadas en la web">' + ICON.estrella + ' ' + (v ? 'Efemérides y noticias · ' + n : 'Buscar efemérides y noticias') + '</button>' : ''; };
 
   /* ---------- Revisar el contenido con Mr. Piggy ---------- */
   // Revisa las piezas que ya están (tono de la marca, copys, hashtags, lo que va en la pieza) y el mes completo.
@@ -1116,7 +1137,7 @@ export function initRedes(ctx) {
     const rv = st.rev; if (!rv) return; let n = 0; const cambios = [];
     for (const id of ids) {
       const x = rv.items.get(id), z = (piezas(m._id) || []).find(y => y._id === id); if (!x || !z || x.aplicado) continue;
-      const u = {}; ['contenido', 'copy', 'hashtags'].forEach(k => { if (x[k] && String(x[k]).trim() && String(x[k]).trim() !== String(z[k] || '').trim()) u[k] = k === 'copy' ? espaciar(x[k], m.cliente) : String(x[k]).trim(); });
+      const u = {}; ['contenido', 'copy', 'hashtags'].forEach(k => { if (x[k] && String(x[k]).trim() && String(x[k]).trim() !== String(z[k] || '').trim()) u[k] = k === 'copy' ? espaciar(pulir(x[k]), m.cliente) : k === 'hashtags' ? String(x[k]).trim() : pulir(x[k]).trim(); });
       if (!Object.keys(u).length) continue;
       const antes = antesDe(z, u), uv = conVersion(z, u, 'Revisión de Mr. Piggy');
       try { await data.piezasUpd([id], uv); local(m._id, [id], uv); x.aplicado = true; n++; cambios.push({ id, antes }); } catch (e) { toast(e.message); break; }
@@ -1170,7 +1191,7 @@ export function initRedes(ctx) {
         const d = new Date(x.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '');
         return '<div class="ag-p" style="--fc:' + fmtColor(z.formato) + '"><span class="ag-d"><b>' + esc(d) + '</b> ' + esc(x.hora) + '</span><span class="ag-t"><span class="rm-fpill">' + esc(z.formato) + '</span> ' + esc(z.tema || 'Sin tema') + (x.motivo ? '<small>' + esc(x.motivo) + '</small>' : '') + '</span>' + (z.fecha && (z.fecha !== x.fecha || z.hora !== x.hora) ? '<span class="ag-antes muted" title="Lo que tenía">antes ' + esc(fmtShort(z.fecha)) + (z.hora ? ' ' + esc(z.hora) : '') + '</span>' : '') + '</div>'; }).join('') + '</div>' +
       (r.faltan ? '<p class="hint">' + r.faltan + (r.faltan === 1 ? ' pieza quedó' : ' piezas quedaron') + ' sin propuesta: se dejan como están.</p>' : '') + '</div>' : '';
-    $('#panel').innerHTML = '<form id="rmagenda" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Fechas y horarios con Mr. Piggy</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+    $('#panel').innerHTML = '<form id="rmagenda" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Días y horarios de publicación</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b"><p class="formnote full">Mr. Piggy mira el rubro y el público de ' + esc(m.cliente) + (c.marca && fm_lleno(c.marca) ? ' (ficha de marca)' : '') + ', qué dice cada pieza, lo que ya está agendado y los informes anteriores si hay, y propone día y hora para cada una. Sin datos de rendimiento de la cuenta es una estimación por rubro y público: lo revisás antes de aplicar.</p>' +
       '<fieldset class="full ag-alc"><legend class="lbl">Qué piezas</legend>' +
       '<label class="chk"><input type="radio" name="ag-alc" value="sin"' + (ag.alc === 'sin' ? ' checked' : '') + (nSin ? '' : ' disabled') + '> Las que no tienen fecha u hora <span class="muted num">' + nSin + '</span></label>' +

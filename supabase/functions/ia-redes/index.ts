@@ -22,7 +22,7 @@ const BASE = 'Sos Mr. Piggy, community manager senior de àndale, una agencia de
   'Los copys_aprobados y los ejemplos de la ficha muestran cómo suena: tomá el tono, no copies sus frases. Las frases de "palabras que usa" son recursos para usar de vez en cuando, no un cierre fijo: variá los llamados a la acción entre piezas. ' +
   'No inventes precios, promociones, stock, plazos ni datos que no te pasen. Si no hay ficha, escribí neutro y sin inventar datos de la marca. ' +
   'Usá solo datos de la marca que estén en la ficha, las notas o el brief (vos no navegás la web). Lo que en la ficha figura como pendiente ("completar con…", "no se informó", "a definir") NO es un dato: no inventes aniversarios, años de trayectoria, lanzamientos, eventos, sucursales ni fechas propias de la marca. Si una idea necesita un dato que no tenés, elegí otra. ' +
-  'REDACCIÓN: español rioplatense correcto y natural, como lo escribiría una buena redactora. Frases completas y claras, con buena puntuación y concordancia; nada de paréntesis largos ni aclaraciones metidas en medio de la frase, ni frases que suenen a traducción. Releé cada texto antes de responder.';
+  'REDACCIÓN: español rioplatense correcto y natural, como lo escribiría una buena redactora. Frases completas y claras, con buena puntuación y concordancia; nada de paréntesis largos ni aclaraciones metidas en medio de la frase, ni frases que suenen a traducción; "del" y "al" (nunca "de el" ni "a el"), sin palabras repetidas. Releé cada texto antes de responder como si lo fuera a publicar.';
 
 const REGLAS_FORMATO = 'QUÉ VA EN CADA FORMATO (campo contenido, para quien diseña o graba):\n' +
   '- Carruseles: una línea por slide, "Slide 1: …", 5 a 8 slides. La 1 es el gancho (promesa clara), las del medio desarrollan un punto cada una, la última cierra con el llamado a la acción. Texto corto por slide (lo que va escrito en la placa).\n' +
@@ -138,9 +138,12 @@ Deno.serve(async req => {
   let cfg: any = null; try { const { data } = await svc.rpc('cred_leer', { n: 'anthropic' }); if (data) cfg = JSON.parse(data); } catch { cfg = null; }
   const key = (cfg && cfg.key) || Deno.env.get('ANTHROPIC_API_KEY');
   if (!key) return json({ error: 'La IA no está configurada todavía. Conectala en Configuración → Integraciones → Mr. Piggy.' }, 503);
-  // El modelo de Redes se elige en Integraciones → Mr. Piggy (lista integraciones_cfg, ia.modelo_redes); si no, Opus 5.5.
+  // El modelo de Redes se elige en Integraciones → Mr. Piggy (lista integraciones_cfg, ia.modelo_redes); si no, Sonnet 5.5.
   let elegido = ''; try { const { data } = await svc.from('listas').select('valores').eq('clave', 'integraciones_cfg').maybeSingle(); const v = ((data && data.valores) || []).find((x: string) => String(x).startsWith('ia.modelo_redes=')); if (v && /^claude-[a-z0-9.-]+$/.test(v.slice(16))) elegido = v.slice(16); } catch { elegido = ''; }
-  let modelo = elegido || Deno.env.get('IA_MODEL_REDES') || 'claude-opus-5-5';
+  // Buscar en la web y ubicar días y horas no necesitan el modelo que mejor escribe: van con Haiku, rápido y barato
+  // (la búsqueda trae muchas páginas y es lo que más tokens consume). Escribir va con el elegido (Sonnet por defecto).
+  const RAPIDO = ['redes_investigar', 'redes_agenda'].includes(modo);
+  let modelo = RAPIDO ? 'claude-haiku-5-5' : (elegido || Deno.env.get('IA_MODEL_REDES') || 'claude-sonnet-5-5');
   const [tool, system] = ({ redes_copys: [TOOL_COPYS, SYS_COPYS], redes_agenda: [TOOL_AGENDA, SYS_AGENDA], redes_contenido: [TOOL_CONT, SYS_CONT], redes_revision: [TOOL_REV, SYS_REV], redes_investigar: [TOOL_INV, SYS_INV], redes_ideas: [TOOL_PLAN, SYS_PLAN] } as Record<string, [any, string]>)[modo];
   const marca = ctx && ctx.marca ? ctx.marca : null;
   const cab = 'HOY: ' + hoyAR() + (ctx.mes ? '\nMES A PLANIFICAR: ' + mesTxt(ctx.mes) + '. Todas las fechas van dentro de ese mes.' : '') +
@@ -155,17 +158,26 @@ Deno.serve(async req => {
   // Investigar usa además la búsqueda web de Anthropic (hay que tenerla habilitada en la consola de Anthropic).
   const web = modo === 'redes_investigar';
   let forzar = !web, msgs: any[] = [{ role: 'user', content: user }];
-  const herramientas = web ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8, user_location: { type: 'approximate', country: 'AR', region: 'Córdoba', city: 'Córdoba', timezone: 'America/Argentina/Cordoba' } }, tool] : [tool];
-  const pedir = (max: number) => fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+  const herramientas = web ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5, user_location: { type: 'approximate', country: 'AR', region: 'Córdoba', city: 'Córdoba', timezone: 'America/Argentina/Cordoba' } }, tool] : [tool];
+  // La función tiene 150 s en total: cada pedido se corta antes para poder responder un error claro.
+  const t0 = Date.now(), queda = () => 140_000 - (Date.now() - t0);
+  const pedir = (max: number) => fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: AbortSignal.timeout(Math.max(5_000, queda())), headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: modelo, max_tokens: max, system, tools: herramientas, tool_choice: forzar ? { type: 'tool', name: tool.name } : { type: 'auto' }, messages: msgs }) });
-  let max = ({ redes_copys: 4000, redes_agenda: 6000, redes_contenido: 3000, redes_revision: 8000, redes_investigar: 8000 } as Record<string, number>)[modo] || 8000;
-  let res = await pedir(max), out: any = await res.json().catch(() => ({}));
+  let max = ({ redes_copys: 4000, redes_agenda: 6000, redes_contenido: 3000, redes_revision: 8000, redes_investigar: 8000, redes_ideas: 6000 } as Record<string, number>)[modo] || 8000;
+  let res: any, out: any;
+  try {
+  res = await pedir(max); out = await res.json().catch(() => ({}));
   if (!res.ok && /tool_choice/i.test(out?.error?.message || '')) { forzar = false; res = await pedir(max); out = await res.json().catch(() => ({})); }
   // Si el modelo elegido no está disponible en la cuenta, sigue con Sonnet.
   if (!res.ok && modelo !== 'claude-sonnet-5-5' && (res.status === 404 || /model/i.test(out?.error?.message || ''))) { modelo = 'claude-sonnet-5-5'; res = await pedir(max); out = await res.json().catch(() => ({})); if (!res.ok && /tool_choice/i.test(out?.error?.message || '')) { forzar = false; res = await pedir(max); out = await res.json().catch(() => ({})); } }
   // Búsquedas largas: la API puede pausar el turno; se sigue desde donde quedó (hasta 3 veces).
   for (let i = 0; i < 3 && res.ok && out && out.stop_reason === 'pause_turn'; i++) { msgs = [{ role: 'user', content: user }, { role: 'assistant', content: out.content }]; res = await pedir(max); out = await res.json().catch(() => ({})); }
-  if (res.ok && out && out.stop_reason === 'max_tokens' && !web) { max = 16000; res = await pedir(max); out = await res.json().catch(() => ({})); }
+  if (res.ok && out && out.stop_reason === 'max_tokens' && !web && queda() > 90_000) { max = 12000; res = await pedir(max); out = await res.json().catch(() => ({})); }
+  } catch (e) {
+    const tiempo = (e as any)?.name === 'TimeoutError' || (e as any)?.name === 'AbortError';
+    try { await sb.from('ia_log').insert({ persona_id: yo.id, accion: modo, modelo, tokens_in: 0, tokens_out: 0, ok: false, error: tiempo ? 'tiempo agotado' : String(e) }); } catch { /* nada */ }
+    return json({ error: tiempo ? 'Mr. Piggy tardó demasiado en responder. Probá de nuevo en un rato.' : 'IA: ' + String((e as any)?.message || e) }, 504);
+  }
   const err = res.ok ? null : (out?.error?.message || 'La API respondió ' + res.status);
   if (web && err && /web_search|web search/i.test(err)) return json({ error: 'La búsqueda web no está habilitada en la cuenta de Anthropic: activala en la configuración de la organización en console.anthropic.com y probá de nuevo.' }, 502);
   try { await sb.from('ia_log').insert({ persona_id: yo.id, accion: modo, modelo, tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err }); } catch { /* el registro no frena */ }
