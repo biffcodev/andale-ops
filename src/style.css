@@ -2586,3 +2586,12 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 .tk-pz{width:12px;height:12px;border-radius:50%;background:var(--c);flex:0 0 12px;margin:0 3px}
 .pa-g{display:flex;flex-wrap:wrap;gap:6px 14px;margin:6px 0 4px}
 .pa-g .chk{display:inline-flex;align-items:center;gap:6px}
+/* Seleccionar / deseleccionar todos */
+.todos-b{display:inline-flex;align-items:center;background:none;border:0;padding:2px 0;margin:0 0 4px;color:var(--accent-text);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.todos-b:hover{text-decoration:underline}
+h3>.todos-b{margin:0 0 0 10px;font-size:12px;vertical-align:middle}
+.menu>.todos-b,[data-todos-dentro]>.todos-b{flex-basis:100%;justify-content:flex-start}
+.ig-gasto{display:flex;gap:24px;flex-wrap:wrap;margin:4px 0 6px}
+.ig-gasto>div{display:grid}
+.ig-gasto b{font-size:22px;font-variant-numeric:tabular-nums}
+.ig-gasto span{color:var(--muted);font-size:13px}

@@ -21,7 +21,8 @@ const BASE = 'Sos Mr. Piggy, community manager senior de àndale, una agencia de
   'Escribís como la MARCA del cliente, no como la agencia. La ficha de marca (MARCA) es la regla: tono, trato (vos, tú o usted), emojis, palabras que usa, pilares, público y lo que nunca dice ni hace. ' +
   'Los copys_aprobados y los ejemplos de la ficha muestran cómo suena: tomá el tono, no copies sus frases. Las frases de "palabras que usa" son recursos para usar de vez en cuando, no un cierre fijo: variá los llamados a la acción entre piezas. ' +
   'No inventes precios, promociones, stock, plazos ni datos que no te pasen. Si no hay ficha, escribí neutro y sin inventar datos de la marca. ' +
-  'Usá solo datos de la marca que estén en la ficha, las notas o el brief (vos no navegás la web). Lo que en la ficha figura como pendiente ("completar con…", "no se informó", "a definir") NO es un dato: no inventes aniversarios, años de trayectoria, lanzamientos, eventos, sucursales ni fechas propias de la marca. Si una idea necesita un dato que no tenés, elegí otra.';
+  'Usá solo datos de la marca que estén en la ficha, las notas o el brief (vos no navegás la web). Lo que en la ficha figura como pendiente ("completar con…", "no se informó", "a definir") NO es un dato: no inventes aniversarios, años de trayectoria, lanzamientos, eventos, sucursales ni fechas propias de la marca. Si una idea necesita un dato que no tenés, elegí otra. ' +
+  'REDACCIÓN: español rioplatense correcto y natural, como lo escribiría una buena redactora. Frases completas y claras, con buena puntuación y concordancia; nada de paréntesis largos ni aclaraciones metidas en medio de la frase, ni frases que suenen a traducción. Releé cada texto antes de responder.';
 
 const REGLAS_FORMATO = 'QUÉ VA EN CADA FORMATO (campo contenido, para quien diseña o graba):\n' +
   '- Carruseles: una línea por slide, "Slide 1: …", 5 a 8 slides. La 1 es el gancho (promesa clara), las del medio desarrollan un punto cada una, la última cierra con el llamado a la acción. Texto corto por slide (lo que va escrito en la placa).\n' +
@@ -55,7 +56,7 @@ const SYS_PLAN = BASE + '\n\nArmás el plan de un mes de redes: qué publicar, q
   'Usá solo fechas especiales de Argentina que caigan DENTRO del mes a planificar y que tengan sentido para la marca (no fuerces efemérides). ' +
   'Respetá EXACTAMENTE la cantidad por formato que te piden: contalas antes de responder. Repartí las fechas en todo el mes, sin amontonar: posts, carruseles y reels en días distintos; las historias pueden compartir día con otra pieza pero no más de 2 historias por día. ' +
   'No repitas temas de lo ya cargado ni del mes anterior. ' +
-  'Si el contexto trae fechas_y_novedades (buscadas en la web y elegidas por el equipo), son tu fuente de fechas especiales: usá las que le sirvan a la marca en su fecha exacta y aprovechá las novedades para piezas útiles; fuera de esa lista no uses otras fechas especiales salvo feriados nacionales de los que estés seguro. Sin esa lista, mejor no uses fechas especiales que no sean feriados nacionales seguros.\n\n' + REGLAS_FORMATO +
+  'Si el contexto trae fechas_y_novedades (buscadas en la web y elegidas por el equipo), son tu fuente de fechas especiales y las eligió el equipo: CADA fecha y CADA novedad de esa lista tiene que tener al menos una pieza (en su fecha exacta; un feriado o día no laborable también: saludo, aviso de atención u horarios, en general una historia alcanza), antes que ideas genéricas, con su URL en fuentes; fuera de esa lista no uses otras fechas especiales salvo feriados nacionales de los que estés seguro. Sin esa lista, mejor no uses fechas especiales que no sean feriados nacionales seguros.\n\n' + REGLAS_FORMATO +
   '\n\nRespondé únicamente llamando una vez a la herramienta plan_del_mes, sin texto antes ni después.';
 
 const TOOL_COPYS = { name: 'escribir_copys', description: 'Copys y hashtags de cada pieza.', input_schema: { type: 'object', required: ['piezas'], properties: {
@@ -114,7 +115,7 @@ const TOOL_INV = { name: 'fechas_y_novedades', description: 'Lo que encontraste 
 const SYS_INV = 'Sos Mr. Piggy, community manager senior de àndale, una agencia de redes de Córdoba, Argentina. Investigás en la web para planificar el mes de redes de un cliente. Buscá y confirmá con fuentes: ' +
   '1) Fechas que caen DENTRO del mes a planificar: feriados y fechas patrias de Argentina, días internacionales, días del rubro, de sus oficios o de su público (por ejemplo, para construcción: Día del Albañil, Día del Arquitecto), y fechas comerciales (Hot Sale, CyberMonday, Black Friday, Día del Padre o de la Madre si caen ese mes). Verificá la fecha exacta de ESE año (las móviles cambian) y no incluyas fechas de otros meses. ' +
   '2) Novedades recientes (últimos 2 meses) del rubro en Argentina, y de su ciudad si se sabe, que le sirvan al público de la marca: tendencias, cambios de normativa o de precios de referencia, consejos de temporada, datos útiles. Nada de política partidaria ni noticias policiales o trágicas. ' +
-  'Solo lo que encontraste, con su URL; no inventes. Priorizá lo que tiene sentido para ESTA marca: hasta 12 fechas y 6 novedades. Cuando termines, llamá una vez a fechas_y_novedades.';
+  'Solo lo que encontraste, con su URL; no inventes. Priorizá lo que tiene sentido para ESTA marca: hasta 12 fechas y 6 novedades. El nombre de cada fecha y el título de cada novedad: cortos y claros, de 3 a 9 palabras, como un titular ("Día del Arquitecto", "Feriado por la visita del papa"), sin paréntesis ni aclaraciones: los detalles van en idea o en resumen, en frases completas. Cuando termines, llamá una vez a fechas_y_novedades.';
 
 function mesTxt(mes: string) {
   const [y, m] = String(mes || '').split('-').map(Number); if (!y || !m) return '';
@@ -136,7 +137,9 @@ Deno.serve(async req => {
   let cfg: any = null; try { const { data } = await svc.rpc('cred_leer', { n: 'anthropic' }); if (data) cfg = JSON.parse(data); } catch { cfg = null; }
   const key = (cfg && cfg.key) || Deno.env.get('ANTHROPIC_API_KEY');
   if (!key) return json({ error: 'La IA no está configurada todavía. Conectala en Configuración → Integraciones → Mr. Piggy.' }, 503);
-  const modelo = (cfg && cfg.modelo) || Deno.env.get('IA_MODEL') || 'claude-sonnet-5-5';
+  // El modelo de Redes se elige en Integraciones → Mr. Piggy (lista integraciones_cfg, ia.modelo_redes); si no, Opus 5.5.
+  let elegido = ''; try { const { data } = await svc.from('listas').select('valores').eq('clave', 'integraciones_cfg').maybeSingle(); const v = ((data && data.valores) || []).find((x: string) => String(x).startsWith('ia.modelo_redes=')); if (v && /^claude-[a-z0-9.-]+$/.test(v.slice(16))) elegido = v.slice(16); } catch { elegido = ''; }
+  let modelo = elegido || Deno.env.get('IA_MODEL_REDES') || 'claude-opus-5-5';
   const [tool, system] = ({ redes_copys: [TOOL_COPYS, SYS_COPYS], redes_agenda: [TOOL_AGENDA, SYS_AGENDA], redes_contenido: [TOOL_CONT, SYS_CONT], redes_revision: [TOOL_REV, SYS_REV], redes_investigar: [TOOL_INV, SYS_INV], redes_ideas: [TOOL_PLAN, SYS_PLAN] } as Record<string, [any, string]>)[modo];
   const marca = ctx && ctx.marca ? ctx.marca : null;
   const cab = 'HOY: ' + hoyAR() + (ctx.mes ? '\nMES A PLANIFICAR: ' + mesTxt(ctx.mes) + '. Todas las fechas van dentro de ese mes.' : '') +
@@ -157,6 +160,8 @@ Deno.serve(async req => {
   let max = ({ redes_copys: 4000, redes_agenda: 6000, redes_contenido: 3000, redes_revision: 8000, redes_investigar: 8000 } as Record<string, number>)[modo] || 8000;
   let res = await pedir(max), out: any = await res.json().catch(() => ({}));
   if (!res.ok && /tool_choice/i.test(out?.error?.message || '')) { forzar = false; res = await pedir(max); out = await res.json().catch(() => ({})); }
+  // Si el modelo elegido no está disponible en la cuenta, sigue con Sonnet.
+  if (!res.ok && modelo !== 'claude-sonnet-5-5' && (res.status === 404 || /model/i.test(out?.error?.message || ''))) { modelo = 'claude-sonnet-5-5'; res = await pedir(max); out = await res.json().catch(() => ({})); if (!res.ok && /tool_choice/i.test(out?.error?.message || '')) { forzar = false; res = await pedir(max); out = await res.json().catch(() => ({})); } }
   // Búsquedas largas: la API puede pausar el turno; se sigue desde donde quedó (hasta 3 veces).
   for (let i = 0; i < 3 && res.ok && out && out.stop_reason === 'pause_turn'; i++) { msgs = [{ role: 'user', content: user }, { role: 'assistant', content: out.content }]; res = await pedir(max); out = await res.json().catch(() => ({})); }
   if (res.ok && out && out.stop_reason === 'max_tokens' && !web) { max = 16000; res = await pedir(max); out = await res.json().catch(() => ({})); }

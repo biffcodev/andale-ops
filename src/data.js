@@ -625,6 +625,11 @@ async function invocar(fn, payload, sinConexion) {
 }
 export const avisosFn = payload => invocar('avisos', payload);
 // Avisa a personas del equipo (campanita y Slack). Devuelve false si falta el SQL 0035.
+// Uso de la IA desde una fecha (para estimar el gasto). Solo admins pueden leer el registro.
+export async function iaUsos(desde) {
+  const { data, error } = await sb.from('ia_log').select('accion, modelo, tokens_in, tokens_out, ok, created_at').gte('created_at', desde).limit(20000);
+  if (error) throw friendly(error); return data || [];
+}
 export async function avisarEquipo(alias, tipo, titulo, cuerpo, link) {
   const ids = [...new Set((alias || []).map(a => idx.personaId.get(a)).filter(Boolean))]; if (!ids.length) return 0;
   const { data, error } = await sb.rpc('avisar_equipo', { p_personas: ids, p_tipo: tipo || '', p_titulo: titulo || '', p_cuerpo: cuerpo || '', p_link: link || '' });

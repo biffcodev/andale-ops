@@ -467,7 +467,7 @@ export function initEquipo(ctx, k) {
         { k: 'detalle', label: 'Detalle', full: 1 },
         ...(c.tipo === 'Proveedor' ? [{ k: 'imputar', label: 'Después, repartir el gasto entre clientes (para ver cuánto deja cada uno)', type: 'check' }] : []),
       ],
-      extra: '<div class="field full"><span class="lbl">Qué se paga</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + its.map(i => '<label class="row" style="cursor:pointer"><input type="checkbox" data-pgsel="' + esc(i.id) + '" checked><span class="t"><b>' + esc(i.concepto) + '</b><span>' + esc(i.tipo) + '</span></span><span class="money">' + money(i.monto, i.moneda) + '</span></label>').join('') + '</div></div>',
+      extra: '<div class="field full"><span class="lbl">Qué se paga</span><div class="rows" data-todos="pgsel" style="border:1px solid var(--line);border-radius:8px">' + its.map(i => '<label class="row" style="cursor:pointer"><input type="checkbox" data-pgsel="' + esc(i.id) + '" checked><span class="t"><b>' + esc(i.concepto) + '</b><span>' + esc(i.tipo) + '</span></span><span class="money">' + money(i.monto, i.moneda) + '</span></label>').join('') + '</div></div>',
       onSave: async v => {
         const sel = its.filter(i => ($('[data-pgsel="' + i.id + '"]') || {}).checked);
         if (!sel.length) throw new Error('Elegí al menos un pago');

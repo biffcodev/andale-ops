@@ -128,6 +128,8 @@ const CREDS = {
 // Variantes que comparten logo con otra marca (para no repetir en la grilla queda el principal).
 const EXTRA = { meta: siMeta, meet: siZoom, stripe: siPaypal, importar: siTrello, webs: siWebflow, horas: siToggl, zapier: siMake, programacion: siHootsuite };
 
+import { MODELOS_IA, MODELO_REDES_DEF, gastoIA, nombreModelo, usd } from './iacosto.js';
+
 export function initIntegraciones(ctx) {
   const { S, esc, opt, toast, $, data, render, isAdmin, isStaff, closeForm, ISO } = ctx;
   const st = { cat: '', q: '', ver: '', est: null, cargando: false };
@@ -247,9 +249,16 @@ export function initIntegraciones(ctx) {
         '<div class="field"><span class="lbl">Esfuerzo estimado</span><span style="padding:9px 0">' + esc(ESF[x.esf] || '—') + '</span></div>' +
         '<div class="field full"><label for="ig-nota">¿Para qué la usarían? (opcional)</label><textarea id="ig-nota" rows="3" placeholder="Ej.: que el informe mensual de redes salga solo para los 13 clientes"' + (staff ? '' : ' disabled') + '>' + esc(cfgGet(k, 'nota')) + '</textarea></div>';
     }
+    if (x.k === 'ia' && adm) {
+      const sel = cfgGet('ia', 'modelo_redes') || MODELO_REDES_DEF;
+      cfg += '<div class="field full"><label for="ig-modelo">Modelo para Redes <span class="muted">(planificar, copys, revisar y buscar fechas)</span></label><select id="ig-modelo">' +
+        MODELOS_IA.map(m => '<option value="' + esc(m.id) + '"' + (m.id === sel ? ' selected' : '') + '>' + esc(m.n + ' · ' + m.nota + ' (US$ ' + m.in + ' / ' + m.out + ' por millón de tokens)') + '</option>').join('') + '</select>' +
+        '<span class="hint">Las tareas cortas (mails, respuestas, comandos) siguen con el modelo rápido. Si el modelo elegido no está disponible en la cuenta, Mr. Piggy usa Sonnet 5.5.</span></div>' +
+        '<div class="field full" id="ig-iagasto"><span class="lbl">Gasto</span><p class="muted" style="margin:0">Calculando…</p></div>';
+    }
     if (x.k === 'slack' && adm) cfg += '<div class="field full"><span class="lbl">Probar</span><div class="toolbar"><button type="button" class="btn sm" data-act="igSlackProbar">Mandarme mi resumen del día ahora</button></div></div>';
     if (x.k === 'tally' && adm) cfg += '<div class="field full" id="ig-tally"><span class="lbl">Formularios</span><p class="muted" style="margin:0">' + (on(x) ? 'Cargando formularios…' : 'Conectá la cuenta para ver los formularios.') + '</p></div>';
-    const puede = (x.st === 'tog' && adm) || (x.st === 'prox' && staff) || (x.st === 'cred' && adm && (x.cfg || []).length);
+    const puede = (x.k === 'ia' && adm) || (x.st === 'tog' && adm) || (x.st === 'prox' && staff) || (x.st === 'cred' && adm && (x.cfg || []).length);
     $('#panel').innerHTML = '<form id="igform" novalidate style="display:contents"><div class="panel-h"><div class="ig-ph">' + logo(x, true) + '<div><span class="eyebrow">' + esc(catL) + '</span><h2 id="panel-title">' + esc(x.n) + '</h2></div></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b"><div class="full">' + badge(x) + '</div>' +
       '<p class="formnote full">' + esc(x.que) + '</p>' +
@@ -259,6 +268,23 @@ export function initIntegraciones(ctx) {
     $('#panel').hidden = false; $('#scrim').hidden = false; st.abierto = k;
     if (x.cred && isAdmin() && !st.est) cargarEstado();
     if (x.k === 'tally' && adm && on(x)) tallyForms();
+    if (x.k === 'ia' && adm) iaGasto();
+  }
+  // Gasto estimado de la IA: este mes y el anterior, por modelo, con los precios de la API.
+  async function iaGasto() {
+    const box = $('#ig-iagasto'); if (!box) return;
+    const hoy = new Date(), ini = new Date(hoy.getFullYear(), hoy.getMonth(), 1), ant = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    try {
+      const rows = await data.iaUsos(ant.toISOString());
+      const este = gastoIA(rows.filter(r => new Date(r.created_at) >= ini)), pasado = gastoIA(rows.filter(r => new Date(r.created_at) < ini));
+      const primero = rows.length ? rows.map(r => r.created_at).sort()[0] : null;
+      const mes = d => d.toLocaleDateString('es-AR', { month: 'long' });
+      if (!$('#ig-iagasto')) return;
+      $('#ig-iagasto').innerHTML = '<span class="lbl">Gasto estimado</span><div class="ig-gasto"><div><b>' + usd(este.usd) + '</b><span>en ' + esc(mes(hoy)) + ' · ' + este.consultas + ' consultas</span></div>' +
+        (pasado.consultas ? '<div><b>' + usd(pasado.usd) + '</b><span>en ' + esc(mes(ant)) + ' · ' + pasado.consultas + ' consultas</span></div>' : '') + '</div>' +
+        (este.porModelo.length ? '<ul class="ig-ul">' + este.porModelo.map(m => '<li>' + esc(nombreModelo(m.modelo)) + ': ' + usd(m.usd) + ' (' + m.n + ')</li>').join('') + '</ul>' : '') +
+        '<span class="hint">Estimado con los tokens que registra la app' + (este.busquedas ? ', más ' + usd(este.busquedas) + ' de búsquedas web' : '') + (primero ? ' (registra desde el ' + new Date(primero).toLocaleDateString('es-AR') + ')' : '') + '. El gasto real, con lo de antes del registro, está en console.anthropic.com → Usage.</span>';
+    } catch (e) { box.innerHTML = '<span class="lbl">Gasto</span><p class="muted" style="margin:0">No pude leer el uso (' + esc(e.message) + ').</p>'; }
   }
   // Tally: formularios de la cuenta, qué tipo de brief es cada uno y si está conectado.
   async function tallyForms() {
@@ -275,7 +301,9 @@ export function initIntegraciones(ctx) {
   async function guardarPanel() {
     const k = st.abierto, x = CAT.find(y => y.k === k); if (!x) return;
     let lst = [...L()], cfg = [...CFG()];
-    if (x.st === 'cred') {
+    if (x.k === 'ia') {
+      const v = ($('#ig-modelo') || {}).value || ''; const p = 'ia.modelo_redes='; cfg = [...cfg.filter(y => !y.startsWith(p)), ...(v ? [p + v] : [])];
+    } else if (x.st === 'cred') {
       (x.cfg || []).forEach(f => { const el = $('#ig-c-' + f.c); const val = el ? el.value.trim() : ''; const p = k + '.' + f.c + '='; cfg = [...cfg.filter(y => !y.startsWith(p)), ...(val && val !== f.def ? [p + val] : [])]; });
     } else if (x.st === 'tog') {
       const v = $('#ig-on').checked; lst = lst.filter(y => y !== k); if (v) lst.push(k);

@@ -1,5 +1,6 @@
 // Asistente: qué falta para cerrar el mes, facturas de Google Drive leídas con IA,
 // conciliación de extractos bancarios y reparto de pagos a proveedores. La IA propone; un admin confirma.
+import { gastoIA, usd as usdIA } from './iacosto.js';
 import * as data from './data.js';
 
 const soloDig = s => String(s || '').replace(/\D/g, '');
@@ -159,7 +160,7 @@ export function initAsistente(ctx, k) {
       title: 'Cargar ' + listos.length + ' facturas', eyebrow: 'Desde Drive', saveLabel: 'Cargar', busyLabel: 'Cargando…',
       intro: 'Facturas leídas, con cliente reconocido y que todavía no están cargadas. Revisá y destildá lo que no corresponda.' + (k.cierre.envioAutoDrive() ? '<br><b>Al cargarlas, a cada cliente le llega su factura por email con el PDF.</b> (Se cambia en Ajustes → Drive.)' : ''),
       values: {}, fields: [],
-      extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + listos.map((x, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-asct="' + i + '" checked><span class="t"><b>' + esc(x.p.cliente) + ' · ' + esc(verTipo(x.p.tipo) + ' ' + (x.p.numero || 'sin número')) + '</b><span>' + esc([fmt(x.p.fecha), x.p.emisor ? 'factura ' + x.p.emisor : 'no se sabe quién factura', x.p.periodo ? 'mes ' + fmt(x.p.periodo) : ''].join(' · ')) + '</span></span><span class="money">' + money(x.p.monto, x.p.moneda) + '</span></label>').join('') + '</div></div>',
+      extra: '<div class="field full"><div class="rows" data-todos="asct" style="border:1px solid var(--line);border-radius:8px">' + listos.map((x, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-asct="' + i + '" checked><span class="t"><b>' + esc(x.p.cliente) + ' · ' + esc(verTipo(x.p.tipo) + ' ' + (x.p.numero || 'sin número')) + '</b><span>' + esc([fmt(x.p.fecha), x.p.emisor ? 'factura ' + x.p.emisor : 'no se sabe quién factura', x.p.periodo ? 'mes ' + fmt(x.p.periodo) : ''].join(' · ')) + '</span></span><span class="money">' + money(x.p.monto, x.p.moneda) + '</span></label>').join('') + '</div></div>',
       onSave: async () => {
         let n = 0, env = 0; const mal = [];
         for (const [i, x] of listos.entries()) {
@@ -214,7 +215,7 @@ export function initAsistente(ctx, k) {
     const partes = [...new Set([...S.C.map(x => x.nombre), ...AD.CO.map(x => x.nombre), ...AD.MV.map(v => v.contraparte).filter(Boolean)])].sort(cmp);
     const subs = [...new Set(AD.PC.map(p => p.subcuenta).filter(Boolean))].sort(cmp);
     return '<div class="sheet-b" style="border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><span><b>' + c.movimientos.length + ' gastos e ingresos</b> encontrados para ' + esc(c.caja.nombre) + (c.periodo ? ' · ' + esc(c.periodo) : '') + (c.saldo_final != null ? ' · al final del resumen había ' + esc(money(c.saldo_final, c.caja.moneda)) : '') + '</span><span class="toolbar"><button class="btn ghost sm" data-act="asConcX">Descartar</button><button class="btn primary sm" data-act="asConcOk" id="as-conc-ok">Cargar ' + n + ' en Gastos e ingresos</button></span></div>' +
-      '<div class="tbl"><table><thead><tr><th></th><th>Fecha</th><th>Quién</th><th>Categoría</th><th>Detalle</th><th class="r">Monto</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="tbl" data-todos="cc"><table><thead><tr><th></th><th>Fecha</th><th>Quién</th><th>Categoría</th><th>Detalle</th><th class="r">Monto</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<datalist id="dl-as-partes">' + partes.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist><datalist id="dl-as-sub">' + subs.map(s => '<option value="' + esc(s) + '">').join('') + '</datalist>';
   }
   async function cargarConciliacion() {
@@ -241,7 +242,7 @@ export function initAsistente(ctx, k) {
       title: 'Repartir pagos a proveedores', eyebrow: 'Propuesta de la IA', saveLabel: 'Guardar repartos', busyLabel: 'Guardando…',
       intro: 'Cada pago queda asignado al cliente que corresponde, para ver cuánto deja cada uno. Destildá lo que no te convenza; después se puede corregir desde Gastos e ingresos.',
       values: {}, fields: [],
-      extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:8px">' + reps.map((x, i) => '<label class="row" style="cursor:pointer;align-items:start"><input type="checkbox" data-asrp="' + i + '"' + (x.partes.length && x.confianza !== 'baja' ? ' checked' : '') + (x.partes.length ? '' : ' disabled') + ' style="margin-top:4px"><span class="t"><b>' + esc(x.mov.contraparte + ' · ' + fmt(x.mov.fecha)) + ' · <span class="money">' + money(x.mov.egreso, x.mov.moneda) + '</span></b><span>' + esc(x.mov.detalle || '') + '</span>' +
+      extra: '<div class="field full"><div class="rows" data-todos="asrp" style="border:1px solid var(--line);border-radius:8px">' + reps.map((x, i) => '<label class="row" style="cursor:pointer;align-items:start"><input type="checkbox" data-asrp="' + i + '"' + (x.partes.length && x.confianza !== 'baja' ? ' checked' : '') + (x.partes.length ? '' : ' disabled') + ' style="margin-top:4px"><span class="t"><b>' + esc(x.mov.contraparte + ' · ' + fmt(x.mov.fecha)) + ' · <span class="money">' + money(x.mov.egreso, x.mov.moneda) + '</span></b><span>' + esc(x.mov.detalle || '') + '</span>' +
         (x.partes.length ? '<span class="tags" style="margin-top:4px">' + x.partes.map(p => '<span class="tag">' + esc(p.descripcion) + ' · ' + esc(money(p.monto, x.mov.moneda)) + '</span>').join('') + '</span>' : '') + (x.nota ? '<span class="sub">' + esc(x.nota) + '</span>' : '') + '</span><span class="tag">' + esc(verConf(x.confianza)) + '</span></label>').join('') + '</div></div>',
       onSave: async () => {
         let n = 0;
@@ -340,7 +341,7 @@ export function initAsistente(ctx, k) {
       title: 'Cierre de ' + monthLabel(m), eyebrow: '✨ En un clic', saveLabel: 'Hacer el cierre', busyLabel: 'Haciendo el cierre…',
       intro: 'Esto es lo que voy a hacer, en este orden. Destildá lo que no quieras. Los emails salen desde administracion@weareandale.com.',
       values: {}, fields: [],
-      extra: '<div class="field full"><div class="rows" style="border:1px solid var(--line);border-radius:10px">' + pasos.map((p, i) => '<label class="row" style="cursor:pointer;grid-template-columns:24px 22px minmax(0,1fr)"><input type="checkbox" data-cp="' + p.k + '" checked><span class="muted">' + (i + 1) + '</span><span class="t"><b style="white-space:normal">' + esc(p.label) + '</b><span style="white-space:normal">' + esc(p.sub || '') + '</span></span></label>').join('') + '</div></div><p class="formnote" id="cierre-prog" style="grid-column:1/-1" aria-live="polite"></p>',
+      extra: '<div class="field full"><div class="rows" data-todos="cp" style="border:1px solid var(--line);border-radius:10px">' + pasos.map((p, i) => '<label class="row" style="cursor:pointer;grid-template-columns:24px 22px minmax(0,1fr)"><input type="checkbox" data-cp="' + p.k + '" checked><span class="muted">' + (i + 1) + '</span><span class="t"><b style="white-space:normal">' + esc(p.label) + '</b><span style="white-space:normal">' + esc(p.sub || '') + '</span></span></label>').join('') + '</div></div><p class="formnote" id="cierre-prog" style="grid-column:1/-1" aria-live="polite"></p>',
       onSave: async () => {
         const v = Object.fromEntries(pasos.map(p => [p.k, !!($('[data-cp="' + p.k + '"]') || {}).checked]));
         if (!Object.values(v).some(Boolean)) throw new Error('Tildá al menos un paso');
@@ -411,7 +412,7 @@ export function initAsistente(ctx, k) {
     const pasosDrive = '<ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li>console.cloud.google.com → proyecto nuevo “andale-ops”.</li><li>APIs y servicios → Biblioteca → habilitá <b>Google Drive API</b>.</li><li>IAM → Cuentas de servicio → Crear (sin roles) → Claves → Agregar clave → JSON.</li><li>Supabase → Edge Functions → Secrets → <code>GOOGLE_SERVICE_ACCOUNT</code> con el contenido completo del .json.</li><li>En Drive, compartí la carpeta de facturas con el email de la cuenta de servicio, como Lector.</li></ol>';
     return '<section class="sheet" id="as-config"><div class="sheet-h"><h2>IA, Drive y resumen por email</h2><span class="muted">IA ' + (st.ia ? '✓' : '✗') + ' · Drive ' + (st.drive ? '✓' : '✗') + '</span></div><div class="sheet-b" style="display:grid;gap:16px">' +
       (st.error ? '<p style="margin:0;color:var(--crit)">' + esc(st.error) + '</p>' : '') +
-      '<div><b>IA (Claude)</b> · ' + ok(st.ia) + (st.ia ? '<div class="muted" style="margin-top:4px">Este mes: ' + usos.length + ' consultas.</div>' : '<div class="muted" style="margin-top:4px">Para conectarla, mirá Configuración técnica, abajo.</div>') + '</div>' +
+      '<div><b>IA (Claude)</b> · ' + ok(st.ia) + (st.ia ? '<div class="muted" style="margin-top:4px">Este mes: ' + usos.length + ' consultas · ' + usdIA(gastoIA(usos).usd) + ' estimados.</div>' : '<div class="muted" style="margin-top:4px">Para conectarla, mirá Configuración técnica, abajo.</div>') + '</div>' +
       '<div><b>Google Drive</b> · ' + ok(st.drive) + (st.drive_email ? '<div style="margin-top:4px">Email para compartir carpetas de Drive: <code>' + esc(st.drive_email) + '</code> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button></div>' : '') + (st.drive_error ? '<div style="color:var(--crit)">' + esc(st.drive_error) + '</div>' : '') + (st.drive ? '' : '<div class="muted" style="margin-top:4px">Para conectarlo, mirá Configuración técnica, abajo.</div>') +
       '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta2" value="' + esc(cfg.carpeta_url || '') + '" placeholder="Link de la carpeta de facturas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta2">Guardar carpeta de facturas</button></div>' +
       '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta3" value="' + esc(cfg.carpeta_propuestas_url || '') + '" placeholder="Link de la carpeta de propuestas anteriores (opcional)" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta3" data-k="propuestas">Guardar carpeta de propuestas</button></div><span class="muted" style="display:block;font-size:13px;margin-top:6px">La IA toma de ahí hasta 3 propuestas viejas (Google Docs o PDF) como referencia de estilo y precios. Compartila también con el email de arriba.</span></div>' +
@@ -420,7 +421,7 @@ export function initAsistente(ctx, k) {
       '<p class="muted" style="margin:0;font-size:13px">Los PDFs y resúmenes del banco que lee la IA se envían a la API de Anthropic solo para procesarlos; no se usan para entrenar modelos. Nada se guarda en la app sin que lo confirmen.</p>' +
       '<details><summary style="cursor:pointer">Configuración técnica</summary><div class="muted" style="margin-top:8px;display:grid;gap:10px">' +
       (st.modelo ? '<div>Modelo de IA: ' + esc(st.modelo) + '</div>' : '') +
-      (st.ia ? '<div>Este mes: ' + new Intl.NumberFormat('es-AR').format(tin) + ' tokens de entrada y ' + new Intl.NumberFormat('es-AR').format(tout) + ' de salida. El gasto se ve en console.anthropic.com.</div>' : '<div><b>Conectar la IA</b>' + pasosIA + '</div>') +
+      (st.ia ? '<div>Este mes: ' + new Intl.NumberFormat('es-AR').format(tin) + ' tokens de entrada y ' + new Intl.NumberFormat('es-AR').format(tout) + ' de salida, unos <b>' + usdIA(gastoIA(usos).usd) + '</b> estimados. El detalle y el modelo de Redes están en Integraciones → Mr. Piggy; el gasto real, en console.anthropic.com.</div>' : '<div><b>Conectar la IA</b>' + pasosIA + '</div>') +
       (st.drive ? '' : '<div><b>Conectar Google Drive</b>' + pasosDrive + '</div>') +
       '</div></details>' +
       '</div></section>';
