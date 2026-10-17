@@ -1,15 +1,15 @@
-// Asistente de àndale: Google Drive (solo lectura) + IA (Claude) para tareas de administración.
+// Asistente de àndale: Google Drive (lee las facturas y ordena sus nombres) + IA (Claude) para tareas de administración.
 // Solo administradores. El resumen mensual lo dispara pg_cron con un secreto propio (ver 0008_asistente_cron.sql).
 // verify_jwt está apagado a propósito: la función valida al usuario (rpc yo → admin) o el secreto de pg_cron.
 //
 // Secretos (Supabase → Edge Functions → Secrets):
 //   ANTHROPIC_API_KEY        clave de la API de Anthropic (cuenta de àndale)
-//   GOOGLE_SERVICE_ACCOUNT   JSON completo de la cuenta de servicio de Google (Drive de solo lectura)
+//   GOOGLE_SERVICE_ACCOUNT   JSON completo de la cuenta de servicio de Google (lee las facturas y ordena sus nombres)
 //   IA_MODEL                 opcional, default claude-sonnet-5-5
 //   RESEND_API_KEY / EMAIL_FROM   los mismos de `enviar-email`, para el resumen mensual
 //
 // Acciones (POST { accion, ... }):
-//   estado · drive_sync · drive_descargar · leer_factura · conciliar · imputar · propuesta · cierre · cierre_email · cron_cierre
+//   estado · drive_sync · drive_descargar · drive_renombrar · leer_factura · conciliar · imputar · propuesta · cierre · cierre_email · cron_cierre
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const CORS = {
@@ -93,7 +93,7 @@ async function googleToken() {
   const sa = await cuentaServicio(); if (!sa) throw new Aviso('Drive no está configurado. Conectalo en Configuración → Integraciones → Google Drive.', 503);
   if (tokenCache && tokenCache.exp > Date.now() + 60_000 && tokenCache.cuenta === sa.client_email) return tokenCache.t;
   const now = Math.floor(Date.now() / 1000);
-  const unsigned = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) + '.' + b64url(JSON.stringify({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/drive.readonly', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 }));
+  const unsigned = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) + '.' + b64url(JSON.stringify({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/drive', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 }));
   const der = Uint8Array.from(atob(String(sa.private_key).replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')), c => c.charCodeAt(0));
   const key = await crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
   const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsigned)));
@@ -112,6 +112,16 @@ async function gdrive(path: string) {
     throw new Aviso('Drive: ' + m, 502);
   }
   return res;
+}
+// Renombrar un archivo (pide permiso de Editor sobre la carpeta; con Lector, Drive lo rechaza).
+async function renombrar(fileId: string, nombre: string) {
+  const res = await fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) + '?supportsAllDrives=true&fields=id,name', { method: 'PATCH', headers: { Authorization: 'Bearer ' + await googleToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ name: nombre }) });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    if (res.status === 403 || res.status === 404) throw new Aviso('Para ordenar los nombres en Drive, compartí la carpeta con la cuenta de servicio como Editor (ahora es Lector).', 403);
+    throw new Aviso('Drive: ' + (e?.error?.message || res.status), 502);
+  }
+  return await res.json();
 }
 const FOLDER = 'application/vnd.google-apps.folder';
 const LEIBLES = (f: any) => f.mimeType === 'application/pdf' || /\.pdf$/i.test(f.name) || /^image\/(png|jpe?g|webp)$/.test(f.mimeType);
@@ -549,6 +559,15 @@ Deno.serve(async req => {
         const r = chk(await sb.from('drive_archivos').select('file_id,nombre').eq('id', b.archivo_id).single()) as any;
         const f = await descargar(r.file_id);
         return json({ nombre: r.nombre, mime: f.mime, base64: f.base64 });
+      }
+      case 'drive_renombrar': {
+        const nombre = String(b.nombre || '').trim();
+        if (!/^[\w .,()&+-]{3,180}\.(pdf|png|jpe?g|webp)$/i.test(nombre)) throw new Aviso('Nombre de archivo no válido: ' + nombre);
+        const r = chk(await sb.from('drive_archivos').select('file_id,nombre').eq('id', b.archivo_id).single()) as any;
+        if (r.nombre === nombre) return json({ ok: true, nombre, igual: true });
+        await renombrar(r.file_id, nombre);
+        chk(await sb.from('drive_archivos').update({ nombre }).eq('id', b.archivo_id));
+        return json({ ok: true, nombre, antes: r.nombre });
       }
       case 'leer_factura': return json(await leerFactura(ctx, b));
       case 'conciliar': return json(await conciliar(ctx, b));

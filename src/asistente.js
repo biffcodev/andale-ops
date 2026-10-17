@@ -1,6 +1,7 @@
 // Asistente: qué falta para cerrar el mes, facturas de Google Drive leídas con IA,
 // conciliación de extractos bancarios y reparto de pagos a proveedores. La IA propone; un admin confirma.
 import { mesFactura } from './mesfactura.js';
+import { nombreArchivoFactura, extDe } from './normaliza.js';
 import { gastoIA, usd as usdIA } from './iacosto.js';
 import * as data from './data.js';
 
@@ -95,7 +96,7 @@ export function initAsistente(ctx, k) {
   }
   function presetDesde(da) {
     const d = da.datos || {}, mt = matchArchivo(da);
-    return { mesPor: mt.mesPor, mesSeguro: mt.mesSeguro, cliente: mt.cliente, tipo: mt.tipo, emisor: mt.emisor, numero: d.numero_completo || '', periodo: /^\d{4}-\d{2}$/.test(mt.periodo) ? mt.periodo : thisMonth(), fecha: d.fecha || today(), vencimiento: d.vencimiento || '', moneda: d.moneda || 'ARS', monto: d.total ?? '', concepto: d.concepto || '', link_pdf: da.link || '', notas: d.cae ? 'CAE ' + d.cae : '' };
+    return { mesPor: mt.mesPor, mesSeguro: mt.mesSeguro, cliente: mt.cliente, tipo: mt.tipo, emisor: mt.emisor, numero: d.numero_completo || '', periodo: /^\d{4}-\d{2}$/.test(mt.periodo) ? mt.periodo : thisMonth(), fecha: d.fecha || today(), vencimiento: d.vencimiento || '', moneda: d.moneda || 'ARS', monto: d.total ?? '', concepto: (mt.cliente && /^\d{4}-\d{2}$/.test(mt.periodo) && k.conceptoDe ? k.conceptoDe(mt.cliente, mt.periodo) : '') || d.concepto || '', link_pdf: da.link || '', notas: d.cae ? 'CAE ' + d.cae : '' };
   }
   async function aprender(da, v) { // si confirmaron emisor o cliente, guardar los CUIT para la próxima
     const d = (da && da.datos) || {};
@@ -113,10 +114,47 @@ export function initAsistente(ctx, k) {
     try { const r = await k.cierre.enviarFacturaDrive({ f, cliente, periodo, da }); return r; }
     catch (e) { return { ok: false, motivo: cliente + ': ' + e.message }; }
   }
+  // Deja el archivo de Drive con el nombre de siempre: CLIENTE-MES-AÑO.pdf
+  async function ordenarNombre(da, cliente, periodo, tipo) {
+    const nom = nombreArchivoFactura(cliente, periodo, { tipo, ext: extDe(da.nombre), usados: AD.DA.filter(x => x.id !== da.id).map(x => x.nombre) });
+    if (!nom || nom === da.nombre) return null;
+    try { await data.asistente({ accion: 'drive_renombrar', archivo_id: da.id, nombre: nom }); da.nombre = nom; return { ok: true, nombre: nom }; }
+    catch (e) { return { ok: false, motivo: e.message }; }
+  }
+  // Lo que no sigue el formato: archivos de Drive ya unidos a una factura y conceptos de facturas
+  function porOrdenar() {
+    const usados = AD.DA.map(x => x.nombre), archivos = [], conceptos = [];
+    AD.DA.filter(d => d.factura_id).forEach(d => {
+      const f = AD.F.find(x => x.id === d.factura_id); if (!f || !f.periodo) return;
+      const nom = nombreArchivoFactura(f.cliente, String(f.periodo).slice(0, 7), { tipo: f.tipo, ext: extDe(d.nombre), usados: usados.filter(n => n !== d.nombre) });
+      if (nom && nom !== d.nombre) { archivos.push({ d, nom }); usados.push(nom); }
+    });
+    if (k.conceptoDe) AD.F.forEach(f => { if (!f.periodo || !f.cliente) return; const c = k.conceptoDe(f.cliente, String(f.periodo).slice(0, 7)); if (c && c !== (f.concepto || '')) conceptos.push({ f, c }); });
+    return { archivos, conceptos };
+  }
+  function ordenarTodo() {
+    const { archivos, conceptos } = porOrdenar();
+    if (!archivos.length && !conceptos.length) { toast('Ya está todo con el formato de siempre'); return; }
+    const fila = (a, b) => '<div class="row" style="cursor:default"><span class="t"><span style="text-decoration:line-through;color:var(--muted)">' + esc(a || '(vacío)') + '</span><b>' + esc(b) + '</b></span></div>';
+    openPanel({
+      title: 'Ordenar nombres y conceptos', eyebrow: 'Facturas', saveLabel: 'Ordenar', busyLabel: 'Ordenando…',
+      intro: 'Archivos: <b>CLIENTE-MES-AÑO.pdf</b>. Conceptos: <b>servicios · Mes Año</b>. Así queda todo igual, venga como venga.',
+      values: {}, fields: [],
+      extra: (archivos.length ? '<div class="field full"><span class="lbl">' + archivos.length + ' archivos en Drive</span><div class="rows" style="border:1px solid var(--line);border-radius:8px;max-height:220px;overflow:auto">' + archivos.slice(0, 60).map(x => fila(x.d.nombre, x.nom)).join('') + '</div></div>' : '') +
+        (conceptos.length ? '<div class="field full"><span class="lbl">' + conceptos.length + ' conceptos de facturas</span><div class="rows" style="border:1px solid var(--line);border-radius:8px;max-height:220px;overflow:auto">' + conceptos.slice(0, 60).map(x => fila(x.f.concepto, x.c)).join('') + '</div></div>' : ''),
+      onSave: async () => {
+        let n = 0, aviso = '';
+        for (const x of archivos) { try { await data.asistente({ accion: 'drive_renombrar', archivo_id: x.d.id, nombre: x.nom }); x.d.nombre = x.nom; n++; } catch (e) { aviso = e.message; break; } }
+        for (const x of conceptos) { await data.upd('facturas', x.f.id, { concepto: x.c }); x.f.concepto = x.c; n++; }
+        toast(aviso ? aviso : n + ' cambios hechos');
+      },
+    });
+  }
   function crearDesdeDrive(id) {
     const da = AD.DA.find(x => x.id === id); if (!da) return;
     k.formFactura(null, presetDesde(da), { archivo: da, onSaved: async (fid, v) => {
       await data.upd('drive_archivos', da.id, { factura_id: fid }); await aprender(da, v);
+      const rn = await ordenarNombre(da, v.cliente, v.periodo, v.tipo); if (rn && !rn.ok) setTimeout(() => toast(rn.motivo), 2200);
       const r = await mandarAlCliente(fid, v.cliente, v.periodo, da, { id: fid, tipo: v.tipo, numero: v.numero, fecha: v.fecha, vencimiento: v.vencimiento, monto: v.monto, moneda: v.moneda, link_pdf: v.link_pdf });
       if (r) setTimeout(() => toast(r.ok ? 'Factura enviada a ' + r.para : 'No se mandó: ' + r.motivo), 900);
     } });
@@ -154,6 +192,7 @@ export function initAsistente(ctx, k) {
   async function cargarDeDrive(x) {
     const p = x.p, f = await data.ins('facturas', { cliente_id: data.ids.cliente(p.cliente), tipo: p.tipo, emisor: p.emisor || '', numero: p.numero, periodo: p.periodo ? p.periodo + '-01' : null, fecha: p.fecha, vencimiento: p.vencimiento || null, moneda: p.moneda, monto: p.monto, concepto: p.concepto, link_pdf: p.link_pdf, notas: p.notas });
     await data.upd('drive_archivos', x.d.id, { factura_id: f.id }); await aprender(x.d, p);
+    await ordenarNombre(x.d, p.cliente, p.periodo, p.tipo);
     return mandarAlCliente(f.id, p.cliente, p.periodo, x.d, f);
   }
   async function crearTodos() {
@@ -398,7 +437,7 @@ export function initAsistente(ctx, k) {
         return '<div class="row" style="cursor:default"><span class="d">' + (d.modificado ? fmt(String(d.modificado).slice(0, 10)) : '') + '</span><span class="t"><b><a href="' + esc(d.link) + '" target="_blank" rel="noopener">' + esc(d.nombre) + '</a></b><span>' + esc(d.carpeta || '') + (desc ? ' · ' + esc(desc) : '') + '</span>' + (reco ? '<span class="as-reco" style="margin-top:2px">' + reco + '</span>' : '') + (d.error ? '<span style="color:var(--crit)">' + esc(d.error) + '</span>' : '') + '</span><span class="toolbar">' + pill(VER_DA[d.estado] || d.estado, { Nuevo: '--s-empezar', 'Leído': '--s-revision', Vinculado: '--s-entregado', Ignorado: '--muted', Error: '--crit' }[d.estado]) + btns + (d.estado !== 'Ignorado' && d.estado !== 'Vinculado' ? '<button class="btn ghost sm" data-act="asIgn" data-id="' + esc(d.id) + '" aria-label="Descartar">✕</button>' : d.estado === 'Ignorado' ? '<button class="btn ghost sm" data-act="asRest" data-id="' + esc(d.id) + '">Restaurar</button>' : '') + '</span></div>';
       }).join('');
       inner = '<div class="sheet-b" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)"><span class="muted"><a href="' + esc(cfg.carpeta_url || 'https://drive.google.com/drive/folders/' + cfg.carpeta) + '" target="_blank" rel="noopener">Carpeta de facturas</a> <button class="btn link" data-act="asCarpetaCambiar" data-v="1" title="Usar otra carpeta de Drive">Cambiar</button>' + (cfg.ultima_sync ? ' · revisada ' + esc(horaLocal(cfg.ultima_sync)) : '') + ' · ' + AD.DA.length + (AD.DA.length === 1 ? ' archivo' : ' archivos') + '</span>' +
-        '<span class="toolbar">' + (AD.as.driveBusy ? '<span class="muted">' + esc(AD.as.driveBusy) + '</span>' : '<label class="chk as-auto" title="Cuando cargás una factura desde Drive, al cliente le llega por email con el PDF"><input type="checkbox" data-act="asAuto"' + (k.cierre.envioAutoDrive() ? ' checked' : '') + '> Mandarlas solas al cliente</label><button class="btn sm" data-act="asSync">Buscar nuevos</button>' + (nuevos ? '<button class="btn sm primary" data-act="asLeerTodo"' + (st.ia ? '' : ' disabled title="Falta configurar la IA"') + '>✨ Leer ' + nuevos + ' con IA</button>' : '') + (leidos ? '<button class="btn sm primary" data-act="asCrearTodos">Cargar todas las reconocidas</button>' : '')) + '</span></div>' +
+        '<span class="toolbar">' + (AD.as.driveBusy ? '<span class="muted">' + esc(AD.as.driveBusy) + '</span>' : '<label class="chk as-auto" title="Cuando cargás una factura desde Drive, al cliente le llega por email con el PDF"><input type="checkbox" data-act="asAuto"' + (k.cierre.envioAutoDrive() ? ' checked' : '') + '> Mandarlas solas al cliente</label>' + (() => { const o = porOrdenar(), n = o.archivos.length + o.conceptos.length; return n ? '<button class="btn sm" data-act="asOrdenar" title="Deja los nombres de los archivos y los conceptos con el formato de siempre">Ordenar nombres (' + n + ')</button>' : ''; })() + '<button class="btn sm" data-act="asSync">Buscar nuevos</button>' + (nuevos ? '<button class="btn sm primary" data-act="asLeerTodo"' + (st.ia ? '' : ' disabled title="Falta configurar la IA"') + '>✨ Leer ' + nuevos + ' con IA</button>' : '') + (leidos ? '<button class="btn sm primary" data-act="asCrearTodos">Cargar todas las reconocidas</button>' : '')) + '</span></div>' +
         '<div class="sheet-b" style="border-bottom:1px solid var(--line)"><div class="seg" role="group" aria-label="Filtro">' + [['pendientes', 'Por revisar'], ['vinculados', 'Cargadas'], ['ignorados', 'Descartadas'], ['todos', 'Todas']].map(([kk, l]) => '<button data-act="asDf" data-v="' + kk + '" aria-pressed="' + (df === kk) + '">' + l + '</button>').join('') + '</div></div>' +
         (rows ? '<div class="rows">' + rows + '</div>' + (ls.length > 120 ? '<div class="count">Mostrando 120 de ' + ls.length + '</div>' : '') : emptyBox(AD.DA.length ? 'Nada en este filtro' : 'Todavía no se revisó la carpeta', AD.DA.length ? '' : 'Tocá “Buscar nuevos”.'));
     }
@@ -461,6 +500,7 @@ export function initAsistente(ctx, k) {
     asLeerTodo: () => leerArchivos(AD.DA.filter(d => d.estado === 'Nuevo' || d.estado === 'Error').map(d => d.id).slice(0, 60)),
     asCrear: t => crearDesdeDrive(t.dataset.id),
     asCrearTodos: () => crearTodos(),
+    asOrdenar: () => ordenarTodo(),
     asVinc: t => vincularDrive(t.dataset.id),
     asDesv: async t => { try { await data.upd('drive_archivos', t.dataset.id, { factura_id: null }); await ctx.reload(); } catch (err) { toast(err.message); } },
     asIgn: async t => { try { await data.upd('drive_archivos', t.dataset.id, { estado: 'Ignorado' }); await ctx.reload(); } catch (err) { toast(err.message); } },

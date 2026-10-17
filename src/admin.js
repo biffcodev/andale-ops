@@ -1,5 +1,6 @@
 // Administración: precios y aumentos, cierre de mes (resumen → comprobante → cobro → recordatorio), facturas.
 // Solo para administradores. La base de datos además lo impide para otros roles.
+import { conceptoFactura, mesAnio } from './normaliza.js';
 import { leerNumero, cuit as fmtCuit } from './formato.js';
 import { firmaDe, firmanteDe, firmaSelect, personaIdDe } from './firma.js';
 import * as data from './data.js';
@@ -71,6 +72,20 @@ export function initAdmin(ctx) {
     return best;
   }
   const historial = abonoId => AD.PR.filter(p => p.abono_id === abonoId).sort((a, b) => b.desde.localeCompare(a.desde));
+  // Servicios que se facturan a un cliente en un mes, para el concepto normalizado de la factura.
+  // Primero lo que dice su resumen de cuenta de ese mes; si no hay, sus abonos de ese mes.
+  const NOM_SERV = { Redes: 'Redes', Ads: 'Ads', Extras: 'Piezas extra', Pauta: 'Pauta', Ticket: 'Pedidos' };
+  function serviciosDelMes(cliente, m) {
+    const r = AD.R.find(x => x.cliente === cliente && x.periodo === m), out = [];
+    if (r && Array.isArray(r.items)) r.items.filter(i => i.inc).forEach(i => {
+      if (i.origen === 'Abono') { const a = S.A.find(x => 'abono:' + x._id === i.ref); out.push(a ? (NOM_SERV[a.tipo] || a.tipo) : String(i.concepto || '').split(' · ')[0]); }
+      else if (i.origen === 'Proyecto') out.push(String(i.concepto || '').split(' · ')[0]);
+      else if (NOM_SERV[i.origen]) out.push(NOM_SERV[i.origen]);
+    });
+    if (!out.length) S.A.filter(a => a.cliente === cliente && abonoEnMes(a, m)).sort((a, b) => (a.tipo === 'Redes' ? -1 : b.tipo === 'Redes' ? 1 : cmp(a.tipo, b.tipo))).forEach(a => out.push(NOM_SERV[a.tipo] || a.tipo));
+    return out;
+  }
+  const conceptoDe = (cliente, m) => conceptoFactura(serviciosDelMes(cliente, m), m);
   function conceptoAbono(a, m) {
     const mes = cap(monthLabel(m).split(' ')[0]);
     if (a.tipo === 'Redes') return 'Redes sociales · plan ' + (a.plan || '') + ' · ' + mes;
@@ -1270,7 +1285,7 @@ export function initAdmin(ctx) {
       '</div><span class="hint">La IA lee la factura y completa los campos. Revisalos antes de guardar.</span></div>';
     const cliente = f ? f.cliente : (preset && preset.cliente) || (AD.rd && AD.rd.cliente) || '';
     const ca = cadm(cliente);
-    const base = f || Object.assign({ tipo: ca.comprobante_default || 'Factura ARCA', emisor: ca.emisor_default || '', fecha: today(), moneda: AD.rd ? AD.rd.moneda : (ca.moneda || 'ARS'), monto: AD.rd ? r2(totalItems(AD.rd.items)) : '', periodo: AD.rd ? AD.rd.m : thisMonth(), concepto: AD.rd ? 'Servicios ' + monthLabel(AD.rd.m) : '' }, preset || {});
+    const base = f || Object.assign({ tipo: ca.comprobante_default || 'Factura ARCA', emisor: ca.emisor_default || '', fecha: today(), moneda: AD.rd ? AD.rd.moneda : (ca.moneda || 'ARS'), monto: AD.rd ? r2(totalItems(AD.rd.items)) : '', periodo: AD.rd ? AD.rd.m : thisMonth(), concepto: AD.rd ? (conceptoDe(AD.rd.cliente, AD.rd.m) || 'Servicios · ' + mesAnio(AD.rd.m)) : '' }, preset || {});
     if (!f && !base.vencimiento) { const d = new Date(); d.setDate(d.getDate() + 10); base.vencimiento = d.toISOString().slice(0, 10); }
     openPanel({
       title: f ? (verTipo(f.tipo) + ' ' + (f.numero || 'sin número')) : 'Nueva factura', eyebrow: f ? 'Editar factura' : 'Nueva',
@@ -1729,7 +1744,7 @@ export function initAdmin(ctx) {
 
   /* ---------- Módulos: sueldos y pagos, asistente ---------- */
   const kit = { arranque, antesDeArrancar, cierre: { bulkResumenes, bulkRecordatorios, bulkAvisos, enviarDirecto, enviarFacturaDrive, envioAutoDrive }, estiloDoc, hoyDMY, cfgDocs, datosClienteDoc, AD, money, parseMonto, r2, add, multi, lock, cap, openPanel, MONEDAS, EMISORES, cadm, abonoEnMes, precioEn, sugerencias, clientesDelMes, estadoFactura, mail, cajasDe, subcuentas, renderImp, cxpAbiertos,
-    formFactura: (...a) => formFactura(...a), formMovimiento: (...a) => formMovimiento(...a),
+    formFactura: (...a) => formFactura(...a), conceptoDe: (c, m) => conceptoDe(c, m), formMovimiento: (...a) => formMovimiento(...a),
     openComposer: o => openComposer(o), cfgMarca: () => cfgMarca(), firma: () => firma(), mailsDe: c => mailsDe(c), cuotasPlan };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;
   const MT = initMantenimiento(ctx, { ...kit, data });

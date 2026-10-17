@@ -1,0 +1,14 @@
+import { nombreArchivoFactura as N, conceptoFactura as C, slugCliente } from '../src/normaliza.js';
+let fails = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) fails++; };
+ok(N('Apromax', '2026-10') === 'APROMAX-OCT-2026.pdf', 'APROMAX-OCT-2026.pdf');
+ok(N('Facultad de Lenguas', '2026-11-01') === 'FACULTAD-DE-LENGUAS-NOV-2026.pdf', 'espacios a guiones y periodo con día');
+ok(N('Barbalé', '2026-01', { ext: 'PDF' }) === 'BARBALE-ENE-2026.pdf', 'sin tildes y extensión en minúscula');
+ok(N('Lomo & Co.', '2026-12') === 'LOMO-Y-CO-DIC-2026.pdf', '& y puntos');
+ok(N('Apromax', '2026-10', { tipo: 'Nota de crédito' }) === 'APROMAX-OCT-2026-NC.pdf', 'nota de crédito con -NC');
+ok(N('Apromax', '2026-10', { usados: ['APROMAX-OCT-2026.pdf'] }) === 'APROMAX-OCT-2026-2.pdf', 'si ya existe, -2');
+ok(N('Apromax', '') === '' && N('', '2026-10') === '', 'sin datos no inventa');
+ok(C(['Redes', 'Ads'], '2026-10') === 'Redes y Ads · Octubre 2026', 'Redes y Ads · Octubre 2026');
+ok(C(['Redes', 'Ads', 'Piezas extra'], '2026-10') === 'Redes, Ads y Piezas extra · Octubre 2026', 'tres servicios');
+ok(C(['Redes', 'Redes'], '2026-11') === 'Redes · Noviembre 2026', 'sin repetir');
+ok(C([], '2026-10') === '', 'sin servicios, vacío');
+console.log(fails ? fails + ' FALLAS' : 'TODO OK');
