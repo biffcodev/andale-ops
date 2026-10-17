@@ -624,6 +624,13 @@ async function invocar(fn, payload, sinConexion) {
   return data;
 }
 export const avisosFn = payload => invocar('avisos', payload);
+// Avisa a personas del equipo (campanita y Slack). Devuelve false si falta el SQL 0035.
+export async function avisarEquipo(alias, tipo, titulo, cuerpo, link) {
+  const ids = [...new Set((alias || []).map(a => idx.personaId.get(a)).filter(Boolean))]; if (!ids.length) return 0;
+  const { data, error } = await sb.rpc('avisar_equipo', { p_personas: ids, p_tipo: tipo || '', p_titulo: titulo || '', p_cuerpo: cuerpo || '', p_link: link || '' });
+  if (error) { if (/avisar_equipo|function/i.test(error.message || '')) return false; throw friendly(error); }
+  return data || 0;
+}
 // Automatizaciones (0018): reglas prendidas/apagadas y su configuración. null = falta el SQL.
 export async function autoLista() {
   const { data, error } = await sb.from('automatizaciones').select('clave, activa, config, ultima_corrida, ultimo_resultado');

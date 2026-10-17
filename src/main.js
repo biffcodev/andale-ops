@@ -385,7 +385,7 @@ function servicioRedes(cliente) {
   const pick = t => as.filter(a => a.tipo === t).sort((a, b) => (vivo(b) - vivo(a)) || ESTADOS_ABONO.indexOf(a.estado) - ESTADOS_ABONO.indexOf(b.estado) || cmp(b.desde || '', a.desde || ''))[0] || null;
   return { redes: pick('Redes'), ads: pick('Ads'), otros: as.filter(a => a.tipo !== 'Redes' && a.tipo !== 'Ads' && vivo(a)) };
 }
-const precioHoy = a => (a && isAdmin() && ADM && ADM.precioHoy) ? ADM.precioHoy(a._id) : null;
+const precioHoy = (a, m) => (a && isAdmin() && ADM && ADM.precioHoy) ? ADM.precioHoy(a._id, m) : null;
 const svChip = (txt, c, attrs) => '<span class="sv" style="--c:var(' + c + ')"' + (attrs || '') + '>' + esc(txt) + '</span>';
 // Chips del servicio: plan, Ads y (para admin) el precio de este mes.
 function servChips(cliente, o) {
@@ -397,8 +397,8 @@ function servChips(cliente, o) {
   if (!vivo(r) && ad) h += svChip('Ads sin Redes', '--crit');
   if (r && r.estado !== 'Activo') h += svChip(r.estado === 'Baja' ? 'Dado de baja' : r.estado, AB_COLOR[r.estado] || '--muted');
   if (o.precio && isAdmin() && ADM && ADM.moneyFmt) {
-    const tot = {}; [r, ad].filter(vivo).forEach(a => { const p = precioHoy(a); if (p) tot[p.moneda] = (tot[p.moneda] || 0) + (+p.monto || 0); });
-    const ks = Object.keys(tot); h += ks.length ? ks.map(m => '<span class="sv money-sv">' + esc(ADM.moneyFmt(tot[m], m)) + '<i>/mes</i></span>').join('') : (r ? '<span class="sv" style="--c:var(--crit)">Sin precio</span>' : '');
+    const tot = {}; [r, ad].filter(vivo).forEach(a => { const p = precioHoy(a, o.mes); if (p) tot[p.moneda] = (tot[p.moneda] || 0) + (+p.monto || 0); });
+    const ks = Object.keys(tot); h += ks.length ? ks.map(m => '<span class="sv money-sv">' + esc(ADM.moneyFmt(tot[m], m)) + '<i>/mes</i></span>').join('') : (r ? '<span class="sv" style="--c:var(--crit)" title="No hay precio cargado que rija ' + (o.mes ? 'en ' + esc(monthLabel(o.mes)) : 'este mes') + '">Sin precio</span>' : '');
   }
   return h ? '<span class="svs">' + h + '</span>' : '';
 }
@@ -1021,12 +1021,14 @@ function vMis() {
   const tks = tareasDe(yo), tkLate = tks.filter(t => t.x.fecha && diff(t.x.fecha) < 0).length;
   // Meses de Redes en Planificación que le toca revisar (por su rol en la cuenta): son tareas aunque el mes lo haya arrancado otra persona
   const planif = RED || S.RM ? red().planificacionesDe(yo) : [];
+  const trRedes = RED || S.RM ? red().tareasRedes(yo) : [];
+  const redesTk = trRedes.map(({ m, estado, n, verbo }) => '<div class="tk tk-plan"><span class="tk-ok tk-pz" style="--c:var(' + (PZ_COLOR[estado] || '--muted') + ')" aria-hidden="true"></span><button class="tk-n tk-lnk" data-act="rmMio" data-id="' + esc(m._id) + '" data-p="' + esc(yo) + '"><b>' + esc(verbo) + ' ' + n + (n === 1 ? ' pieza' : ' piezas') + ' de ' + esc(m.cliente) + '</b><span>Redes · ' + esc(monthLabel(m.mes)) + ' · ' + esc(pzNombre(estado)) + '</span></button>' + av(m.cliente, (S.C.find(c => c.nombre === m.cliente) || {}).avatar, 'sq') + '</div>').join('');
   const planHtml = planif.map(({ m, n, cargadas }) => '<div class="tk tk-plan"><input type="checkbox" class="tk-ok" aria-label="Marcar la planificación como revisada" data-act="rmPlanOk" data-id="' + esc(m._id) + '"' + (isStaff() ? '' : ' disabled') + '><button class="tk-n tk-lnk" data-act="rmAbrir" data-id="' + esc(m._id) + '"><b>Revisar la planificación de ' + esc(m.cliente) + '</b><span>Redes · ' + esc(monthLabel(m.mes)) + (cargadas ? ' · ' + n + (n === 1 ? ' pieza' : ' piezas') : '') + '</span></button>' + av(m.cliente, (S.C.find(c => c.nombre === m.cliente) || {}).avatar, 'sq') + '</div>').join('');
   const kpi = (n, l, cls) => '<div class="kpi ' + (cls || '') + '"><span class="eyebrow">' + l + '</span><b>' + n + '</b></div>';
-  h += '<section class="kpis">' + kpi(tks.length + planif.length, 'Tareas pendientes', tkLate ? 'alert' : '') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(new Set(cuentas.map(a => a.cliente)).size, 'Clientes de Redes') + '</section>';
-  const tkHtml = '<section class="sheet"><div class="sheet-h"><h2>Tareas</h2><span class="muted num">' + (tks.length + planif.length) + (tkLate ? ' · <b style="color:var(--crit)">' + tkLate + ' vencidas</b>' : '') + '</span></div>' + (tks.length || planif.length ? '<div class="tks mis">' + planHtml + tks.map(({ p, x, i }) =>
+  h += '<section class="kpis">' + kpi(tks.length + planif.length + trRedes.length, 'Tareas pendientes', tkLate ? 'alert' : '') + kpi(mine.length, 'Proyectos abiertos') + kpi(late.length, 'Atrasados', late.length ? 'alert' : '') + kpi(new Set(cuentas.map(a => a.cliente)).size, 'Clientes de Redes') + '</section>';
+  const tkHtml = '<section class="sheet"><div class="sheet-h"><h2>Tareas</h2><span class="muted num">' + (tks.length + planif.length + trRedes.length) + (tkLate ? ' · <b style="color:var(--crit)">' + tkLate + ' vencidas</b>' : '') + '</span></div>' + (tks.length || planif.length || trRedes.length ? '<div class="tks mis">' + planHtml + redesTk + tks.map(({ p, x, i }) =>
     '<div class="tk"><input type="checkbox" class="tk-ok" aria-label="Marcar hecha" data-etoggle="' + esc(p._id) + '" data-i="' + i + '"' + (canEditProj(p) ? '' : ' disabled') + '><button class="tk-n tk-lnk" data-act="pver" data-id="' + esc(p._id) + '"><b>' + esc(x.n) + '</b><span>' + esc(p.proyecto + ' · ' + p.cliente) + '</span></button>' + prioFlag(p.prioridad) + fechaTarea(x.fecha) + '</div>').join('') + '</div>' : emptyBox('Sin tareas a cargo de ' + yo, 'Las tareas se asignan desde la ficha de cada proyecto.')) + '</section>';
-  if (!tks.length && !planif.length && !mine.length && !cuentas.length && !myCl.length && !steps.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay nada a cargo de ' + yo, isStaff() ? 'Asigná responsables desde Proyectos o Redes y aparece acá.' : 'Cuando te asignen un trabajo aparece acá.') + '</section>';
+  if (!tks.length && !planif.length && !trRedes.length && !mine.length && !cuentas.length && !myCl.length && !steps.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay nada a cargo de ' + yo, isStaff() ? 'Asigná responsables desde Proyectos o Redes y aparece acá.' : 'Cuando te asignen un trabajo aparece acá.') + '</section>';
   const others = o => resp(o).length > 1 ? ' · con ' + esc(resp(o).filter(x => x !== yo).join(', ')) : '';
   const group = (title, arr) => arr.length ? '<section class="sheet"><div class="sheet-h"><h2>' + title + '</h2><span class="muted num">' + arr.length + '</span></div><div class="rows">' + arr.map(p => '<button class="row" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '"><span class="d">' + (p.entrega ? fmt(p.entrega) : '—') + '</span><span class="t"><b>' + esc(p.proyecto) + '</b><span>' + esc([p.cliente, p.tipo, etapaTxt(p)].filter(Boolean).join(' · ')) + others(p) + '</span></span>' + (daysBadge(p) || stPill(p.estado)) + '</button>').join('') + '</div></section>' : '';
   const misCl = [...new Set(cuentas.map(a => a.cliente))];

@@ -2051,7 +2051,7 @@ export function initAdmin(ctx) {
   Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions, MT.actions);
   return {
     load, actions, extrasCfg, formExtras, fichaSection, deudaLinea, proyectoSection, AD, cfgMarca: () => cfgMarca(),
-    precioHoy: id => (AD.ok ? precioEn(id, thisMonth()) : null), moneyFmt: (n, m) => money(n, m),
+    precioHoy: (id, m) => (AD.ok ? precioEn(id, m || thisMonth()) : null), moneyFmt: (n, m) => money(n, m),
     // Para la IA: abrir formularios ya completos (nada se guarda sin confirmar).
     abrir: {
       movimiento: preset => formMovimiento(null, preset),

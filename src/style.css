@@ -2582,3 +2582,7 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 .rm-pc-a.ph,.rm-pcs.hist .rm-pc-a.ph{height:auto;min-height:84px}
 .rm-pc-a.ph .rm-pc-ph{height:auto;padding:14px 44px 14px 16px}
 .rm-pc-a.ph .rm-pc-ph span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
+/* Tareas de Redes por etapa y panel "Pasar etapa" */
+.tk-pz{width:12px;height:12px;border-radius:50%;background:var(--c);flex:0 0 12px;margin:0 3px}
+.pa-g{display:flex;flex-wrap:wrap;gap:6px 14px;margin:6px 0 4px}
+.pa-g .chk{display:inline-flex;align-items:center;gap:6px}
