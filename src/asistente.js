@@ -28,6 +28,7 @@ export function initAsistente(ctx, k) {
   const cfgAsist = () => (AD.AJ && AD.AJ.asistente) || {};
   // Facturación: día de corte para deducir el mes por la fecha y copia de respaldo de los PDF (Ajustes).
   const cfgFact = () => (AD.AJ && AD.AJ.facturacion) || {};
+  const aMesVencido = c => !!c && (k.cadm(c) || {}).facturacion === 'vencido';
   const corteDia = () => Math.min(28, Math.max(1, Math.round(+cfgFact().corte) || 20));
   // Solo para mostrar: los estados guardados no cambian.
   const VER_DA = { Nuevo: 'Sin leer', 'Leído': 'Lista para cargar', Vinculado: 'Cargada', Ignorado: 'Descartada', Error: 'No se pudo leer' };
@@ -57,7 +58,8 @@ export function initAsistente(ctx, k) {
       sinPrecio: S.A.filter(a => k.abonoEnMes(a, m) && !k.precioEn(a._id, m)),
       sinArmar: cl.filter(c => !resM.some(r => r.cliente === c) && k.sugerencias(c, m).length),
       borradores: resM.filter(r => r.estado !== 'Enviado'),
-      sinComp: resM.filter(r => r.estado === 'Enviado' && !AD.F.some(f => f.cliente === r.cliente && f.periodo === m)),
+      // Los clientes a mes vencido facturan el mes anterior: se mira su resumen de ese mes.
+      sinComp: resM.filter(r => !aMesVencido(r.cliente)).concat(AD.R.filter(r => r.periodo === addMonth(m, -1) && aMesVencido(r.cliente))).filter(r => r.estado === 'Enviado' && !AD.F.some(f => f.cliente === r.cliente && f.periodo === r.periodo)),
       vencidas: AD.F.filter(f => k.estadoFactura(f) === 'Vencida'),
       aumentos: AD.PR.filter(p => p.desde > m && !p.aviso_enviado),
       liqFalt: eq().faltantes(m), liqPend: eq().liqMes(m).filter(l => !l.movimiento_id),
@@ -80,7 +82,7 @@ export function initAsistente(ctx, k) {
 
   /* ---------- Drive: reconocer cliente, emisor y comprobante ---------- */
   const nombreMes = p => monthLabel(p).replace(' de ', ' ');
-  const mesDe = (d, cliente, archivo) => mesFactura(d, cliente, archivo, { R: AD.R || [], F: AD.F || [], corte: corteDia() });
+  const mesDe = (d, cliente, archivo) => mesFactura(d, cliente, archivo, { R: AD.R || [], F: AD.F || [], corte: corteDia(), vencido: aMesVencido(cliente) });
   function matchArchivo(da) {
     const d = da.datos || {};
     const em = cfgEmisores(); const emisor = Object.keys(em).find(x => soloDig(em[x] && em[x].cuit) && soloDig(em[x].cuit) === soloDig(d.emisor_cuit)) || '';
@@ -470,7 +472,7 @@ export function initAsistente(ctx, k) {
     const fc = cfgFact(), c = corteDia(), con = AD.F.filter(f => f.pdf_respaldo).length, falta = sinCopia().length;
     return '<div><b>Facturas: de qué mes son</b><div class="muted" style="margin:2px 0 6px">Primero se usa el resumen de cuenta con el mismo monto, el período de la factura o el mes del detalle. Si no hay nada de eso, se decide por la fecha y la factura queda marcada para revisar.</div>' +
       '<div class="toolbar"><span>Desde el día</span><input class="in" id="as-corte" type="number" min="1" max="28" step="1" value="' + c + '" style="width:76px" aria-label="Día de corte"><span>se toman como del mes siguiente.</span><button class="btn sm" data-act="asCorte">Guardar</button></div>' +
-      '<div class="muted" style="font-size:13px;margin-top:4px">Con ' + c + ': una factura del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre.</div></div>' +
+      '<div class="muted" style="font-size:13px;margin-top:4px">Con ' + c + ': una factura del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre. A los clientes que se les factura a mes vencido se les corre un mes para atrás: se marca en los Datos de facturación de cada cliente.</div></div>' +
       '<div><b>Copia de respaldo de los PDF</b><div class="muted" style="margin:2px 0 6px">Cada factura que cargás desde Drive se guarda también en la app (Supabase). Si alguien la borra de Drive, se puede ver y mandar igual. Cada PDF pesa unos 100 KB: un año entero de facturas ocupa menos de 50 MB.</div>' +
       '<div class="toolbar"><label class="chk"><input type="checkbox" data-asresp="1"' + (fc.respaldo ? ' checked' : '') + '> Guardar una copia de cada factura</label>' +
       (fc.respaldo && falta ? '<button class="btn sm" data-act="asRespTodo">Copiar las ya cargadas (' + falta + ')</button>' : '') + '</div>' +

@@ -1175,7 +1175,7 @@ export function initAdmin(ctx) {
       '<dt>Razón social</dt><dd>' + (ca.razon_social ? esc(ca.razon_social) : '<span class="muted">—</span>') + '</dd>' +
       '<dt>CUIT</dt><dd>' + (ca.cuit ? esc(fmtCuit(ca.cuit)) + (ca.condicion_iva ? ' · ' + esc(ca.condicion_iva) : '') : '<span class="muted">—</span>') + '</dd>' +
       '<dt>Domicilio</dt><dd>' + (ca.domicilio ? esc(ca.domicilio) : '<span class="muted">—</span>') + '</dd>' +
-      '<dt>Cómo se factura</dt><dd>' + esc(verTipo(ca.comprobante_default || 'Factura ARCA')) + (ca.emisor_default ? ' · la hace ' + esc(ca.emisor_default) : '') + ' · ' + esc(ca.moneda || 'ARS') + '</dd>' +
+      '<dt>Cómo se factura</dt><dd>' + esc(verTipo(ca.comprobante_default || 'Factura ARCA')) + (ca.emisor_default ? ' · la hace ' + esc(ca.emisor_default) : '') + ' · ' + esc(ca.moneda || 'ARS') + (ca.facturacion === 'vencido' ? ' · <b>a mes vencido</b>' : '') + '</dd>' +
       '<dt>Resúmenes y facturas a</dt><dd>' + (mailsDe(c.nombre) ? esc(mailsDe(c.nombre)) + (cobrosDe(c.nombre).length ? '' : ' <span class="muted">(email de facturación)</span>') : '<span class="muted">Nadie. Marcá en Contactos quién los recibe.</span>') + '</dd>' +
       '<dt>Carpeta</dt><dd>' + (ca.carpeta_admin ? '<a href="' + esc(ca.carpeta_admin) + '" target="_blank" rel="noopener">Carpeta de administración</a>' : '<span class="muted">—</span>') + '</dd></dl>' +
       '<button class="btn sm" data-act="aClienteAdm" data-cliente="' + esc(c.nombre) + '">Editar datos</button></div></details>';
@@ -1439,7 +1439,7 @@ export function initAdmin(ctx) {
     const ca = cadm(cliente);
     openPanel({
       title: cliente, eyebrow: 'Datos de facturación',
-      values: Object.assign({ moneda: 'ARS', comprobante_default: 'Factura ARCA' }, ca),
+      values: Object.assign({ moneda: 'ARS', comprobante_default: 'Factura ARCA', facturacion: 'adelantado' }, ca),
       fields: [
         { k: 'razon_social', label: 'Razón social', full: 1 },
         { k: 'cuit', label: 'CUIT' },
@@ -1448,6 +1448,7 @@ export function initAdmin(ctx) {
         { k: 'comprobante_default', label: 'Factura habitual', type: 'select', html: v => TIPOS_COMP.map(t => opt(t, verTipo(t), v)).join('') },
         { k: 'emisor_default', label: 'Factura habitualmente', type: 'select', opts: EMISORES, blank: '—' },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
+        { k: 'facturacion', label: 'Cuándo se le factura', type: 'select', full: 1, html: v => opt('adelantado', 'Por adelantado: a fin de mes por el mes siguiente (o a principio del mismo mes)', v) + opt('vencido', 'A mes vencido: después del mes del servicio', v), hint: 'Sirve para saber de qué mes es cada factura que se carga desde Drive.' },
         { k: 'email_facturacion', label: 'Email(s) de facturación (respaldo)', hint: 'Se usan solo si ningún contacto tiene marcado “Recibe resúmenes y facturas”. Lo ideal es manejarlo desde Contactos, en la ficha del cliente.' },
         { k: 'carpeta_admin', label: 'Carpeta de administración (Drive)', type: 'url', full: 1, ph: 'https://drive.google.com/...' },
         { k: 'notas', label: 'Notas administrativas', type: 'textarea', full: 1, rows: 2 },

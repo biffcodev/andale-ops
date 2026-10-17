@@ -25,4 +25,18 @@ r = M({ fecha: '2026-10-16', total: 1, concepto: 'Abono' }, 'X', 'f.pdf', { cort
 ok(r.periodo === '2026-11' && /día 15/.test(r.por), 'corte configurado en 15: 16/10 → noviembre');
 r = M({ fecha: '2026-10-16', total: 1, concepto: 'Abono' }, 'X', 'f.pdf');
 ok(r.periodo === '2026-10', 'con el corte por defecto (20): 16/10 → octubre');
+// Cliente a mes vencido (la universidad): resumen de septiembre mandado en agosto, factura en octubre por septiembre.
+const U = { cliente: 'Uni', total: 900000 };
+r = M({ fecha: '2026-10-06', total: 900000, concepto: 'Servicios' }, 'Uni', 'f.pdf', { vencido: true, R: [{ ...U, periodo: '2026-09' }, { ...U, periodo: '2026-10' }, { ...U, periodo: '2026-11' }] });
+ok(r.periodo === '2026-09' && r.seguro, 'mes vencido: factura del 06/10 con resúmenes iguales de sep, oct y nov sin factura → septiembre, seguro: ' + JSON.stringify(r));
+r = M({ fecha: '2026-10-06', total: 900000, concepto: 'Servicios' }, 'Uni', 'f.pdf', { vencido: true, R: [{ ...U, periodo: '2026-09' }, { ...U, periodo: '2026-10' }], F: [{ cliente: 'Uni', periodo: '2026-09-01', tipo: 'Factura ARCA' }] });
+ok(r.periodo === '2026-10' && r.seguro, 'mes vencido: si septiembre ya está facturado, el único sin factura es octubre');
+r = M({ fecha: '2026-10-06', total: 1, concepto: 'Servicios' }, 'Uni', 'f.pdf', { vencido: true });
+ok(r.periodo === '2026-09' && !r.seguro && /vencido/.test(r.por), 'mes vencido sin resumen: 06/10 → septiembre, para revisar');
+r = M({ fecha: '2026-09-28', total: 1, concepto: 'Servicios' }, 'Uni', 'f.pdf', { vencido: true });
+ok(r.periodo === '2026-09' && !r.seguro, 'mes vencido sin resumen: 28/09 → septiembre (fin del mes del servicio)');
+r = M({ fecha: '2026-10-06', total: 1, concepto: 'Servicios septiembre' }, 'Uni', 'f.pdf', { vencido: true });
+ok(r.periodo === '2026-09' && r.seguro, 'mes vencido: si el detalle dice septiembre, septiembre');
+r = M({ fecha: '2026-09-28', total: 900000 }, 'X', 'f.pdf', { R: [{ cliente: 'X', periodo: '2026-10', total: 900000 }, { cliente: 'X', periodo: '2026-11', total: 900000 }] });
+ok(r.periodo === '2026-10' && r.seguro, 'por adelantado con abono fijo: 28/09, resúmenes de oct y nov sin factura → octubre (el que toca y el más viejo)');
 console.log(fails ? fails + ' FALLAS' : 'TODO OK');
