@@ -468,11 +468,18 @@ export function initAsistente(ctx, k) {
       '<div class="toolbar"><select class="in" id="as-caja" aria-label="Cuenta">' + opt('', '¿De qué cuenta es el resumen?', AD.as.concCaja) + cjs.map(x => opt(x.id, x.nombre + ' (' + x.moneda + ')', AD.as.concCaja)).join('') + '</select><label class="btn" style="cursor:pointer">📄 Elegir resumen<input type="file" id="as-file" accept=".pdf,.csv,.txt,.xlsx,.xls,image/*" hidden></label><span class="muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(AD.as.file ? AD.as.file.name : 'Ningún archivo elegido') + '</span><button class="btn primary" data-act="asConc"' + (AD.as.concBusy || !st.ia ? ' disabled' : '') + '>' + (AD.as.concBusy ? 'Analizando… (puede tardar un minuto)' : '✨ Leer el resumen con IA') + '</button></div></div>' + concHtml() + '</section>';
   }
   const sinCopia = () => AD.DA.filter(d => d.factura_id && !/^No está más/.test(d.error || '')).filter(d => { const f = AD.F.find(x => x.id === d.factura_id); return f && !f.pdf_respaldo; });
+  // Clientes a mes vencido: se guardan en los datos de facturación de cada cliente; acá se ven y se eligen todos juntos.
+  const clientesVencido = () => S.C.filter(c => aMesVencido(c.nombre)).map(c => c.nombre).sort(cmp);
+  function vencidosHtml() {
+    const vs = clientesVencido();
+    return '<div style="margin-top:12px"><b style="font-weight:600">Clientes a mes vencido</b><div class="muted" style="margin:2px 0 6px">Se les factura después del mes del servicio (por ejemplo, en octubre la de septiembre). Para ellos todo se corre un mes para atrás: el resumen que se busca y el mes por la fecha.</div>' +
+      '<div class="toolbar">' + (vs.length ? vs.map(n => '<span class="chip">' + esc(n) + '</span>').join('') : '<span class="muted">Ninguno: a todos se les factura por adelantado.</span>') + '<button class="btn sm" data-act="asVencidos">' + (vs.length ? 'Cambiar' : 'Elegir clientes') + '</button></div></div>';
+  }
   function factHtml() {
     const fc = cfgFact(), c = corteDia(), con = AD.F.filter(f => f.pdf_respaldo).length, falta = sinCopia().length;
     return '<div><b>Facturas: de qué mes son</b><div class="muted" style="margin:2px 0 6px">Primero se usa el resumen de cuenta con el mismo monto, el período de la factura o el mes del detalle. Si no hay nada de eso, se decide por la fecha y la factura queda marcada para revisar.</div>' +
       '<div class="toolbar"><span>Desde el día</span><input class="in" id="as-corte" type="number" min="1" max="28" step="1" value="' + c + '" style="width:76px" aria-label="Día de corte"><span>se toman como del mes siguiente.</span><button class="btn sm" data-act="asCorte">Guardar</button></div>' +
-      '<div class="muted" style="font-size:13px;margin-top:4px">Con ' + c + ': una factura del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre. A los clientes que se les factura a mes vencido se les corre un mes para atrás: se marca en los Datos de facturación de cada cliente.</div></div>' +
+      '<div class="muted" style="font-size:13px;margin-top:4px">Con ' + c + ': una factura del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre. </div>' + vencidosHtml() + '</div>' +
       '<div><b>Copia de respaldo de los PDF</b><div class="muted" style="margin:2px 0 6px">Cada factura que cargás desde Drive se guarda también en la app (Supabase). Si alguien la borra de Drive, se puede ver y mandar igual. Cada PDF pesa unos 100 KB: un año entero de facturas ocupa menos de 50 MB.</div>' +
       '<div class="toolbar"><label class="chk"><input type="checkbox" data-asresp="1"' + (fc.respaldo ? ' checked' : '') + '> Guardar una copia de cada factura</label>' +
       (fc.respaldo && falta ? '<button class="btn sm" data-act="asRespTodo">Copiar las ya cargadas (' + falta + ')</button>' : '') + '</div>' +
@@ -552,6 +559,25 @@ export function initAsistente(ctx, k) {
     asCuits: async () => {
       const em = { ...cfgEmisores() }; k.EMISORES.forEach(e => { em[e] = { ...(em[e] || {}), cuit: soloDig(($('#as-cuit-' + e) || {}).value) }; });
       try { await data.upsert('ajustes', { clave: 'emisores', valor: em }, 'clave'); toast('CUIT guardados'); await ctx.reload(); } catch (err) { toast(err.message); }
+    },
+    asVencidos: () => {
+      const vs = new Set(clientesVencido());
+      const cs = S.C.filter(c => c.estado !== 'Inactivo' || vs.has(c.nombre)).map(c => c.nombre).sort(cmp);
+      openPanel({
+        title: 'Clientes a mes vencido', eyebrow: 'Facturación', saveLabel: 'Guardar',
+        intro: 'Tildá a los que se les factura después del mes del servicio. Al resto se les factura por adelantado.',
+        values: {}, fields: [],
+        extra: '<div class="field full"><div class="rows" data-todos="asvc" style="border:1px solid var(--line);border-radius:8px;max-height:360px;overflow:auto">' + cs.map(n => '<label class="row" style="cursor:pointer"><input type="checkbox" data-asvc="' + esc(n) + '"' + (vs.has(n) ? ' checked' : '') + '><span class="t"><b>' + esc(n) + '</b></span></label>').join('') + '</div></div>',
+        onSave: async () => {
+          const marcados = new Set([...document.querySelectorAll('[data-asvc]')].filter(x => x.checked).map(x => x.dataset.asvc));
+          let n = 0;
+          for (const c of cs) {
+            const antes = vs.has(c), ahora = marcados.has(c); if (antes === ahora) continue;
+            await data.upsert('clientes_admin', { cliente_id: data.ids.cliente(c), facturacion: ahora ? 'vencido' : 'adelantado', updated_at: new Date().toISOString() }, 'cliente_id'); n++;
+          }
+          toast(n ? 'Listo: ' + (marcados.size ? marcados.size + (marcados.size === 1 ? ' cliente' : ' clientes') + ' a mes vencido' : 'ninguno a mes vencido') : 'Sin cambios');
+        },
+      });
     },
     asCorte: async () => {
       const v = Math.round(+((document.getElementById('as-corte') || {}).value));
