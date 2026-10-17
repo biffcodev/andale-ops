@@ -28,7 +28,7 @@ const idx = { clienteId: new Map(), clienteName: new Map(), personaId: new Map()
 const month = d => (d ? String(d).slice(0, 7) : '');
 
 /** Columnas nuevas que puede no tener todavía la base (hasta correr su SQL). */
-export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true, piezaContenido: true, abonoRedes: true, piezaExtraCobro: true };
+export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true, piezaContenido: true, abonoRedes: true, piezaExtraCobro: true, piezaVersiones: true };
 function toRow(kind, ui) {
   const row = {};
   for (const [k, v] of Object.entries(ui)) {
@@ -121,7 +121,7 @@ export async function loadAll() {
 export function mesUI(m) {
   return { _id: m.id, cliente: idx.clienteName.get(m.cliente_id) || '', clienteId: m.cliente_id, abonoId: m.abono_id, mes: String(m.mes || '').slice(0, 7), estado: m.estado, resp: idx.personaAlias.get(m.responsable_id) || '',
     plan: m.plan || {}, carpeta: m.carpeta || '', carpetaUrl: m.carpeta_url || '', conteo: m.conteo || {}, conteoAt: m.conteo_at, notas: m.notas || '', visible: !!m.visible_cliente,
-    enviadoAt: m.enviado_at, aprobadoAt: m.aprobado_at, aprobadoPor: m.aprobado_por || '', horas: m.horas == null ? '' : +m.horas };
+    enviadoAt: m.enviado_at, aprobadoAt: m.aprobado_at, aprobadoPor: m.aprobado_por || '', horas: m.horas == null ? '' : +m.horas, investigacion: m.investigacion || null };
 }
 const MES_COLS = { estado: 'estado', plan: 'plan', carpeta: 'carpeta', carpetaUrl: 'carpeta_url', notas: 'notas', visible: 'visible_cliente', enviadoAt: 'enviado_at', aprobadoAt: 'aprobado_at', aprobadoPor: 'aprobado_por' };
 function mesRow(u) {
@@ -136,9 +136,15 @@ export async function mesCrear(u) {
   return mesUI(r);
 }
 export async function mesUpd(id, u) { check(await sb.from('redes_meses').update(mesRow(u)).eq('id', id)); }
+// Fechas y novedades del mes (SQL 0033). Sin la columna devuelve false y la app las guarda solo en la sesión.
+export async function mesInvestigacion(id, inv) {
+  const { error } = await sb.from('redes_meses').update({ investigacion: inv }).eq('id', id);
+  if (error) { if (/investigacion/.test(error.message || '')) return false; throw friendly(error); }
+  return true;
+}
 export async function mesDel(id) { check(await sb.from('redes_meses').delete().eq('id', id)); }
 export function piezaUI(z) {
-  return { _id: z.id, mesId: z.mes_id, formato: z.formato || '', red: z.red || '', fecha: z.fecha || '', hora: z.hora ? String(z.hora).slice(0, 5) : '', tema: z.tema || '', copy: z.copy || '', hashtags: z.hashtags || '', contenido: z.contenido || '', extraCobro: z.extra_cobro || '',
+  return { _id: z.id, mesId: z.mes_id, formato: z.formato || '', red: z.red || '', fecha: z.fecha || '', hora: z.hora ? String(z.hora).slice(0, 5) : '', tema: z.tema || '', copy: z.copy || '', hashtags: z.hashtags || '', contenido: z.contenido || '', extraCobro: z.extra_cobro || '', versiones: Array.isArray(z.versiones) ? z.versiones : [],
     estado: z.estado, extra: !!z.extra, ads: z.ads || '', fijo: z.fijo || '', resp: idx.personaAlias.get(z.responsable_id) || '', arte: Array.isArray(z.arte) ? z.arte : [], orden: z.orden || 0,
     horas: z.horas == null ? '' : +z.horas, respuesta: z.respuesta_cliente || '', respondida: z.respondida_at, creado: z.created_at };
 }
@@ -146,6 +152,7 @@ function piezaRow(u) {
   const r = {};
   ['formato', 'red', 'tema', 'copy', 'hashtags', 'estado', 'extra', 'fijo', 'arte', 'orden'].forEach(k => { if (k in u) r[k] = u[k]; });
   if ('contenido' in u && cols.piezaContenido) r.contenido = u.contenido || '';
+  if ('versiones' in u && cols.piezaVersiones) r.versiones = Array.isArray(u.versiones) ? u.versiones.slice(0, 10) : []; // lo anterior a los cambios de Mr. Piggy (SQL 0033)
   if ('extraCobro' in u && cols.piezaExtraCobro) r.extra_cobro = ['si', 'no'].includes(u.extraCobro) ? u.extraCobro : ''; // pieza extra: '' según la cuenta · si · no (SQL 0032) // lo que va en la pieza: slides, texto de la placa, guion (SQL 0031)
   if ('ads' in u && cols.piezaAds) r.ads = u.ads || ''; // '' = del plan · 'tambien' = del plan y también se pauta · 'solo' = solo para Ads (SQL 0028)
   if ('fecha' in u) r.fecha = u.fecha || null;
@@ -158,7 +165,7 @@ function piezaRow(u) {
 export async function piezasDe(mesIds) {
   const ids = Array.isArray(mesIds) ? mesIds : [mesIds]; if (!ids.length) return [];
   const rows = check(await sb.from('piezas').select('*').in('mes_id', ids).order('fecha', { nullsFirst: false }).order('orden').limit(10000)) || [];
-  if (rows.length) { cols.piezaAds = 'ads' in rows[0]; cols.piezaContenido = 'contenido' in rows[0]; cols.piezaExtraCobro = 'extra_cobro' in rows[0]; }
+  if (rows.length) { cols.piezaAds = 'ads' in rows[0]; cols.piezaContenido = 'contenido' in rows[0]; cols.piezaExtraCobro = 'extra_cobro' in rows[0]; cols.piezaVersiones = 'versiones' in rows[0]; }
   return rows.map(piezaUI);
 }
 // Si falta correr un SQL (0031 contenido, 0032 extra_cobro), la pieza se guarda igual sin ese campo.
@@ -166,6 +173,7 @@ function sinColumna(err) {
   const m = (err && err.message) || '';
   if (cols.piezaContenido && /contenido/.test(m)) { cols.piezaContenido = false; return true; }
   if (cols.piezaExtraCobro && /extra_cobro/.test(m)) { cols.piezaExtraCobro = false; return true; }
+  if (cols.piezaVersiones && /versiones/.test(m)) { cols.piezaVersiones = false; return true; }
   return false;
 }
 export async function piezasIns(mes, lista) {
@@ -173,13 +181,13 @@ export async function piezasIns(mes, lista) {
   const fila = () => lista.map((u, i) => ({ mes_id: mes._id, cliente_id: mes.clienteId || idx.clienteId.get(mes.cliente), estado: 'Idea', orden: i, ...piezaRow(u) }));
   let res = await sb.from('piezas').insert(fila()).select();
   // Sin la columna "contenido" (falta el SQL 0031) se guarda igual, sin ese campo.
-  for (let i = 0; i < 2 && res.error && sinColumna(res.error); i++) res = await sb.from('piezas').insert(fila()).select();
+  for (let i = 0; i < 3 && res.error && sinColumna(res.error); i++) res = await sb.from('piezas').insert(fila()).select();
   return (check(res) || []).map(piezaUI);
 }
 export async function piezasUpd(ids, u) {
   let r = piezaRow(u); if (!Object.keys(r).length || !ids.length) return;
   let res = await sb.from('piezas').update(r).in('id', ids);
-  for (let i = 0; i < 2 && res.error && sinColumna(res.error); i++) { r = piezaRow(u); if (!Object.keys(r).length) return; res = await sb.from('piezas').update(r).in('id', ids); }
+  for (let i = 0; i < 3 && res.error && sinColumna(res.error); i++) { r = piezaRow(u); if (!Object.keys(r).length) return; res = await sb.from('piezas').update(r).in('id', ids); }
   check(res);
 }
 export async function piezasDel(ids) { if (ids.length) check(await sb.from('piezas').delete().in('id', ids)); }
@@ -525,7 +533,7 @@ export async function sendEmail(payload) {
 }
 /** Llama a la Edge Function `asistente` (Drive + IA). Solo admins. */
 export async function ia(payload) {
-  const { data, error } = await sb.functions.invoke(payload && payload.modo === 'ads_mail' ? 'ia-ads' : payload && /^redes_(ideas|copys|agenda|contenido|revision)$/.test(payload.modo || '') ? 'ia-redes' : 'ia', { body: payload });
+  const { data, error } = await sb.functions.invoke(payload && payload.modo === 'ads_mail' ? 'ia-ads' : payload && /^redes_(ideas|copys|agenda|contenido|revision|investigar)$/.test(payload.modo || '') ? 'ia-redes' : 'ia', { body: payload });
   if (error) {
     let msg = error.message;
     try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { }
