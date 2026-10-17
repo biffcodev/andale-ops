@@ -38,11 +38,12 @@ export function initMantenimiento(ctx, k) {
     const ps = pasos(), listos = ps.filter(p => p[2]).length, mt = AD.mt;
     let h = '<section class="sheet sx" id="mt-carga"><div class="sx-h"><span class="sx-i">' + ICON.tarea + '</span><h2>Carga inicial <span class="sx-sub">(' + listos + ' de ' + ps.length + ' listos)</span></h2></div>' +
       '<div class="sx-panel"><div class="mt-pasos">' + ps.map(([key, l, ok, sub, v]) => '<button class="mt-paso' + (ok ? ' ok' : '') + '" data-act="go" data-view="' + esc(v) + '"' + (key === 'cajas' ? ' data-tab="bancos"' : '') + '><span class="mt-c">' + (ok ? ICON.check : '') + '</span><span class="mt-t"><b>' + esc(l) + '</b><small>' + esc(sub) + '</small></span><span class="mt-ir">Ir →</span></button>').join('') + '</div></div></section>';
+    const cargaIni = h; h = '';
     const arr = (AD.AJ && AD.AJ.operacion && AD.AJ.operacion.desde) || '';
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.calendario + '</span><h2>Desde qué mes cobramos con la app</h2></div><div class="sx-panel mt-b">' +
       '<p class="sx-lead">Los meses anteriores se siguen manejando como hasta ahora: la app no pide preparar resúmenes, cargar precios ni pagar sueldos de esos meses, y Cobros del mes abre directo en este.</p>' +
       '<div class="toolbar"><input class="in" type="month" id="aj-arranque" value="' + esc(arr) + '" aria-label="Mes de arranque" style="max-width:200px"><button class="btn primary" data-act="aArranque">Guardar</button></div></div></section>';
-    const carga = h; h = '';
+    const arranque = h, carga = cargaIni + arranque; h = '';
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.descargar + '</span><h2>Copia de seguridad</h2></div><div class="sx-panel mt-b">' +
       '<p class="sx-lead">Baja <b>todo</b> lo que hay en la base: clientes, proyectos, tareas, plata, redes y configuración. Guardala en un lugar seguro: tiene datos de clientes y de facturación.</p>' +
       '<div class="toolbar"><button class="btn primary" data-act="mtCopia" data-f="json"' + (mt.prog ? ' disabled' : '') + '>' + ICON.descargar + 'Descargar copia (JSON)</button><button class="btn" data-act="mtCopia" data-f="xlsx"' + (mt.prog ? ' disabled' : '') + '>' + ICON.excel + 'En Excel, para mirarla</button>' + (mt.prog ? '<span class="muted">' + esc(mt.prog) + '</span>' : mt.copia ? '<span class="pzst" style="--c:var(--s-entregado)">Copia descargada</span>' : '') + '</div></div></section>';
@@ -63,7 +64,7 @@ export function initMantenimiento(ctx, k) {
     h += '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.alerta + '</span><h2>Errores de la app</h2><div class="sx-der">' + (mt.verErr && (mt.errores || []).length ? '<button class="btn sm ghost" data-act="mtErrBorrar">Borrar todos</button>' : '') + '<button class="btn sm" data-act="mtErr">' + (mt.verErr ? 'Actualizar' : 'Ver') + '</button></div></div>' +
       (mt.verErr ? (mt.errores == null ? '<div class="sx-panel"><p class="sx-lead" style="margin:0">' + (mt.cargandoErr ? 'Cargando…' : 'No se pudieron leer (¿corrió el SQL 0016?).') + '</p></div>' : mt.errores.length ? '<div class="tbl"><table><thead><tr><th>Cuándo</th><th>Quién</th><th>Qué pasó</th><th>Dónde</th></tr></thead><tbody>' + mt.errores.map(e => '<tr><td class="mono">' + esc(String(e.created_at).slice(0, 16).replace('T', ' ')) + '</td><td>' + esc(e.quien || '—') + '</td><td><b>' + esc(e.mensaje) + '</b>' + (e.detalle ? '<details><summary class="muted">detalle</summary><pre class="mt-pre">' + esc(e.detalle) + '</pre></details>' : '') + '</td><td class="muted">' + esc(String(e.url || '').replace(/^https?:\/\/[^/]+/, '')) + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('Sin errores', 'Cuando algo falla en la app de alguien queda registrado acá.'))
         : '<div class="sx-panel"><p class="sx-lead" style="margin:0">Cuando algo falla en la app de alguien del equipo queda registrado acá, con qué estaba haciendo.</p></div>') + '</section>';
-    return parte === 'carga' ? carga : parte === 'datos' ? h : carga + h;
+    return parte === 'carga' ? cargaIni : parte === 'arranque' ? arranque : parte === 'datos' ? h : carga + h;
   }
 
   async function copia(fmt) {
@@ -110,7 +111,7 @@ export function initMantenimiento(ctx, k) {
       if (!($('#mt-tengo') || {}).checked) { toast('Primero descargá la copia y marcá que la tenés guardada'); return; }
       if (conf !== 'BORRAR TODO') { toast('Escribí BORRAR TODO, en mayúsculas, para confirmar'); return; }
       if (!await confirmar('Última confirmación: se borran todos los clientes, proyectos, plata y redes. ¿Seguimos?')) return;
-      try { const r = await data.resetDatos(conf); toast('Listo: se borraron ' + (r && r.borrados) + ' registros. Empezá por la carga inicial.'); S.tab.ajustes = 'carga'; await ctx.reload(); setTimeout(() => { const el = document.getElementById('mt-carga'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 200); }
+      try { const r = await data.resetDatos(conf); toast('Listo: se borraron ' + (r && r.borrados) + ' registros. Empezá por la carga inicial.'); await ctx.reload(); setTimeout(() => { const el = document.getElementById('mt-carga'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 200); }
       catch (e) { toast(e.message); }
     },
     mtErr: async () => { const mt = AD.mt; mt.verErr = true; mt.cargandoErr = true; ctx.render(); mt.errores = await data.errores(); mt.cargandoErr = false; ctx.render(); },

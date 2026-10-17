@@ -2,8 +2,8 @@
 // conciliación de extractos bancarios y reparto de pagos a proveedores. La IA propone; un admin confirma.
 import { mesFactura } from './mesfactura.js';
 import { nombreArchivoFactura, extDe } from './normaliza.js';
-import { gastoIA, usd as usdIA } from './iacosto.js';
 import * as data from './data.js';
+import { ICON } from './iconos.js';
 
 const soloDig = s => String(s || '').replace(/\D/g, '');
 export const carpetaId = s => { s = String(s || '').trim(); const m = s.match(/folders\/([\w-]{10,})/) || s.match(/[?&]id=([\w-]{10,})/); return m ? m[1] : (/^[\w-]{10,}$/.test(s) ? s : ''); };
@@ -41,7 +41,7 @@ export function initAsistente(ctx, k) {
     AD.as.estadoBusy = true;
     try { AD.as.estado = await data.asistente({ accion: 'estado' }); }
     catch (err) { AD.as.estado = { ia: false, drive: false, error: err.message }; }
-    AD.as.estadoBusy = false; if (['asistente', 'ajustes', 'cobros', 'gastos'].includes(S.view)) ctx.render();
+    AD.as.estadoBusy = false; if (['asistente', 'ajustes', 'cobros', 'gastos', 'integraciones'].includes(S.view)) ctx.render();
   }
 
   /* ---------- checklist del cierre ---------- */
@@ -217,7 +217,7 @@ export function initAsistente(ctx, k) {
     if (!listos.length) { toast('No hay facturas con cliente reconocido para cargar solas'); return; }
     openPanel({
       title: 'Cargar ' + listos.length + ' facturas', eyebrow: 'Desde Drive', saveLabel: 'Cargar', busyLabel: 'Cargando…',
-      intro: 'Facturas leídas, con cliente reconocido y que todavía no están cargadas. Revisá y destildá lo que no corresponda.' + (k.cierre.envioAutoDrive() ? '<br><b>Al cargarlas, a cada cliente le llega su factura por email con el PDF.</b> (Se cambia en Ajustes → Drive.)' : ''),
+      intro: 'Facturas leídas, con cliente reconocido y que todavía no están cargadas. Revisá y destildá lo que no corresponda.' + (k.cierre.envioAutoDrive() ? '<br><b>Al cargarlas, a cada cliente le llega su factura por email con el PDF.</b> (Se cambia en Cobros › Facturas en Drive, con «Mandarlas solas al cliente».)' : ''),
       values: {}, fields: [],
       extra: '<div class="field full"><div class="rows" data-todos="asct" style="border:1px solid var(--line);border-radius:8px">' + listos.map((x, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-asct="' + i + '" checked><span class="t"><b>' + esc(x.p.cliente) + ' · ' + esc(verTipo(x.p.tipo) + ' ' + (x.p.numero || 'sin número')) + '</b><span>' + esc([fmt(x.p.fecha), x.p.emisor ? 'factura ' + x.p.emisor : 'no se sabe quién factura', x.p.periodo ? 'mes ' + fmt(x.p.periodo) : ''].join(' · ')) + '</span></span><span class="money">' + money(x.p.monto, x.p.moneda) + '</span></label>').join('') + '</div></div>',
       onSave: async () => {
@@ -377,7 +377,7 @@ export function initAsistente(ctx, k) {
       (b ? '<div class="sheet-b" style="border-bottom:1px solid var(--line);display:grid;gap:8px;background:color-mix(in srgb,var(--accent) 6%,var(--surface))"><b style="font-family:var(--f-display);font-size:19px">' + esc(b.titular) + '</b><ul style="margin:0;padding-left:18px;display:grid;gap:4px">' + (b.puntos || []).map(p => '<li>' + (p.prioridad === 'alta' ? '<b style="color:var(--crit)">Urgente:</b> ' : '') + esc(p.texto) + '</li>').join('') + '</ul></div>' : '') +
       (pend.length ? '<div class="rows">' + pend.map(([ok, n, t, sub, btn]) => item(ok, n, t, sub, btn)).join('') + '</div>' : '') +
       '<div class="count">' + (okN ? '✓ ' + pl(okN, 'cosa al día', 'cosas al día') : '') + (c.cuotas.length ? (okN ? ' · ' : '') + 'Este mes se cobran ' + pl(c.cuotas.length, 'cuota', 'cuotas') + ' de proyectos.' : '') + '</div></section>';
-    if (!(st.ia && st.drive) && AD.as.estado) h += '<section class="callout"><p>Falta conectar ' + [st.ia ? '' : 'la IA', st.drive ? '' : 'Google Drive'].filter(Boolean).join(' y ') + '. Los pasos están en Configuración → Ajustes.</p><button class="btn" data-act="go" data-view="ajustes">Ir a Ajustes</button></section>';
+    if (!(st.ia && st.drive) && AD.as.estado) h += '<section class="callout"><p>Falta conectar ' + [st.ia ? '' : 'la IA', st.drive ? '' : 'Google Drive'].filter(Boolean).join(' y ') + '. Se conecta en Configuración › Integraciones.</p><button class="btn" data-act="go" data-view="integraciones">Ir a Integraciones</button></section>';
     return h;
   }
   function vAsistente() { return pendientesHtml(AD.as.mes); }
@@ -439,7 +439,7 @@ export function initAsistente(ctx, k) {
   function driveHtml(st) {
     const cfg = cfgDrive(), df = AD.as.df;
     let inner;
-    if (!st.drive) inner = '<div class="sheet-b"><p class="muted" style="margin:0">' + (AD.as.estadoBusy || !AD.as.estado ? 'Revisando la conexión…' : 'Drive todavía no está conectado. Los pasos están en Ajustes.') + '</p></div>';
+    if (!st.drive) inner = '<div class="sheet-b"><p class="muted" style="margin:0">' + (AD.as.estadoBusy || !AD.as.estado ? 'Revisando la conexión…' : 'Drive todavía no está conectado: se conecta en Configuración › Integraciones.') + '</p></div>';
     else if (!cfg.carpeta || AD.as.cambiarCarpeta) inner = '<div class="sheet-b"><p style="margin:0 0 10px">Compartí la carpeta de facturas con <b>' + esc(st.drive_email) + '</b> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button> (permiso de lector) y pegá el link acá.</p><div class="toolbar"><input class="in" id="as-carpeta" value="' + esc(AD.as.cambiarCarpeta ? (cfg.carpeta_url || '') : '') + '" placeholder="https://drive.google.com/drive/folders/…" style="flex:1;min-width:260px"><button class="btn primary" data-act="asCarpeta">Guardar</button>' + (AD.as.cambiarCarpeta ? '<button class="btn ghost" data-act="asCarpetaCambiar" data-v="0">Cancelar</button>' : '') + '</div></div>';
     else {
       const filtro = { pendientes: d => d.estado === 'Nuevo' || d.estado === 'Leído' || d.estado === 'Error' || sinFactura(d), vinculados: d => d.estado === 'Vinculado' && !sinFactura(d), ignorados: d => d.estado === 'Ignorado', todos: () => true }[df];
@@ -473,40 +473,42 @@ export function initAsistente(ctx, k) {
   const clientesVencido = () => S.C.filter(c => aMesVencido(c.nombre)).map(c => c.nombre).sort(cmp);
   function vencidosHtml() {
     const vs = clientesVencido();
-    return '<div class="muted" style="font-size:13px;margin-top:6px">Cada cliente se marca como mes en curso o mes vencido en sus Datos de facturación. ' + (vs.length ? 'Mes vencido: <b>' + vs.map(esc).join(', ') + '</b>.' : 'Hoy todos son mes en curso.') + '</div>';
+    return '<p class="cfg-nota">Cada cliente se marca como mes en curso o mes vencido en su ficha, en Datos de facturación. ' + (vs.length ? 'Mes vencido: <b>' + vs.map(esc).join(', ') + '</b>.' : 'Hoy todos son mes en curso.') + '</p>';
   }
-  function factHtml() {
-    const fc = cfgFact(), c = corteDia(), cv = corteVencidoDia(), con = AD.F.filter(f => f.pdf_respaldo).length, falta = sinCopia().length;
-    return '<div><b>Facturas: de qué mes son</b><div class="muted" style="margin:2px 0 6px">Primero se usa el resumen de cuenta con el mismo monto, el período de la factura o el mes del detalle. Si no hay nada de eso, se decide por la fecha y la factura queda marcada para revisar.</div>' +
-      '<div class="cortes">' +
-      '<div><b style="font-weight:600">Facturación mes en curso</b><div class="toolbar"><span>Desde el día</span><input class="in" id="as-corte" type="number" min="1" max="28" step="1" value="' + c + '" aria-label="Día de corte, mes en curso"><span>se toman como del mes siguiente; antes, del mismo mes.</span></div><div class="muted" style="font-size:13px">Con ' + c + ': una del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre.</div></div>' +
-      '<div><b style="font-weight:600">Facturación mes vencido</b><div class="toolbar"><span>Desde el día</span><input class="in" id="as-corte-v" type="number" min="1" max="28" step="1" value="' + cv + '" aria-label="Día de corte, mes vencido"><span>se toman como del mismo mes; antes, del mes anterior.</span></div><div class="muted" style="font-size:13px">Con ' + cv + ': una del ' + Math.max(1, cv - 1) + '/10 es de septiembre; una del ' + cv + '/10, de octubre.</div></div>' +
-      '<div><button class="btn sm" data-act="asCorte">Guardar días</button></div></div>' + vencidosHtml() + '</div>' +
-      '<div><b>Copia de respaldo de los PDF</b><div class="muted" style="margin:2px 0 6px">Cada factura que cargás desde Drive se guarda también en la app (Supabase). Si alguien la borra de Drive, se puede ver y mandar igual. Cada PDF pesa unos 100 KB: un año entero de facturas ocupa menos de 50 MB.</div>' +
-      '<div class="toolbar"><label class="chk"><input type="checkbox" data-asresp="1"' + (fc.respaldo ? ' checked' : '') + '> Guardar una copia de cada factura</label>' +
-      (fc.respaldo && falta ? '<button class="btn sm" data-act="asRespTodo">Copiar las ya cargadas (' + falta + ')</button>' : '') + '</div>' +
-      (con ? '<div class="muted" style="font-size:13px;margin-top:4px">' + con + (con === 1 ? ' factura tiene copia.' : ' facturas tienen copia.') + '</div>' : '') + '</div>';
-  }
-  function configHtml(st) {
-    const em = cfgEmisores(), cfg = cfgDrive(), ok = v => v ? '<b style="color:var(--ok)">✓ conectado</b>' : '<b style="color:var(--crit)">sin configurar</b>';
-    const usos = AD.IL || [], tin = usos.reduce((a, x) => a + (x.tokens_in || 0), 0), tout = usos.reduce((a, x) => a + (x.tokens_out || 0), 0);
-    const pasosIA = '<ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li>Entrá a console.anthropic.com con una cuenta de àndale y cargá crédito (Billing).</li><li>API keys → Create key.</li><li>Supabase → Edge Functions → Secrets → agregá <code>ANTHROPIC_API_KEY</code> con esa clave.</li></ol>';
-    const pasosDrive = '<ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li>console.cloud.google.com → proyecto nuevo “andale-ops”.</li><li>APIs y servicios → Biblioteca → habilitá <b>Google Drive API</b>.</li><li>IAM → Cuentas de servicio → Crear (sin roles) → Claves → Agregar clave → JSON.</li><li>Integraciones → Cuentas y claves → Google Drive → pegá el contenido completo del .json.</li><li>En Drive, compartí la carpeta de facturas con el email de la cuenta de servicio, como Editor (así ordena los nombres).</li></ol>';
-    return '<section class="sheet" id="as-config"><div class="sheet-h"><h2>IA, Drive y resumen por email</h2><span class="muted">IA ' + (st.ia ? '✓' : '✗') + ' · Drive ' + (st.drive ? '✓' : '✗') + '</span></div><div class="sheet-b" style="display:grid;gap:16px">' +
-      (st.error ? '<p style="margin:0;color:var(--crit)">' + esc(st.error) + '</p>' : '') +
-      '<div><b>IA (Claude)</b> · ' + ok(st.ia) + (st.ia ? '<div class="muted" style="margin-top:4px">Este mes: ' + usos.length + ' consultas · ' + usdIA(gastoIA(usos).usd) + ' estimados.</div>' : '<div class="muted" style="margin-top:4px">Para conectarla, mirá Configuración técnica, abajo.</div>') + '</div>' +
-      '<div><b>Google Drive</b> · ' + ok(st.drive) + (st.drive_email ? '<div style="margin-top:4px">Email para compartir carpetas de Drive: <code>' + esc(st.drive_email) + '</code> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button></div>' : '') + (st.drive_error ? '<div style="color:var(--crit)">' + esc(st.drive_error) + '</div>' : '') + (st.drive ? '' : '<div class="muted" style="margin-top:4px">Para conectarlo, mirá Configuración técnica, abajo.</div>') +
-      '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta2" value="' + esc(cfg.carpeta_url || '') + '" placeholder="Link de la carpeta de facturas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta2">Guardar carpeta de facturas</button></div>' +
-      '<div class="toolbar" style="margin-top:8px"><input class="in" id="as-carpeta3" value="' + esc(cfg.carpeta_propuestas_url || '') + '" placeholder="Link de la carpeta de propuestas anteriores (opcional)" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta3" data-k="propuestas">Guardar carpeta de propuestas</button></div><span class="muted" style="display:block;font-size:13px;margin-top:6px">La IA toma de ahí hasta 3 propuestas viejas (Google Docs o PDF) como referencia de estilo y precios. Compartila también con el email de arriba.</span></div>' +
-      '<div><b>CUIT de quien factura</b><div class="muted" style="margin:2px 0 6px">Para reconocer quién hizo cada factura. Se completa solo la primera vez que confirmás quién factura.</div><div class="toolbar">' + k.EMISORES.map(e => '<label class="field" style="gap:2px"><span class="lbl">' + esc(e) + '</span><input class="in" id="as-cuit-' + esc(e) + '" value="' + esc((em[e] || {}).cuit || '') + '" inputmode="numeric" placeholder="20-12345678-9" style="width:170px"></label>').join('') + '<button class="btn sm" data-act="asCuits" style="align-self:end">Guardar</button></div></div>' +
-      factHtml() +
-      '<div><b>Resumen por email</b><div class="muted" style="margin:2px 0 6px">Los días 1 y 8 de cada mes, a las 9, el asistente les manda a los admins qué falta para cerrar.</div><div class="toolbar"><label class="chk"><input type="checkbox" data-asemail="1"' + (cfgAsist().email_activo !== false ? ' checked' : '') + '> Activado</label><button class="btn sm" data-act="asEmailYa">Mandarme uno ahora</button></div></div>' +
-      '<p class="muted" style="margin:0;font-size:13px">Los PDFs y resúmenes del banco que lee la IA se envían a la API de Anthropic solo para procesarlos; no se usan para entrenar modelos. Nada se guarda en la app sin que lo confirmen.</p>' +
-      '<details><summary style="cursor:pointer">Configuración técnica</summary><div class="muted" style="margin-top:8px;display:grid;gap:10px">' +
-      (st.modelo ? '<div>Modelo de IA: ' + esc(st.modelo) + '</div>' : '') +
-      (st.ia ? '<div>Este mes: ' + new Intl.NumberFormat('es-AR').format(tin) + ' tokens de entrada y ' + new Intl.NumberFormat('es-AR').format(tout) + ' de salida, unos <b>' + usdIA(gastoIA(usos).usd) + '</b> estimados. El detalle y el modelo de Redes están en Integraciones → Mr. Piggy; el gasto real, en console.anthropic.com.</div>' : '<div><b>Conectar la IA</b>' + pasosIA + '</div>') +
-      (st.drive ? '' : '<div><b>Conectar Google Drive</b>' + pasosDrive + '</div>') +
-      '</div></details>' +
+  // Configuración › Facturación: una sección por tema, con el estilo de las demás pantallas (sx).
+  const sx = (ico, titulo, lead, cuerpo, id) => '<section class="sheet sx"' + (id ? ' id="' + id + '"' : '') + '><div class="sx-h"><span class="sx-i">' + ico + '</span><h2>' + titulo + '</h2></div><div class="sx-panel">' + (lead ? '<p class="sx-lead">' + lead + '</p>' : '') + cuerpo + '</div></section>';
+  const pedirEstado = () => { if (!AD.as.estado && !AD.as.estadoBusy) setTimeout(() => cargarEstado(), 0); return AD.as.estado || {}; };
+  const sec = {
+    quien: () => { const em = cfgEmisores();
+      return sx(ICON.facturas, 'Quién factura', 'El CUIT de cada una, para reconocer quién hizo cada factura que llega a Drive. Se completa solo la primera vez que confirmás quién factura.',
+        '<div class="toolbar cfg-campos">' + k.EMISORES.map(e => '<label class="field"><span class="lbl">' + esc(e) + '</span><input class="in" id="as-cuit-' + esc(e) + '" value="' + esc((em[e] || {}).cuit || '') + '" inputmode="numeric" placeholder="20-12345678-9"></label>').join('') + '<button class="btn sm" data-act="asCuits">Guardar</button></div>'); },
+    mes: () => { const c = corteDia(), cv = corteVencidoDia();
+      const fila = (t, id, v, txt, ej) => '<div class="cfg-op"><b>' + t + '</b><div class="toolbar"><span>Desde el día</span><input class="in" id="' + id + '" type="number" min="1" max="28" step="1" value="' + v + '" aria-label="Día de corte, ' + t + '"><span>' + txt + '</span></div><span class="cfg-ej">' + ej + '</span></div>';
+      return sx(ICON.calendario, 'De qué mes son las facturas', 'Al cargar una factura, el mes sale del resumen de cuenta con el mismo monto, del período de la factura o del mes escrito en el detalle. Solo si no hay nada de eso se decide por la fecha, con estos días, y la factura queda marcada para revisar.',
+        '<div class="cfg-ops">' + fila('Facturación mes en curso', 'as-corte', c, 'se toman como del mes siguiente; antes, del mismo mes.', 'Con ' + c + ': una del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre.') +
+        fila('Facturación mes vencido', 'as-corte-v', cv, 'se toman como del mismo mes; antes, del mes anterior.', 'Con ' + cv + ': una del ' + Math.max(1, cv - 1) + '/10 es de septiembre; una del ' + cv + '/10, de octubre.') + '</div>' +
+        '<div class="toolbar" style="margin-top:12px"><button class="btn sm" data-act="asCorte">Guardar días</button></div>' + vencidosHtml()); },
+    drive: () => { const st = pedirEstado(), cfg = cfgDrive(), fc = cfgFact(), con = AD.F.filter(f => f.pdf_respaldo).length, falta = sinCopia().length;
+      return sx(ICON.drive, 'Facturas en Drive', 'La carpeta donde se guardan los PDF de ARCA. La app los lee, los carga y les pone el nombre <b>CLIENTE-MES-AÑO.pdf</b>.',
+        '<div class="toolbar"><input class="in" id="as-carpeta2" value="' + esc(cfg.carpeta_url || '') + '" placeholder="Link de la carpeta de facturas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta2">Guardar carpeta</button></div>' +
+        (st.drive_email ? '<p class="cfg-nota">Compartila como <b>Editor</b> con <code>' + esc(st.drive_email) + '</code> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button></p>' : st.drive === false ? '<p class="cfg-nota">Drive no está conectado: se conecta en Integraciones › Cuentas y claves.</p>' : '') +
+        '<div class="cfg-sub"><b>Copia de respaldo de los PDF</b><p class="cfg-nota" style="margin-top:2px">Cada factura que cargás se guarda también en la app. Si alguien la borra de Drive, se puede ver y mandar igual. Un año de facturas ocupa menos de 50 MB.</p>' +
+        '<div class="toolbar"><label class="chk"><input type="checkbox" data-asresp="1"' + (fc.respaldo ? ' checked' : '') + '> Guardar una copia de cada factura</label>' + (fc.respaldo && falta ? '<button class="btn sm" data-act="asRespTodo">Copiar las ya cargadas (' + falta + ')</button>' : '') + '</div>' +
+        (con ? '<p class="cfg-nota">' + con + (con === 1 ? ' factura tiene copia.' : ' facturas tienen copia.') + '</p>' : '') + '</div>'); },
+    cierre: () => sx(ICON.mail, 'Resumen del cierre por email', 'Los días 1 y 8 de cada mes, a las 9, les llega a los administradores qué falta para cerrar el mes.',
+      '<div class="toolbar"><label class="chk"><input type="checkbox" data-asemail="1"' + (cfgAsist().email_activo !== false ? ' checked' : '') + '> Activado</label><button class="btn sm" data-act="asEmailYa">Mandarme uno ahora</button></div>'),
+  };
+  // Para Integraciones: las carpetas de Drive que usa la app y qué se manda a la IA.
+  function carpetasDrive() {
+    const st = pedirEstado(), cfg = cfgDrive();
+    const pasos = '<ol class="cfg-pasos"><li>console.cloud.google.com → proyecto nuevo.</li><li>APIs y servicios → Biblioteca → habilitá <b>Google Drive API</b>.</li><li>IAM → Cuentas de servicio → Crear (sin roles) → Claves → Agregar clave → JSON.</li><li>Arriba, en Cuentas y claves → Google Drive, pegá el contenido completo del .json.</li></ol>';
+    return '<section class="sheet"><div class="sheet-h"><h2>Carpetas de Drive</h2><span class="muted">' + (st.drive ? 'Drive conectado' : st.drive === false ? 'Drive sin conectar' : '') + '</span></div><div class="sheet-b" style="display:grid;gap:12px">' +
+      (st.drive_email ? '<div>Las carpetas se comparten como <b>Editor</b> con <code>' + esc(st.drive_email) + '</code> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button></div>' : '') +
+      (st.drive_error ? '<div style="color:var(--crit)">' + esc(st.drive_error) + '</div>' : '') +
+      (st.drive === false ? '<div><b>Cómo conectarlo</b>' + pasos + '</div>' : '') +
+      '<div><b>Facturas</b><p class="cfg-nota" style="margin-top:2px">' + (cfg.carpeta_url ? '<a href="' + esc(cfg.carpeta_url) + '" target="_blank" rel="noopener">Abrir la carpeta</a> · se cambia en Configuración › Facturación.' : 'Todavía no está elegida: se elige en Configuración › Facturación.') + '</p></div>' +
+      '<div><b>Propuestas anteriores</b> <span class="muted">(opcional)</span><div class="toolbar" style="margin-top:6px"><input class="in" id="as-carpeta3" value="' + esc(cfg.carpeta_propuestas_url || '') + '" placeholder="Link de la carpeta de propuestas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta3" data-k="propuestas">Guardar</button></div><p class="cfg-nota">Mr. Piggy toma de ahí hasta 3 propuestas viejas (Google Docs o PDF) como referencia de estilo y precios.</p></div>' +
+      '<p class="cfg-nota" style="margin:0">Los PDF y resúmenes del banco que lee la IA se mandan a la API de Anthropic solo para procesarlos; no se usan para entrenar modelos. Nada se guarda en la app sin que lo confirmen.</p>' +
       '</div></section>';
   }
 
@@ -611,10 +613,5 @@ export function initAsistente(ctx, k) {
   document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.asemail) actions.asEmailOn(e.target); if (e.target.dataset && e.target.dataset.asresp) actions.asRespOn(e.target); });
   document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.cc !== undefined && t.type !== 'checkbox' && AD.as.conc) { const x = AD.as.conc.movimientos[+t.dataset.cc]; if (x) x[t.dataset.cck] = t.value; } });
 
-  function vAjustes() {
-    if (!AD.as.estado && !AD.as.estadoBusy) setTimeout(() => cargarEstado(), 0);
-    return '<div class="head"><div><h1>Ajustes</h1><p>Conexiones con la IA y Drive, datos de facturación y el resumen mensual por email.</p></div></div>' + configHtml(AD.as.estado || {});
-  }
-
-  return { respaldar, actions, view: vAsistente, pendientesHtml, driveView, bancoView, driveCount, ajustes: vAjustes, count: pendientesCount, presetDesde, aprender, b64Bytes };
+  return { respaldar, actions, view: vAsistente, pendientesHtml, driveView, bancoView, driveCount, sec, carpetasDrive, count: pendientesCount, presetDesde, aprender, b64Bytes };
 }

@@ -2705,6 +2705,31 @@ h3>.todos-b{margin:0 0 0 10px;font-size:12px;vertical-align:middle}
 .field label.opcion small{font-weight:400}
 .opcion small{font-size:12.5px;color:var(--muted);line-height:1.35}
 .opciones.inline .opcion{padding:6px 11px;align-items:center}
-.cortes{display:grid;gap:8px;margin-top:2px}
-.cortes .toolbar{gap:8px}
-.cortes .in{width:68px}
+
+/* Configuración: grupos con título, secciones y notas (Facturación, Trabajo y Redes, Mails) */
+.cfg-gh{margin:30px 0 12px;padding-top:4px}
+.head + .cfg-gh,.head + .cfg-idx + .cfg-g .cfg-gh,.head + .cfg-g .cfg-gh{margin-top:6px}
+.cfg-gh h2{margin:0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.cfg-gh p{margin:4px 0 0;font-size:14px;color:var(--muted)}
+.cfg-g{margin-top:8px}
+.cfg-g > h2{margin:22px 0 0;font-size:16px;font-weight:600}
+.cfg-g > h2 + p{margin-top:2px}
+.cfg-g .lists{margin-top:0}
+.cfg-st{margin:18px 0 0;font-size:15px;font-weight:600}
+.cfg-nota{margin:8px 0 0;font-size:13px;color:var(--muted)}
+.cfg-nota code{font-size:12.5px}
+.cfg-ops{display:grid;gap:14px}
+.cfg-op{display:grid;gap:4px}
+.cfg-op > b{font-weight:600;font-size:14px}
+.cfg-op .toolbar{gap:8px}
+.cfg-op .in{width:68px}
+.cfg-ej{font-size:12.5px;color:var(--muted)}
+.cfg-sub{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.cfg-sub > b{font-weight:600;font-size:14px}
+.cfg-campos{align-items:flex-end;gap:10px}
+.cfg-campos .field{gap:3px}
+.cfg-campos .in{width:170px}
+.cfg-pasos{margin:6px 0 0;padding-left:18px;display:grid;gap:3px;font-size:13.5px}
+.cfg-idx{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px}
+.cfg-idx a{font-size:13px;font-weight:600;color:var(--fg);text-decoration:none;padding:5px 11px;border-radius:99px;background:var(--surface-2)}
+.cfg-idx a:hover{background:color-mix(in srgb,var(--accent) 12%,var(--surface-2))}

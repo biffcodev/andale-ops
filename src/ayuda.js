@@ -12,6 +12,8 @@ export const TUTORIALES = {
 
 // Lo nuevo de la app, lo más reciente primero. roles: a quién le interesa (vacío = a todos).
 export const NOVEDADES = [
+  { f: '2026-10-17', t: 'Configuración ordenada', d: 'Seis pantallas por tema: Facturación, Mails, Trabajo y Redes, Integraciones, Automatizaciones y Datos de la app.', roles: ['admin'] },
+  { f: '2026-10-17', t: 'Facturas en Drive', d: 'Se nombran solas como CLIENTE-MES-AÑO.pdf, se detectan duplicados y se avisa si alguien borra un PDF. Copia de respaldo opcional.', roles: ['admin'] },
   { f: '2026-10-17', t: 'Redes por etapas', d: 'El mes avanza solo de Planificación a Diseño, Revisión, Cliente y Aprobado cuando todas las piezas de la etapa están listas, y avisa al equipo.', roles: ['admin', 'equipo', 'externo'] },
   { f: '2026-10-17', t: 'Tablero de Redes', d: 'Una vista nueva para ver las piezas por etapa y moverlas arrastrándolas.', roles: ['admin', 'equipo', 'externo'] },
   { f: '2026-10-17', t: 'Mr. Piggy arma el plan más rápido', d: 'Propone el mes por tandas, separa Efemérides y noticias de Días y horarios, y corrige la redacción.', roles: ['admin', 'equipo'] },

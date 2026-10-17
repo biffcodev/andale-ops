@@ -75,7 +75,7 @@ export function initAutomatizar(ctx) {
     st.pantalla = p; S.form = null;
     $('#panel').innerHTML = '<div class="panel-h"><div><span class="eyebrow">Se hacen solas</span><h2 id="panel-title">Automatizar</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b au-pb"><p class="formnote">Prendé lo que quieras que pase solo. Se configura una vez y listo; lo podés apagar cuando quieras.</p><div id="au-b">' + cuerpo(p === 'todas' ? null : p) + '</div></div>' +
-      '<div class="panel-f"><span>' + (p !== 'todas' ? '<button type="button" class="btn link sm" data-act="go" data-view="ajustes" data-tab="auto">Ver todas</button>' : '') + '</span><button type="button" class="btn primary" data-act="close">Listo</button></div>';
+      '<div class="panel-f"><span>' + (p !== 'todas' ? '<button type="button" class="btn link sm" data-act="go" data-view="automatizaciones">Ver todas</button>' : '') + '</span><button type="button" class="btn primary" data-act="close">Listo</button></div>';
     $('#panel').hidden = false; $('#scrim').hidden = false;
     cargar();
   }

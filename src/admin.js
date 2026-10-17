@@ -1371,7 +1371,7 @@ export function initAdmin(ctx) {
         { k: 'vencimiento', label: 'Vence', type: 'date' },
         { k: 'periodo', label: '¿De qué mes es?', type: 'month', month: 1, adv: 1 },
         { k: 'nota', label: 'Nota en el invoice (inglés)', type: 'textarea', rows: 2, full: 1, adv: 1, ph: 'Thank you for your business!' },
-        { k: 'pago', label: 'Payment instructions (opcional)', type: 'textarea', rows: 4, full: 1, adv: 1, hint: 'Si lo dejás vacío salen las cuentas del exterior cargadas en Ajustes. Lo último que escribas queda como predeterminado.' },
+        { k: 'pago', label: 'Payment instructions (opcional)', type: 'textarea', rows: 4, full: 1, adv: 1, hint: 'Si lo dejás vacío salen las cuentas del exterior cargadas en Configuración › Facturación. Lo último que escribas queda como predeterminado.' },
       ],
       masLabel: 'Mes, nota y datos de pago',
       top: '<div class="field full"><span class="lbl">Ítems</span><div id="inv-items" class="impbox"></div></div>',
@@ -2063,10 +2063,19 @@ export function initAdmin(ctx) {
     const tabs = ctx.subnav('gastos', [['movs', 'Movimientos'], ['banco', 'Resumen del banco']]);
     return tabs + ((S.tab.gastos || 'movs') === 'banco' ? AS.bancoView() : vCaja());
   }
+  // Configuración: Facturación (antes «Ajustes»; la ruta #ajustes no cambia), Automatizaciones y Datos de la app.
+  const cfgGrupo = (t, d) => '<div class="cfg-gh"><h2>' + t + '</h2>' + (d ? '<p>' + d + '</p>' : '') + '</div>';
   function vAjustes() {
-    const tabs = ctx.subnav('ajustes', [['conexiones', 'Conexiones y facturación'], ['bancos', 'Bancos y datos de pago'], ['auto', 'Automatizaciones'], ['carga', 'Carga inicial'], ['datos', 'Copia y datos']]);
-    const t = S.tab.ajustes || 'conexiones';
-    return tabs + (t === 'bancos' ? vBancos() : t === 'auto' && ctx.autoVista ? ctx.autoVista() : t === 'carga' ? MT.html('carga') : t === 'datos' ? MT.html('datos') : AS.ajustes());
+    return '<div class="head"><div><h1>Facturación</h1><p>Cómo se reconocen y se guardan las facturas, dónde está la plata y los avisos del cierre.</p></div></div>' +
+      cfgGrupo('Facturas', 'Lo que usa la app para leer y ordenar las facturas que llegan a Drive.') + AS.sec.quien() + AS.sec.mes() + AS.sec.drive() +
+      cfgGrupo('Cuentas y cobros', 'Dónde entra la plata, qué datos van en los resúmenes y desde cuándo se cobra con la app.') + vBancos() + MT.html('arranque') +
+      cfgGrupo('Avisos', '') + AS.sec.cierre();
+  }
+  function vAutomatizaciones() {
+    return '<div class="head"><div><h1>Automatizaciones</h1><p>Lo que la app hace sola: envíos programados, avisos y tareas que se repiten.</p></div></div>' + (ctx.autoVista ? ctx.autoVista() : '');
+  }
+  function vDatosApp() {
+    return '<div class="head"><div><h1>Datos de la app</h1><p>La carga inicial, las copias de seguridad y los errores.</p></div></div>' + MT.html('carga') + MT.html('datos');
   }
   function vNumeros() {
     const tabs = ctx.subnav('numeros', [['stats', 'General'], ['rent', 'Qué deja cada cliente']]);
@@ -2075,7 +2084,7 @@ export function initAdmin(ctx) {
 
   Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions, MT.actions);
   return {
-    load, actions, extrasCfg, formExtras, fichaSection, deudaLinea, proyectoSection, AD, cfgMarca: () => cfgMarca(),
+    load, actions, carpetasDrive: () => AS.carpetasDrive(), extrasCfg, formExtras, fichaSection, deudaLinea, proyectoSection, AD, cfgMarca: () => cfgMarca(),
     precioHoy: (id, m) => (AD.ok ? precioEn(id, m || thisMonth()) : null), moneyFmt: (n, m) => money(n, m),
     // Para la IA: abrir formularios ya completos (nada se guarda sin confirmar).
     abrir: {
@@ -2084,7 +2093,7 @@ export function initAdmin(ctx) {
       propuesta: preset => actions.pzNueva({ dataset: { clase: preset.clase || 'Presupuesto', preset: JSON.stringify(preset) } }),
     },
     contexto: () => contextoIA(),
-    views: [['plata', 'Hoy y lo que viene', vPlata], ['cuentas', 'Saldos de clientes', vCuentas], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['sueldos', 'Sueldos', EQ.vSueldos], ['aumentos', 'Aumentos', EQ.vAumentos], ['proveedores', 'Proveedores', EQ.vProveedores], ['numeros', 'Estadísticas', vNumeros], ['ajustes', 'Ajustes', vAjustes],
+    views: [['plata', 'Hoy y lo que viene', vPlata], ['cuentas', 'Saldos de clientes', vCuentas], ['propuestas', 'Presupuestos', PZ.view], ['cobros', 'Cobros', vCobros], ['gastos', 'Gastos e ingresos', vGastos], ['sueldos', 'Sueldos', EQ.vSueldos], ['aumentos', 'Aumentos', EQ.vAumentos], ['proveedores', 'Proveedores', EQ.vProveedores], ['numeros', 'Estadísticas', vNumeros], ['ajustes', 'Facturación', vAjustes], ['automatizaciones', 'Automatizaciones', vAutomatizaciones], ['datos', 'Datos de la app', vDatosApp],
       ['asistente', 'Asistente', AS.view], ['estadisticas', 'Estadísticas', ST.view], ['cierre', 'Cobros del mes', vCierre], ['facturas', 'Facturas', vFacturas], ['precios', 'Precios a clientes', vPrecios], ['caja', 'Gastos e ingresos', vCaja], ['rentabilidad', 'Qué deja cada cliente', vRent]],
     equipoView: () => EQ.vPersonas(),
     counts: () => (AD.ok ? { cobros: cobrosBadges().reduce((a, n) => a + n, 0) } : {}),

@@ -61,7 +61,7 @@ const VER_CL = { 'Proyectos': 'Solo proyectos' }; // solo para mostrar: el valor
 const TIPO_COLOR = { Branding: '--accent', Packaging: '--t-naranja', Web: '--s-curso', Diseño: '--s-confirmar', Audiovisual: '--s-presup', Redes: '--t-rosa', Ads: '--t-ambar', Otro: '--s-empezar' };
 const AB_COLOR = { 'Activo': '--s-entregado', 'Pausado': '--s-pausado', 'Baja': '--s-empezar' };
 const ROL_COLOR = { admin: '--s-confirmar', equipo: '--s-curso', externo: '--s-revision' };
-const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['redes', 'Redes'], ['tickets', 'Tickets'], ['briefs', 'Briefs'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Opciones'], ['integraciones', 'Integraciones']];
+const ALL_VIEWS = [['inicio', 'Inicio'], ['proyectos', 'Proyectos'], ['redes', 'Redes'], ['tickets', 'Tickets'], ['briefs', 'Briefs'], ['mis', 'Mis trabajos'], ['clientes', 'Clientes'], ['equipo', 'Equipo'], ['comunicaciones', 'Charlas'], ['listas', 'Trabajo y Redes'], ['mails', 'Mails'], ['integraciones', 'Integraciones']];
 // Menú lateral: grupos por tipo de tarea. Las vistas de administración las aporta admin.js.
 // Menú en 5 secciones. Cada sección agrupa pantallas que se ven como pestañas arriba; las rutas (#proyectos, #cobros…) no cambian.
 // Menú en secciones que se despliegan: lo del día a día (trabajo y clientes) por un lado, lo financiero por otro.
@@ -72,9 +72,9 @@ const SECCIONES = [
   ['clientes', 'Clientes', 'clientes', ['clientes', 'propuestas', 'briefs', 'comunicaciones']],
   ['equipo', 'Equipo', 'mis', ['equipo', 'sueldos', 'aumentos']],
   ['finanzas', 'Finanzas', 'plata', ['plata', 'cuentas', 'cobros', 'gastos', 'proveedores', 'precios', 'numeros']],
-  ['config', 'Configuración', 'ajustes', ['listas', 'integraciones', 'ajustes']],
+  ['config', 'Configuración', 'ajustes', ['ajustes', 'mails', 'listas', 'integraciones', 'automatizaciones', 'datos']],
 ];
-const TAB_LABEL = { mis: 'Mis trabajos', plata: 'Hoy y lo que viene', cuentas: 'Saldos de clientes', propuestas: 'Presupuestos', equipo: 'Personas', sueldos: 'Sueldos del mes', precios: 'Precios a clientes', listas: 'Opciones', comunicaciones: 'Charlas' };
+const TAB_LABEL = { mis: 'Mis trabajos', plata: 'Hoy y lo que viene', cuentas: 'Saldos de clientes', propuestas: 'Presupuestos', equipo: 'Personas', sueldos: 'Sueldos del mes', precios: 'Precios a clientes', listas: 'Trabajo y Redes', ajustes: 'Facturación', datos: 'Datos de la app', comunicaciones: 'Charlas' };
 const seccionDe = v => (SECCIONES.find(x => x[3].includes(v)) || SECCIONES[0])[0];
 // Pantallas que ahora viven como pestañas de otra (los links viejos y los emails siguen funcionando).
 const ALIAS = { asistente: ['cobros', 'mes'], cierre: ['cobros', 'mes'], facturas: ['cobros', 'facturas'], caja: ['gastos', 'movs'], abonos: ['redes', 'planes'], pagos: ['sueldos', 'mes'], estadisticas: ['numeros', 'stats'], rentabilidad: ['numeros', 'rent'] };
@@ -1267,23 +1267,37 @@ function vComs() {
   return h + '<section class="sheet"><div class="timeline">' + list.map(m => comItem(m, false)).join('') + '</div><div class="count num">' + list.length + ' registros</div></section>';
 }
 
+// Configuración › Trabajo y Redes: las opciones de los desplegables, agrupadas por tema.
+function listaHtml(k, label) {
+  const arr = S.L[k] || [];
+  return '<section class="sheet"><div class="sheet-h"><h3>' + esc(label) + '</h3><span class="muted num">' + arr.length + '</span></div><div class="sheet-b"><div class="chips">' +
+    arr.map((v, i) => '<span class="chip">' + esc(v) + (isStaff() && !(k === 'estadosProyecto' && CERRADOS.has(v)) ? '<button aria-label="Quitar ' + esc(v) + '" data-act="listDel" data-k="' + k + '" data-i="' + i + '">×</button>' : '<span style="width:8px"></span>') + '</span>').join('') +
+    '</div>' + (isStaff() ? '<form class="addrow" data-list="' + k + '"><input class="in" id="li-' + k + '" placeholder="Agregar valor" value="' + esc(S.listDraft[k] || '') + '" data-bind="listDraft.' + k + '"><button class="btn" type="submit">Agregar</button></form>' : '') + '</div></section>';
+}
+const cfgGrupo = (t, d, inner, id) => '<section class="cfg-g"' + (id ? ' id="' + id + '"' : '') + '><div class="cfg-gh"><h2>' + t + '</h2>' + (d ? '<p>' + d + '</p>' : '') + '</div>' + inner + '</section>';
 function vListas() {
-  let h = '<div class="head"><div><h1>Opciones</h1><p>Las opciones que aparecen en los desplegables.</p></div></div><div class="lists">';
+  const L = ks => '<div class="lists">' + ks.map(k => listaHtml(k, LIST_LABELS[k])).join('') + '</div>';
   const etapaKeys = S.FL ? [] : (S.L.tipos || []).filter(t => !['Redes', 'Ads'].includes(t)).map(t => ['etapas:' + t, 'Tareas modelo · ' + t]);
-  for (const [k, label] of [...Object.entries(LIST_LABELS), ...etapaKeys]) {
-    const arr = S.L[k] || [];
-    h += (etapaKeys.length && k === etapaKeys[0][0] ? '</div><h2 style="margin:8px 0 0">Etapas por tipo de proyecto</h2><p class="muted" style="margin:0">Se cargan al crear un proyecto de ese tipo. Cambiarlas no modifica los proyectos que ya existen.</p><div class="lists">' : '') + '<section class="sheet"><div class="sheet-h"><h3>' + esc(label) + '</h3><span class="muted num">' + arr.length + '</span></div><div class="sheet-b"><div class="chips">' +
-      arr.map((v, i) => '<span class="chip">' + esc(v) + (isStaff() && !(k === 'estadosProyecto' && CERRADOS.has(v)) ? '<button aria-label="Quitar ' + esc(v) + '" data-act="listDel" data-k="' + k + '" data-i="' + i + '">×</button>' : '<span style="width:8px"></span>') + '</span>').join('') +
-      '</div>' + (isStaff() ? '<form class="addrow" data-list="' + k + '"><input class="in" id="li-' + k + '" placeholder="Agregar valor" value="' + esc(S.listDraft[k] || '') + '" data-bind="listDraft.' + k + '"><button class="btn" type="submit">Agregar</button></form>' : '') + '</div></section>';
-  }
-  return h + '</div>' + firmasHtml() + equipoFijoHtml() + red().opcionesHtml() + (S.FL ? trab().flujosHtml() + planesHtml() : '');
+  const etapas = etapaKeys.length ? '<h3 class="cfg-st">Etapas por tipo de proyecto</h3><p class="cfg-nota">Se cargan al crear un proyecto de ese tipo. Cambiarlas no modifica los proyectos que ya existen.</p><div class="lists">' + etapaKeys.map(([k, l]) => listaHtml(k, l)).join('') + '</div>' : '';
+  const grupos = [['proyectos', 'Proyectos'], ['clientes', 'Clientes'], ['redes', 'Redes'], ['ads', 'Ads'], ['otros', 'Proveedores y monedas']];
+  return '<div class="head"><div><h1>Trabajo y Redes</h1><p>Las opciones que aparecen al cargar proyectos, clientes y piezas, y cómo trabaja el equipo en Redes.</p></div></div>' +
+    '<nav class="cfg-idx" aria-label="Ir a">' + grupos.map(([id, t]) => '<a href="#listas" data-act="cfgIr" data-to="cfg-' + id + '">' + t + '</a>').join('') + '</nav>' +
+    cfgGrupo('Proyectos', 'Tipos, estados y cómo avanza cada proyecto.', L(['tipos', 'estadosProyecto']) + etapas + (S.FL ? trab().flujosHtml() : ''), 'cfg-proyectos') +
+    cfgGrupo('Clientes', 'Estados, servicios que se venden y por dónde se habla.', L(['estadosCliente', 'servicios', 'tiposAbono', 'canales']), 'cfg-clientes') +
+    cfgGrupo('Redes', 'Planes, formatos, el flujo del mes y quién está en cada cuenta.', L(['planes', 'formatosRedes', 'rolesCuenta']) + (S.FL ? planesHtml() : '') + red().opcionesHtml() + equipoFijoHtml(), 'cfg-redes') +
+    cfgGrupo('Ads', 'Dónde se pauta y qué se mide.', L(['plataformasAds', 'resultadosAds']), 'cfg-ads') +
+    cfgGrupo('Proveedores y monedas', '', L(['rubros', 'monedas']), 'cfg-otros');
+}
+// Configuración › Mails
+function vMails() {
+  return '<div class="head"><div><h1>Mails</h1><p>Con qué firma salen los mails de la app. Todos llevan además los datos de àndale al pie.</p></div></div>' + firmasHtml(true);
 }
 // Quién firma los mails (se puede cambiar en cada mail antes de mandarlo).
-function firmasHtml() {
+function firmasHtml(solo) {
   const c = firmaConfig(S), ps = firmantes(S);
   const sel = (k, v) => '<select class="in" data-firmacfg="' + k + '"' + (isStaff() ? '' : ' disabled') + '>' + opt(FIRMA_YO, 'Quien lo manda', v) + ps.map(e => opt(e.persona, (e.nombre || e.persona) + (e.puesto ? ' · ' + e.puesto : ''), v)).join('') + opt(FIRMA_NO, 'Sin firma', v) + '</select>';
-  return '<h2 style="margin:24px 0 0">Firma de los mails</h2><p class="muted" style="margin:0">Con qué firma salen los mails. Todos llevan además los datos de àndale al pie. En cada mail se ve la firma y se puede cambiar antes de mandarlo.</p>' +
-    '<section class="sheet" style="margin-top:12px"><div class="sheet-b" style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">' +
+  return '<div class="cfg-gh"><h2>Firma de los mails</h2><p>Una para la cobranza y otra para el resto. En cada mail se ve la firma y se puede cambiar antes de mandarlo.</p></div>' +
+    '<section class="sheet"><div class="sheet-b" style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">' +
     '<div class="field"><label>Cobranza: resúmenes, facturas, recordatorios y aumentos</label>' + sel('cobranza', c.cobranza) + '</div>' +
     '<div class="field"><label>El resto: mensajes a clientes, avisos del portal, proveedores y presupuestos</label>' + sel('otros', c.otros) + '<span class="hint">Si firma otra persona, el mail sale con su nombre y las respuestas le llegan a ella.</span></div></div></section>';
 }
@@ -1306,7 +1320,7 @@ function planesHtml() {
 }
 /* ---------- Integraciones (catálogo y configuración en integraciones.js) ---------- */
 let INTEGR = null;
-const integr = () => INTEGR || (INTEGR = initIntegraciones({ S, esc, opt, toast, $, data, render, isAdmin, isStaff, closeForm, ISO, emptyBox, DEF: INTEG_DEF }));
+const integr = () => INTEGR || (INTEGR = initIntegraciones({ S, esc, opt, toast, $, data, render, isAdmin, isStaff, closeForm, ISO, emptyBox, DEF: INTEG_DEF, extraCuentas: () => (ADM && ADM.carpetasDrive ? ADM.carpetasDrive() : '') }));
 const vIntegraciones = () => integr().view();
 const trab = () => TRAB || (TRAB = initTrabajo({ S, esc, opt, toast, data, render, isStaff, personas }));
 let PRF = null;
@@ -1360,7 +1374,7 @@ function gcalUrl(titulo, fecha, detalle) {
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titulo) + '&dates=' + d + '/' + n.toISOString().slice(0, 10).replace(/-/g, '') + '&details=' + encodeURIComponent(detalle || 'àndale Operaciones');
 }
 const calBtn = (titulo, fecha, detalle, cls) => integ('calendario') && fecha ? '<a class="btn ico-b ' + (cls || '') + '" href="' + esc(gcalUrl(titulo, fecha, [detalle, integr().cfgGet('calendario', 'aviso')].filter(Boolean).join(' · '))) + '" target="_blank" rel="noopener" title="Agregar a Google Calendar" aria-label="Agregar a Google Calendar">' + ICON.calendario + '</a>' : '';
-const VIEW_FN = { inicio: vInicio, redes: () => vRedes(), tickets: () => vTickets(), briefs: () => vBriefs(), proyectos: vProyectos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, integraciones: vIntegraciones };
+const VIEW_FN = { inicio: vInicio, redes: () => vRedes(), tickets: () => vTickets(), briefs: () => vBriefs(), proyectos: vProyectos, mis: vMis, clientes: vClientes, equipo: vEquipo, comunicaciones: vComs, listas: vListas, mails: vMails, integraciones: vIntegraciones };
 
 /* ---------- Render ---------- */
 document.addEventListener('change', e => {
@@ -1853,6 +1867,7 @@ const ACT = {
   delYes: () => delRecord(),
   calMove: t => { const n = +t.dataset.d; S.cal = n ? addMonth(S.cal || thisMonth(), n) : null; render(); },
   copy: t => copyText(t.dataset.v),
+  cfgIr: (t, e) => { if (e && e.preventDefault) e.preventDefault(); const el = document.getElementById(t.dataset.to); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
   listDel: t => { const k = t.dataset.k, i = +t.dataset.i; saveListas(k, S.L[k].filter((_, j) => j !== i)); },
   menu: () => menu(),
   logout: async () => { await data.logout(); location.reload(); },
