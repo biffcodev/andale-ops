@@ -1175,7 +1175,7 @@ export function initAdmin(ctx) {
       '<dt>Razón social</dt><dd>' + (ca.razon_social ? esc(ca.razon_social) : '<span class="muted">—</span>') + '</dd>' +
       '<dt>CUIT</dt><dd>' + (ca.cuit ? esc(fmtCuit(ca.cuit)) + (ca.condicion_iva ? ' · ' + esc(ca.condicion_iva) : '') : '<span class="muted">—</span>') + '</dd>' +
       '<dt>Domicilio</dt><dd>' + (ca.domicilio ? esc(ca.domicilio) : '<span class="muted">—</span>') + '</dd>' +
-      '<dt>Cómo se factura</dt><dd>' + esc(verTipo(ca.comprobante_default || 'Factura ARCA')) + (ca.emisor_default ? ' · la hace ' + esc(ca.emisor_default) : '') + ' · ' + esc(ca.moneda || 'ARS') + (ca.facturacion === 'vencido' ? ' · <b>a mes vencido</b>' : '') + '</dd>' +
+      '<dt>Cómo se factura</dt><dd>' + esc(verTipo(ca.comprobante_default || 'Factura ARCA')) + (ca.emisor_default ? ' · la hace ' + esc(ca.emisor_default) : '') + ' · ' + esc(ca.moneda || 'ARS') + ' · ' + (ca.facturacion === 'vencido' ? '<b>facturación mes vencido</b>' : 'facturación mes en curso') + '</dd>' +
       '<dt>Resúmenes y facturas a</dt><dd>' + (mailsDe(c.nombre) ? esc(mailsDe(c.nombre)) + (cobrosDe(c.nombre).length ? '' : ' <span class="muted">(email de facturación)</span>') : '<span class="muted">Nadie. Marcá en Contactos quién los recibe.</span>') + '</dd>' +
       '<dt>Carpeta</dt><dd>' + (ca.carpeta_admin ? '<a href="' + esc(ca.carpeta_admin) + '" target="_blank" rel="noopener">Carpeta de administración</a>' : '<span class="muted">—</span>') + '</dd></dl>' +
       '<button class="btn sm" data-act="aClienteAdm" data-cliente="' + esc(c.nombre) + '">Editar datos</button></div></details>';
@@ -1238,6 +1238,8 @@ export function initAdmin(ctx) {
   function field(f, v) {
     const id = 'af-' + f.k;
     if (f.type === 'check') return '<label class="chk full"><input type="checkbox" id="' + id + '"' + (v ? ' checked' : '') + '> ' + esc(f.label) + '</label>';
+    // Opciones a la vista (en vez de un desplegable): [{ v, label, sub }]
+    if (f.type === 'radio') return '<div class="field' + (f.full ? ' full' : '') + '"><span class="lbl">' + esc(f.label) + '</span><div class="opciones" id="' + id + '" role="radiogroup" aria-label="' + esc(f.label) + '">' + f.opciones.map(o => '<label class="opcion"><input type="radio" name="' + id + '" value="' + esc(o.v) + '"' + (String(v) === String(o.v) ? ' checked' : '') + '><span><b>' + esc(o.label) + '</b>' + (o.sub ? '<small>' + esc(o.sub) + '</small>' : '') + '</span></label>').join('') + '</div>' + (f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '') + '</div>';
     let ctl;
     if (f.type === 'select') ctl = '<select id="' + id + '">' + (f.html ? f.html(v || '') : optsFrom(f.opts, v || '', f.blank)) + '</select>';
     else if (f.type === 'textarea') ctl = '<textarea id="' + id + '" rows="' + (f.rows || 3) + '">' + esc(v || '') + '</textarea>';
@@ -1259,7 +1261,7 @@ export function initAdmin(ctx) {
     const out = {}; let bad = false;
     for (const f of AD.form.fields || []) {
       const el = $('#af-' + f.k); if (!el) continue;
-      let v = f.type === 'check' ? el.checked : el.value.trim();
+      let v = f.type === 'check' ? el.checked : f.type === 'radio' ? ((el.querySelector('input:checked') || {}).value || '') : el.value.trim();
       if (f.num) { v = v === '' ? null : parseMonto(v); if (v === null && f.req) bad = true; }
       if (f.month && v && !/^\d{4}-\d{2}$/.test(v)) { const e = $('#ae-' + f.k); e.textContent = 'Formato AAAA-MM'; e.hidden = false; bad = true; }
       if (f.req && (v === '' || v === null)) { const e = $('#ae-' + f.k); e.textContent = 'Completá este campo'; e.hidden = false; bad = true; if (f.adv && $('#af-mas')) $('#af-mas').open = true; }
@@ -1436,6 +1438,7 @@ export function initAdmin(ctx) {
     });
   }
   function formClienteAdm(cliente) {
+    const OPC_FACTURACION = [{ v: 'adelantado', label: 'Facturación mes en curso', sub: 'A fin de mes por el mes siguiente, o a principio del mismo mes.' }, { v: 'vencido', label: 'Facturación mes vencido', sub: 'Después del mes del servicio: en octubre, la de septiembre.' }];
     const ca = cadm(cliente);
     openPanel({
       title: cliente, eyebrow: 'Datos de facturación',
@@ -1448,7 +1451,7 @@ export function initAdmin(ctx) {
         { k: 'comprobante_default', label: 'Factura habitual', type: 'select', html: v => TIPOS_COMP.map(t => opt(t, verTipo(t), v)).join('') },
         { k: 'emisor_default', label: 'Factura habitualmente', type: 'select', opts: EMISORES, blank: '—' },
         { k: 'moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
-        { k: 'facturacion', label: 'Cuándo se le factura', type: 'select', full: 1, html: v => opt('adelantado', 'Por adelantado: a fin de mes por el mes siguiente (o a principio del mismo mes)', v) + opt('vencido', 'A mes vencido: después del mes del servicio', v), hint: 'Sirve para saber de qué mes es cada factura que se carga desde Drive.' },
+        { k: 'facturacion', label: 'Cuándo se le factura', type: 'radio', full: 1, opciones: OPC_FACTURACION, hint: 'Sirve para saber de qué mes es cada factura que se carga desde Drive.' },
         { k: 'email_facturacion', label: 'Email(s) de facturación (respaldo)', hint: 'Se usan solo si ningún contacto tiene marcado “Recibe resúmenes y facturas”. Lo ideal es manejarlo desde Contactos, en la ficha del cliente.' },
         { k: 'carpeta_admin', label: 'Carpeta de administración (Drive)', type: 'url', full: 1, ph: 'https://drive.google.com/...' },
         { k: 'notas', label: 'Notas administrativas', type: 'textarea', full: 1, rows: 2 },
