@@ -754,12 +754,13 @@ export function initRedes(ctx) {
     let body;
     if (!rv || (!rv.items.size && !rv.busy)) {
       body = '<p class="formnote full">Mr. Piggy revisa lo que ya está cargado como lo haría la directora de cuentas antes de mandarlo al cliente: si respeta la ficha de marca, si los copys tienen gancho, párrafos y llamado a la acción, los emojis, los hashtags y lo que va en cada pieza. También mira el mes completo. Te marca cada pieza y, si hace falta, te deja el texto corregido para aplicar.</p>' +
+        '<div class="field full"><label for="rv-pedido">Qué querés que revise <span class="muted">(opcional)</span></label><textarea id="rv-pedido" class="pz-ta" rows="3" placeholder="Ej.: revisá solo los carruseles · fijate que los copys no repitan el cierre · las historias tienen que invitar a escribir por WhatsApp · ¿algo habla de precios?">' + esc(st.revPedido || '') + '</textarea><span class="hint">Si nombrás piezas o formatos, Mr. Piggy revisa solo esas.</span></div>' +
         '<fieldset class="full ag-alc"><legend class="lbl">Qué piezas</legend><label class="chk"><input type="radio" name="rv-alc" value="todas" checked> Todas las del mes <span class="muted num">' + ps.length + '</span></label>' +
         '<label class="chk"><input type="radio" name="rv-alc" value="sel"' + (selN ? '' : ' disabled') + '> Las seleccionadas <span class="muted num">' + selN + '</span></label></fieldset>' + replChips(m, 'rv-redes');
     } else {
       const its = [...rv.items.entries()].map(([id, x]) => ({ id, x, z: porId.get(id) })).filter(o => o.z).sort((a, b) => ['rehacer', 'mejorar', 'bien'].indexOf(a.x.nota) - ['rehacer', 'mejorar', 'bien'].indexOf(b.x.nota));
       const cuenta = n => its.filter(o => o.x.nota === n).length;
-      body = (rv.busy ? '<p class="formnote full"><span class="ia-dots"><i></i><i></i><i></i></span> Revisando ' + rv.hechas + ' de ' + rv.total + '…</p>' : '') +
+      body = (rv.pedido ? '<p class="full rv-ped"><b>Le pediste:</b> ' + esc(rv.pedido) + '</p>' : '') + (rv.busy ? '<p class="formnote full"><span class="ia-dots"><i></i><i></i><i></i></span> Revisando ' + rv.hechas + ' de ' + rv.total + '…</p>' : '') +
         (rv.resumen || rv.observaciones.length ? '<div class="full ag-crit"><b>El mes</b>' + (rv.resumen ? '<p>' + esc(rv.resumen) + '</p>' : '') + (rv.observaciones.length ? '<ul class="rv-obs">' + rv.observaciones.map(o => '<li>' + esc(o) + '</li>').join('') + '</ul>' : '') + '</div>' : '') +
         (its.length ? '<div class="full rv-cnt">' + ['rehacer', 'mejorar', 'bien'].map(n => cuenta(n) ? notaPill(n) + ' <b class="num">' + cuenta(n) + '</b>' : '').join(' ') + '</div>' : '') +
         '<div class="full rv-l">' + its.map(({ id, x, z }) => {
@@ -776,12 +777,13 @@ export function initRedes(ctx) {
   }
   async function revisar(m) {
     const alc = (document.querySelector('input[name="rv-alc"]:checked') || {}).value || 'todas';
+    const pedido = st.revPedido = (($('#rv-pedido') || {}).value || '').trim().slice(0, 2000);
     const ps = (piezas(m._id) || []).filter(z => alc === 'sel' ? st.sel.has(z._id) : true);
     if (!ps.length) { toast('No hay piezas para revisar'); return; }
     // Las piezas revisadas pasan a publicarse en las redes elegidas (por defecto, todas las de la cuenta)
     if ($('#rv-redes')) { const redes = leerRepl(m, 'rv-redes'), cambia = ps.filter(z => redesPara(z.formato, redes).join(', ') !== (z.red || ''));
       for (const z of cambia) { const red = redesPara(z.formato, redes).join(', '); try { await data.piezasUpd([z._id], { red }); z.red = red; } catch (e) { toast(e.message); break; } } }
-    const rv = st.rev = { mesId: m._id, busy: true, hechas: 0, total: ps.length, items: new Map(), resumen: '', observaciones: [] };
+    const rv = st.rev = { mesId: m._id, busy: true, hechas: 0, total: ps.length, items: new Map(), resumen: '', observaciones: [], pedido };
     abrirRevision(m);
     const c = ctxIA(m); delete c._pp;
     const todas = (piezas(m._id) || []).map(z => ({ fecha: z.fecha, hora: z.hora, formato: z.formato, tema: z.tema, estado: z.estado }));
@@ -789,7 +791,7 @@ export function initRedes(ctx) {
     let fallo = null;
     const una = async (t, general) => {
       try {
-        const r = await data.ia({ modo: 'redes_revision', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, redes: z.red, fecha: z.fecha, hora: z.hora, tema: z.tema, contenido: z.contenido || '', copy: z.copy, hashtags: z.hashtags }))), contexto: { ...c, general, ...(general ? { todas } : {}) } });
+        const r = await data.ia({ modo: 'redes_revision', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, redes: z.red, fecha: z.fecha, hora: z.hora, tema: z.tema, contenido: z.contenido || '', copy: z.copy, hashtags: z.hashtags }))), contexto: { ...c, general, ...(pedido ? { pedido } : {}), ...(general ? { todas } : {}) } });
         if (general) { rv.resumen = String(r.resumen || ''); rv.observaciones = (Array.isArray(r.observaciones) ? r.observaciones : []).map(String).slice(0, 8); }
         (Array.isArray(r.piezas) ? r.piezas : []).forEach(x => { if (!x || !t.some(z => z._id === x.id)) return; rv.items.set(x.id, { nota: NOTA[x.nota] ? x.nota : 'mejorar', comentarios: (Array.isArray(x.comentarios) ? x.comentarios : []).map(String).slice(0, 4), copy: x.copy || '', hashtags: x.hashtags || '', contenido: x.contenido || '' }); });
       } catch (e) { fallo = e; }

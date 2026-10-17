@@ -2495,7 +2495,7 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 .rm-adds input:checked+span{background:var(--surface);box-shadow:var(--elev);font-weight:600}
 .rm-addp .btn.primary{margin-top:4px}
 /* botones de IA con ícono; en pantallas chicas van al menú ⋯ */
-.rm-w svg{width:15px;height:15px}
+.rm-w>svg{width:15px;height:15px}
 .rm-w{gap:6px}
 .rm-masw{display:none}
 .rm-masw.siempre{display:inline-flex}
@@ -2566,3 +2566,4 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 /* cabecera de las tarjetas sin arte: formato y texto arrancan arriba, a la misma altura en todas */
 .rm-pc-ph,.rm-pc-a.ph .rm-pc-ph{align-content:start;justify-items:start}
 .rm-pc-a.ph .rm-pc-ph{padding-top:16px}
+.rv-ped{margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2);font-size:13.5px;line-height:1.5}

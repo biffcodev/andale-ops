@@ -141,7 +141,7 @@ Deno.serve(async req => {
     '\nEMOJIS DE LA MARCA: ' + ((marca && marca.emojis) || 'sin dato (usá 1 o 2)') + (marca && marca.hashtags ? '\nHASHTAGS PROPIOS: ' + marca.hashtags : '') + (marca && marca.espaciado ? '\nESPACIO ENTRE BLOQUES: ' + marca.espaciado : '');
   const user = modo === 'redes_investigar' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 20_000)
     : modo === 'redes_agenda' ? cab + '\n\nCUENTA, MES Y PIEZAS:\n' + JSON.stringify(ctx).slice(0, 60_000) + (texto ? '\n\nPEDIDO:\n' + texto : '')
-    : modo === 'redes_revision' ? cab + '\n\nCLIENTE Y MES:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\n' + (ctx.general ? 'Además de cada pieza, dame la mirada general del mes (resumen y observaciones) mirando "todas".' : 'No hace falta la mirada general: solo cada pieza.') + '\n\nPIEZAS A REVISAR:\n' + texto
+    : modo === 'redes_revision' ? cab + '\n\nCLIENTE Y MES:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\n' + (ctx.general ? 'Además de cada pieza, dame la mirada general del mes (resumen y observaciones) mirando "todas".' : 'No hace falta la mirada general: solo cada pieza.') + (ctx.pedido ? '\n\nPEDIDO DEL EQUIPO (es la prioridad de esta revisión; si dice qué piezas o formatos mirar, revisá y devolvé solo esas): ' + String(ctx.pedido) : '') + '\n\nPIEZAS A REVISAR:\n' + texto
     : modo === 'redes_contenido' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPIEZAS:\n' + texto
     : modo === 'redes_copys' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPIEZAS:\n' + texto
     : cab + '\n\nCLIENTE Y MES:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPEDIDO:\n' + (texto || 'Proponé el contenido que falta del mes.');
