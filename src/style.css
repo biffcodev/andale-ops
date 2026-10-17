@@ -2563,3 +2563,6 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 .rm-cont{display:block;-webkit-line-clamp:unset;max-height:9.5em;overflow:hidden;position:relative;font-size:12.5px}
 .rm-cont .ct{font-size:12.5px;gap:2px}
 .rm-cont .ct-sep{margin-top:4px}
+/* cabecera de las tarjetas sin arte: formato y texto arrancan arriba, a la misma altura en todas */
+.rm-pc-ph,.rm-pc-a.ph .rm-pc-ph{align-content:start;justify-items:start}
+.rm-pc-a.ph .rm-pc-ph{padding-top:16px}
