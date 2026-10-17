@@ -316,7 +316,7 @@ export function initRedes(ctx) {
       return '<div class="rm-txt">' + (txt ? '<button class="rm-copy' + (ab ? ' abierto' : '') + '" style="-webkit-line-clamp:' + (ab ? 'unset' : lineas) + '" data-act="rmPieza" data-id="' + esc(z._id) + '">' + esc(ab ? txt : txt.replace(/\n\s*\n/g, '\n')) + '</button>' + (largo ? '<button class="rm-mas" data-act="rmVerMas" data-id="' + esc(z._id) + '" aria-expanded="' + ab + '">' + (ab ? 'Ver menos' : 'Ver más') + '</button>' : '') : '<button class="rm-copy vacio" data-act="rmPieza" data-id="' + esc(z._id) + '">' + (hist ? '+ Texto de la historia' : '+ Escribir el copy') + '</button>') +
         (z.hashtags ? '<p class="rm-hash">' + esc(z.hashtags) + '</p>' : '') +
         (sinBotones ? '' : cpsHtml(z)) + '</div>'; };
-    const tags = (z, d) => '<div class="rm-tags">' + (d === null ? '<span class="rm-fpill">' + esc(z.formato) + '</span>' : '<select class="rm-fsel" data-pz="formato" data-id="' + esc(z._id) + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>') + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + redBadges(z.red) + '</div>';
+    const tags = (z, d) => '<div class="rm-tags">' + (d === null ? '<span class="rm-fpill">' + esc(z.formato) + '</span>' : '<select class="rm-fsel" data-pz="formato" data-id="' + esc(z._id) + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>') + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + redBadges(z.red) + ((z.fuentes || []).length ? '<span class="rm-fu" title="Tiene ' + z.fuentes.length + ((z.fuentes.length === 1) ? ' fuente' : ' fuentes') + ' de la web">🔗 ' + z.fuentes.length + '</span>' : '') + '</div>';
     pedirThumbs(vis);
     if (!vis.length) return '<div class="rm-pl">' + tools + bulk + '<section class="sheet">' + emptyBox('No hay piezas con ese filtro', 'Cambiá los formatos en el filtro.') + '</section></div>';
     if (vista === 'cuadricula') {
@@ -406,6 +406,7 @@ export function initRedes(ctx) {
       '<div class="field full"><label for="pz-tema">Tema</label><div class="cp-box"><textarea id="pz-tema" class="pz-ta" rows="' + filas(z.tema, 60, 1, 4) + '"' + d + '>' + esc(z.tema) + '</textarea>' + copiarBtn('#pz-tema') + '</div></div>' +
       (data.cols && data.cols.piezaContenido === false ? '' : '<div class="field full pz-cont' + (z.contenido ? ' ver' : '') + '"><div class="pz-lh"><label for="pz-contenido">' + (esHistoria(z) ? 'Texto de la historia' : 'Qué va en la pieza') + '</label>' + (z.contenido && can ? '<button type="button" class="btn ghost sm" data-act="rmContEditar">Editar</button>' : '') + '</div>' + (z.contenido ? '<div class="cp-box pz-cv">' + contenidoHtml(z.contenido) + copiarBtn('#pz-contenido') + '</div>' : '') + '<div class="cp-box pz-ce"><textarea id="pz-contenido" class="pz-ta" rows="' + filas(z.contenido, 60, 3, 40) + '" placeholder="' + esc(PH_CONT(z.formato)) + '"' + d + '>' + esc(z.contenido || '') + '</textarea>' + copiarBtn('#pz-contenido') + '</div>' + (can ? '<div class="toolbar pz-ia"><span class="hint" style="margin:0">Para quien diseña o graba.</span><button type="button" class="btn ghost sm" data-act="rmContUno"><span class="pig" aria-hidden="true">' + ISO + '</span> ' + (z.contenido ? 'Mejorar' : 'Escribir') + ' con Mr. Piggy</button></div>' : '<span class="hint">Para quien diseña o graba.</span>') + '</div>') +
       '<div class="field full"><label for="pz-copy">Copy</label><div class="cp-box"><textarea id="pz-copy" class="pz-ta" rows="' + filas(z.copy, 60, 5, 80) + '"' + d + '>' + esc(z.copy) + '</textarea>' + copiarBtn('#pz-copy') + '</div>' + (can ? '<div class="toolbar pz-ia"><span></span><button type="button" class="btn ghost sm" data-act="rmCopyUno"><span class="pig" aria-hidden="true">' + ISO + '</span> ' + (z.copy ? 'Mejorar' : 'Escribir') + ' el copy y los hashtags</button></div>' : '') + '</div>' +
+      fuentesHtml(z, can) +
       '<div class="field full"><label for="pz-hashtags">Hashtags</label><div class="cp-box"><textarea id="pz-hashtags" class="pz-ta" rows="' + filas(z.hashtags, 60, 1, 4) + '"' + d + '>' + esc(z.hashtags) + '</textarea>' + copiarBtn('#pz-hashtags') + '</div></div>' +
       '<div class="field"><label for="pz-fijo">Se repite cada</label><select id="pz-fijo"' + d + '>' + opt('', 'No se repite', z.fijo) + DIAS.map(x => opt(x, x, z.fijo)).join('') + '</select><span class="hint">Al arrancar el mes siguiente se crea sola en ese día.</span></div>' +
 
@@ -523,6 +524,13 @@ export function initRedes(ctx) {
       '</div><div class="panel-f"><span></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer</button></span></div></form>';
     st.propMes = m._id; $('#panel').hidden = false; $('#scrim').hidden = false;
   }
+  // Las fuentes que usó una pieza: solo URLs que estén en las fechas y novedades buscadas (con su título)
+  function fuentesDe(m, urls) {
+    const inv = m.investigacion || {}, todo = [...(inv.fechas || []).map(x => ({ titulo: x.nombre, url: x.fuente })), ...(inv.novedades || []).map(x => ({ titulo: x.titulo, url: x.fuente }))].filter(x => x.url);
+    return [...new Set((Array.isArray(urls) ? urls : []).map(String))].map(u => todo.find(x => x.url === u) || (/^https?:\/\//.test(u) ? { titulo: '', url: u } : null)).filter(Boolean).slice(0, 5);
+  }
+  const dominio = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; } };
+  const citaDe = f => 'Fuente: ' + (f.titulo ? f.titulo + ' (' + dominio(f.url) + ')' : dominio(f.url));
   async function ideas(btn, m, opts) {
     if (st.ia[m._id]) return;
     opts = opts || {};
@@ -551,7 +559,7 @@ export function initRedes(ctx) {
           if (!(pide[k] > 0)) continue; // lo que sobra no se carga
           if (nuevas.some(z => norm(z.tema) === norm(String(x.tema)))) continue;
           const fecha = /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : '';
-          nuevas.push({ formato, red: redesPara(formato, redesP).join(', '), tema: String(x.tema).slice(0, 160), contenido: String(x.contenido || '').slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...ps, ...nuevas], fecha, formato, m.cliente) : '', estado: 'Idea', extra: extras });
+          nuevas.push({ formato, red: redesPara(formato, redesP).join(', '), fuentes: fuentesDe(m, x.fuentes), tema: String(x.tema).slice(0, 160), contenido: String(x.contenido || '').slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...ps, ...nuevas], fecha, formato, m.cliente) : '', estado: 'Idea', extra: extras });
           pide[k]--; llegaron++;
         }
         if (!llegaron) break;
@@ -590,7 +598,7 @@ export function initRedes(ctx) {
     const tandas = []; for (let i = 0; i < ps.length; i += 4) tandas.push(ps.slice(i, i + 4));
     const una = async t => {
       try {
-        const r = await data.ia({ modo: 'redes_copys', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, redes: z.red, fecha: z.fecha, tema: z.tema, contenido: z.contenido || '', copy_actual: z.copy }))), contexto: c });
+        const r = await data.ia({ modo: 'redes_copys', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, redes: z.red, fecha: z.fecha, tema: z.tema, contenido: z.contenido || '', copy_actual: z.copy, ...((z.fuentes || []).length ? { fuentes: z.fuentes } : {}) }))), contexto: c });
         for (const x of Array.isArray(r.piezas) ? r.piezas : []) {
           const z = t.find(y => y._id === x.id); if (!z || (!x.copy && !esHistoria(z))) continue;
           const u0 = { copy: espaciar(x.copy, m.cliente), hashtags: String(x.hashtags || '').trim(), ...(x.contenido && !z.contenido ? { contenido: String(x.contenido).trim() } : {}) };
@@ -696,6 +704,12 @@ export function initRedes(ctx) {
     }, 12000);
   }
   const antesDe = (z, u) => Object.fromEntries(CAMPOS_V.filter(k => k in u).map(k => [k, z[k] || '']));
+  // Fuentes de la pieza (lo que Mr. Piggy sacó de la web): links y la cita lista para pegar o sumar al copy
+  function fuentesHtml(z, can) {
+    const fs = z.fuentes || []; if (!fs.length) return '';
+    return '<div class="field full pz-fs"><span class="lbl">Fuentes <span class="muted">(de la búsqueda en la web)</span></span>' + fs.map((f, i) =>
+      '<div class="pz-f"><a href="' + esc(f.url) + '" target="_blank" rel="noopener"><b>' + esc(f.titulo || dominio(f.url)) + '</b><span>' + esc(dominio(f.url)) + ' ↗</span></a><span class="pz-fa"><button type="button" class="btn ghost sm" data-act="rmCitaCopiar" data-i="' + i + '" title="Copiar la cita">' + ICO_COPIAR + ' Cita</button>' + (can ? '<button type="button" class="btn ghost sm" data-act="rmCitaSumar" data-i="' + i + '" title="Agregar la cita al final del copy">+ Al copy</button>' : '') + '</span></div>').join('') + '</div>';
+  }
   function versionesHtml(z, can) {
     const vs = z.versiones || []; if (!vs.length) return '';
     return '<details class="full pz-vs"><summary>Versiones anteriores <span class="muted num">' + vs.length + '</span></summary>' + vs.map((v, i) =>
@@ -791,7 +805,7 @@ export function initRedes(ctx) {
     let fallo = null;
     const una = async (t, general) => {
       try {
-        const r = await data.ia({ modo: 'redes_revision', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, redes: z.red, fecha: z.fecha, hora: z.hora, tema: z.tema, contenido: z.contenido || '', copy: z.copy, hashtags: z.hashtags }))), contexto: { ...c, general, ...(pedido ? { pedido } : {}), ...(general ? { todas } : {}) } });
+        const r = await data.ia({ modo: 'redes_revision', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, redes: z.red, ...((z.fuentes || []).length ? { fuentes: z.fuentes } : {}), fecha: z.fecha, hora: z.hora, tema: z.tema, contenido: z.contenido || '', copy: z.copy, hashtags: z.hashtags }))), contexto: { ...c, general, ...(pedido ? { pedido } : {}), ...(general ? { todas } : {}) } });
         if (general) { rv.resumen = String(r.resumen || ''); rv.observaciones = (Array.isArray(r.observaciones) ? r.observaciones : []).map(String).slice(0, 8); }
         (Array.isArray(r.piezas) ? r.piezas : []).forEach(x => { if (!x || !t.some(z => z._id === x.id)) return; rv.items.set(x.id, { nota: NOTA[x.nota] ? x.nota : 'mejorar', comentarios: (Array.isArray(x.comentarios) ? x.comentarios : []).map(String).slice(0, 4), copy: x.copy || '', hashtags: x.hashtags || '', contenido: x.contenido || '' }); });
       } catch (e) { fallo = e; }
@@ -1071,6 +1085,8 @@ export function initRedes(ctx) {
       try { await data.piezasUpd([z._id], uv); local(m._id, [z._id], uv); abrirPieza(z._id); render(); ofrecerDeshacerIA(m, [{ id: z._id, antes }], 'Volvió a la versión del ' + new Date(v.at).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })); } catch (e) { toast(e.message); }
     },
     rmVerMas: t => { const id = t.dataset.id; if (st.abiertos.has(id)) st.abiertos.delete(id); else st.abiertos.add(id); render(); },
+    rmCitaCopiar: t => { const f = st.fpz, z = f && (piezas(f.mesId) || []).find(x => x._id === f.id), fu = z && (z.fuentes || [])[+t.dataset.i]; if (!fu) return; try { navigator.clipboard.writeText(citaDe(fu) + ' ' + fu.url).then(() => toast('Cita copiada'), () => toast('No se pudo copiar')); } catch (e) { toast('No se pudo copiar'); } },
+    rmCitaSumar: t => { const f = st.fpz, z = f && (piezas(f.mesId) || []).find(x => x._id === f.id), fu = z && (z.fuentes || [])[+t.dataset.i], ta = $('#pz-copy'); if (!fu || !ta) return; const c = citaDe(fu); if (ta.value.includes(c)) { toast('La cita ya está en el copy'); return; } ta.value = ta.value.replace(/\s+$/, '') + '\n\n' + c; autoAlto(ta); toast('Cita agregada al copy: guardá la pieza'); },
     rmCant: t => { const i = t.closest('form').elements.n; i.value = Math.max(1, Math.min(60, (+i.value || 1) + +t.dataset.d)); },
     rmContEditar: t => { const f = t.closest('.pz-cont'); if (!f) return; f.classList.toggle('ver'); t.textContent = f.classList.contains('ver') ? 'Editar' : 'Ver'; if (!f.classList.contains('ver')) { const ta = $('#pz-contenido'); if (ta) { autoAlto(ta); ta.focus(); } } else { const v = f.querySelector('.pz-cv'); if (v) v.innerHTML = contenidoHtml(($('#pz-contenido') || {}).value || '') + copiarBtn('#pz-contenido'); } },
     rmContUno: async t => {

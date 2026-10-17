@@ -39,6 +39,7 @@ const REGLAS_COPY = 'CÓMO SE ESCRIBE UN COPY (el texto que acompaña la publica
   '- Largo: Posts y Carruseles 350 a 700 caracteres; Reels 200 a 450; Historias: vacío (lo escrito va en contenido).\n' +
   '- Emojis según la ficha: "Sí, con ganas" → 4 a 7, integrados al texto; "Pocos y puntuales" → 2 o 3 por copy, al inicio de un párrafo, de una línea de lista o junto al llamado a la acción (nunca en medio de una palabra ni varios seguidos); "No usa" → ninguno. Sin ficha: 1 o 2. Elegí emojis que tengan que ver con el tema (🔧🧱🚚📦 para obra y entregas, por ejemplo), no caritas genéricas.\n' +
   '- Sin hashtags dentro del copy, sin mayúsculas sostenidas, sin exclamaciones de más.\n' +
+  '- Si la pieza trae fuentes y el copy da un dato concreto que sale de ellas (una cifra, una noticia, un cambio de normativa), cerrá con una línea "Fuente: medio" (el nombre del sitio, sin link). Si solo es una fecha conocida, no hace falta citar.\n' +
   '- Cada pieza dice en qué redes se publica (redes): el mismo copy se replica en todas, así que tiene que funcionar en cada una. Si va también a LinkedIn: sin "link en bio" ni jerga de Instagram, tono un poco más profesional; si va a TikTok, más corto.\n' +
   'HASHTAGS (campo aparte): 6 a 10, separados por un espacio. Primero los propios de la marca que figuren en la ficha; después de tema, rubro y público. De ubicación solo si la ficha o las notas dicen dónde está la marca. Sin repetir, sin tildes raras ni espacios dentro.';
 
@@ -48,6 +49,7 @@ const TOOL_PLAN = { name: 'plan_del_mes', description: 'Piezas del mes con su fe
     fecha: { type: 'string', description: 'AAAA-MM-DD, dentro del MES A PLANIFICAR' },
     tema: { type: 'string', description: 'título corto de la pieza, de 3 a 10 palabras (no una explicación)' },
     contenido: { type: 'string', description: 'lo que va en la pieza según su formato, con saltos de línea' },
+    fuentes: { type: 'array', items: { type: 'string' }, description: 'URLs exactas (de fechas_y_novedades) de donde sacaste la fecha o el dato de esta pieza; vacío si no usaste ninguna' },
   } } } } } };
 const SYS_PLAN = BASE + '\n\nArmás el plan de un mes de redes: qué publicar, qué día y qué va en cada pieza. Temas concretos y variados, repartidos entre los pilares de la marca, propios de su rubro y su público. ' +
   'Usá solo fechas especiales de Argentina que caigan DENTRO del mes a planificar y que tengan sentido para la marca (no fuerces efemérides). ' +
@@ -97,7 +99,7 @@ const TOOL_REV = { name: 'revisar_piezas', description: 'Revisión del contenido
     hashtags: { type: 'string', description: 'solo si hay que cambiarlos' },
     contenido: { type: 'string', description: 'solo si lo que va en la pieza falta o hay que corregirlo' },
   } } } } } };
-const SYS_REV = BASE + '\n\nRevisás piezas ya cargadas de un mes de redes, como lo haría la directora de cuentas antes de mandarlas al cliente. Para cada pieza: ¿respeta la ficha de marca (tono, trato, emojis, lo que nunca dice)? ¿el copy tiene gancho, párrafos separados y un llamado a la acción? ¿el largo va con el formato? ¿los hashtags están bien? ¿lo que va en la pieza está claro para quien diseña? ¿el tema y la fecha tienen sentido? ¿el copy funciona en todas las redes donde se replica (campo redes)? ¿afirma algo de la marca (aniversario, años, lanzamiento, promo, evento) que no esté en la ficha ni en las notas? Si es así, es "rehacer" y decilo en el comentario. ' +
+const SYS_REV = BASE + '\n\nRevisás piezas ya cargadas de un mes de redes, como lo haría la directora de cuentas antes de mandarlas al cliente. Para cada pieza: ¿respeta la ficha de marca (tono, trato, emojis, lo que nunca dice)? ¿el copy tiene gancho, párrafos separados y un llamado a la acción? ¿el largo va con el formato? ¿los hashtags están bien? ¿lo que va en la pieza está claro para quien diseña? ¿el tema y la fecha tienen sentido? ¿el copy funciona en todas las redes donde se replica (campo redes)? ¿afirma algo de la marca (aniversario, años, lanzamiento, promo, evento) que no esté en la ficha ni en las notas? Si es así, es "rehacer" y decilo en el comentario. Si da un dato externo (cifra, noticia, normativa), ¿está en sus fuentes y está citado? Si no tiene fuente, marcalo. ' +
   'Sé exigente pero justo: "bien" si está para mandar; "mejorar" si con ajustes queda; "rehacer" si no sirve. Cuando corregís, devolvé el texto completo listo para usar, no instrucciones.\n\n' + REGLAS_COPY + '\n\n' + REGLAS_FORMATO +
   '\n\nRespondé únicamente llamando una vez a la herramienta revisar_piezas, sin texto antes ni después.';
 

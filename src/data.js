@@ -28,7 +28,7 @@ const idx = { clienteId: new Map(), clienteName: new Map(), personaId: new Map()
 const month = d => (d ? String(d).slice(0, 7) : '');
 
 /** Columnas nuevas que puede no tener todavía la base (hasta correr su SQL). */
-export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true, piezaContenido: true, abonoRedes: true, piezaExtraCobro: true, piezaVersiones: true };
+export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true, piezaContenido: true, abonoRedes: true, piezaExtraCobro: true, piezaVersiones: true, piezaFuentes: true };
 function toRow(kind, ui) {
   const row = {};
   for (const [k, v] of Object.entries(ui)) {
@@ -144,7 +144,7 @@ export async function mesInvestigacion(id, inv) {
 }
 export async function mesDel(id) { check(await sb.from('redes_meses').delete().eq('id', id)); }
 export function piezaUI(z) {
-  return { _id: z.id, mesId: z.mes_id, formato: z.formato || '', red: z.red || '', fecha: z.fecha || '', hora: z.hora ? String(z.hora).slice(0, 5) : '', tema: z.tema || '', copy: z.copy || '', hashtags: z.hashtags || '', contenido: z.contenido || '', extraCobro: z.extra_cobro || '', versiones: Array.isArray(z.versiones) ? z.versiones : [],
+  return { _id: z.id, mesId: z.mes_id, formato: z.formato || '', red: z.red || '', fecha: z.fecha || '', hora: z.hora ? String(z.hora).slice(0, 5) : '', tema: z.tema || '', copy: z.copy || '', hashtags: z.hashtags || '', contenido: z.contenido || '', extraCobro: z.extra_cobro || '', versiones: Array.isArray(z.versiones) ? z.versiones : [], fuentes: Array.isArray(z.fuentes) ? z.fuentes : [],
     estado: z.estado, extra: !!z.extra, ads: z.ads || '', fijo: z.fijo || '', resp: idx.personaAlias.get(z.responsable_id) || '', arte: Array.isArray(z.arte) ? z.arte : [], orden: z.orden || 0,
     horas: z.horas == null ? '' : +z.horas, respuesta: z.respuesta_cliente || '', respondida: z.respondida_at, creado: z.created_at };
 }
@@ -152,6 +152,7 @@ function piezaRow(u) {
   const r = {};
   ['formato', 'red', 'tema', 'copy', 'hashtags', 'estado', 'extra', 'fijo', 'arte', 'orden'].forEach(k => { if (k in u) r[k] = u[k]; });
   if ('contenido' in u && cols.piezaContenido) r.contenido = u.contenido || '';
+  if ('fuentes' in u && cols.piezaFuentes) r.fuentes = Array.isArray(u.fuentes) ? u.fuentes.slice(0, 8) : []; // de dónde salió el dato (SQL 0034)
   if ('versiones' in u && cols.piezaVersiones) r.versiones = Array.isArray(u.versiones) ? u.versiones.slice(0, 10) : []; // lo anterior a los cambios de Mr. Piggy (SQL 0033)
   if ('extraCobro' in u && cols.piezaExtraCobro) r.extra_cobro = ['si', 'no'].includes(u.extraCobro) ? u.extraCobro : ''; // pieza extra: '' según la cuenta · si · no (SQL 0032) // lo que va en la pieza: slides, texto de la placa, guion (SQL 0031)
   if ('ads' in u && cols.piezaAds) r.ads = u.ads || ''; // '' = del plan · 'tambien' = del plan y también se pauta · 'solo' = solo para Ads (SQL 0028)
@@ -165,7 +166,7 @@ function piezaRow(u) {
 export async function piezasDe(mesIds) {
   const ids = Array.isArray(mesIds) ? mesIds : [mesIds]; if (!ids.length) return [];
   const rows = check(await sb.from('piezas').select('*').in('mes_id', ids).order('fecha', { nullsFirst: false }).order('orden').limit(10000)) || [];
-  if (rows.length) { cols.piezaAds = 'ads' in rows[0]; cols.piezaContenido = 'contenido' in rows[0]; cols.piezaExtraCobro = 'extra_cobro' in rows[0]; cols.piezaVersiones = 'versiones' in rows[0]; }
+  if (rows.length) { cols.piezaAds = 'ads' in rows[0]; cols.piezaContenido = 'contenido' in rows[0]; cols.piezaExtraCobro = 'extra_cobro' in rows[0]; cols.piezaVersiones = 'versiones' in rows[0]; cols.piezaFuentes = 'fuentes' in rows[0]; }
   return rows.map(piezaUI);
 }
 // Si falta correr un SQL (0031 contenido, 0032 extra_cobro), la pieza se guarda igual sin ese campo.
@@ -174,6 +175,7 @@ function sinColumna(err) {
   if (cols.piezaContenido && /contenido/.test(m)) { cols.piezaContenido = false; return true; }
   if (cols.piezaExtraCobro && /extra_cobro/.test(m)) { cols.piezaExtraCobro = false; return true; }
   if (cols.piezaVersiones && /versiones/.test(m)) { cols.piezaVersiones = false; return true; }
+  if (cols.piezaFuentes && /fuentes/.test(m)) { cols.piezaFuentes = false; return true; }
   return false;
 }
 export async function piezasIns(mes, lista) {
@@ -181,13 +183,13 @@ export async function piezasIns(mes, lista) {
   const fila = () => lista.map((u, i) => ({ mes_id: mes._id, cliente_id: mes.clienteId || idx.clienteId.get(mes.cliente), estado: 'Idea', orden: i, ...piezaRow(u) }));
   let res = await sb.from('piezas').insert(fila()).select();
   // Sin la columna "contenido" (falta el SQL 0031) se guarda igual, sin ese campo.
-  for (let i = 0; i < 3 && res.error && sinColumna(res.error); i++) res = await sb.from('piezas').insert(fila()).select();
+  for (let i = 0; i < 4 && res.error && sinColumna(res.error); i++) res = await sb.from('piezas').insert(fila()).select();
   return (check(res) || []).map(piezaUI);
 }
 export async function piezasUpd(ids, u) {
   let r = piezaRow(u); if (!Object.keys(r).length || !ids.length) return;
   let res = await sb.from('piezas').update(r).in('id', ids);
-  for (let i = 0; i < 3 && res.error && sinColumna(res.error); i++) { r = piezaRow(u); if (!Object.keys(r).length) return; res = await sb.from('piezas').update(r).in('id', ids); }
+  for (let i = 0; i < 4 && res.error && sinColumna(res.error); i++) { r = piezaRow(u); if (!Object.keys(r).length) return; res = await sb.from('piezas').update(r).in('id', ids); }
   check(res);
 }
 export async function piezasDel(ids) { if (ids.length) check(await sb.from('piezas').delete().in('id', ids)); }
