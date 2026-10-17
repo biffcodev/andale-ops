@@ -2733,3 +2733,18 @@ h3>.todos-b{margin:0 0 0 10px;font-size:12px;vertical-align:middle}
 .cfg-idx{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px}
 .cfg-idx a{font-size:13px;font-weight:600;color:var(--fg);text-decoration:none;padding:5px 11px;border-radius:99px;background:var(--surface-2)}
 .cfg-idx a:hover{background:color-mix(in srgb,var(--accent) 12%,var(--surface-2))}
+
+/* Integraciones › Google Drive: cuenta para compartir y carpetas */
+.dv{display:grid;gap:14px}
+.dv-cta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.dv-cta code{font-size:13px;padding:3px 8px;border-radius:6px;background:var(--surface-2)}
+.dv-l{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.dv-f{display:flex;align-items:center;gap:16px;padding:12px 16px;flex-wrap:wrap}
+.dv-f + .dv-f{border-top:1px solid var(--line)}
+.dv-t{display:grid;gap:2px;flex:1;min-width:220px}
+.dv-t b{font-weight:600;font-size:14.5px}
+.dv-t span{font-size:13px;color:var(--muted)}
+.dv-a{display:flex;align-items:center;gap:8px}
+.dv-a .btn svg{width:14px;height:14px}
+.dv-ed{display:flex;gap:8px;flex:1 1 100%;flex-wrap:wrap}
+.dv-ed .in{flex:1;min-width:240px}

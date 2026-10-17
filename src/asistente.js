@@ -488,26 +488,33 @@ export function initAsistente(ctx, k) {
         '<div class="cfg-ops">' + fila('Facturación mes en curso', 'as-corte', c, 'se toman como del mes siguiente; antes, del mismo mes.', 'Con ' + c + ': una del ' + Math.max(1, c - 1) + '/10 es de octubre; una del ' + c + '/10, de noviembre.') +
         fila('Facturación mes vencido', 'as-corte-v', cv, 'se toman como del mismo mes; antes, del mes anterior.', 'Con ' + cv + ': una del ' + Math.max(1, cv - 1) + '/10 es de septiembre; una del ' + cv + '/10, de octubre.') + '</div>' +
         '<div class="toolbar" style="margin-top:12px"><button class="btn sm" data-act="asCorte">Guardar días</button></div>' + vencidosHtml()); },
-    drive: () => { const st = pedirEstado(), cfg = cfgDrive(), fc = cfgFact(), con = AD.F.filter(f => f.pdf_respaldo).length, falta = sinCopia().length;
-      return sx(ICON.drive, 'Facturas en Drive', 'La carpeta donde se guardan los PDF de ARCA. La app los lee, los carga y les pone el nombre <b>CLIENTE-MES-AÑO.pdf</b>.',
-        '<div class="toolbar"><input class="in" id="as-carpeta2" value="' + esc(cfg.carpeta_url || '') + '" placeholder="Link de la carpeta de facturas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta2">Guardar carpeta</button></div>' +
-        (st.drive_email ? '<p class="cfg-nota">Compartila como <b>Editor</b> con <code>' + esc(st.drive_email) + '</code> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button></p>' : st.drive === false ? '<p class="cfg-nota">Drive no está conectado: se conecta en Integraciones › Cuentas y claves.</p>' : '') +
+    drive: () => { const cfg = cfgDrive(), fc = cfgFact(), con = AD.F.filter(f => f.pdf_respaldo).length, falta = sinCopia().length;
+      return sx(ICON.drive, 'Facturas en Drive', 'La app lee los PDF de ARCA de la carpeta de facturas, los carga y los nombra <b>CLIENTE-MES-AÑO.pdf</b>.',
+        '<div class="dv-cta" style="margin-bottom:4px"><span>Carpeta:</span>' + (cfg.carpeta_url ? '<a href="' + esc(cfg.carpeta_url) + '" target="_blank" rel="noopener">Abrir la carpeta de facturas</a>' : '<span class="muted">sin elegir</span>') + '<button class="btn ghost sm" data-act="go" data-view="integraciones">Cambiar en Integraciones</button></div>' +
         '<div class="cfg-sub"><b>Copia de respaldo de los PDF</b><p class="cfg-nota" style="margin-top:2px">Cada factura que cargás se guarda también en la app. Si alguien la borra de Drive, se puede ver y mandar igual. Un año de facturas ocupa menos de 50 MB.</p>' +
         '<div class="toolbar"><label class="chk"><input type="checkbox" data-asresp="1"' + (fc.respaldo ? ' checked' : '') + '> Guardar una copia de cada factura</label>' + (fc.respaldo && falta ? '<button class="btn sm" data-act="asRespTodo">Copiar las ya cargadas (' + falta + ')</button>' : '') + '</div>' +
         (con ? '<p class="cfg-nota">' + con + (con === 1 ? ' factura tiene copia.' : ' facturas tienen copia.') + '</p>' : '') + '</div>'); },
     cierre: () => sx(ICON.mail, 'Resumen del cierre por email', 'Los días 1 y 8 de cada mes, a las 9, les llega a los administradores qué falta para cerrar el mes.',
       '<div class="toolbar"><label class="chk"><input type="checkbox" data-asemail="1"' + (cfgAsist().email_activo !== false ? ' checked' : '') + '> Activado</label><button class="btn sm" data-act="asEmailYa">Mandarme uno ahora</button></div>'),
   };
-  // Para Integraciones: las carpetas de Drive que usa la app y qué se manda a la IA.
+  // Para Integraciones: la cuenta de Drive y las carpetas que usa la app (el único lugar donde se cambian).
+  const CARPETAS = [
+    { k: 'facturas', t: 'Facturas', d: 'Los PDF de ARCA. La app los lee, los carga y los nombra CLIENTE-MES-AÑO.pdf.', url: c => c.carpeta_url },
+    { k: 'propuestas', t: 'Propuestas anteriores', opc: true, d: 'Mr. Piggy toma de ahí hasta 3 propuestas viejas (Google Docs o PDF) como referencia de estilo y precios.', url: c => c.carpeta_propuestas_url },
+  ];
   function carpetasDrive() {
-    const st = pedirEstado(), cfg = cfgDrive();
+    const st = pedirEstado(), cfg = cfgDrive(), ed = AD.as.editCarpeta;
     const pasos = '<ol class="cfg-pasos"><li>console.cloud.google.com → proyecto nuevo.</li><li>APIs y servicios → Biblioteca → habilitá <b>Google Drive API</b>.</li><li>IAM → Cuentas de servicio → Crear (sin roles) → Claves → Agregar clave → JSON.</li><li>Arriba, en Cuentas y claves → Google Drive, pegá el contenido completo del .json.</li></ol>';
-    return '<section class="sheet"><div class="sheet-h"><h2>Carpetas de Drive</h2><span class="muted">' + (st.drive ? 'Drive conectado' : st.drive === false ? 'Drive sin conectar' : '') + '</span></div><div class="sheet-b" style="display:grid;gap:12px">' +
-      (st.drive_email ? '<div>Las carpetas se comparten como <b>Editor</b> con <code>' + esc(st.drive_email) + '</code> <button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">Copiar</button></div>' : '') +
-      (st.drive_error ? '<div style="color:var(--crit)">' + esc(st.drive_error) + '</div>' : '') +
+    const fila = x => { const u = x.url(cfg) || '', id = 'as-carp-' + x.k;
+      return '<div class="dv-f"><div class="dv-t"><b>' + x.t + (x.opc ? ' <span class="muted" style="font-weight:400">(opcional)</span>' : '') + '</b><span>' + x.d + '</span></div>' +
+        (ed === x.k ? '<div class="dv-ed"><input class="in" id="' + id + '" value="' + esc(u) + '" placeholder="Pegá el link de la carpeta de Drive"><button class="btn sm primary" data-act="asCarpeta" data-from="' + id + '" data-k="' + x.k + '">Guardar</button><button class="btn ghost sm" data-act="asCarpetaEd" data-k="">Cancelar</button></div>'
+          : '<div class="dv-a">' + (u ? '<a class="btn ghost sm" href="' + esc(u) + '" target="_blank" rel="noopener">' + ICON.externo + 'Abrir</a>' : '<span class="muted">Sin elegir</span>') + '<button class="btn sm" data-act="asCarpetaEd" data-k="' + x.k + '">' + (u ? 'Cambiar' : 'Elegir carpeta') + '</button></div>') + '</div>'; };
+    return '<section class="sheet"><div class="sheet-h"><h2>Google Drive</h2><span class="muted">' + (st.drive ? 'Conectado' : st.drive === false ? 'Sin conectar' : '') + '</span></div>' +
+      '<div class="sheet-b dv">' +
+      (st.drive_email ? '<div class="dv-cta"><span>Compartí cada carpeta como <b>Editor</b> con</span><code>' + esc(st.drive_email) + '</code><button class="btn ghost sm" data-act="asCopy" data-v="' + esc(st.drive_email) + '">' + ICON.copiar + 'Copiar</button></div>' : '') +
+      (st.drive_error ? '<p style="margin:0;color:var(--crit)">' + esc(st.drive_error) + '</p>' : '') +
       (st.drive === false ? '<div><b>Cómo conectarlo</b>' + pasos + '</div>' : '') +
-      '<div><b>Facturas</b><p class="cfg-nota" style="margin-top:2px">' + (cfg.carpeta_url ? '<a href="' + esc(cfg.carpeta_url) + '" target="_blank" rel="noopener">Abrir la carpeta</a> · se cambia en Configuración › Facturación.' : 'Todavía no está elegida: se elige en Configuración › Facturación.') + '</p></div>' +
-      '<div><b>Propuestas anteriores</b> <span class="muted">(opcional)</span><div class="toolbar" style="margin-top:6px"><input class="in" id="as-carpeta3" value="' + esc(cfg.carpeta_propuestas_url || '') + '" placeholder="Link de la carpeta de propuestas" style="flex:1;min-width:260px"><button class="btn sm" data-act="asCarpeta" data-from="as-carpeta3" data-k="propuestas">Guardar</button></div><p class="cfg-nota">Mr. Piggy toma de ahí hasta 3 propuestas viejas (Google Docs o PDF) como referencia de estilo y precios.</p></div>' +
+      '<div class="dv-l">' + CARPETAS.map(fila).join('') + '</div>' +
       '<p class="cfg-nota" style="margin:0">Los PDF y resúmenes del banco que lee la IA se mandan a la API de Anthropic solo para procesarlos; no se usan para entrenar modelos. Nada se guarda en la app sin que lo confirmen.</p>' +
       '</div></section>';
   }
@@ -551,13 +558,14 @@ export function initAsistente(ctx, k) {
       try { await data.upsert('ajustes', { clave: 'drive', valor: { ...cfgDrive(), enviar_auto: on } }, 'clave'); toast(on ? 'Las facturas que cargues desde Drive se mandan solas al cliente' : 'Listo: las facturas de Drive ya no se mandan solas'); await ctx.reload(); }
       catch (err) { toast(err.message); t.checked = !on; }
     },
+    asCarpetaEd: t => { AD.as.editCarpeta = t.dataset.k || null; ctx.render(); const el = t.dataset.k && document.getElementById('as-carp-' + t.dataset.k); if (el) { el.focus(); el.select(); } },
     asCarpetaCambiar: t => { AD.as.cambiarCarpeta = t.dataset.v === '1'; ctx.render(); },
     asCarpeta: async t => {
       const raw = ($('#' + (t.dataset.from || 'as-carpeta')) || {}).value || '', id = carpetaId(raw);
       if (!id) { toast('No reconozco ese link. Copiá el de la carpeta desde la barra del navegador.'); return; }
       const url = raw.startsWith('http') ? raw : 'https://drive.google.com/drive/folders/' + id;
       const v = t.dataset.k === 'propuestas' ? { carpeta_propuestas: id, carpeta_propuestas_url: url } : { carpeta: id, carpeta_url: url };
-      try { await data.upsert('ajustes', { clave: 'drive', valor: { ...cfgDrive(), ...v } }, 'clave'); AD.as.cambiarCarpeta = false; toast('Carpeta guardada. Tocá «Buscar nuevos» para revisarla.'); await ctx.reload(); }
+      try { await data.upsert('ajustes', { clave: 'drive', valor: { ...cfgDrive(), ...v } }, 'clave'); AD.as.cambiarCarpeta = false; AD.as.editCarpeta = null; toast(t.dataset.k === 'propuestas' ? 'Carpeta de propuestas guardada' : 'Carpeta guardada. Tocá «Buscar nuevos» en Cobros › Facturas en Drive para revisarla.'); await ctx.reload(); }
       catch (err) { toast(err.message); }
     },
     asCuits: async () => {
