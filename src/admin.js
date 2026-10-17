@@ -1274,6 +1274,8 @@ export function initAdmin(ctx) {
     catch (err) { toast(err.message); if (btn) { btn.disabled = false; btn.textContent = AD.form.saveLabel || 'Guardar'; } }
   }
 
+  // Al anular una factura, el PDF de Drive unido a ella se suelta y vuelve a Por revisar.
+  async function soltarDrive(fid) { for (const x of (AD.DA || []).filter(x => x.factura_id === fid)) { try { await data.upd('drive_archivos', x.id, { factura_id: null }); } catch (e) { /* sigue */ } } }
   function formFactura(id, preset, opts = {}) {
     if (id && (AD.F.find(x => x.id === id) || {}).tipo === 'Invoice' && !opts.comoFactura) return formInvoice(id);
     const f = id ? AD.F.find(x => x.id === id) : null;
@@ -1327,7 +1329,7 @@ export function initAdmin(ctx) {
         toast(f ? 'Factura actualizada' : 'Factura cargada');
       },
       deleteLabel: 'Anular factura',
-      onDelete: f ? async () => { await data.upd('facturas', f.id, { anulada: true }); toast('Factura anulada'); } : null,
+      onDelete: f ? async () => { await data.upd('facturas', f.id, { anulada: true }); await soltarDrive(f.id); toast('Factura anulada: su PDF de Drive vuelve a Por revisar'); } : null,
     });
   }
   /* ---------- Invoice para clientes del exterior (en inglés). En Argentina se factura en ARCA. ---------- */
@@ -1384,7 +1386,7 @@ export function initAdmin(ctx) {
         AD.postSave = () => { const nf = AD.F.find(x => x.id === fid); if (nf && !f) actions.aInvoicePdf({ dataset: { id: fid } }); };
       },
       deleteLabel: 'Anular invoice',
-      onDelete: f ? async () => { await data.upd('facturas', f.id, { anulada: true }); toast('Invoice anulado'); } : null,
+      onDelete: f ? async () => { await data.upd('facturas', f.id, { anulada: true }); await soltarDrive(f.id); toast('Invoice anulado'); } : null,
     });
     renderInv();
   }

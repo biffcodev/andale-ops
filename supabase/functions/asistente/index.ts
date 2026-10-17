@@ -165,17 +165,20 @@ async function driveSync(ctx: Ctx) {
   if (!cfg.carpeta) throw new Aviso('Falta indicar la carpeta de facturas de Drive (Configuración → Ajustes).');
   const { files, carpetas } = await listarCarpeta(cfg.carpeta);
   const ya = new Set<string>(), previos: any[] = []; let from = 0;
-  for (; ;) { const rows = chk(await ctx.sb.from('drive_archivos').select('id,file_id,error,estado').range(from, from + 999)) as any[]; rows.forEach(r => { ya.add(r.file_id); previos.push(r); }); if (rows.length < 1000) break; from += 1000; }
+  for (; ;) { const rows = chk(await ctx.sb.from('drive_archivos').select('id,file_id,error,estado,nombre,carpeta').range(from, from + 999)) as any[]; rows.forEach(r => { ya.add(r.file_id); previos.push(r); }); if (rows.length < 1000) break; from += 1000; }
   // Los que ya no están en la carpeta (borrados o movidos): se marcan; si vuelven, se desmarcan. La factura de la app no se toca.
   // Si la lista quedó cortada por el tope (3000), no se marca nada como faltante.
   const enDrive = new Set(files.map(f => f.id)), completa = files.length < 3000;
   const faltan = completa ? previos.filter(r => !enDrive.has(r.file_id) && r.estado !== 'Ignorado') : [], volvieron = previos.filter(r => enDrive.has(r.file_id) && String(r.error || '').startsWith(NO_ESTA));
   for (const r of faltan) if (!String(r.error || '').startsWith(NO_ESTA)) await ctx.sb.from('drive_archivos').update({ error: NO_ESTA + ' Si se borró, se recupera desde la papelera de Drive (30 días).' }).eq('id', r.id);
   for (const r of volvieron) await ctx.sb.from('drive_archivos').update({ error: null }).eq('id', r.id);
+  // Si alguien renombró o movió un archivo dentro de la carpeta, se actualiza su nombre y ubicación.
+  const porId = new Map(previos.map(r => [r.file_id, r])); let renombrados = 0;
+  for (const f of files) { const r = porId.get(f.id); if (r && (r.nombre !== f.name || (r.carpeta || '') !== (f.path || ''))) { await ctx.sb.from('drive_archivos').update({ nombre: f.name, carpeta: f.path || '', modificado: f.modifiedTime || null }).eq('id', r.id); renombrados++; } }
   const nuevos = files.filter(f => !ya.has(f.id)).map(f => ({ file_id: f.id, nombre: f.name, mime: f.mimeType, carpeta: f.path, link: f.webViewLink || 'https://drive.google.com/file/d/' + f.id + '/view', tamano: f.size ? Number(f.size) : null, modificado: f.modifiedTime || null, datos: parseNombre(f.name) }));
   for (let i = 0; i < nuevos.length; i += 300) chk(await ctx.sb.from('drive_archivos').insert(nuevos.slice(i, i + 300)));
   await ctx.sb.from('ajustes').update({ valor: { ...cfg, ultima_sync: new Date().toISOString(), archivos: files.length } }).eq('clave', 'drive');
-  return { nuevos: nuevos.length, total: files.length, carpetas, faltan: faltan.length };
+  return { nuevos: nuevos.length, total: files.length, carpetas, faltan: faltan.length, renombrados };
 }
 
 /* ================= Leer comprobantes ================= */
@@ -572,10 +575,12 @@ Deno.serve(async req => {
         const nombre = String(b.nombre || '').trim();
         if (!/^[\w .,()&+-]{3,180}\.(pdf|png|jpe?g|webp)$/i.test(nombre)) throw new Aviso('Nombre de archivo no válido: ' + nombre);
         const r = chk(await sb.from('drive_archivos').select('file_id,nombre').eq('id', b.archivo_id).single()) as any;
-        if (r.nombre === nombre) return json({ ok: true, nombre, igual: true });
+        // Se compara con el nombre real en Drive (alguien pudo cambiarlo a mano después de la última búsqueda).
+        const real = await (await gdrive('files/' + encodeURIComponent(r.file_id) + '?fields=name&supportsAllDrives=true')).json();
+        if (real.name === nombre) { if (r.nombre !== nombre) await sb.from('drive_archivos').update({ nombre }).eq('id', b.archivo_id); return json({ ok: true, nombre, igual: true }); }
         await renombrar(r.file_id, nombre);
         chk(await sb.from('drive_archivos').update({ nombre }).eq('id', b.archivo_id));
-        return json({ ok: true, nombre, antes: r.nombre });
+        return json({ ok: true, nombre, antes: real.name || r.nombre });
       }
       case 'leer_factura': return json(await leerFactura(ctx, b));
       case 'conciliar': return json(await conciliar(ctx, b));
