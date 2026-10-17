@@ -190,7 +190,7 @@ export function initAsistente(ctx, k) {
     const cl = checklist(m).sinArmar;
     return cl.map(c => { const sug = k.sugerencias(c, m), items = sug.map(s => ({ inc: true, origen: s.origen, ref: s.ref, concepto: s.concepto, monto: parseMonto(s.monto) })); return { cliente_id: data.ids.cliente(c), periodo: m + '-01', moneda: (sug[0] && sug[0].moneda) || k.cadm(c).moneda || 'ARS', items, total: r2(items.reduce((a, i) => a + (i.monto || 0), 0)), nota: '', estado: 'Borrador' }; }).filter(r => r.cliente_id);
   }
-  const listosDrive = () => AD.DA.filter(d => d.estado === 'Leído').map(d => ({ d, mt: matchArchivo(d), p: presetDesde(d) })).filter(x => x.mt.cliente && !x.mt.existente && !x.mt.nota && x.p.monto && x.p.fecha && x.mt.mesSeguro && x.d.datos.es_comprobante !== false);
+  const listosDrive = () => AD.DA.filter(d => d.estado === 'Leído').map(d => ({ d, mt: matchArchivo(d), p: presetDesde(d) })).filter(x => x.mt.cliente && !x.mt.existente && !x.mt.nota && x.p.monto && x.p.fecha && x.mt.mesSeguro && x.d.datos.es_comprobante !== false && !/^No está más/.test(x.d.error || ''));
   async function cargarDeDrive(x) {
     const p = x.p, f = await data.ins('facturas', { cliente_id: data.ids.cliente(p.cliente), tipo: p.tipo, emisor: p.emisor || '', numero: p.numero, periodo: p.periodo ? p.periodo + '-01' : null, fecha: p.fecha, vencimiento: p.vencimiento || null, moneda: p.moneda, monto: p.monto, concepto: p.concepto, link_pdf: p.link_pdf, notas: p.notas });
     await data.upd('drive_archivos', x.d.id, { factura_id: f.id }); await aprender(x.d, p);
