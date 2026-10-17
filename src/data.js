@@ -28,7 +28,7 @@ const idx = { clienteId: new Map(), clienteName: new Map(), personaId: new Map()
 const month = d => (d ? String(d).slice(0, 7) : '');
 
 /** Columnas nuevas que puede no tener todavía la base (hasta correr su SQL). */
-export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true };
+export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true, piezaContenido: true };
 function toRow(kind, ui) {
   const row = {};
   for (const [k, v] of Object.entries(ui)) {
@@ -136,13 +136,14 @@ export async function mesCrear(u) {
 export async function mesUpd(id, u) { check(await sb.from('redes_meses').update(mesRow(u)).eq('id', id)); }
 export async function mesDel(id) { check(await sb.from('redes_meses').delete().eq('id', id)); }
 export function piezaUI(z) {
-  return { _id: z.id, mesId: z.mes_id, formato: z.formato || '', red: z.red || '', fecha: z.fecha || '', hora: z.hora ? String(z.hora).slice(0, 5) : '', tema: z.tema || '', copy: z.copy || '', hashtags: z.hashtags || '',
+  return { _id: z.id, mesId: z.mes_id, formato: z.formato || '', red: z.red || '', fecha: z.fecha || '', hora: z.hora ? String(z.hora).slice(0, 5) : '', tema: z.tema || '', copy: z.copy || '', hashtags: z.hashtags || '', contenido: z.contenido || '',
     estado: z.estado, extra: !!z.extra, ads: z.ads || '', fijo: z.fijo || '', resp: idx.personaAlias.get(z.responsable_id) || '', arte: Array.isArray(z.arte) ? z.arte : [], orden: z.orden || 0,
     horas: z.horas == null ? '' : +z.horas, respuesta: z.respuesta_cliente || '', respondida: z.respondida_at, creado: z.created_at };
 }
 function piezaRow(u) {
   const r = {};
   ['formato', 'red', 'tema', 'copy', 'hashtags', 'estado', 'extra', 'fijo', 'arte', 'orden'].forEach(k => { if (k in u) r[k] = u[k]; });
+  if ('contenido' in u && cols.piezaContenido) r.contenido = u.contenido || ''; // lo que va en la pieza: slides, texto de la placa, guion (SQL 0031)
   if ('ads' in u && cols.piezaAds) r.ads = u.ads || ''; // '' = del plan · 'tambien' = del plan y también se pauta · 'solo' = solo para Ads (SQL 0028)
   if ('fecha' in u) r.fecha = u.fecha || null;
   if ('hora' in u) r.hora = u.hora || null;
@@ -154,15 +155,23 @@ function piezaRow(u) {
 export async function piezasDe(mesIds) {
   const ids = Array.isArray(mesIds) ? mesIds : [mesIds]; if (!ids.length) return [];
   const rows = check(await sb.from('piezas').select('*').in('mes_id', ids).order('fecha', { nullsFirst: false }).order('orden').limit(10000)) || [];
-  if (rows.length) cols.piezaAds = 'ads' in rows[0];
+  if (rows.length) { cols.piezaAds = 'ads' in rows[0]; cols.piezaContenido = 'contenido' in rows[0]; }
   return rows.map(piezaUI);
 }
 export async function piezasIns(mes, lista) {
   if (!lista.length) return [];
-  const rows = lista.map((u, i) => ({ mes_id: mes._id, cliente_id: mes.clienteId || idx.clienteId.get(mes.cliente), estado: 'Idea', orden: i, ...piezaRow(u) }));
-  return (check(await sb.from('piezas').insert(rows).select()) || []).map(piezaUI);
+  const fila = () => lista.map((u, i) => ({ mes_id: mes._id, cliente_id: mes.clienteId || idx.clienteId.get(mes.cliente), estado: 'Idea', orden: i, ...piezaRow(u) }));
+  let res = await sb.from('piezas').insert(fila()).select();
+  // Sin la columna "contenido" (falta el SQL 0031) se guarda igual, sin ese campo.
+  if (res.error && cols.piezaContenido && /contenido/.test(res.error.message || '')) { cols.piezaContenido = false; res = await sb.from('piezas').insert(fila()).select(); }
+  return (check(res) || []).map(piezaUI);
 }
-export async function piezasUpd(ids, u) { const r = piezaRow(u); if (!Object.keys(r).length || !ids.length) return; check(await sb.from('piezas').update(r).in('id', ids)); }
+export async function piezasUpd(ids, u) {
+  let r = piezaRow(u); if (!Object.keys(r).length || !ids.length) return;
+  let res = await sb.from('piezas').update(r).in('id', ids);
+  if (res.error && cols.piezaContenido && /contenido/.test(res.error.message || '')) { cols.piezaContenido = false; r = piezaRow(u); if (!Object.keys(r).length) return; res = await sb.from('piezas').update(r).in('id', ids); }
+  check(res);
+}
 export async function piezasDel(ids) { if (ids.length) check(await sb.from('piezas').delete().in('id', ids)); }
 
 /* ---------- Registro de horas (el reloj de arriba) ---------- */
@@ -502,7 +511,7 @@ export async function sendEmail(payload) {
 }
 /** Llama a la Edge Function `asistente` (Drive + IA). Solo admins. */
 export async function ia(payload) {
-  const { data, error } = await sb.functions.invoke(payload && payload.modo === 'ads_mail' ? 'ia-ads' : 'ia', { body: payload });
+  const { data, error } = await sb.functions.invoke(payload && payload.modo === 'ads_mail' ? 'ia-ads' : payload && (payload.modo === 'redes_ideas' || payload.modo === 'redes_copys') ? 'ia-redes' : 'ia', { body: payload });
   if (error) {
     let msg = error.message;
     try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { }

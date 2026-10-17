@@ -20,10 +20,11 @@ export const fmtColor = f => { const x = FMT_COLOR.find(([re]) => re.test(f || '
 import { vistaSel, vistaDe, filtrosMenu } from './ui.js';
 import { confirmar } from './dialogo.js';
 const IMG = /\.(jpe?g|png|gif|webp|tiff?|bmp|heic)$/i;
+const ICO_COPIAR = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
 
 export function initRedes(ctx) {
   const { S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, cfgGet, lsSet, lsGet } = ctx;
-  const st = { mes: thisMonth(), sel: new Set(), fOff: new Set(), mio: false, vis: [], tab: lsGet('rmTab') || 'planilla', cargando: new Set(), thumbs: new Map(), pidiendo: new Set(), fpz: null, abrirPieza: null };
+  const st = { mes: thisMonth(), sel: new Set(), fOff: new Set(), mio: false, vis: [], ia: {}, tab: lsGet('rmTab') || 'planilla', cargando: new Set(), thumbs: new Map(), pidiendo: new Set(), fpz: null, abrirPieza: null };
   const P = new Map(); // mesId -> piezas
 
   const formatos = () => (S.L.formatosRedes && S.L.formatosRedes.length ? S.L.formatosRedes : FORMATOS_DEF);
@@ -90,6 +91,9 @@ export function initRedes(ctx) {
   const tieneAds = cliente => S.A.some(a => a.cliente === cliente && a.tipo === 'Ads' && a.estado === 'Activo');
   const ADS_OPC = [['', 'No va en Ads'], ['tambien', 'Del plan, y también se pauta'], ['solo', 'Solo para Ads (no cuenta en el plan)']];
   const adsTag = z => z.ads === 'solo' ? '<span class="rm-ads" title="Solo para Ads: no cuenta en el plan">Ads</span>' : z.ads === 'tambien' ? '<span class="rm-ads tb" title="Del plan, y también se pauta">+ Ads</span>' : '';
+  // Copiar al portapapeles: data-sel = de un campo del formulario, o data-id + data-k = de una pieza (copy, hashtags o los dos).
+  const copiarBtn = (sel, extra) => '<button type="button" class="btn ghost sm cp-b" data-act="rmCopiar"' + (sel ? ' data-sel="' + esc(sel) + '"' : '') + (extra || '') + ' title="Copiar" aria-label="Copiar">' + ICO_COPIAR + '</button>';
+  const PH_CONT = f => /carrus/i.test(f) ? 'Slide 1: …\nSlide 2: …' : /reel/i.test(f) ? 'Gancho (0-3 s): …\n1. …\nAudio: …' : /histori/i.test(f) ? 'Texto: …\nSticker: encuesta (Sí / No)' : 'Título: …\nBajada: …\nImagen: …';
   const conteoPorFormato = ps => { const o = {}; enPlan(ps).forEach(z => { o[z.formato] = (o[z.formato] || 0) + 1; }); return o; };
   const pzPill = e => '<span class="pzst" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')">' + esc(e) + '</span>';
   const mesPill = e => pill(e, MES_COLOR[e] || '--muted');
@@ -196,53 +200,74 @@ export function initRedes(ctx) {
   }
 
   function planilla(m, ps, can) {
-    const fs = formatos(), sel = st.sel, eq = equipo(m.cliente), yo = S.me && S.me.alias;
+    const fs = formatos(), sel = st.sel, eq = equipo(m.cliente), yo = S.me && S.me.alias, ocupado = st.ia[m._id];
     const ordenadas = [...ps].sort((a, b) => (a.fecha || '9999').localeCompare(b.fecha || '9999') || (a.hora || '').localeCompare(b.hora || '') || a.orden - b.orden);
     const bulk = sel.size ? '<div class="bulkbar rm-bulk"><b>' + sel.size + ' seleccionada' + (sel.size > 1 ? 's' : '') + '</b><select class="in sm" id="rm-bk-est" aria-label="Cambiar estado">' + opt('', 'Cambiar estado…', '') + ESTADOS_PIEZA.map(e => opt(e, e, '')).join('') + '</select>' +
       '<select class="in sm" id="rm-bk-resp" aria-label="A cargo de">' + opt('', 'A cargo de…', '') + opt('__nadie', 'Según el flujo', '') + personas().map(a => opt(a, a, '')).join('') + '</select>' +
       '<button class="btn sm" data-act="rmHoras" data-id="' + esc(m._id) + '" data-sel="1">Poner horarios</button>' +
       '<button class="btn sm" data-act="rmCopys"><span class="pig" aria-hidden="true">' + ISO + '</span> Escribir copys</button><button class="btn sm danger" data-act="rmBorrar">Borrar</button><button class="btn ghost sm" data-act="rmSelNada">Listo</button></div>' : '';
     const sinHora = ps.filter(z => !z.hora).length;
-    const tools = can ? '<div class="toolbar rm-tools"><form class="rm-add" data-rmadd="' + esc(m._id) + '"><span>+</span><input class="in sm" type="number" min="1" max="60" name="n" value="1" aria-label="Cantidad"><select class="in sm" name="f" aria-label="Formato">' + fs.map(f => opt(f, f, '')).join('') + '</select>' + (tieneAds(m.cliente) ? '<select class="in sm" name="u" aria-label="Para qué">' + opt('', 'Del plan', '') + opt('solo', 'Solo para Ads', '') + '</select>' : '') + '<button class="btn sm">Agregar</button></form>' +
-      '<button class="btn sm" data-act="rmIdeas" data-id="' + esc(m._id) + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido</button>' +
-      '<button class="btn sm" data-act="rmChat" data-id="' + esc(m._id) + '">Pegar chat del cliente</button>' +
-      (sinHora ? '<button class="btn sm" data-act="rmHoras" data-id="' + esc(m._id) + '" title="Pone la hora de cada formato (Opciones → Flujo de Redes) a las piezas que no tienen">Poner horarios (' + sinHora + ')</button>' : '') +
-      (ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? '<button class="btn link sm rm-sinmarca" data-act="ficha" data-cliente="' + esc(m.cliente) + '" data-tab="marca" title="Sin ficha, Mr. Piggy escribe genérico">Completar la ficha de marca de ' + esc(m.cliente) + '</button>' : '') + '</div>' : '';
-    if (!ps.length) return tools + '<section class="sheet">' + emptyBox('Todavía no hay piezas este mes', can ? 'Sumalas con “+ Agregar” (de a muchas), o pedile a Mr. Piggy que proponga el contenido según el plan.' : '') + '</section>';
-    // Filtro por formato (con check) y "lo que me toca"
+    // Filtro por formato (con check) y "lo que me toca", en el menú de filtros como en el resto de la app
     const presentes = [...new Set([...fs.filter(f => ps.some(z => z.formato === f)), ...ps.map(z => z.formato).filter(Boolean)])];
     const qz = new Map(ps.map(z => [z._id, quienes(m.cliente, z, eq)]));
     const mias = ps.filter(z => yo && qz.get(z._id).gente.includes(yo));
     const vis = ordenadas.filter(z => !st.fOff.has(z.formato) && (!st.mio || mias.includes(z)));
     st.vis = vis.map(z => z._id);
-    const filtro = '<div class="rm-ff" role="group" aria-label="Qué mostrar">' + presentes.map(f => '<label class="rm-fc" style="--fc:' + fmtColor(f) + '"><input type="checkbox" data-rmff="' + esc(f) + '"' + (st.fOff.has(f) ? '' : ' checked') + '><i></i>' + esc(f) + ' <span class="num">' + ps.filter(z => z.formato === f).length + '</span></label>').join('') +
-      (yo && eq.has(yo) ? '<label class="rm-fc mio"><input type="checkbox" data-rmmio' + (st.mio ? ' checked' : '') + '><i></i>Lo que me toca <span class="num">' + mias.length + '</span></label>' : '') + '</div>';
-    const cols = can ? 7 : 6;
+    const activos = presentes.filter(f => st.fOff.has(f)).length + (st.mio ? 1 : 0);
+    const filtros = ps.length ? filtrosMenu('rmpz', '<span class="lbl">Formatos</span>' + presentes.map(f => '<label class="chk rm-fck" style="--fc:' + fmtColor(f) + '"><input type="checkbox" data-rmff="' + esc(f) + '"' + (st.fOff.has(f) ? '' : ' checked') + '> <i class="rm-dot"></i>' + esc(f) + ' <span class="muted num">' + ps.filter(z => z.formato === f).length + '</span></label>').join('') +
+      (yo && eq.has(yo) ? '<label class="chk" style="margin-top:6px"><input type="checkbox" data-rmmio' + (st.mio ? ' checked' : '') + '> Solo lo que me toca <span class="muted num">' + mias.length + '</span></label>' : ''), activos) : '';
+    const vista = vistaDe('redesPiezas', ['lista', 'cuadricula']);
+    const tools = '<div class="toolbar rm-tools">' + (can ? '<form class="rm-add" data-rmadd="' + esc(m._id) + '"><input class="in sm" type="number" min="1" max="60" name="n" value="1" aria-label="Cantidad"><select class="in sm" name="f" aria-label="Formato">' + fs.map(f => opt(f, f, '')).join('') + '</select>' + (tieneAds(m.cliente) ? '<select class="in sm" name="u" aria-label="Para qué">' + opt('', 'Del plan', '') + opt('solo', 'Solo Ads', '') + '</select>' : '') + '<button class="btn sm" title="Agregar piezas">+ Agregar</button></form>' +
+      '<button class="btn sm' + (ocupado ? ' ocupado' : '') + '" data-act="rmIdeas" data-id="' + esc(m._id) + '"' + (ocupado ? ' disabled' : '') + '>' + (ocupado ? '<span class="ia-dots"><i></i><i></i><i></i></span> ' + esc(ocupado) : '<span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido') + '</button>' +
+      (ctx.masMenu ? ctx.masMenu([
+        { act: 'rmChat', label: 'Pegar chat del cliente', attrs: ' data-id="' + esc(m._id) + '"' },
+        sinHora ? { act: 'rmHoras', label: 'Poner horarios a ' + sinHora + (sinHora === 1 ? ' pieza' : ' piezas'), attrs: ' data-id="' + esc(m._id) + '"' } : null,
+        ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? { act: 'ficha', label: 'Completar la ficha de marca (sin ficha, Mr. Piggy escribe genérico)', attrs: ' data-cliente="' + esc(m.cliente) + '" data-tab="marca"' } : null]) : '') : '') +
+      '<span class="rm-sp"></span>' + filtros + (ps.length ? vistaSel('redesPiezas', ['lista', 'cuadricula'], vista) : '') + '</div>';
+    if (!ps.length) return '<div class="rm-pl">' + tools + '<section class="sheet">' + emptyBox('Todavía no hay piezas este mes', can ? 'Sumalas con “+ Agregar” (de a muchas), o pedile a Mr. Piggy que proponga el contenido según el plan.' : '') + '</section></div>';
     const lunes = f => { const d = new Date(f + 'T12:00'); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; };
     const semTxt = f => { const l = lunes(f), dom = new Date(l); dom.setDate(l.getDate() + 6); const mesL = d => d.toLocaleDateString('es-AR', { month: 'short' }).replace('.', ''); return 'Semana del ' + l.getDate() + (l.getMonth() !== dom.getMonth() ? ' ' + mesL(l) : '') + ' al ' + dom.getDate() + ' ' + mesL(dom); };
-    const quien = z => { const q = qz.get(z._id);
+    const semDe = z => z.fecha ? semTxt(z.fecha) : 'Sin fecha';
+    const diaDe = z => z.fecha ? new Date(z.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '') : '';
+    const quien = (z, corto) => { const q = qz.get(z._id);
       if (!q.roles.length) return '<span class="muted">—</span>';
-      return '<div class="rm-quien">' + (q.gente.length ? '<span class="avs">' + q.gente.map(a => av(a, fotoDe(a))).join('') + '</span>' : '') + '<span class="rm-qt"><b>' + (q.gente.length ? esc(q.gente.join(', ')) : '<span class="muted">Nadie con ese rol</span>') + '</b><small>' + esc(q.roles.join(' + ')) + (z.resp && q.gente.includes(z.resp) ? ' · elegida' : '') + '</small></span></div>'; };
+      return '<div class="rm-quien">' + (q.gente.length ? '<span class="avs">' + q.gente.map(a => av(a, fotoDe(a))).join('') + '</span>' : '') + '<span class="rm-qt"><b>' + (q.gente.length ? esc(q.gente.join(', ')) : '<span class="muted">Nadie con ese rol</span>') + '</b>' + (corto ? '' : '<small>' + esc(q.roles.join(' + ')) + (z.resp && q.gente.includes(z.resp) ? ' · elegida' : '') + '</small>') + '</span></div>'; };
+    // Texto de la pieza: copy (o, en historias, lo que va escrito), hashtags y botones para copiar
+    const textos = (z, lineas) => { const hist = esHistoria(z), txt = z.copy || (hist ? z.contenido : '') || '';
+      return '<div class="rm-txt">' + (txt ? '<button class="rm-copy" style="-webkit-line-clamp:' + lineas + '" data-act="rmPieza" data-id="' + esc(z._id) + '">' + esc(txt.replace(/\n\s*\n/g, '\n')) + '</button>' : '<button class="rm-copy vacio" data-act="rmPieza" data-id="' + esc(z._id) + '">' + (hist ? '+ Texto de la historia' : '+ Escribir el copy') + '</button>') +
+        (z.hashtags ? '<p class="rm-hash">' + esc(z.hashtags) + '</p>' : '') +
+        (z.copy || z.hashtags ? '<span class="rm-cps">' + (z.copy ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="copy">' + ICO_COPIAR + ' Copy</button>' : '') + (z.hashtags ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="hashtags">' + ICO_COPIAR + ' Hashtags</button>' : '') + (z.copy && z.hashtags ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="todo" title="Copy y hashtags juntos, listos para pegar">' + ICO_COPIAR + ' Todo</button>' : '') + '</span>' : '') + '</div>'; };
+    const tags = (z, d) => '<div class="rm-tags">' + (d === null ? '<span class="rm-fpill">' + esc(z.formato) + '</span>' : '<select class="rm-fsel" data-pz="formato" data-id="' + esc(z._id) + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>') + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + '</div>';
+    pedirThumbs(vis);
+    if (!vis.length) return '<div class="rm-pl">' + tools + bulk + '<section class="sheet">' + emptyBox('No hay piezas con ese filtro', 'Cambiá los formatos en el filtro.') + '</section></div>';
+    if (vista === 'cuadricula') {
+      const grupos = []; vis.forEach(z => { const k = semDe(z), g = grupos[grupos.length - 1]; if (g && g.k === k) g.zs.push(z); else grupos.push({ k, zs: [z] }); });
+      const carta = z => { const a = (z.arte || [])[0], t = a ? st.thumbs.get(a.path) : '';
+        return '<article class="rm-pc' + (sel.has(z._id) ? ' sel' : '') + '" style="--fc:' + fmtColor(z.formato) + '">' +
+          '<button class="rm-pc-a' + (t ? '' : ' ph') + '" data-act="rmPieza" data-id="' + esc(z._id) + '" aria-label="Abrir ' + esc(z.formato + ' ' + (z.tema || '')) + '">' + (t ? '<img src="' + esc(t) + '" alt="">' : '<span class="rm-pc-ph"><b>' + esc(z.formato) + '</b>' + (z.contenido ? '<span>' + esc(z.contenido.split('\n')[0].replace(/^[^:]{1,20}:\s*/, '')) + '</span>' : '') + '</span>') + '</button>' +
+          (can ? '<input type="checkbox" class="rm-pc-sel" data-rmsel="' + esc(z._id) + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar">' : '') +
+          '<div class="rm-pc-b"><div class="rm-pc-m"><span class="rm-pc-d">' + (z.fecha ? esc(diaDe(z)) + (z.hora ? ' · ' + esc(z.hora) : '') : 'Sin fecha') + '</span>' + pzPill(z.estado) + '</div>' + tags(z, null) +
+          '<b class="rm-pc-t">' + esc(z.tema || 'Sin tema') + '</b>' + textos(z, 4) + '<div class="rm-pc-f">' + quien(z, true) + '</div></div></article>'; };
+      return '<div class="rm-pl">' + tools + bulk + grupos.map(g => '<h3 class="rm-semh">' + esc(g.k) + '</h3><div class="rm-pcs">' + g.zs.map(carta).join('') + '</div>').join('') + '</div>';
+    }
+    const cols = can ? 7 : 6;
     let semPrev = null;
     const fila = z => {
-      const id = esc(z._id), d = can ? '' : ' disabled', fc = fmtColor(z.formato);
-      const sem = z.fecha ? semTxt(z.fecha) : 'Sin fecha';
+      const id = esc(z._id), d = can ? '' : ' disabled', sem = semDe(z);
       const cab = sem !== semPrev ? '<tr class="rm-sem"><td colspan="' + cols + '">' + esc(sem) + '</td></tr>' : ''; semPrev = sem;
-      const dia = z.fecha ? new Date(z.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '') : '';
-      return cab + '<tr class="rm-row ' + (sel.has(z._id) ? 'sel ' : '') + (z.estado === 'Cambios' ? 'cambios' : '') + '" style="--fc:' + fc + '">' +
+      return cab + '<tr class="rm-row ' + (sel.has(z._id) ? 'sel ' : '') + (z.estado === 'Cambios' ? 'cambios' : '') + '" style="--fc:' + fmtColor(z.formato) + '">' +
         (can ? '<td class="sel"><input type="checkbox" data-rmsel="' + id + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar"></td>' : '') +
         '<td class="rm-art">' + arteMini(z) + '</td>' +
-        '<td class="rm-cuando">' + (dia ? '<span class="rm-dia">' + esc(dia) + '</span>' : '') + '<input class="in sm rm-fe" type="date" value="' + esc(z.fecha) + '" data-pz="fecha" data-id="' + id + '"' + d + ' aria-label="Fecha"><input class="in sm rm-ho" type="time" value="' + esc(z.hora) + '" data-pz="hora" data-id="' + id + '"' + d + ' aria-label="Hora"></td>' +
-        '<td class="rm-tema"><div class="rm-tags"><select class="rm-fsel" data-pz="formato" data-id="' + id + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>' + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + '</div>' +
-        '<input class="in sm rm-tin" value="' + esc(z.tema) + '" placeholder="Tema" data-pz="tema" data-id="' + id + '"' + d + ' aria-label="Tema">' +
-        '<button class="rm-copy' + (z.copy ? '' : ' vacio') + '" data-act="rmPieza" data-id="' + id + '">' + (z.copy ? esc(z.copy) : '+ Escribir el copy') + '</button>' + (z.respuesta && z.estado === 'Cambios' ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 160)) + '”</span>' : '') + '</td>' +
+        '<td class="rm-cuando">' + (z.fecha ? '<span class="rm-dia">' + esc(diaDe(z)) + '</span>' : '') + '<input class="in sm rm-fe" type="date" value="' + esc(z.fecha) + '" data-pz="fecha" data-id="' + id + '"' + d + ' aria-label="Fecha"><input class="in sm rm-ho" type="time" value="' + esc(z.hora) + '" data-pz="hora" data-id="' + id + '"' + d + ' aria-label="Hora"></td>' +
+        '<td class="rm-tema">' + tags(z, d) + '<input class="in sm rm-tin" value="' + esc(z.tema) + '" placeholder="Tema" data-pz="tema" data-id="' + id + '"' + d + ' aria-label="Tema">' +
+        (z.contenido && !esHistoria(z) ? '<p class="rm-cont" title="Qué va en la pieza">' + esc(z.contenido) + '</p>' : '') + textos(z, 6) +
+        (z.respuesta && z.estado === 'Cambios' ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 160)) + '”</span>' : '') + '</td>' +
         '<td><select class="cellsel st" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-pz="estado" data-id="' + id + '"' + d + ' aria-label="Estado">' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></td>' +
         '<td class="rm-qc">' + quien(z) + '</td>' +
         '<td><button class="btn ghost sm" data-act="rmPieza" data-id="' + id + '" aria-label="Abrir pieza">⋯</button></td></tr>';
     };
-    pedirThumbs(vis);
-    return tools + bulk + filtro + '<section class="sheet"><div class="tbl rm-tbl"><table><thead><tr>' + (can ? '<th class="sel"><input type="checkbox" data-rmselall="' + esc(m._id) + '" aria-label="Seleccionar las que se ven"></th>' : '') + '<th>Arte</th><th>Cuándo</th><th>Pieza</th><th>Estado</th><th title="Según el rol de cada uno en la cuenta y el estado de la pieza">Le toca a</th><th></th></tr></thead><tbody>' +
-      (vis.length ? vis.map(fila).join('') : '<tr><td colspan="' + cols + '">' + emptyBox('No hay piezas con ese filtro', 'Marcá otro formato arriba.') + '</td></tr>') + '</tbody></table></div></section>';
+    return '<div class="rm-pl">' + tools + bulk + '<section class="sheet"><div class="tbl rm-tbl"><table><thead><tr>' + (can ? '<th class="sel"><input type="checkbox" data-rmselall="' + esc(m._id) + '" aria-label="Seleccionar las que se ven"></th>' : '') + '<th>Arte</th><th>Cuándo</th><th>Pieza</th><th>Estado</th><th title="Según el rol de cada uno en la cuenta y el estado de la pieza">Le toca a</th><th></th></tr></thead><tbody>' +
+      vis.map(fila).join('') + '</tbody></table></div></section></div>';
   }
   function arteMini(z) {
     const a = (z.arte || [])[0];
@@ -295,8 +320,9 @@ export function initRedes(ctx) {
       '<div class="field"><label for="pz-estado">Estado</label><select id="pz-estado"' + d + '>' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></div>' +
       '<div class="field"><label for="pz-resp">A cargo de esta pieza</label><select id="pz-resp"' + d + '>' + opt('', 'Según el flujo (el rol de cada etapa)', z.resp) + [...new Set([...personas(), z.resp].filter(Boolean))].map(a => opt(a, a + (equipo(m.cliente).get(a) ? ' · ' + equipo(m.cliente).get(a) : ''), z.resp)).join('') + '</select><span class="hint">Ahora le toca a ' + esc((q => q.gente.length ? q.gente.join(', ') : 'nadie') (quienes(m.cliente, z))) + '. Si elegís a alguien, reemplaza a los de su rol (p. ej. Cata en vez de Vale en el diseño).</span></div>' +
       '<div class="field full"><label for="pz-tema">Tema</label><input id="pz-tema" value="' + esc(z.tema) + '"' + d + '></div>' +
-      '<div class="field full"><label for="pz-copy">Copy</label><textarea id="pz-copy" rows="6"' + d + '>' + esc(z.copy) + '</textarea>' + (can ? '<div class="toolbar" style="margin-top:6px"><span class="muted" style="font-size:13px">Mr. Piggy:</span><button type="button" class="btn ghost sm" data-act="rmCopyUno">' + (z.copy ? 'Mejorar' : 'Escribir') + ' el copy</button></div>' : '') + '</div>' +
-      '<div class="field full"><label for="pz-hashtags">Hashtags</label><input id="pz-hashtags" value="' + esc(z.hashtags) + '"' + d + '></div>' +
+      (data.cols && data.cols.piezaContenido === false ? '' : '<div class="field full"><div class="pz-lh"><label for="pz-contenido">' + (esHistoria(z) ? 'Texto de la historia' : 'Qué va en la pieza') + '</label>' + copiarBtn('#pz-contenido') + '</div><textarea id="pz-contenido" rows="' + Math.min(10, Math.max(3, (z.contenido || '').split('\n').length + 1)) + '" placeholder="' + esc(PH_CONT(z.formato)) + '"' + d + '>' + esc(z.contenido || '') + '</textarea><span class="hint">Para quien diseña o graba.</span></div>') +
+      '<div class="field full"><div class="pz-lh"><label for="pz-copy">Copy</label>' + copiarBtn('#pz-copy') + '</div><textarea id="pz-copy" rows="' + Math.min(14, Math.max(5, (z.copy || '').split('\n').length + 2)) + '"' + d + '>' + esc(z.copy) + '</textarea>' + (can ? '<div class="toolbar" style="margin-top:6px"><span class="muted" style="font-size:13px">Mr. Piggy:</span><button type="button" class="btn ghost sm" data-act="rmCopyUno">' + (z.copy ? 'Mejorar' : 'Escribir') + ' el copy</button></div>' : '') + '</div>' +
+      '<div class="field full"><div class="pz-lh"><label for="pz-hashtags">Hashtags</label>' + copiarBtn('#pz-hashtags') + '</div><input id="pz-hashtags" value="' + esc(z.hashtags) + '"' + d + '></div>' +
       '<div class="field"><label for="pz-fijo">Se repite cada</label><select id="pz-fijo"' + d + '>' + opt('', 'No se repite', z.fijo) + DIAS.map(x => opt(x, x, z.fijo)).join('') + '</select><span class="hint">Al arrancar el mes siguiente se crea sola en ese día.</span></div>' +
 
       (z.ads || tieneAds(m.cliente) ? '<div class="field"><label for="pz-ads">Ads</label><select id="pz-ads"' + d + '>' + ADS_OPC.map(([k, l]) => opt(k, l, z.ads || '')).join('') + '</select><span class="hint">Si se diseñó aparte para los anuncios, va como “Solo para Ads”: no suma al plan ni como extra.</span></div>' : '') +
@@ -309,7 +335,7 @@ export function initRedes(ctx) {
   async function guardarPieza() {
     const f = st.fpz; if (!f) return;
     const g = k => ($('#pz-' + k) || {}).value;
-    const u = { fecha: g('fecha') || '', hora: g('hora') || '', formato: g('formato'), red: g('red'), estado: g('estado'), resp: g('resp') || '', tema: (g('tema') || '').trim(), copy: (g('copy') || '').trim(), hashtags: (g('hashtags') || '').trim(), fijo: g('fijo') || '', extra: $('#pz-extra').checked };
+    const u = { fecha: g('fecha') || '', hora: g('hora') || '', formato: g('formato'), red: g('red'), estado: g('estado'), resp: g('resp') || '', tema: (g('tema') || '').trim(), copy: (g('copy') || '').trim(), ...($('#pz-contenido') ? { contenido: (g('contenido') || '').trim() } : {}), hashtags: (g('hashtags') || '').trim(), fijo: g('fijo') || '', extra: $('#pz-extra').checked };
     if ($('#pz-ads')) { u.ads = g('ads') || ''; if (u.ads === 'solo') u.extra = false; }
     try { await data.piezasUpd([f.id], u); local(f.mesId, [f.id], u); ctx.closeForm(); toast('Pieza guardada'); render(); }
     catch (e) { toast(e.message); }
@@ -338,7 +364,7 @@ export function initRedes(ctx) {
       const fijas = bp.filter(z => z.fijo);
       const vistas = new Set();
       fijas.forEach(z => { const k = z.fijo + '|' + z.formato + '|' + norm(z.tema); if (vistas.has(k)) return; vistas.add(k);
-        const dow = DIAS.indexOf(z.fijo); for (let d = 1; d <= diasMes(mes); d++) { const f = fechaMes(mes, d); if (new Date(f + 'T12:00').getDay() === dow) nuevas.push({ formato: z.formato, red: z.red, tema: z.tema, hashtags: z.hashtags, hora: z.hora, fecha: f, fijo: z.fijo, resp: z.resp, estado: 'Idea' }); } });
+        const dow = DIAS.indexOf(z.fijo); for (let d = 1; d <= diasMes(mes); d++) { const f = fechaMes(mes, d); if (new Date(f + 'T12:00').getDay() === dow) nuevas.push({ formato: z.formato, red: z.red, tema: z.tema, contenido: z.contenido || '', hashtags: z.hashtags, hora: z.hora, fecha: f, fijo: z.fijo, resp: z.resp, estado: 'Idea' }); } });
     }
     const ins = nuevas.length ? await insPiezas(m, nuevas) : [];
     P.set(m._id, ins);
@@ -376,44 +402,87 @@ export function initRedes(ctx) {
     try { await data.piezasUpd([id], { arte }); z.arte = arte; toast(nuevos.length === 1 ? 'Arte subido' : nuevos.length + ' archivos subidos'); render(); if (st.fpz && st.fpz.id === id) abrirPieza(id); contar(m, true); }
     catch (e) { toast(e.message); }
   }
-  // Mr. Piggy propone lo que falta del plan. A veces devuelve menos (o más) de lo pedido: se cuenta por formato,
-  // se le pide de nuevo lo que falta (hasta 2 veces más) y se descarta lo que sobra. Cada pieza sale con la hora de su formato.
+  // Mr. Piggy propone lo que falta del plan, en dos pasos:
+  // 1) el plan: qué pieza, qué día y qué va en cada una. A veces devuelve menos (o más) de lo pedido: se cuenta por formato,
+  //    se le pide de nuevo lo que falta (hasta 2 veces más) y se descarta lo que sobra. Cada pieza sale con la hora de su formato.
+  // 2) los copys y hashtags, de a tandas chicas y en paralelo (escribe mejor y no se corta). Las historias no llevan copy.
+  const ctxIA = (m, extra) => { const cli = S.C.find(x => x.nombre === m.cliente) || {}, prev = mesCliente(m.cliente, addMonth(m.mes, -1)), pp = prev ? (piezas(prev._id) || []) : [];
+    return { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, [...pp, ...(piezas(m._id) || [])]) : {}), notas_cliente: cli.notas || '', servicios: ctx.servicios ? ctx.servicios(m.cliente) : '', mes: m.mes, formatos: formatos(), plan: m.plan || {}, notas_del_mes: m.notas, ...(extra || {}), _pp: pp }; };
+  const esHistoria = z => /histori|stor/i.test(z.formato || '');
+  const trabajando = (m, txt) => { if (txt) st.ia[m._id] = txt; else delete st.ia[m._id]; render(); };
+  // Si la IA no dio fecha, se reparten las piezas de cada formato a lo largo del mes.
+  function repartirFechas(m, ps, nuevas) {
+    const n = diasMes(m.mes), porF = {};
+    nuevas.filter(z => !z.fecha).forEach(z => { (porF[z.formato] = porF[z.formato] || []).push(z); });
+    Object.values(porF).forEach(lista => lista.forEach((z, i) => { const d = Math.min(n, Math.max(1, Math.round((i + 0.5) * n / lista.length))); z.fecha = fechaMes(m.mes, d); z.hora = horaLibre([...ps, ...nuevas.filter(y => y !== z && y.fecha)], z.fecha, z.formato); }));
+  }
   async function ideas(btn, m) {
+    if (st.ia[m._id]) return;
     const ps = piezas(m._id) || [], plan = m.plan || {}, cnt = conteoPorFormato(ps);
     const faltan = Object.fromEntries(Object.entries(plan).map(([f, n]) => [f, Math.max(0, (+n || 0) - (cnt[f] || 0))]).filter(([, n]) => n > 0));
     const extras = !Object.keys(faltan).length;
     if (extras && !await confirmar('El plan del mes ya está completo. ¿Querés que Mr. Piggy proponga ideas extra igual?')) return;
-    btn.disabled = true; const t0 = btn.innerHTML; btn.innerHTML = '<span class="ia-dots"><i></i><i></i><i></i></span> Mr. Piggy está pensando el mes…';
+    trabajando(m, 'Mr. Piggy está armando el plan…');
+    let ins = [];
     try {
-      const prev = mesCliente(m.cliente, addMonth(m.mes, -1)), pp = prev ? (piezas(prev._id) || []) : [];
-      const cli = S.C.find(x => x.nombre === m.cliente) || {};
       const fmtDe = x => formatos().includes(x) ? x : (formatos().find(f => norm(f).startsWith(norm(x || '').slice(0, 4))) || formatos()[0]);
       const pide = extras ? { _: 3 } : { ...faltan }, nuevas = [];
       const resta = () => Object.entries(pide).filter(([, n]) => n > 0);
       for (let vuelta = 0; vuelta < 3 && resta().length; vuelta++) {
         const lista = resta().map(([f, n]) => n + ' ' + f).join(', '), total = resta().reduce((a, [, n]) => a + n, 0);
         const texto = extras ? 'Proponé 3 ideas extra.' : (vuelta ? 'Todavía faltan piezas: proponé exactamente ' + lista + ' (' + total + ' en total), distintas a las que ya hay.' : 'Proponé exactamente estas piezas que faltan, ni más ni menos: ' + lista + ' (' + total + ' en total). Contá las de cada formato antes de responder.');
-        const r = await data.ia({ modo: 'redes_ideas', texto,
-          contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, [...pp, ...ps]) : {}), notas_cliente: cli.notas || '', servicios: ctx.servicios ? ctx.servicios(m.cliente) : '', mes: m.mes, formatos: formatos(), plan, notas_del_mes: m.notas, ya_cargadas: [...ps, ...nuevas].map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })), mes_anterior: pp.slice(0, 60).map(z => ({ formato: z.formato, tema: z.tema })) } });
+        const c = ctxIA(m); const pp = c._pp; delete c._pp;
+        const r = await data.ia({ modo: 'redes_ideas', texto, contexto: { ...c, ya_cargadas: [...ps, ...nuevas].map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })), mes_anterior: pp.slice(0, 60).map(z => ({ formato: z.formato, tema: z.tema })) } });
         let llegaron = 0;
         for (const x of (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && x.tema)) {
           const formato = fmtDe(x.formato), k = extras ? '_' : formato;
           if (!(pide[k] > 0)) continue; // lo que sobra no se carga
           if (nuevas.some(z => norm(z.tema) === norm(String(x.tema)))) continue;
           const fecha = /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : '';
-          nuevas.push({ formato, tema: String(x.tema).slice(0, 200), copy: x.copy || '', hashtags: x.hashtags || '', fecha, hora: horaLibre([...ps, ...nuevas], fecha, formato), estado: 'Idea', extra: extras });
+          nuevas.push({ formato, tema: String(x.tema).slice(0, 160), contenido: String(x.contenido || '').slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...ps, ...nuevas], fecha, formato) : '', estado: 'Idea', extra: extras });
           pide[k]--; llegaron++;
         }
         if (!llegaron) break;
+        if (resta().length) trabajando(m, 'Faltaron algunas, le pido el resto…');
       }
-      if (!nuevas.length) { toast('Mr. Piggy no propuso nada. Probá de nuevo.'); }
-      else {
-        const ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]);
-        const quedan = extras ? [] : resta();
-        toast('Mr. Piggy propuso ' + ins.length + ' piezas con su horario. Quedaron como “Idea”: revisalas.' + (quedan.length ? ' Faltaron ' + quedan.map(([f, n]) => n + ' ' + f).join(', ') + ': volvé a tocar “Proponer contenido”.' : ''));
-      }
-    } catch (e) { toast(e.message); }
-    btn.disabled = false; btn.innerHTML = t0; render();
+      if (!nuevas.length) { toast('Mr. Piggy no propuso nada. Probá de nuevo.'); trabajando(m, null); return; }
+      repartirFechas(m, ps, nuevas);
+      ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]);
+      const quedan = extras ? [] : resta();
+      if (quedan.length) toast('Faltaron ' + quedan.map(([f, n]) => n + ' ' + f).join(', ') + ': volvé a tocar “Proponer contenido”.');
+    } catch (e) { toast(e.message); trabajando(m, null); return; }
+    // 2) copys de lo que no es historia
+    const conCopy = ins.filter(z => !esHistoria(z)).map(z => z._id);
+    const n = conCopy.length ? await copys(conCopy, m) : 0;
+    trabajando(m, null);
+    toast('Mr. Piggy armó ' + ins.length + ' piezas' + (n ? ' y escribió ' + n + ' copys' : '') + ', con día y horario. Quedaron como “Idea”: revisalas.');
+  }
+  // Copys y hashtags de varias piezas: de a 4 por pedido, 3 pedidos a la vez. Devuelve cuántas escribió.
+  async function copys(ids, m, btn) {
+    const ps = (piezas(m._id) || []).filter(z => ids.includes(z._id));
+    if (!ps.length) return 0;
+    const propio = !st.ia[m._id], t0 = btn ? btn.innerHTML : ''; let hechas = 0, n = 0, fallo = null;
+    const avance = () => { if (btn) { btn.disabled = true; btn.textContent = 'Escribiendo ' + hechas + '/' + ps.length + '…'; } else trabajando(m, 'Escribiendo copys ' + hechas + '/' + ps.length + '…'); };
+    avance();
+    const c = ctxIA(m); delete c._pp; delete c.plan;
+    const tandas = []; for (let i = 0; i < ps.length; i += 4) tandas.push(ps.slice(i, i + 4));
+    const una = async t => {
+      try {
+        const r = await data.ia({ modo: 'redes_copys', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, fecha: z.fecha, tema: z.tema, contenido: z.contenido || '', copy_actual: z.copy }))), contexto: c });
+        for (const x of Array.isArray(r.piezas) ? r.piezas : []) {
+          const z = t.find(y => y._id === x.id); if (!z || (!x.copy && !esHistoria(z))) continue;
+          const u = { copy: String(x.copy || '').trim(), hashtags: String(x.hashtags || '').trim(), ...(x.contenido && !z.contenido ? { contenido: String(x.contenido).trim() } : {}) };
+          await data.piezasUpd([z._id], u); Object.assign(z, u); n++;
+        }
+      } catch (e) { fallo = e; }
+      hechas += t.length; avance();
+    };
+    for (let i = 0; i < tandas.length; i += 3) await Promise.all(tandas.slice(i, i + 3).map(una));
+    if (btn) { btn.disabled = false; btn.innerHTML = t0; }
+    if (propio && !btn) trabajando(m, null);
+    if (fallo && !n) toast(fallo.message); else if (propio) toast(n ? 'Mr. Piggy escribió ' + n + ' copys. Revisalos.' : 'No se pudo escribir los copys.');
+    render();
+    return n;
   }
   // Pone la hora de su formato a las piezas sin hora (o a las seleccionadas, pisando la que tengan).
   async function ponerHoras(m, soloSel) {
@@ -444,20 +513,6 @@ export function initRedes(ctx) {
     const eq = equipo(cliente), o = {};
     ps.forEach(z => { if (quienes(cliente, z, eq).gente.includes(alias)) o[z.estado] = (o[z.estado] || 0) + 1; });
     return ESTADOS_PIEZA.filter(e => o[e]).map(e => [e, o[e]]);
-  }
-  async function copys(ids, m, btn) {
-    const ps = (piezas(m._id) || []).filter(z => ids.includes(z._id));
-    if (!ps.length) return;
-    if (btn) { btn.disabled = true; btn.textContent = 'Escribiendo…'; }
-    try {
-      const cli = S.C.find(x => x.nombre === m.cliente) || {};
-      const r = await data.ia({ modo: 'redes_copys', texto: JSON.stringify(ps.map(z => ({ id: z._id, formato: z.formato, fecha: z.fecha, tema: z.tema, copy_actual: z.copy }))), contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, piezas(m._id) || []) : {}), notas_cliente: cli.notas || '', notas_del_mes: m.notas } });
-      let n = 0;
-      for (const x of Array.isArray(r.piezas) ? r.piezas : []) { const z = ps.find(y => y._id === x.id); if (!z || !x.copy) continue; const u = { copy: x.copy, ...(x.hashtags ? { hashtags: x.hashtags } : {}) }; await data.piezasUpd([z._id], u); Object.assign(z, u); n++; }
-      toast(n ? 'Mr. Piggy escribió ' + n + ' copys. Revisalos.' : 'No se pudo escribir los copys.');
-    } catch (e) { toast(e.message); }
-    if (btn) { btn.disabled = false; btn.textContent = 'Escribir copys'; }
-    render();
   }
   function abrirChat(m) {
     st.chatMes = m._id; S.form = null;
@@ -583,10 +638,18 @@ export function initRedes(ctx) {
     },
     rmPlan: t => { const m = mesDe(t.dataset.id); if (m) abrirPlan(m); },
     rmIdeas: t => { const m = mesDe(t.dataset.id); if (m) ideas(t, m); },
+    rmCopiar: t => {
+      let v = '';
+      if (t.dataset.sel) v = ($(t.dataset.sel) || {}).value || '';
+      else { const z = [...P.values()].flat().find(x => x._id === t.dataset.id); if (z) v = t.dataset.k === 'hashtags' ? z.hashtags : t.dataset.k === 'contenido' ? (z.contenido || '') : t.dataset.k === 'todo' ? [z.copy, z.hashtags].filter(Boolean).join('\n\n') : z.copy; }
+      if (!v.trim()) { toast('No hay nada para copiar'); return; }
+      const ok = () => toast(t.dataset.k === 'hashtags' ? 'Hashtags copiados' : t.dataset.k === 'todo' ? 'Copy y hashtags copiados' : 'Copiado');
+      try { navigator.clipboard.writeText(v).then(ok, () => toast('No se pudo copiar')); } catch (e) { toast('No se pudo copiar'); }
+    },
     rmHoras: t => { const m = mesDe(t.dataset.id); if (m) ponerHoras(m, !!t.dataset.sel); },
     rmChat: t => { const m = mesDe(t.dataset.id); if (m) abrirChat(m); },
     rmCopys: t => { const ids = [...st.sel]; const m = meses().find(x => (piezas(x._id) || []).some(z => ids.includes(z._id))); if (m) copys(ids, m, t); },
-    rmCopyUno: async t => { const f = st.fpz; if (!f) return; const m = mesDe(f.mesId); const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!m || !z) return; z.tema = ($('#pz-tema').value || '').trim() || z.tema; await copys([z._id], m, t); const zz = piezas(f.mesId).find(x => x._id === f.id); if ($('#pz-copy') && zz) { $('#pz-copy').value = zz.copy; $('#pz-hashtags').value = zz.hashtags; } },
+    rmCopyUno: async t => { const f = st.fpz; if (!f) return; const m = mesDe(f.mesId); const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!m || !z) return; z.tema = ($('#pz-tema').value || '').trim() || z.tema; if ($('#pz-contenido')) z.contenido = $('#pz-contenido').value.trim(); if ($('#pz-copy')) z.copy = $('#pz-copy').value.trim(); await copys([z._id], m, t); const zz = piezas(f.mesId).find(x => x._id === f.id); if ($('#pz-copy') && zz) { $('#pz-copy').value = zz.copy; $('#pz-hashtags').value = zz.hashtags; if ($('#pz-contenido')) $('#pz-contenido').value = zz.contenido || ''; } },
     rmBorrar: async () => { const ids = [...st.sel]; if (!ids.length || !await confirmar('¿Borrar ' + ids.length + ' pieza' + (ids.length > 1 ? 's' : '') + '?')) return; try { await data.piezasDel(ids); P.forEach((ps, k) => P.set(k, ps.filter(z => !ids.includes(z._id)))); st.sel.clear(); toast('Borradas'); render(); } catch (e) { toast(e.message); } },
     rmSelNada: () => { st.sel.clear(); render(); },
     rmPieza: t => abrirPieza(t.dataset.id),
