@@ -887,6 +887,18 @@ export function initRedes(ctx) {
       if (ctx.avisarCliente) ctx.avisarCliente(m.cliente, 'redes', m);
     } catch (e) { toast(e.message); }
   }
+  // Para el resumen de la ficha del cliente: cómo vienen sus meses de redes abiertos.
+  async function resumenCliente(cliente) {
+    const ms = meses().filter(m => m.cliente === cliente && m.mes >= addMonth(thisMonth(), -1)).sort((a, b) => a.mes.localeCompare(b.mes));
+    const falta = ms.filter(m => !piezas(m._id)).map(m => m._id); if (falta.length) await cargar(falta);
+    const hoy = new Date().toISOString().slice(0, 10);
+    return ms.map(m => { const ps = piezas(m._id) || [], E = etapaDe(m), a = avance(m, ps), cnt = {}; ps.forEach(z => { cnt[pzNombre(z.estado)] = (cnt[pzNombre(z.estado)] || 0) + 1; });
+      return { mes: monthLabel(m.mes), etapa: E.n, responsable: m.resp || '', piezas: ps.length, [E.cliente ? 'aprobadas_por_el_cliente' : 'listas_en_la_etapa']: a.h, por_estado: cnt, extras: ps.filter(z => z.extra).length,
+        enviado_al_cliente: m.enviadoAt ? String(m.enviadoAt).slice(0, 10) : '', visible_en_portal: !!m.visible,
+        cambios_que_pidio_el_cliente: ps.filter(z => z.estado === 'Cambios').map(z => ({ pieza: z.tema, pedido: (z.respuesta || '').slice(0, 200) })).slice(0, 8),
+        proximas_publicaciones: ps.filter(z => z.fecha && z.fecha >= hoy && z.estado !== 'Publicada').sort((x, y) => (x.fecha + x.hora).localeCompare(y.fecha + y.hora)).slice(0, 4).map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema, estado: pzNombre(z.estado) })),
+        sin_fecha: ps.filter(z => !z.fecha).length, fechas_y_novedades_elegidas: invElegidas(m) ? [...invElegidas(m).fechas.map(x => x.nombre), ...invElegidas(m).novedades.map(x => x.titulo)].slice(0, 10) : [] }; });
+  }
   /* ---------- Versiones: volver atrás lo que cambió Mr. Piggy ---------- */
   // Antes de que Mr. Piggy cambie el tema, lo que va en la pieza, el copy o los hashtags, se guarda lo anterior en la pieza (últimas 10).
   const CAMPOS_V = ['tema', 'contenido', 'copy', 'hashtags'];
@@ -1418,5 +1430,5 @@ export function initRedes(ctx) {
     const ps = piezas(m._id); if (!ps) { setTimeout(() => cargar([m._id]), 0); return null; }
     return extrasResumen(cliente, ps);
   }
-  return { tareasRedes, planificacionesDe, extrasACobrar, opcionesHtml, tocaA, vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
+  return { resumenCliente, tareasRedes, planificacionesDe, extrasACobrar, opcionesHtml, tocaA, vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
 }

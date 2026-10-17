@@ -2097,7 +2097,7 @@ async function start(sess) {
     MAIL = initMails({ S, contactos: n => contactosDe(n), data, esc, opt, toast, $, closeForm, reload, ISO, marca: () => (ADM && ADM.cfgMarca ? ADM.cfgMarca() : null), servicios: n => serviciosDe(n).map(x => x.tipo).join(', ') });
     Object.assign(ACT, MAIL.acts);
     Object.assign(ACT, integr().acts);
-    IA = initIA({ S, contactos: n => contactosDe(n), esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
+    IA = initIA({ S, redesResumen: n => red().resumenCliente(n), contactos: n => contactosDe(n), esc, toast, $, openForm, go, render, isAdmin, isStaff, today, getADM: () => ADM, openMail: o => MAIL.open(o) });
     Object.assign(ACT, IA.actions);
   }
   if (!ACT.flEditar) { Object.assign(ACT, trab().acts); Object.assign(ACT, hil().acts); Object.assign(ACT, red().acts); Object.assign(ACT, tk().acts); Object.assign(ACT, ent().acts); Object.assign(ACT, inf().acts); Object.assign(ACT, rlj().acts); Object.assign(ACT, fm().acts); Object.assign(ACT, prf().acts); Object.assign(ACT, aut().acts); }

@@ -114,8 +114,12 @@ export function initIA(ctx) {
   /* ---------- resumen de un cliente (ficha) ---------- */
   const resumenes = {};
   function contextoCliente(nombre) {
+    const cli = S.C.find(c => c.nombre === nombre) || { nombre }, mk = cli.marca && typeof cli.marca === 'object' ? cli.marca : null;
+    const { marca, avatar, ...cliSin } = cli;
     const ctx = contexto(), base = {
-      cliente: S.C.find(c => c.nombre === nombre) || { nombre },
+      // La ficha de marca va resumida: el resumen no la repite, solo la usa si las redes se están yendo de lo que dice.
+      cliente: { ...cliSin, marca_y_voz: mk ? { cargada: true, tono: String(mk.tono || '').slice(0, 300), pilares: String(mk.pilares || '').slice(0, 300) } : null },
+      indicaciones_para_el_resumen: 'Priorizá lo que está pasando ahora y lo que viene: cómo va el mes de redes en curso (redes_en_curso: etapa, cuántas piezas listas o aprobadas, qué pidió cambiar el cliente, qué falta para publicar), los trabajos y la plata. No repitas datos fijos que no cambiaron (ficha o manual de marca, horarios de publicación, datos de contacto): mencioná la marca solo si los temas o los pedidos del cliente en redes se están yendo de su tono o sus pilares y convendría revisar Marca y voz. Si un abono no tiene precio este mes pero tiene uno que arranca más adelante (precio_desde), decilo así y no como "sin precio".',
       abonos: ctx.abonos.filter(a => a.cliente === nombre),
       proyectos: S.P.filter(p => p.cliente === nombre).map(p => ({ nombre: p.proyecto, tipo: p.tipo, estado: p.estado, entrega: p.entrega || '', entrego: p.entregaReal || '' })),
       charlas: S.M.filter(m => m.cliente === nombre).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 12).map(m => ({ fecha: m.fecha, canal: m.canal, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fecha_proximo: m.fechaProximo, hecho: !!m.hecho })),
@@ -158,7 +162,7 @@ export function initIA(ctx) {
     iaAccion: t => { const h = st.hist[+t.dataset.i]; if (h && h.r && h.r.accion) ejecutar(h.r.accion); },
     iaCliente: async t => {
       const n = t.dataset.cliente; resumenes[n] = { busy: true }; render();
-      try { resumenes[n] = { ok: await data.ia({ modo: 'cliente', contexto: contextoCliente(n) }) }; } catch (e) { resumenes[n] = { err: e.message }; }
+      try { const redes = ctx.redesResumen ? await ctx.redesResumen(n).catch(() => null) : null; resumenes[n] = { ok: await data.ia({ modo: 'cliente', contexto: { ...contextoCliente(n), ...(redes && redes.length ? { redes_en_curso: redes } : {}) } }) }; } catch (e) { resumenes[n] = { err: e.message }; }
       render();
     },
     iaChat: () => charlaDesdeTexto(),
