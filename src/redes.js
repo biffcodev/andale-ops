@@ -61,10 +61,13 @@ export function initRedes(ctx) {
     }
     return { roles, gente };
   }
-  const horaDe = f => { const x = lista2('horasRedes', HORAS_DEF).find(y => norm(y.split('=')[0]) === norm(f || '')); return x ? x.slice(x.indexOf('=') + 1) : '12:00'; };
+  // Horarios propios de la cuenta (los define Mr. Piggy al analizarla); si no tiene, los generales de Opciones.
+  const horariosCuenta = cliente => { const c = cliente && S.C.find(x => x.nombre === cliente); return (c && c.marca && c.marca.horarios && c.marca.horarios.formatos) || null; };
+  const horaCuenta = (f, cliente) => { const h = horariosCuenta(cliente); const k = h && Object.keys(h).find(x => norm(x) === norm(f || '')); return k && /^\d{1,2}:\d{2}/.test(h[k].hora || '') ? h[k].hora : ''; };
+  const horaDe = (f, cliente) => { const hc = horaCuenta(f, cliente); if (hc) return hc; const x = lista2('horasRedes', HORAS_DEF).find(y => norm(y.split('=')[0]) === norm(f || '')); return x ? x.slice(x.indexOf('=') + 1) : '12:00'; };
   const pad2 = n => String(n).padStart(2, '0');
-  function horaLibre(ps, fecha, formato) {
-    const h = horaDe(formato); if (!fecha || !/^\d{1,2}:\d{2}/.test(h)) return h;
+  function horaLibre(ps, fecha, formato, cliente) {
+    const h = horaDe(formato, cliente); if (!fecha || !/^\d{1,2}:\d{2}/.test(h)) return h;
     const usadas = new Set(ps.filter(z => z.fecha === fecha && z.hora && z.formato === formato).map(z => z.hora.slice(0, 5)));
     let [hh, mm] = h.split(':').map(Number);
     for (let i = 0; i < 6 && usadas.has(pad2(hh) + ':' + pad2(mm)); i++) hh = Math.min(23, hh + 3);
@@ -216,10 +219,11 @@ export function initRedes(ctx) {
     const activos = presentes.filter(f => st.fOff.has(f)).length + (st.mio ? 1 : 0);
     const filtros = ps.length ? filtrosMenu('rmpz', '<span class="lbl">Formatos</span>' + presentes.map(f => '<label class="chk rm-fck" style="--fc:' + fmtColor(f) + '"><input type="checkbox" data-rmff="' + esc(f) + '"' + (st.fOff.has(f) ? '' : ' checked') + '> <i class="rm-dot"></i>' + esc(f) + ' <span class="muted num">' + ps.filter(z => z.formato === f).length + '</span></label>').join('') +
       (yo && eq.has(yo) ? '<label class="chk" style="margin-top:6px"><input type="checkbox" data-rmmio' + (st.mio ? ' checked' : '') + '> Solo lo que me toca <span class="muted num">' + mias.length + '</span></label>' : ''), activos) : '';
-    const vista = vistaDe('redesPiezas', ['lista', 'cuadricula']);
+    const vista = vistaDe('redesPiezas', ['lista', 'cuadricula'], 'cuadricula');
     const tools = '<div class="toolbar rm-tools">' + (can ? '<form class="rm-add" data-rmadd="' + esc(m._id) + '"><input class="in sm" type="number" min="1" max="60" name="n" value="1" aria-label="Cantidad"><select class="in sm" name="f" aria-label="Formato">' + fs.map(f => opt(f, f, '')).join('') + '</select>' + (tieneAds(m.cliente) ? '<select class="in sm" name="u" aria-label="Para qué">' + opt('', 'Del plan', '') + opt('solo', 'Solo Ads', '') + '</select>' : '') + '<button class="btn sm" title="Agregar piezas">+ Agregar</button></form>' +
       '<button class="btn sm' + (ocupado ? ' ocupado' : '') + '" data-act="rmIdeas" data-id="' + esc(m._id) + '"' + (ocupado ? ' disabled' : '') + '>' + (ocupado ? '<span class="ia-dots"><i></i><i></i><i></i></span> ' + esc(ocupado) : '<span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido') + '</button>' +
       (ctx.masMenu ? ctx.masMenu([
+        ps.length ? { act: 'rmAgenda', label: 'Fechas y horarios con Mr. Piggy', attrs: ' data-id="' + esc(m._id) + '"', icon: 'calendario' } : null,
         { act: 'rmChat', label: 'Pegar chat del cliente', attrs: ' data-id="' + esc(m._id) + '"' },
         sinHora ? { act: 'rmHoras', label: 'Poner horarios a ' + sinHora + (sinHora === 1 ? ' pieza' : ' piezas'), attrs: ' data-id="' + esc(m._id) + '"' } : null,
         ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? { act: 'ficha', label: 'Completar la ficha de marca (sin ficha, Mr. Piggy escribe genérico)', attrs: ' data-cliente="' + esc(m.cliente) + '" data-tab="marca"' } : null]) : '') : '') +
@@ -228,6 +232,13 @@ export function initRedes(ctx) {
     const lunes = f => { const d = new Date(f + 'T12:00'); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; };
     const semTxt = f => { const l = lunes(f), dom = new Date(l); dom.setDate(l.getDate() + 6); const mesL = d => d.toLocaleDateString('es-AR', { month: 'short' }).replace('.', ''); return 'Semana del ' + l.getDate() + (l.getMonth() !== dom.getMonth() ? ' ' + mesL(l) : '') + ' al ' + dom.getDate() + ' ' + mesL(dom); };
     const semDe = z => z.fecha ? semTxt(z.fecha) : 'Sin fecha';
+    // Por semana; dentro de cada semana primero posts, carruseles y reels, y después las historias.
+    const semK = z => z.fecha ? lunes(z.fecha).toISOString().slice(0, 10) : '9999';
+    const pos = new Map(ordenadas.map((z, i) => [z._id, i]));
+    vis.sort((a, b) => semK(a).localeCompare(semK(b)) || (esHistoria(a) ? 1 : 0) - (esHistoria(b) ? 1 : 0) || pos.get(a._id) - pos.get(b._id));
+    const sinFecha = ps.filter(z => !z.fecha).length;
+    const agendaBtn = can && sinFecha ? '<button class="btn sm ghost rm-agb" data-act="rmAgenda" data-id="' + esc(m._id) + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Definir fechas y horarios</button>' : '';
+    const histSep = n => '<div class="rm-hsep"><span>Historias · ' + n + '</span></div>';
     const diaDe = z => z.fecha ? new Date(z.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '') : '';
     const quien = (z, corto) => { const q = qz.get(z._id);
       if (!q.roles.length) return '<span class="muted">—</span>';
@@ -246,15 +257,19 @@ export function initRedes(ctx) {
         return '<article class="rm-pc' + (sel.has(z._id) ? ' sel' : '') + '" style="--fc:' + fmtColor(z.formato) + '">' +
           '<button class="rm-pc-a' + (t ? '' : ' ph') + '" data-act="rmPieza" data-id="' + esc(z._id) + '" aria-label="Abrir ' + esc(z.formato + ' ' + (z.tema || '')) + '">' + (t ? '<img src="' + esc(t) + '" alt="">' : '<span class="rm-pc-ph"><b>' + esc(z.formato) + '</b>' + (z.contenido ? '<span>' + esc(z.contenido.split('\n')[0].replace(/^[^:]{1,20}:\s*/, '')) + '</span>' : '') + '</span>') + '</button>' +
           (can ? '<input type="checkbox" class="rm-pc-sel" data-rmsel="' + esc(z._id) + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar">' : '') +
-          '<div class="rm-pc-b"><div class="rm-pc-m"><span class="rm-pc-d">' + (z.fecha ? esc(diaDe(z)) + (z.hora ? ' · ' + esc(z.hora) : '') : 'Sin fecha') + '</span>' + pzPill(z.estado) + '</div>' + tags(z, null) +
+          '<div class="rm-pc-b"><div class="rm-pc-m">' + (z.fecha ? '<span class="rm-pc-d">' + esc(diaDe(z)) + (z.hora ? ' · ' + esc(z.hora) : '') + '</span>' : '<span class="rm-pc-d muted sf">Sin fecha</span>') + pzPill(z.estado) + '</div>' + tags(z, null) +
           '<b class="rm-pc-t">' + esc(z.tema || 'Sin tema') + '</b>' + textos(z, 4) + '<div class="rm-pc-f">' + quien(z, true) + '</div></div></article>'; };
-      return '<div class="rm-pl">' + tools + bulk + grupos.map(g => '<h3 class="rm-semh">' + esc(g.k) + '</h3><div class="rm-pcs">' + g.zs.map(carta).join('') + '</div>').join('') + '</div>';
+      return '<div class="rm-pl">' + tools + bulk + grupos.map(g => { const feed = g.zs.filter(z => !esHistoria(z)), hist = g.zs.filter(esHistoria);
+        return '<div class="rm-semh"><h3>' + esc(g.k) + '</h3>' + (g.k === 'Sin fecha' ? agendaBtn : '') + '</div>' + (feed.length ? '<div class="rm-pcs">' + feed.map(carta).join('') + '</div>' : '') + (hist.length ? histSep(hist.length) + '<div class="rm-pcs hist">' + hist.map(carta).join('') + '</div>' : ''); }).join('') + '</div>';
     }
     const cols = can ? 7 : 6;
-    let semPrev = null;
+    let semPrev = null, histPrev = false;
     const fila = z => {
-      const id = esc(z._id), d = can ? '' : ' disabled', sem = semDe(z);
-      const cab = sem !== semPrev ? '<tr class="rm-sem"><td colspan="' + cols + '">' + esc(sem) + '</td></tr>' : ''; semPrev = sem;
+      const id = esc(z._id), d = can ? '' : ' disabled', sem = semDe(z), h = esHistoria(z);
+      let cab = '';
+      if (sem !== semPrev) { cab = '<tr class="rm-sem"><td colspan="' + cols + '"><div class="rm-semr"><span>' + esc(sem) + '</span>' + (sem === 'Sin fecha' ? agendaBtn : '') + '</div></td></tr>'; histPrev = false; }
+      if (h && !histPrev) cab += '<tr class="rm-hrow"><td colspan="' + cols + '">' + histSep(vis.filter(y => esHistoria(y) && semDe(y) === sem).length) + '</td></tr>';
+      semPrev = sem; histPrev = h;
       return cab + '<tr class="rm-row ' + (sel.has(z._id) ? 'sel ' : '') + (z.estado === 'Cambios' ? 'cambios' : '') + '" style="--fc:' + fmtColor(z.formato) + '">' +
         (can ? '<td class="sel"><input type="checkbox" data-rmsel="' + id + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar"></td>' : '') +
         '<td class="rm-art">' + arteMini(z) + '</td>' +
@@ -414,7 +429,7 @@ export function initRedes(ctx) {
   function repartirFechas(m, ps, nuevas) {
     const n = diasMes(m.mes), porF = {};
     nuevas.filter(z => !z.fecha).forEach(z => { (porF[z.formato] = porF[z.formato] || []).push(z); });
-    Object.values(porF).forEach(lista => lista.forEach((z, i) => { const d = Math.min(n, Math.max(1, Math.round((i + 0.5) * n / lista.length))); z.fecha = fechaMes(m.mes, d); z.hora = horaLibre([...ps, ...nuevas.filter(y => y !== z && y.fecha)], z.fecha, z.formato); }));
+    Object.values(porF).forEach(lista => lista.forEach((z, i) => { const d = Math.min(n, Math.max(1, Math.round((i + 0.5) * n / lista.length))); z.fecha = fechaMes(m.mes, d); z.hora = horaLibre([...ps, ...nuevas.filter(y => y !== z && y.fecha)], z.fecha, z.formato, m.cliente); }));
   }
   async function ideas(btn, m) {
     if (st.ia[m._id]) return;
@@ -439,7 +454,7 @@ export function initRedes(ctx) {
           if (!(pide[k] > 0)) continue; // lo que sobra no se carga
           if (nuevas.some(z => norm(z.tema) === norm(String(x.tema)))) continue;
           const fecha = /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : '';
-          nuevas.push({ formato, tema: String(x.tema).slice(0, 160), contenido: String(x.contenido || '').slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...ps, ...nuevas], fecha, formato) : '', estado: 'Idea', extra: extras });
+          nuevas.push({ formato, tema: String(x.tema).slice(0, 160), contenido: String(x.contenido || '').slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...ps, ...nuevas], fecha, formato, m.cliente) : '', estado: 'Idea', extra: extras });
           pide[k]--; llegaron++;
         }
         if (!llegaron) break;
@@ -489,7 +504,7 @@ export function initRedes(ctx) {
     const ps = piezas(m._id) || [], obj = soloSel ? ps.filter(z => st.sel.has(z._id)) : ps.filter(z => !z.hora);
     if (!obj.length) { toast('Todas las piezas ya tienen hora'); return; }
     const resto = ps.filter(z => !obj.includes(z)).map(z => ({ ...z })), grupos = new Map();
-    [...obj].sort((a, b) => (a.fecha || '9').localeCompare(b.fecha || '9') || a.orden - b.orden).forEach(z => { const h = horaLibre(resto, z.fecha, z.formato); resto.push({ ...z, hora: h }); if (!grupos.has(h)) grupos.set(h, []); grupos.get(h).push(z._id); });
+    [...obj].sort((a, b) => (a.fecha || '9').localeCompare(b.fecha || '9') || a.orden - b.orden).forEach(z => { const h = horaLibre(resto, z.fecha, z.formato, m.cliente); resto.push({ ...z, hora: h }); if (!grupos.has(h)) grupos.set(h, []); grupos.get(h).push(z._id); });
     try { for (const [h, ids] of grupos) { await data.piezasUpd(ids, { hora: h }); local(m._id, ids, { hora: h }); } toast(obj.length + (obj.length === 1 ? ' pieza con horario' : ' piezas con horario') + ' (se cambian en Opciones → Flujo de Redes)'); render(); }
     catch (e) { toast(e.message); render(); }
   }
@@ -503,7 +518,7 @@ export function initRedes(ctx) {
     return '<h2 style="margin:24px 0 0">Flujo de Redes</h2><p class="muted" style="margin:0">A quién le toca cada pieza según en qué estado está. Le toca a todas las personas de la cuenta con ese rol (los roles se eligen en cada cuenta, en Redes → Clientes y planes).</p>' +
       '<section class="sheet" style="margin-top:12px"><div class="tbl"><table class="rm-flujo"><thead><tr><th>Estado de la pieza</th><th>Le toca a</th></tr></thead><tbody>' +
       ESTADOS_PIEZA.map(e => '<tr><td>' + pzPill(e) + '</td><td><div class="rm-fl-r">' + roles.map(r => '<label class="chk"><input type="checkbox" data-flujo="' + esc(e) + '" value="' + esc(r) + '"' + ((f[e] || []).some(x => mismoRol(x, r)) ? ' checked' : '') + dis + '> ' + esc(r) + '</label>').join('') + '</div></td></tr>').join('') + '</tbody></table></div></section>' +
-      '<h2 style="margin:24px 0 0">Horario de publicación</h2><p class="muted" style="margin:0">La hora con la que sale cada formato cuando Mr. Piggy propone contenido o tocás “Poner horarios”. Si el mismo día hay dos del mismo formato, la segunda va 3 horas después.</p>' +
+      '<h2 style="margin:24px 0 0">Horario de publicación</h2><p class="muted" style="margin:0">La hora con la que sale cada formato cuando Mr. Piggy propone contenido o tocás “Poner horarios”. Si el mismo día hay dos del mismo formato, la segunda va 3 horas después. Cada cuenta puede tener los suyos: se guardan al usar “Fechas y horarios con Mr. Piggy” en su mes.</p>' +
       '<section class="sheet" style="margin-top:12px"><div class="sheet-b rm-hrs">' + formatos().map(fm => '<label class="field" style="--fc:' + fmtColor(fm) + '"><span class="lbl"><i class="rm-dot"></i>' + esc(fm) + '</span><input class="in" type="time" data-horared="' + esc(fm) + '" value="' + esc(horaDe(fm)) + '"' + dis + '></label>').join('') + '</div></section>';
   }
   // Para Mis trabajos: cuántas piezas del mes le tocan a una persona en una cuenta, por estado.
@@ -540,6 +555,71 @@ export function initRedes(ctx) {
       ctx.closeForm(); toast([ap ? ap + ' aprobadas' : '', ca ? ca + ' con cambios' : '', nu ? nu + ' nuevas (extra)' : ''].filter(Boolean).join(' · ') || 'No encontré cambios en ese chat'); render();
     } catch (e) { toast(e.message); b.disabled = false; b.textContent = 'Repartir en las piezas'; }
   }
+  /* ---------- Fechas y horarios con Mr. Piggy ---------- */
+  // Mira la cuenta (rubro, público, ficha), el contenido de cada pieza, lo que ya está agendado y los informes anteriores si hay,
+  // y propone día y hora para cada pieza, con el criterio. Se revisa antes de aplicar. Los horarios pueden quedar como los de la cuenta.
+  const movibles = (ps, alc) => ps.filter(z => alc === 'todas' ? !['Programada', 'Publicada'].includes(z.estado) && !z.fijo : !z.fecha || !z.hora);
+  function abrirAgenda(m) {
+    const ps = piezas(m._id) || [], ag = st.ag && st.ag.mesId === m._id ? st.ag : (st.ag = { mesId: m._id, alc: ps.some(z => !z.fecha || !z.hora) ? 'sin' : 'todas', guardar: true, res: null, busy: false });
+    const nSin = movibles(ps, 'sin').length, nTodas = movibles(ps, 'todas').length, hc = horariosCuenta(m.cliente), c = S.C.find(x => x.nombre === m.cliente) || {};
+    const r = ag.res, porId = new Map(ps.map(z => [z._id, z]));
+    const prop = r ? '<div class="full ag-res"><div class="ag-crit"><b>Criterio</b><p>' + esc(r.criterio || '') + '</p></div>' +
+      (r.horarios.length ? '<div class="ag-hrs">' + r.horarios.map(h => '<span class="ag-h" style="--fc:' + fmtColor(h.formato) + '"><i class="rm-dot"></i><b>' + esc(h.formato) + '</b> ' + esc(h.hora) + (h.dias ? ' <span class="muted">· ' + esc(h.dias) + '</span>' : '') + '</span>').join('') + '</div>' : '') +
+      '<div class="ag-lista">' + r.piezas.sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)).map(x => { const z = porId.get(x.id); if (!z) return '';
+        const d = new Date(x.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '');
+        return '<div class="ag-p" style="--fc:' + fmtColor(z.formato) + '"><span class="ag-d"><b>' + esc(d) + '</b> ' + esc(x.hora) + '</span><span class="ag-t"><span class="rm-fpill">' + esc(z.formato) + '</span> ' + esc(z.tema || 'Sin tema') + (x.motivo ? '<small>' + esc(x.motivo) + '</small>' : '') + '</span>' + (z.fecha && (z.fecha !== x.fecha || z.hora !== x.hora) ? '<span class="ag-antes muted" title="Lo que tenía">antes ' + esc(fmtShort(z.fecha)) + (z.hora ? ' ' + esc(z.hora) : '') + '</span>' : '') + '</div>'; }).join('') + '</div>' +
+      (r.faltan ? '<p class="hint">' + r.faltan + (r.faltan === 1 ? ' pieza quedó' : ' piezas quedaron') + ' sin propuesta: se dejan como están.</p>' : '') + '</div>' : '';
+    $('#panel').innerHTML = '<form id="rmagenda" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Fechas y horarios con Mr. Piggy</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="panel-b"><p class="formnote full">Mr. Piggy mira el rubro y el público de ' + esc(m.cliente) + (c.marca && fm_lleno(c.marca) ? ' (ficha de marca)' : '') + ', qué dice cada pieza, lo que ya está agendado y los informes anteriores si hay, y propone día y hora para cada una. Sin datos de rendimiento de la cuenta es una estimación por rubro y público: lo revisás antes de aplicar.</p>' +
+      '<fieldset class="full ag-alc"><legend class="lbl">Qué piezas</legend>' +
+      '<label class="chk"><input type="radio" name="ag-alc" value="sin"' + (ag.alc === 'sin' ? ' checked' : '') + (nSin ? '' : ' disabled') + '> Las que no tienen fecha u hora <span class="muted num">' + nSin + '</span></label>' +
+      '<label class="chk"><input type="radio" name="ag-alc" value="todas"' + (ag.alc === 'todas' ? ' checked' : '') + '> Todas, menos las programadas, publicadas y fijas <span class="muted num">' + nTodas + '</span></label></fieldset>' +
+      '<label class="chk full"><input type="checkbox" id="ag-guardar"' + (ag.guardar ? ' checked' : '') + '> Guardar los horarios que proponga como los de ' + esc(m.cliente) + ' (los usa al proponer contenido y al poner horarios)</label>' +
+      (hc ? '<p class="hint full">Horarios actuales de la cuenta: ' + esc(Object.entries(hc).map(([f, h]) => f + ' ' + h.hora).join(' · ')) + '</p>' : '') +
+      prop + '</div>' +
+      '<div class="panel-f"><span></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button>' +
+      (r ? '<button type="button" class="btn" data-act="rmAgendaPedir"' + (ag.busy ? ' disabled' : '') + '>Pedir otra</button><button type="submit" class="btn primary" data-ag="aplicar"' + (ag.busy ? ' disabled' : '') + '>Aplicar a ' + r.piezas.length + (r.piezas.length === 1 ? ' pieza' : ' piezas') + '</button>'
+        : '<button type="submit" class="btn primary"' + (ag.busy ? ' disabled' : '') + '>' + (ag.busy ? '<span class="ia-dots"><i></i><i></i><i></i></span> Analizando la cuenta…' : 'Analizar y proponer') + '</button>') + '</span></div></form>';
+    $('#panel').hidden = false; $('#scrim').hidden = false;
+  }
+  const fm_lleno = mk => Object.entries(mk || {}).some(([k, v]) => !['horarios', 'fuentes', 'actualizado'].includes(k) && String(v || '').trim());
+  async function pedirAgenda(m) {
+    const ag = st.ag; if (!ag || ag.busy) return;
+    const rad = document.querySelector('input[name="ag-alc"]:checked'); if (rad) ag.alc = rad.value; if ($('#ag-guardar')) ag.guardar = $('#ag-guardar').checked;
+    const ps = piezas(m._id) || [], mov = movibles(ps, ag.alc);
+    if (!mov.length) { toast('No hay piezas para ubicar'); return; }
+    ag.busy = true; ag.res = null; abrirAgenda(m);
+    try {
+      const cli = S.C.find(x => x.nombre === m.cliente) || {};
+      let infs = []; try { infs = (await data.informesDe(m.cliente)).slice(0, 3).map(i => ({ mes: i.mes, datos: i.datos })); } catch (e) { infs = []; }
+      const movIds = new Set(mov.map(z => z._id));
+      const r = await data.ia({ modo: 'redes_agenda', contexto: { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, ps) : {}), notas_cliente: cli.notas || '', servicios: ctx.servicios ? ctx.servicios(m.cliente) : '', mes: m.mes, formatos: formatos(),
+        horarios_actuales: Object.fromEntries(formatos().map(f => [f, horaDe(f, m.cliente)])), informes_anteriores: JSON.stringify(infs).slice(0, 8000),
+        a_ubicar: mov.map(z => ({ id: z._id, formato: z.formato, tema: z.tema, contenido: (z.contenido || z.copy || '').slice(0, 300), fecha_actual: z.fecha, hora_actual: z.hora })),
+        ocupadas: ps.filter(z => !movIds.has(z._id) && z.fecha).map(z => ({ formato: z.formato, fecha: z.fecha, hora: z.hora, tema: z.tema })) } });
+      const piezasR = (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && movIds.has(x.id) && /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) && /^\d{1,2}:\d{2}/.test(x.hora || ''))
+        .map(x => ({ id: x.id, fecha: x.fecha, hora: String(x.hora).slice(0, 5).padStart(5, '0'), motivo: String(x.motivo || '').slice(0, 120) }));
+      const unicos = [...new Map(piezasR.map(x => [x.id, x])).values()];
+      const horarios = (Array.isArray(r.horarios) ? r.horarios : []).filter(h => h && h.formato && /^\d{1,2}:\d{2}/.test(h.hora || '')).map(h => ({ formato: formatos().find(f => norm(f) === norm(h.formato)) || h.formato, hora: String(h.hora).slice(0, 5).padStart(5, '0'), dias: String(h.dias || '').slice(0, 40) }));
+      ag.res = { criterio: String(r.criterio || ''), horarios, piezas: unicos, faltan: mov.length - unicos.length };
+      if (!unicos.length) toast('Mr. Piggy no devolvió fechas válidas. Probá de nuevo.');
+    } catch (e) { toast(e.message); }
+    ag.busy = false; if (st.ag === ag && $('#rmagenda')) abrirAgenda(m);
+  }
+  async function aplicarAgenda(m) {
+    const ag = st.ag, r = ag && ag.res; if (!r || !r.piezas.length || ag.busy) return;
+    if ($('#ag-guardar')) ag.guardar = $('#ag-guardar').checked;
+    ag.busy = true; abrirAgenda(m);
+    try {
+      for (const x of r.piezas) { await data.piezasUpd([x.id], { fecha: x.fecha, hora: x.hora }); local(m._id, [x.id], { fecha: x.fecha, hora: x.hora }); }
+      if (ag.guardar && r.horarios.length) {
+        const c = S.C.find(x => x.nombre === m.cliente);
+        if (c) { const marca = { ...(c.marca || {}), horarios: { criterio: r.criterio, actualizado: today(), formatos: Object.fromEntries(r.horarios.map(h => [h.formato, { hora: h.hora, dias: h.dias }])) } };
+          try { await data.marcaGuardar(c._id, marca); c.marca = marca; } catch (e) { toast('Las fechas se aplicaron, pero no se pudieron guardar los horarios de la cuenta: ' + e.message); } }
+      }
+      st.ag = null; ctx.closeForm(); toast(r.piezas.length + (r.piezas.length === 1 ? ' pieza agendada' : ' piezas agendadas') + (ag.guardar && r.horarios.length ? ' · horarios guardados para ' + m.cliente : '')); render();
+    } catch (e) { ag.busy = false; toast(e.message); abrirAgenda(m); render(); }
+  }
   function abrirPlan(m) {
     st.planMes = m._id; S.form = null;
     const fs = [...new Set([...formatos(), ...Object.keys(m.plan || {})])];
@@ -555,6 +635,7 @@ export function initRedes(ctx) {
     const f = e.target;
     if (f.id === 'pzform') { e.preventDefault(); e.stopImmediatePropagation(); guardarPieza(); return; }
     if (f.id === 'rmchat') { e.preventDefault(); e.stopImmediatePropagation(); repartirChat(); return; }
+    if (f.id === 'rmagenda') { e.preventDefault(); e.stopImmediatePropagation(); const m = st.ag && mesDe(st.ag.mesId); if (!m) return; if (st.ag.res) aplicarAgenda(m); else pedirAgenda(m); return; }
     if (f.id === 'rmplan') {
       e.preventDefault(); e.stopImmediatePropagation();
       const m = mesDe(st.planMes); if (!m) return;
@@ -646,6 +727,8 @@ export function initRedes(ctx) {
       const ok = () => toast(t.dataset.k === 'hashtags' ? 'Hashtags copiados' : t.dataset.k === 'todo' ? 'Copy y hashtags copiados' : 'Copiado');
       try { navigator.clipboard.writeText(v).then(ok, () => toast('No se pudo copiar')); } catch (e) { toast('No se pudo copiar'); }
     },
+    rmAgenda: t => { const m = mesDe(t.dataset.id); if (!m) return; if (!st.ag || st.ag.mesId !== m._id || !st.ag.busy) st.ag = null; abrirAgenda(m); },
+    rmAgendaPedir: () => { const m = st.ag && mesDe(st.ag.mesId); if (m) { st.ag.res = null; pedirAgenda(m); } },
     rmHoras: t => { const m = mesDe(t.dataset.id); if (m) ponerHoras(m, !!t.dataset.sel); },
     rmChat: t => { const m = mesDe(t.dataset.id); if (m) abrirChat(m); },
     rmCopys: t => { const ids = [...st.sel]; const m = meses().find(x => (piezas(x._id) || []).some(z => ids.includes(z._id))); if (m) copys(ids, m, t); },

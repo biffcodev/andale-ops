@@ -121,6 +121,7 @@ export function initFichaMarca(ctx) {
     const c = S.C.find(x => x._id === S.fmf); if (!c) return;
     const m = {}; CAMPOS_MARCA.forEach(f => { const el = document.getElementById('fm-' + f.k); if (el) m[f.k] = el.value.trim(); });
     m.actualizado = new Date().toISOString().slice(0, 10);
+    if (c.marca && c.marca.horarios) m.horarios = c.marca.horarios; // los horarios de la cuenta (Redes → Fechas y horarios con Mr. Piggy)
     const prev = (c.marca && c.marca.fuentes) || [], nuevas = (st.fuentes || []).map(nombre => ({ nombre, fecha: m.actualizado }));
     m.fuentes = [...prev.filter(f => !nuevas.some(n => n.nombre === f.nombre)), ...nuevas].slice(-12);
     const b = document.getElementById('fmsave'); if (b) { b.disabled = true; b.textContent = 'Guardando…'; }

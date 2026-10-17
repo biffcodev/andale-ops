@@ -511,7 +511,7 @@ export async function sendEmail(payload) {
 }
 /** Llama a la Edge Function `asistente` (Drive + IA). Solo admins. */
 export async function ia(payload) {
-  const { data, error } = await sb.functions.invoke(payload && payload.modo === 'ads_mail' ? 'ia-ads' : payload && (payload.modo === 'redes_ideas' || payload.modo === 'redes_copys') ? 'ia-redes' : 'ia', { body: payload });
+  const { data, error } = await sb.functions.invoke(payload && payload.modo === 'ads_mail' ? 'ia-ads' : payload && /^redes_(ideas|copys|agenda)$/.test(payload.modo || '') ? 'ia-redes' : 'ia', { body: payload });
   if (error) {
     let msg = error.message;
     try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { }

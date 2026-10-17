@@ -1,9 +1,10 @@
 // Mr. Piggy arma el contenido de redes: el plan del mes (qué pieza, qué día, qué va en el diseño) y los copys.
 // Aparte de `ia` para poder ajustar las reglas de escritura sin tocar la función grande. Equipo y admins.
 // verify_jwt apagado: se valida el usuario con rpc('yo'). Misma cuenta de IA que `ia`, con el modelo preciso (escribe mejor).
-// POST { modo: 'redes_ideas' | 'redes_copys', texto, contexto }
+// POST { modo: 'redes_ideas' | 'redes_copys' | 'redes_agenda', texto, contexto }
 //   redes_ideas → { piezas: [{ formato, fecha, tema, contenido }] }   (los copys se escriben después, en tandas)
 //   redes_copys → texto = JSON [{ id, formato, fecha, tema, contenido, copy_actual }] → { piezas: [{ id, copy, hashtags, contenido? }] }
+//   redes_agenda → contexto con la cuenta, las piezas a ubicar y las que ya tienen lugar → { criterio, horarios: [{ formato, dias, hora }], piezas: [{ id, fecha, hora, motivo }] }
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -57,6 +58,20 @@ const SYS_COPYS = BASE + '\n\nEscribís los copys de las piezas que te pasan (ca
   'Si la pieza ya tiene un copy (copy_actual), mejoralo con estas reglas sin cambiarle el sentido.\n\n' + REGLAS_COPY + '\n\n' + REGLAS_FORMATO +
   '\n\nRespondé únicamente llamando una vez a la herramienta escribir_copys, sin texto antes ni después.';
 
+const TOOL_AGENDA = { name: 'agenda_del_mes', description: 'Cuándo publicar cada pieza y los horarios de la cuenta.', input_schema: { type: 'object', required: ['criterio', 'horarios', 'piezas'], properties: {
+  criterio: { type: 'string', description: '2 a 4 frases para el equipo: por qué estos días y horarios para esta cuenta (público, rubro, contenido). Aclará si es una estimación sin datos de rendimiento.' },
+  horarios: { type: 'array', description: 'un horario recomendado por formato para esta cuenta', items: { type: 'object', required: ['formato', 'hora'], properties: {
+    formato: { type: 'string', description: 'uno de los formatos, exacto' }, dias: { type: 'string', description: 'días que más le convienen, corto: "mar a jue", "lun, mié y vie"' }, hora: { type: 'string', description: 'HH:MM, 24 h, hora de Argentina' } } } },
+  piezas: { type: 'array', items: { type: 'object', required: ['id', 'fecha', 'hora'], properties: {
+    id: { type: 'string', description: 'id exacto de la pieza' }, fecha: { type: 'string', description: 'AAAA-MM-DD dentro del mes' }, hora: { type: 'string', description: 'HH:MM, 24 h' },
+    motivo: { type: 'string', description: 'por qué ese día, en 4 a 12 palabras' } } } } } } };
+const SYS_AGENDA = 'Sos Mr. Piggy, community manager senior de àndale, una agencia de redes de Córdoba, Argentina. Decidís cuándo publicar cada pieza del mes de un cliente en Instagram y Facebook. ' +
+  'Pensá en el público de la cuenta (cuándo está en el celular: antes de trabajar, al mediodía, a la salida, a la noche), el rubro (si le venden a profesionales o comercios, priorizá días hábiles y horario laboral; si es consumo o gastronomía, tardes, noches y fines de semana cerca del momento de consumo) y el contenido de cada pieza (una promo o un lanzamiento va antes del fin de semana o de la fecha a la que apunta; un consejo, cuando el público tiene tiempo de leerlo; una fecha especial, ese día o el anterior). ' +
+  'Si te pasan resultados de informes anteriores, usalos y decilo en el criterio; si no hay, aclará que es una estimación por rubro y público, sin datos de rendimiento de la cuenta. ' +
+  'Reglas: todas las fechas dentro del mes; posts, carruseles y reels en días distintos entre sí y repartidos en todo el mes (no amontones al principio); no más de 2 historias por día; respetá las piezas que ya tienen lugar (OCUPADAS) y no les cambies nada; ' +
+  'si una pieza nombra una fecha especial, ubicala para esa fecha; no uses feriados de los que no estés seguro. Horarios en punto o y media, hora de Argentina. ' +
+  '\n\nRespondé únicamente llamando una vez a la herramienta agenda_del_mes, sin texto antes ni después.';
+
 function mesTxt(mes: string) {
   const [y, m] = String(mes || '').split('-').map(Number); if (!y || !m) return '';
   const ult = new Date(y, m, 0).getDate();
@@ -70,22 +85,23 @@ Deno.serve(async req => {
   const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: req.headers.get('Authorization') || '' } }, auth: { persistSession: false } });
   const { data: yoData } = await sb.rpc('yo'); const yo = Array.isArray(yoData) ? yoData[0] : yoData;
   if (!yo || !['admin', 'equipo'].includes(yo.rol)) return json({ error: 'Solo el equipo puede usar la IA.' }, 403);
-  const modo = b.modo === 'redes_copys' ? 'redes_copys' : 'redes_ideas';
+  const modo = b.modo === 'redes_copys' ? 'redes_copys' : b.modo === 'redes_agenda' ? 'redes_agenda' : 'redes_ideas';
   const texto = String(b.texto || '').slice(0, 40_000), ctx = b.contexto ?? {};
   const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
   let cfg: any = null; try { const { data } = await svc.rpc('cred_leer', { n: 'anthropic' }); if (data) cfg = JSON.parse(data); } catch { cfg = null; }
   const key = (cfg && cfg.key) || Deno.env.get('ANTHROPIC_API_KEY');
   if (!key) return json({ error: 'La IA no está configurada todavía. Conectala en Configuración → Integraciones → Mr. Piggy.' }, 503);
   const modelo = (cfg && cfg.modelo) || Deno.env.get('IA_MODEL') || 'claude-sonnet-5-5';
-  const tool = modo === 'redes_copys' ? TOOL_COPYS : TOOL_PLAN, system = modo === 'redes_copys' ? SYS_COPYS : SYS_PLAN;
+  const tool = modo === 'redes_copys' ? TOOL_COPYS : modo === 'redes_agenda' ? TOOL_AGENDA : TOOL_PLAN, system = modo === 'redes_copys' ? SYS_COPYS : modo === 'redes_agenda' ? SYS_AGENDA : SYS_PLAN;
   const marca = ctx && ctx.marca ? ctx.marca : null;
   const cab = 'HOY: ' + hoyAR() + (ctx.mes ? '\nMES A PLANIFICAR: ' + mesTxt(ctx.mes) + '. Todas las fechas van dentro de ese mes.' : '') +
     '\nEMOJIS DE LA MARCA: ' + ((marca && marca.emojis) || 'sin dato (usá 1 o 2)') + (marca && marca.hashtags ? '\nHASHTAGS PROPIOS: ' + marca.hashtags : '');
-  const user = modo === 'redes_copys' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPIEZAS:\n' + texto
+  const user = modo === 'redes_agenda' ? cab + '\n\nCUENTA, MES Y PIEZAS:\n' + JSON.stringify(ctx).slice(0, 60_000) + (texto ? '\n\nPEDIDO:\n' + texto : '')
+    : modo === 'redes_copys' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPIEZAS:\n' + texto
     : cab + '\n\nCLIENTE Y MES:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPEDIDO:\n' + (texto || 'Proponé el contenido que falta del mes.');
   const pedir = (max: number) => fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: modelo, max_tokens: max, system, tools: [tool], tool_choice: { type: 'tool', name: tool.name }, messages: [{ role: 'user', content: user }] }) });
-  let max = modo === 'redes_copys' ? 4000 : 8000;
+  let max = modo === 'redes_copys' ? 4000 : modo === 'redes_agenda' ? 6000 : 8000;
   let res = await pedir(max), out: any = await res.json().catch(() => ({}));
   if (res.ok && out && out.stop_reason === 'max_tokens') { max = 16000; res = await pedir(max); out = await res.json().catch(() => ({})); }
   const err = res.ok ? null : (out?.error?.message || 'La API respondió ' + res.status);
