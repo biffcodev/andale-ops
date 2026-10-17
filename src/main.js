@@ -396,7 +396,7 @@ function servChips(cliente, o) {
   if (r) h += svChip(r.plan ? 'Plan ' + r.plan : 'Redes · sin plan', '--t-rosa');
   if (ad) h += svChip('+ Ads' + (ad.estado !== 'Activo' ? ' (' + ad.estado.toLowerCase() + ')' : ''), '--t-naranja');
   else if (s.ads && o.todo) h += svChip('Ads dado de baja', '--muted');
-  if (!vivo(r) && ad) h += svChip('Ads sin Redes', '--crit');
+  if (!vivo(r) && ad && isStaff()) h += svChip('Ads sin Redes', '--crit');
   if (r && r.estado !== 'Activo') h += svChip(r.estado === 'Baja' ? 'Dado de baja' : r.estado, AB_COLOR[r.estado] || '--muted');
   if (o.precio && isAdmin() && ADM && ADM.moneyFmt) {
     const tot = {}; [r, ad].filter(vivo).forEach(a => { const p = precioHoy(a, o.mes); if (p) tot[p.moneda] = (tot[p.moneda] || 0) + (+p.monto || 0); });
