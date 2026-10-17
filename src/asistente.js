@@ -1,5 +1,6 @@
 // Asistente: qué falta para cerrar el mes, facturas de Google Drive leídas con IA,
 // conciliación de extractos bancarios y reparto de pagos a proveedores. La IA propone; un admin confirma.
+import { mesFactura } from './mesfactura.js';
 import { gastoIA, usd as usdIA } from './iacosto.js';
 import * as data from './data.js';
 
@@ -73,6 +74,8 @@ export function initAsistente(ctx, k) {
   }
 
   /* ---------- Drive: reconocer cliente, emisor y comprobante ---------- */
+  const nombreMes = p => monthLabel(p).replace(' de ', ' ');
+  const mesDe = (d, cliente, archivo) => mesFactura(d, cliente, archivo, { R: AD.R || [], F: AD.F || [] });
   function matchArchivo(da) {
     const d = da.datos || {};
     const em = cfgEmisores(); const emisor = Object.keys(em).find(x => soloDig(em[x] && em[x].cuit) && soloDig(em[x].cuit) === soloDig(d.emisor_cuit)) || '';
@@ -86,13 +89,13 @@ export function initAsistente(ctx, k) {
     const numero = d.numero_completo || '';
     const nDig = soloDig(d.numero).replace(/^0+/, '');
     const existente = numero ? AD.F.find(f => f.numero && (f.numero === numero || (nDig && soloDig(f.numero).replace(/^0+/, '').endsWith(nDig) && (!emisor || f.emisor === emisor) && Math.abs(f.monto - (d.total || 0)) < 1))) : null;
-    const periodo = (d.periodo_desde || d.fecha || '').slice(0, 7);
+    const mes = mesDe(d, cliente, da.nombre), periodo = mes.periodo;
     const tipo = /invoice/i.test(d.tipo || '') ? 'Invoice' : /^factura/i.test(d.tipo || '') ? 'Factura ARCA' : 'Otro';
-    return { emisor, cliente, existente, periodo, tipo, nota: /cr[eé]dito/i.test(d.tipo || '') };
+    return { emisor, cliente, existente, periodo, mesPor: mes.por, mesSeguro: mes.seguro, tipo, nota: /cr[eé]dito/i.test(d.tipo || '') };
   }
   function presetDesde(da) {
     const d = da.datos || {}, mt = matchArchivo(da);
-    return { cliente: mt.cliente, tipo: mt.tipo, emisor: mt.emisor, numero: d.numero_completo || '', periodo: /^\d{4}-\d{2}$/.test(mt.periodo) ? mt.periodo : thisMonth(), fecha: d.fecha || today(), vencimiento: d.vencimiento || '', moneda: d.moneda || 'ARS', monto: d.total ?? '', concepto: d.concepto || '', link_pdf: da.link || '', notas: d.cae ? 'CAE ' + d.cae : '' };
+    return { mesPor: mt.mesPor, mesSeguro: mt.mesSeguro, cliente: mt.cliente, tipo: mt.tipo, emisor: mt.emisor, numero: d.numero_completo || '', periodo: /^\d{4}-\d{2}$/.test(mt.periodo) ? mt.periodo : thisMonth(), fecha: d.fecha || today(), vencimiento: d.vencimiento || '', moneda: d.moneda || 'ARS', monto: d.total ?? '', concepto: d.concepto || '', link_pdf: da.link || '', notas: d.cae ? 'CAE ' + d.cae : '' };
   }
   async function aprender(da, v) { // si confirmaron emisor o cliente, guardar los CUIT para la próxima
     const d = (da && da.datos) || {};
@@ -147,7 +150,7 @@ export function initAsistente(ctx, k) {
     const cl = checklist(m).sinArmar;
     return cl.map(c => { const sug = k.sugerencias(c, m), items = sug.map(s => ({ inc: true, origen: s.origen, ref: s.ref, concepto: s.concepto, monto: parseMonto(s.monto) })); return { cliente_id: data.ids.cliente(c), periodo: m + '-01', moneda: (sug[0] && sug[0].moneda) || k.cadm(c).moneda || 'ARS', items, total: r2(items.reduce((a, i) => a + (i.monto || 0), 0)), nota: '', estado: 'Borrador' }; }).filter(r => r.cliente_id);
   }
-  const listosDrive = () => AD.DA.filter(d => d.estado === 'Leído').map(d => ({ d, mt: matchArchivo(d), p: presetDesde(d) })).filter(x => x.mt.cliente && !x.mt.existente && !x.mt.nota && x.p.monto && x.p.fecha && x.d.datos.es_comprobante !== false);
+  const listosDrive = () => AD.DA.filter(d => d.estado === 'Leído').map(d => ({ d, mt: matchArchivo(d), p: presetDesde(d) })).filter(x => x.mt.cliente && !x.mt.existente && !x.mt.nota && x.p.monto && x.p.fecha && x.mt.mesSeguro && x.d.datos.es_comprobante !== false);
   async function cargarDeDrive(x) {
     const p = x.p, f = await data.ins('facturas', { cliente_id: data.ids.cliente(p.cliente), tipo: p.tipo, emisor: p.emisor || '', numero: p.numero, periodo: p.periodo ? p.periodo + '-01' : null, fecha: p.fecha, vencimiento: p.vencimiento || null, moneda: p.moneda, monto: p.monto, concepto: p.concepto, link_pdf: p.link_pdf, notas: p.notas });
     await data.upd('drive_archivos', x.d.id, { factura_id: f.id }); await aprender(x.d, p);
@@ -388,7 +391,7 @@ export function initAsistente(ctx, k) {
       const rows = ls.slice(0, 120).map(d => {
         const x = d.datos || {}, mt = d.estado === 'Leído' || d.estado === 'Nuevo' ? matchArchivo(d) : null, f = d.factura_id ? AD.F.find(y => y.id === d.factura_id) : null;
         const desc = [x.tipo, x.numero_completo, x.receptor_nombre, x.total != null ? money(x.total, x.moneda) : '', x.fecha ? fmt(x.fecha) : ''].filter(Boolean).join(' · ');
-        const reco = mt ? [mt.cliente ? 'cliente: <b>' + esc(mt.cliente) + '</b>' : (d.estado === 'Leído' ? '<span style="color:var(--warn)">cliente sin reconocer</span>' : ''), mt.emisor ? 'factura ' + esc(mt.emisor) : '', mt.existente ? '<span style="color:var(--warn)">ya está cargada como ' + esc(verTipo(mt.existente.tipo) + ' ' + mt.existente.numero) + '</span>' : ''].filter(Boolean).join(' · ') : '';
+        const reco = mt ? [mt.cliente ? 'cliente: <b>' + esc(mt.cliente) + '</b>' : (d.estado === 'Leído' ? '<span style="color:var(--warn)">cliente sin reconocer</span>' : ''), mt.emisor ? 'factura ' + esc(mt.emisor) : '', mt.periodo ? (mt.mesSeguro ? 'mes: <b>' + esc(nombreMes(mt.periodo)) + '</b>' : '<span style="color:var(--warn)" title="Sale de ' + esc(mt.mesPor) + '">mes: ' + esc(nombreMes(mt.periodo)) + ', revisalo</span>') : '', mt.existente ? '<span style="color:var(--warn)">ya está cargada como ' + esc(verTipo(mt.existente.tipo) + ' ' + mt.existente.numero) + '</span>' : ''].filter(Boolean).join(' · ') : '';
         const btns = d.estado === 'Nuevo' || d.estado === 'Error' ? '<button class="btn sm" data-act="asLeer" data-id="' + esc(d.id) + '"' + (st.ia ? '' : ' disabled') + '>Leer</button>' :
           d.estado === 'Leído' ? (mt.existente ? '<button class="btn sm primary" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>' : '<button class="btn sm primary" data-act="asCrear" data-id="' + esc(d.id) + '">Cargar factura</button><button class="btn ghost sm" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>') :
           d.estado === 'Vinculado' && f ? '<button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Ver factura</button><button class="btn ghost sm" data-act="asDesv" data-id="' + esc(d.id) + '">Separar</button>' : '';

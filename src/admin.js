@@ -1282,7 +1282,7 @@ export function initAdmin(ctx) {
         { k: 'numero', label: 'Número', ph: '00002-00000210', hint: 'Las facturas argentinas se hacen en ARCA: acá anotás número y monto para seguir el cobro. Para clientes del exterior usá “+ Invoice”.' },
         { k: 'fecha', label: 'Fecha', type: 'date', req: 1 },
         { k: 'emisor', label: '¿Quién factura?', type: 'select', opts: EMISORES, blank: '—' },
-        { k: 'periodo', label: '¿De qué mes es?', type: 'month', month: 1 },
+        { k: 'periodo', label: '¿De qué mes es?', type: 'month', month: 1, hint: preset && preset.mesPor ? 'Sale de ' + preset.mesPor + (preset.mesSeguro ? '.' : '. Revisalo antes de guardar.') : 'El mes del servicio que se cobra, aunque la factura sea de fin del mes anterior.' },
         { k: 'tipo', label: 'Tipo', type: 'select', html: v => TIPOS_COMP.map(t => opt(t, verTipo(t), v)).join(''), adv: 1 },
         { k: 'vencimiento', label: 'Vencimiento', type: 'date', adv: 1 },
         { k: 'concepto', label: 'Concepto', full: 1, adv: 1, piggy: () => {
