@@ -2654,3 +2654,5 @@ h3>.todos-b{margin:0 0 0 10px;font-size:12px;vertical-align:middle}
 .me-kb:hover{background:var(--surface-2);color:var(--fg)}
 @media (hover:none){.tip{display:none}.me-kb{display:none}}
 .rm-xn{font-size:12px;color:var(--muted);margin-left:4px}
+.pz-f a b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35}
+.rm-et{font:inherit;font-size:13px;border:0;cursor:pointer}.rm-et:disabled{cursor:default;opacity:.7}.rm-et .num{opacity:.75;margin-left:2px}.rm-et.sel{outline:2px solid var(--accent);outline-offset:1px}
