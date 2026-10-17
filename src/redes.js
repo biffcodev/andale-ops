@@ -29,6 +29,21 @@ export function redChips(id, sel, opciones, dis, esc) {
   const e = esc || escR, todas = [...new Set([...(opciones || []), ...(sel || [])])];
   return '<div class="rd-chips" id="' + e(id) + '">' + todas.map(r => { const [ab, c, ic] = redInfo(r); return '<label class="rd-chk" style="--rc:' + c + '"><input type="checkbox" value="' + e(r) + '"' + ((sel || []).includes(r) ? ' checked' : '') + (dis || '') + '><span class="rd">' + redIco(r, ab, ic) + '</span>' + e(r) + '</label>'; }).join('') + '</div>';
 }
+// "Qué va en la pieza" con jerarquía: cada "Etiqueta: texto" con la etiqueta en negrita, los detalles con flecha y aire entre bloques.
+export function contenidoHtml(txt) {
+  const out = []; let hueco = false;
+  String(txt || '').replace(/\r/g, '').split('\n').forEach(l0 => {
+    const l = l0.trim();
+    if (!l) { if (out.length) hueco = true; return; }
+    const sep = hueco ? ' ct-sep' : ''; hueco = false;
+    let mm;
+    if ((mm = l.match(/^(?:[-•*→]|->)\s*(.+)$/))) out.push('<div class="ct-b' + sep + '"><i>→</i><span>' + escR(mm[1]) + '</span></div>');
+    else if ((mm = l.match(/^(\d{1,2})[.)]\s+(.+)$/))) out.push('<div class="ct-l ct-n' + sep + '"><b>' + escR(mm[1]) + '</b><span>' + escR(mm[2]) + '</span></div>');
+    else if ((mm = l.match(/^([^:]{1,32}?)\s*[:—–]\s+(.+)$/)) && !/https?$/i.test(mm[1])) out.push('<div class="ct-l' + sep + '"><b>' + escR(mm[1]) + '</b><span>' + escR(mm[2]) + '</span></div>');
+    else out.push('<div class="ct-p' + sep + '">' + escR(l) + '</div>');
+  });
+  return '<div class="ct">' + out.join('') + '</div>';
+}
 const FMT_OTROS = ['#b5893b', '#6b7fd7', '#c2569b', '#3f9a5f'];
 export const fmtColor = f => { const x = FMT_COLOR.find(([re]) => re.test(f || '')); if (x) return x[1]; let h = 0; for (const c of String(f || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return FMT_OTROS[h % FMT_OTROS.length]; };
 import { vistaSel, vistaDe, filtrosMenu } from './ui.js';
@@ -129,6 +144,11 @@ export function initRedes(ctx) {
   const filas = (t, ancho, min, max) => Math.min(max, Math.max(min, String(t || '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / ancho)), 0)));
   // Cobro de las piezas extra de la cuenta (solo lo ven los administradores; para el resto, null)
   const xCfg = cliente => { const ab = abonoRedes(cliente); return (ab && ctx.extrasCfg && ctx.extrasCfg(ab._id)) || { cobro: false, precios: {}, moneda: 'ARS', admin: false }; };
+  // Espaciado de los copys según la ficha de la cuenta: una o dos líneas entre bloques, o una línea "invisible" al copiar
+  // (Instagram a veces junta los párrafos; con el carácter ⠀ en las líneas vacías los respeta).
+  const espaciado = cliente => { const c = S.C.find(x => x.nombre === cliente); return String((c && c.marca && c.marca.espaciado) || ''); };
+  const espaciar = (txt, cliente) => { const t = String(txt || '').replace(/[ \t]+\n/g, '\n').trim(); return /dos/i.test(espaciado(cliente)) ? t.replace(/\n\s*\n+/g, '\n\n\n') : t.replace(/\n\s*\n\s*\n+/g, '\n\n'); };
+  const paraPegar = (txt, cliente) => /invisible/i.test(espaciado(cliente)) ? String(txt || '').replace(/\n(?=\n)/g, '\n⠀') : String(txt || '');
   const PH_CONT = f => /carrus/i.test(f) ? 'Slide 1: …\nSlide 2: …' : /reel/i.test(f) ? 'Gancho (0-3 s): …\n1. …\nAudio: …' : /histori/i.test(f) ? 'Texto: …\nSticker: encuesta (Sí / No)' : 'Título: …\nBajada: …\nImagen: …';
   const conteoPorFormato = ps => { const o = {}; enPlan(ps).forEach(z => { o[z.formato] = (o[z.formato] || 0) + 1; }); return o; };
   const pzPill = e => '<span class="pzst" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')">' + esc(e) + '</span>';
@@ -322,7 +342,7 @@ export function initRedes(ctx) {
         '<td class="rm-art">' + arteMini(z) + '</td>' +
         '<td class="rm-cuando">' + (z.fecha ? '<span class="rm-dia">' + esc(diaDe(z)) + '</span>' : '') + '<input class="in sm rm-fe" type="date" value="' + esc(z.fecha) + '" data-pz="fecha" data-id="' + id + '"' + d + ' aria-label="Fecha"><input class="in sm rm-ho" type="time" value="' + esc(z.hora) + '" data-pz="hora" data-id="' + id + '"' + d + ' aria-label="Hora"></td>' +
         '<td class="rm-tema">' + tags(z, d) + '<input class="in sm rm-tin" value="' + esc(z.tema) + '" placeholder="Tema" data-pz="tema" data-id="' + id + '"' + d + ' aria-label="Tema">' +
-        (z.contenido && !esHistoria(z) ? '<p class="rm-cont" title="Qué va en la pieza">' + esc(z.contenido) + '</p>' : '') + textos(z, 6) +
+        (z.contenido && !esHistoria(z) ? '<div class="rm-cont" title="Qué va en la pieza">' + contenidoHtml(z.contenido) + '</div>' : '') + textos(z, 6) +
         (z.respuesta && z.estado === 'Cambios' ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 160)) + '”</span>' : '') + '</td>' +
         '<td><select class="cellsel st" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-pz="estado" data-id="' + id + '"' + d + ' aria-label="Estado">' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></td>' +
         '<td class="rm-qc">' + quien(z) + '</td>' +
@@ -382,8 +402,8 @@ export function initRedes(ctx) {
       '<div class="field"><label for="pz-estado">Estado</label><select id="pz-estado"' + d + '>' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></div>' +
       '<div class="field"><label for="pz-resp">A cargo de esta pieza</label><select id="pz-resp"' + d + '>' + opt('', 'Según el flujo (el rol de cada etapa)', z.resp) + [...new Set([...personas(), z.resp].filter(Boolean))].map(a => opt(a, a + (equipo(m.cliente).get(a) ? ' · ' + equipo(m.cliente).get(a) : ''), z.resp)).join('') + '</select><span class="hint">Ahora le toca a ' + esc((q => q.gente.length ? q.gente.join(', ') : 'nadie') (quienes(m.cliente, z))) + '. Si elegís a alguien, reemplaza a los de su rol (p. ej. Cata en vez de Vale en el diseño).</span></div>' +
       '<div class="field full"><label for="pz-tema">Tema</label><div class="cp-box"><textarea id="pz-tema" class="pz-ta" rows="' + filas(z.tema, 60, 1, 4) + '"' + d + '>' + esc(z.tema) + '</textarea>' + copiarBtn('#pz-tema') + '</div></div>' +
-      (data.cols && data.cols.piezaContenido === false ? '' : '<div class="field full"><label for="pz-contenido">' + (esHistoria(z) ? 'Texto de la historia' : 'Qué va en la pieza') + '</label><div class="cp-box"><textarea id="pz-contenido" class="pz-ta" rows="' + filas(z.contenido, 60, 3, 12) + '" placeholder="' + esc(PH_CONT(z.formato)) + '"' + d + '>' + esc(z.contenido || '') + '</textarea>' + copiarBtn('#pz-contenido') + '</div>' + (can ? '<div class="toolbar pz-ia"><span class="hint" style="margin:0">Para quien diseña o graba.</span><button type="button" class="btn ghost sm" data-act="rmContUno"><span class="pig" aria-hidden="true">' + ISO + '</span> ' + (z.contenido ? 'Mejorar' : 'Escribir') + ' con Mr. Piggy</button></div>' : '<span class="hint">Para quien diseña o graba.</span>') + '</div>') +
-      '<div class="field full"><label for="pz-copy">Copy</label><div class="cp-box"><textarea id="pz-copy" class="pz-ta" rows="' + filas(z.copy, 60, 5, 16) + '"' + d + '>' + esc(z.copy) + '</textarea>' + copiarBtn('#pz-copy') + '</div>' + (can ? '<div class="toolbar pz-ia"><span></span><button type="button" class="btn ghost sm" data-act="rmCopyUno"><span class="pig" aria-hidden="true">' + ISO + '</span> ' + (z.copy ? 'Mejorar' : 'Escribir') + ' el copy y los hashtags</button></div>' : '') + '</div>' +
+      (data.cols && data.cols.piezaContenido === false ? '' : '<div class="field full pz-cont' + (z.contenido ? ' ver' : '') + '"><div class="pz-lh"><label for="pz-contenido">' + (esHistoria(z) ? 'Texto de la historia' : 'Qué va en la pieza') + '</label>' + (z.contenido && can ? '<button type="button" class="btn ghost sm" data-act="rmContEditar">Editar</button>' : '') + '</div>' + (z.contenido ? '<div class="cp-box pz-cv">' + contenidoHtml(z.contenido) + copiarBtn('#pz-contenido') + '</div>' : '') + '<div class="cp-box pz-ce"><textarea id="pz-contenido" class="pz-ta" rows="' + filas(z.contenido, 60, 3, 40) + '" placeholder="' + esc(PH_CONT(z.formato)) + '"' + d + '>' + esc(z.contenido || '') + '</textarea>' + copiarBtn('#pz-contenido') + '</div>' + (can ? '<div class="toolbar pz-ia"><span class="hint" style="margin:0">Para quien diseña o graba.</span><button type="button" class="btn ghost sm" data-act="rmContUno"><span class="pig" aria-hidden="true">' + ISO + '</span> ' + (z.contenido ? 'Mejorar' : 'Escribir') + ' con Mr. Piggy</button></div>' : '<span class="hint">Para quien diseña o graba.</span>') + '</div>') +
+      '<div class="field full"><label for="pz-copy">Copy</label><div class="cp-box"><textarea id="pz-copy" class="pz-ta" rows="' + filas(z.copy, 60, 5, 80) + '"' + d + '>' + esc(z.copy) + '</textarea>' + copiarBtn('#pz-copy') + '</div>' + (can ? '<div class="toolbar pz-ia"><span></span><button type="button" class="btn ghost sm" data-act="rmCopyUno"><span class="pig" aria-hidden="true">' + ISO + '</span> ' + (z.copy ? 'Mejorar' : 'Escribir') + ' el copy y los hashtags</button></div>' : '') + '</div>' +
       '<div class="field full"><label for="pz-hashtags">Hashtags</label><div class="cp-box"><textarea id="pz-hashtags" class="pz-ta" rows="' + filas(z.hashtags, 60, 1, 4) + '"' + d + '>' + esc(z.hashtags) + '</textarea>' + copiarBtn('#pz-hashtags') + '</div></div>' +
       '<div class="field"><label for="pz-fijo">Se repite cada</label><select id="pz-fijo"' + d + '>' + opt('', 'No se repite', z.fijo) + DIAS.map(x => opt(x, x, z.fijo)).join('') + '</select><span class="hint">Al arrancar el mes siguiente se crea sola en ese día.</span></div>' +
 
@@ -394,8 +414,11 @@ export function initRedes(ctx) {
       versionesHtml(z, can) +
       '<div class="full">' + hil().html('pieza', z._id, { cliente: m.cliente, titulo: 'Comentarios', compacto: true, publico: true }) + '</div>' +
       '</div><div class="panel-f"><span>' + (can ? '<button type="button" class="btn ghost danger" data-act="rmPiezaBorrar">Borrar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">' + (can ? 'Cancelar' : 'Cerrar') + '</button>' + (can ? '<button type="submit" class="btn primary">Guardar</button>' : '') + '</span></div></form>';
-    $('#panel').hidden = false; $('#scrim').hidden = false;
+    $('#panel').hidden = false; $('#scrim').hidden = false; requestAnimationFrame(() => document.querySelectorAll('#pzform .pz-ta').forEach(autoAlto));
   }
+  // Los campos de texto de la pieza crecen con el contenido: el copy se lee entero haciendo scroll en el panel.
+  const autoAlto = ta => { if (!ta || !ta.offsetParent) return; ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; };
+  document.addEventListener('input', e => { if (e.target && e.target.classList && e.target.classList.contains('pz-ta')) autoAlto(e.target); });
   async function guardarPieza() {
     const f = st.fpz; if (!f) return;
     const g = k => ($('#pz-' + k) || {}).value;
@@ -538,11 +561,21 @@ export function initRedes(ctx) {
       const quedan = extras ? [] : resta();
       if (quedan.length) toast('Faltaron ' + quedan.map(([f, n]) => n + ' ' + f).join(', ') + ': volvé a tocar “Proponer contenido”.');
     } catch (e) { toast(e.message); trabajando(m, null); return; }
-    // 2) copys de lo que no es historia
+    // 2) día y hora de cada pieza nueva, pensados para la cuenta (si falla, quedan las fechas repartidas y la hora del formato)
+    let agendo = false;
+    try {
+      trabajando(m, 'Eligiendo días y horarios…');
+      const todas = piezas(m._id) || [], r = await agendaIA(m, todas, ins);
+      for (const x of r.piezas) { await data.piezasUpd([x.id], { fecha: x.fecha, hora: x.hora }); local(m._id, [x.id], { fecha: x.fecha, hora: x.hora }); }
+      agendo = r.piezas.length > 0;
+      if (agendo && !horariosCuenta(m.cliente)) { try { await guardarHorarios(m, r); } catch (e) { /* sigue igual */ } }
+    } catch (e) { /* quedan las fechas repartidas */ }
+    // 3) copys de lo que no es historia
+    trabajando(m, 'Escribiendo copys…');
     const conCopy = ins.filter(z => !esHistoria(z)).map(z => z._id);
     const n = conCopy.length ? await copys(conCopy, m) : 0;
     trabajando(m, null);
-    toast('Mr. Piggy armó ' + ins.length + ' piezas' + (n ? ' y escribió ' + n + ' copys' : '') + ', con día y horario. Quedaron como “Idea”: revisalas.');
+    toast('Mr. Piggy armó ' + ins.length + ' piezas' + (n ? ', escribió ' + n + ' copys' : '') + (agendo ? ' y eligió día y horario para cada una' : ' con día y horario') + '. Quedaron como “Idea”: revisalas.');
   }
   // Copys y hashtags de varias piezas: de a 4 por pedido, 3 pedidos a la vez. Devuelve cuántas escribió.
   async function copys(ids, m, btn) {
@@ -558,7 +591,7 @@ export function initRedes(ctx) {
         const r = await data.ia({ modo: 'redes_copys', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, redes: z.red, fecha: z.fecha, tema: z.tema, contenido: z.contenido || '', copy_actual: z.copy }))), contexto: c });
         for (const x of Array.isArray(r.piezas) ? r.piezas : []) {
           const z = t.find(y => y._id === x.id); if (!z || (!x.copy && !esHistoria(z))) continue;
-          const u0 = { copy: String(x.copy || '').trim(), hashtags: String(x.hashtags || '').trim(), ...(x.contenido && !z.contenido ? { contenido: String(x.contenido).trim() } : {}) };
+          const u0 = { copy: espaciar(x.copy, m.cliente), hashtags: String(x.hashtags || '').trim(), ...(x.contenido && !z.contenido ? { contenido: String(x.contenido).trim() } : {}) };
           const antes = antesDe(z, u0), u = conVersion(z, u0, 'Copy de Mr. Piggy');
           await data.piezasUpd([z._id], u); Object.assign(z, u); n++; cambios.push({ id: z._id, antes });
         }
@@ -756,7 +789,7 @@ export function initRedes(ctx) {
     const rv = st.rev; if (!rv) return; let n = 0; const cambios = [];
     for (const id of ids) {
       const x = rv.items.get(id), z = (piezas(m._id) || []).find(y => y._id === id); if (!x || !z || x.aplicado) continue;
-      const u = {}; ['contenido', 'copy', 'hashtags'].forEach(k => { if (x[k] && String(x[k]).trim() && String(x[k]).trim() !== String(z[k] || '').trim()) u[k] = String(x[k]).trim(); });
+      const u = {}; ['contenido', 'copy', 'hashtags'].forEach(k => { if (x[k] && String(x[k]).trim() && String(x[k]).trim() !== String(z[k] || '').trim()) u[k] = k === 'copy' ? espaciar(x[k], m.cliente) : String(x[k]).trim(); });
       if (!Object.keys(u).length) continue;
       const antes = antesDe(z, u), uv = conVersion(z, u, 'Revisión de Mr. Piggy');
       try { await data.piezasUpd([id], uv); local(m._id, [id], uv); x.aplicado = true; n++; cambios.push({ id, antes }); } catch (e) { toast(e.message); break; }
@@ -831,6 +864,14 @@ export function initRedes(ctx) {
     if (!mov.length) { toast('No hay piezas para ubicar'); return; }
     ag.busy = true; ag.res = null; abrirAgenda(m);
     try {
+      ag.res = await agendaIA(m, ps, mov);
+      if (!ag.res.piezas.length) toast('Mr. Piggy no devolvió fechas válidas. Probá de nuevo.');
+    } catch (e) { toast(e.message); }
+    ag.busy = false; if (st.ag === ag && $('#rmagenda')) abrirAgenda(m);
+  }
+  // Pide a Mr. Piggy día y hora para las piezas "mov" (las demás del mes quedan como ocupadas).
+  async function agendaIA(m, ps, mov) {
+    {
       const cli = S.C.find(x => x.nombre === m.cliente) || {};
       let infs = []; try { infs = (await data.informesDe(m.cliente)).slice(0, 3).map(i => ({ mes: i.mes, datos: i.datos })); } catch (e) { infs = []; }
       const movIds = new Set(mov.map(z => z._id));
@@ -842,10 +883,14 @@ export function initRedes(ctx) {
         .map(x => ({ id: x.id, fecha: x.fecha, hora: String(x.hora).slice(0, 5).padStart(5, '0'), motivo: String(x.motivo || '').slice(0, 120) }));
       const unicos = [...new Map(piezasR.map(x => [x.id, x])).values()];
       const horarios = (Array.isArray(r.horarios) ? r.horarios : []).filter(h => h && h.formato && /^\d{1,2}:\d{2}/.test(h.hora || '')).map(h => ({ formato: formatos().find(f => norm(f) === norm(h.formato)) || h.formato, hora: String(h.hora).slice(0, 5).padStart(5, '0'), dias: String(h.dias || '').slice(0, 40) }));
-      ag.res = { criterio: String(r.criterio || ''), horarios, piezas: unicos, faltan: mov.length - unicos.length };
-      if (!unicos.length) toast('Mr. Piggy no devolvió fechas válidas. Probá de nuevo.');
-    } catch (e) { toast(e.message); }
-    ag.busy = false; if (st.ag === ag && $('#rmagenda')) abrirAgenda(m);
+      return { criterio: String(r.criterio || ''), horarios, piezas: unicos, faltan: mov.length - unicos.length };
+    }
+  }
+  // Guarda los horarios que propuso Mr. Piggy como los de la cuenta
+  async function guardarHorarios(m, r) {
+    const c = S.C.find(x => x.nombre === m.cliente); if (!c || !r.horarios.length) return;
+    const marca = { ...(c.marca || {}), horarios: { criterio: r.criterio, actualizado: today(), formatos: Object.fromEntries(r.horarios.map(h => [h.formato, { hora: h.hora, dias: h.dias }])) } };
+    await data.marcaGuardar(c._id, marca); c.marca = marca;
   }
   async function aplicarAgenda(m) {
     const ag = st.ag, r = ag && ag.res; if (!r || !r.piezas.length || ag.busy) return;
@@ -980,6 +1025,7 @@ export function initRedes(ctx) {
       if (t.dataset.sel) v = ($(t.dataset.sel) || {}).value || '';
       else { const z = [...P.values()].flat().find(x => x._id === t.dataset.id); if (z) v = t.dataset.k === 'hashtags' ? z.hashtags : t.dataset.k === 'contenido' ? (z.contenido || '') : t.dataset.k === 'todo' ? [z.copy, z.hashtags].filter(Boolean).join('\n\n') : z.copy; }
       if (!v.trim()) { toast('No hay nada para copiar'); return; }
+      { const mm = meses().find(x => (piezas(x._id) || []).some(z => z._id === t.dataset.id)) || (st.fpz && mesDe(st.fpz.mesId)); if (mm && t.dataset.k !== 'hashtags' && t.dataset.sel !== '#pz-hashtags') v = paraPegar(v, mm.cliente); }
       const ok = () => toast(t.dataset.k === 'hashtags' ? 'Hashtags copiados' : t.dataset.k === 'todo' ? 'Copy y hashtags copiados' : 'Copiado');
       try { navigator.clipboard.writeText(v).then(ok, () => toast('No se pudo copiar')); } catch (e) { toast('No se pudo copiar'); }
     },
@@ -1003,6 +1049,7 @@ export function initRedes(ctx) {
     },
     rmVerMas: t => { const id = t.dataset.id; if (st.abiertos.has(id)) st.abiertos.delete(id); else st.abiertos.add(id); render(); },
     rmCant: t => { const i = t.closest('form').elements.n; i.value = Math.max(1, Math.min(60, (+i.value || 1) + +t.dataset.d)); },
+    rmContEditar: t => { const f = t.closest('.pz-cont'); if (!f) return; f.classList.toggle('ver'); t.textContent = f.classList.contains('ver') ? 'Editar' : 'Ver'; if (!f.classList.contains('ver')) { const ta = $('#pz-contenido'); if (ta) { autoAlto(ta); ta.focus(); } } else { const v = f.querySelector('.pz-cv'); if (v) v.innerHTML = contenidoHtml(($('#pz-contenido') || {}).value || '') + copiarBtn('#pz-contenido'); } },
     rmContUno: async t => {
       const f = st.fpz; if (!f) return; const m = mesDe(f.mesId); const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!m || !z) return;
       const tema = ($('#pz-tema').value || '').trim() || z.tema, actual = ($('#pz-contenido') || {}).value || '';
@@ -1011,13 +1058,13 @@ export function initRedes(ctx) {
         const c = ctxIA(m); delete c._pp; delete c.plan;
         const r = await data.ia({ modo: 'redes_contenido', texto: JSON.stringify([{ id: z._id, formato: ($('#pz-formato') || {}).value || z.formato, fecha: z.fecha, tema, contenido_actual: actual.trim(), copy: (($('#pz-copy') || {}).value || '').trim() }]), contexto: c });
         const x = (Array.isArray(r.piezas) ? r.piezas : []).find(y => y && y.contenido);
-        if (x && $('#pz-contenido')) { f.ia = true; $('#pz-contenido').value = String(x.contenido).trim(); $('#pz-contenido').rows = filas(x.contenido, 60, 3, 12); toast('Listo: revisalo y guardá la pieza'); } else toast('Mr. Piggy no devolvió nada. Probá de nuevo.');
+        if (x && $('#pz-contenido')) { f.ia = true; $('#pz-contenido').value = String(x.contenido).trim(); const fc = $('#pz-contenido').closest('.pz-cont'); if (fc) { fc.classList.remove('ver'); const b = fc.querySelector('[data-act="rmContEditar"]'); if (b) b.textContent = 'Ver'; } autoAlto($('#pz-contenido')); toast('Listo: revisalo y guardá la pieza'); } else toast('Mr. Piggy no devolvió nada. Probá de nuevo.');
       } catch (e) { toast(e.message); }
       t.disabled = false; t.innerHTML = t0;
     },
     rmExtras: t => { const m = mesDe(t.dataset.id); if (m) abrirExtras(m); },
     rmXCfg: t => { const ab = abonoRedes(t.dataset.c); if (ab && ctx.formExtras) ctx.formExtras(ab._id); },
-    rmCopyUno: async t => { const f = st.fpz; if (!f) return; const m = mesDe(f.mesId); const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!m || !z) return; z.tema = ($('#pz-tema').value || '').trim() || z.tema; if ($('#pz-contenido')) z.contenido = $('#pz-contenido').value.trim(); if ($('#pz-copy')) z.copy = $('#pz-copy').value.trim(); await copys([z._id], m, t); const zz = piezas(f.mesId).find(x => x._id === f.id); if ($('#pz-copy') && zz) { $('#pz-copy').value = zz.copy; $('#pz-hashtags').value = zz.hashtags; if ($('#pz-contenido')) $('#pz-contenido').value = zz.contenido || ''; } },
+    rmCopyUno: async t => { const f = st.fpz; if (!f) return; const m = mesDe(f.mesId); const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!m || !z) return; z.tema = ($('#pz-tema').value || '').trim() || z.tema; if ($('#pz-contenido')) z.contenido = $('#pz-contenido').value.trim(); if ($('#pz-copy')) z.copy = $('#pz-copy').value.trim(); await copys([z._id], m, t); const zz = piezas(f.mesId).find(x => x._id === f.id); if ($('#pz-copy') && zz) { $('#pz-copy').value = zz.copy; $('#pz-hashtags').value = zz.hashtags; if ($('#pz-contenido')) $('#pz-contenido').value = zz.contenido || ''; document.querySelectorAll('#pzform .pz-ta').forEach(autoAlto); } },
     rmBorrar: async () => { const ids = [...st.sel]; if (!ids.length || !await confirmar('¿Borrar ' + ids.length + ' pieza' + (ids.length > 1 ? 's' : '') + '?')) return; try { await data.piezasDel(ids); P.forEach((ps, k) => P.set(k, ps.filter(z => !ids.includes(z._id)))); st.sel.clear(); toast('Borradas'); render(); } catch (e) { toast(e.message); } },
     rmSelNada: () => { st.sel.clear(); render(); },
     rmPieza: t => abrirPieza(t.dataset.id),

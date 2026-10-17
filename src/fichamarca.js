@@ -9,6 +9,7 @@ export const CAMPOS_MARCA = [
   { k: 'tono', l: 'Cómo habla', rows: 3, ph: 'Ej.: cercano, canchero y con humor; frases cortas; nunca solemne' },
   { k: 'trato', l: 'Trato', tipo: 'select', opts: ['', 'Vos', 'Tú', 'Usted'] },
   { k: 'emojis', l: 'Emojis', tipo: 'select', opts: ['', 'Sí, con ganas', 'Pocos y puntuales', 'No usa'] },
+  { k: 'espaciado', l: 'Espacio entre bloques del copy', tipo: 'select', opts: ['', 'Una línea en blanco', 'Dos líneas en blanco', 'Línea invisible (para que Instagram no junte los párrafos)'] },
   { k: 'palabras_si', l: 'Palabras y frases que usa', rows: 2, ph: 'Ej.: “la burga”, “posta”, “te esperamos”' },
   { k: 'palabras_no', l: 'Lo que nunca dice ni hace', rows: 2, ph: 'Ej.: no habla de precios, no usa “gourmet”, no hace chistes de política' },
   { k: 'pilares', l: 'Pilares de contenido (uno por renglón)', rows: 4, ph: 'Producto\nDetrás de escena\nComunidad y clientes\nPromos y fechas' },

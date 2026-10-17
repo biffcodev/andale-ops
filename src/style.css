@@ -2547,3 +2547,19 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 .pz-vc p{margin:2px 0 0;white-space:pre-line;font-size:13px;line-height:1.5;max-height:9em;overflow:auto}
 /* en la cuadrícula el tema va sintético (2 líneas); completo al abrir la pieza */
 .rm-pc-t{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* "Qué va en la pieza" con jerarquía */
+.ct{display:grid;gap:5px;font-size:14px;line-height:1.5}
+.ct-l{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:baseline}
+.ct-l>b{font-weight:700;white-space:nowrap}
+.ct-l>b::after{content:''}
+.ct-n>b{min-width:18px;color:var(--accent-text)}
+.ct-b{display:grid;grid-template-columns:16px minmax(0,1fr);gap:6px;padding-left:14px;color:var(--fg-2,var(--fg))}
+.ct-b>i{font-style:normal;font-weight:700;color:var(--accent-text)}
+.ct-sep{margin-top:10px}
+.pz-cv{padding:12px 44px 12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.pz-cont.ver .pz-ce{display:none}
+.pz-cont:not(.ver) .pz-cv{display:none}
+.pz-ta{field-sizing:content;overflow:hidden;min-height:44px}
+.rm-cont{display:block;-webkit-line-clamp:unset;max-height:9.5em;overflow:hidden;position:relative;font-size:12.5px}
+.rm-cont .ct{font-size:12.5px;gap:2px}
+.rm-cont .ct-sep{margin-top:4px}

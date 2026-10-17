@@ -28,11 +28,12 @@ const REGLAS_FORMATO = 'QUÉ VA EN CADA FORMATO (campo contenido, para quien dis
   '- Posts: "Título: …" (lo que va grande en la placa, máx. 8 palabras), "Bajada: …" (opcional, una línea) y "Imagen: …" (qué se ve: foto, producto, situación).\n' +
   '- Reels: "Gancho (0-3 s): …", luego las escenas numeradas con lo que se ve y el texto en pantalla, y "Audio: …" (voz en off, tendencia o música, en una línea).\n' +
   '- Historias: "Texto: …" (lo que va escrito en la historia, corto y con la voz de la marca, con emoji si la marca usa) y, si suma, "Sticker: …" (encuesta con sus 2 opciones, pregunta, cuenta regresiva, link o "Mencioná a…").\n' +
-  '- Otros formatos: describí en 2-4 líneas qué se ve y qué texto lleva.';
+  '- Otros formatos: describí en 2-4 líneas qué se ve y qué texto lleva.\n' +
+  'FORMA (para que se entienda a primera vista): cada elemento en su propia línea, con su etiqueta y dos puntos ("Slide 1: …", "Título: …", "Imagen: …"). Los detalles de un elemento van debajo, cada uno en su línea empezando con "→ ". Dejá una línea en blanco entre bloques (entre slides, escenas o elementos). Nada de párrafos largos.';
 
 const REGLAS_COPY = 'CÓMO SE ESCRIBE UN COPY (el texto que acompaña la publicación):\n' +
   '- Primera línea: un gancho que frene el scroll (pregunta, dato, problema del público o promesa), de 4 a 10 palabras.\n' +
-  '- Después 2 o 3 párrafos cortos, de 1 o 2 frases cada uno, SEPARADOS POR UNA LÍNEA EN BLANCO (\\n\\n). Nunca un bloque de texto corrido.\n' +
+  '- Después 2 o 3 párrafos cortos, de 1 o 2 frases cada uno, SEPARADOS POR UNA LÍNEA EN BLANCO (\\n\\n) para que el texto respire. Nunca un bloque de texto corrido. Antes y después de una lista también va una línea en blanco. Si ESPACIO ENTRE BLOQUES dice dos líneas, dejá dos líneas en blanco entre bloques.\n' +
   '- Si hay pasos, consejos o beneficios, van en líneas sueltas que empiezan con un emoji o con "→" o "✔️" (según el uso de emojis de la marca).\n' +
   '- Cierre: un llamado a la acción concreto y distinto en cada pieza (escribinos, guardalo, compartilo con quien…, comentá, pasá por…).\n' +
   '- Largo: Posts y Carruseles 350 a 700 caracteres; Reels 200 a 450; Historias: vacío (lo escrito va en contenido).\n' +
@@ -137,7 +138,7 @@ Deno.serve(async req => {
   const [tool, system] = ({ redes_copys: [TOOL_COPYS, SYS_COPYS], redes_agenda: [TOOL_AGENDA, SYS_AGENDA], redes_contenido: [TOOL_CONT, SYS_CONT], redes_revision: [TOOL_REV, SYS_REV], redes_investigar: [TOOL_INV, SYS_INV], redes_ideas: [TOOL_PLAN, SYS_PLAN] } as Record<string, [any, string]>)[modo];
   const marca = ctx && ctx.marca ? ctx.marca : null;
   const cab = 'HOY: ' + hoyAR() + (ctx.mes ? '\nMES A PLANIFICAR: ' + mesTxt(ctx.mes) + '. Todas las fechas van dentro de ese mes.' : '') +
-    '\nEMOJIS DE LA MARCA: ' + ((marca && marca.emojis) || 'sin dato (usá 1 o 2)') + (marca && marca.hashtags ? '\nHASHTAGS PROPIOS: ' + marca.hashtags : '');
+    '\nEMOJIS DE LA MARCA: ' + ((marca && marca.emojis) || 'sin dato (usá 1 o 2)') + (marca && marca.hashtags ? '\nHASHTAGS PROPIOS: ' + marca.hashtags : '') + (marca && marca.espaciado ? '\nESPACIO ENTRE BLOQUES: ' + marca.espaciado : '');
   const user = modo === 'redes_investigar' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 20_000)
     : modo === 'redes_agenda' ? cab + '\n\nCUENTA, MES Y PIEZAS:\n' + JSON.stringify(ctx).slice(0, 60_000) + (texto ? '\n\nPEDIDO:\n' + texto : '')
     : modo === 'redes_revision' ? cab + '\n\nCLIENTE Y MES:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\n' + (ctx.general ? 'Además de cada pieza, dame la mirada general del mes (resumen y observaciones) mirando "todas".' : 'No hace falta la mirada general: solo cada pieza.') + '\n\nPIEZAS A REVISAR:\n' + texto
