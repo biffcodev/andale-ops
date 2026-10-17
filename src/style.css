@@ -2690,4 +2690,4 @@ h3>.todos-b{margin:0 0 0 10px;font-size:12px;vertical-align:middle}
 .ig-cs.viejo{background:color-mix(in srgb,var(--warn) 16%,var(--surface));color:var(--warn)}
 .ig-cs.mal{background:color-mix(in srgb,var(--crit) 13%,var(--surface));color:var(--crit)}
 .ig-cs.off{background:var(--surface-2);color:var(--muted)}
-.as-reco b{display:inline}
+.as-reco b,.row .t .as-reco b{display:inline;white-space:normal;overflow:visible}
