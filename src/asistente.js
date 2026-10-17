@@ -92,7 +92,8 @@ export function initAsistente(ctx, k) {
     const existente = numero ? AD.F.find(f => f.numero && (f.numero === numero || (nDig && soloDig(f.numero).replace(/^0+/, '').endsWith(nDig) && (!emisor || f.emisor === emisor) && Math.abs(f.monto - (d.total || 0)) < 1))) : null;
     const mes = mesDe(d, cliente, da.nombre), periodo = mes.periodo;
     const tipo = /invoice/i.test(d.tipo || '') ? 'Invoice' : /^factura/i.test(d.tipo || '') ? 'Factura ARCA' : 'Otro';
-    return { emisor, cliente, existente, periodo, mesPor: mes.por, mesSeguro: mes.seguro, tipo, nota: /cr[eé]dito/i.test(d.tipo || '') };
+    const duplicado = existente ? AD.DA.find(x => x.id !== da.id && x.factura_id === existente.id) || null : null;
+    return { emisor, cliente, existente, duplicado, periodo, mesPor: mes.por, mesSeguro: mes.seguro, tipo, nota: /cr[eé]dito/i.test(d.tipo || '') };
   }
   function presetDesde(da) {
     const d = da.datos || {}, mt = matchArchivo(da);
@@ -430,9 +431,9 @@ export function initAsistente(ctx, k) {
       const rows = ls.slice(0, 120).map(d => {
         const x = d.datos || {}, mt = d.estado === 'Leído' || d.estado === 'Nuevo' ? matchArchivo(d) : null, f = d.factura_id ? AD.F.find(y => y.id === d.factura_id) : null;
         const desc = [x.tipo, x.numero_completo, x.receptor_nombre, x.total != null ? money(x.total, x.moneda) : '', x.fecha ? fmt(x.fecha) : ''].filter(Boolean).join(' · ');
-        const reco = mt ? [mt.cliente ? 'cliente: <b>' + esc(mt.cliente) + '</b>' : (d.estado === 'Leído' ? '<span style="color:var(--warn)">cliente sin reconocer</span>' : ''), mt.emisor ? 'factura ' + esc(mt.emisor) : '', mt.periodo ? (mt.mesSeguro ? 'mes: <b>' + esc(nombreMes(mt.periodo)) + '</b>' : '<span style="color:var(--warn)" title="Sale de ' + esc(mt.mesPor) + '">mes: ' + esc(nombreMes(mt.periodo)) + ', revisalo</span>') : '', mt.existente ? '<span style="color:var(--warn)">ya está cargada como ' + esc(verTipo(mt.existente.tipo) + ' ' + mt.existente.numero) + '</span>' : ''].filter(Boolean).join(' · ') : '';
+        const reco = mt ? [mt.cliente ? 'cliente: <b>' + esc(mt.cliente) + '</b>' : (d.estado === 'Leído' ? '<span style="color:var(--warn)">cliente sin reconocer</span>' : ''), mt.emisor ? 'factura ' + esc(mt.emisor) : '', mt.periodo ? (mt.mesSeguro ? 'mes: <b>' + esc(nombreMes(mt.periodo)) + '</b>' : '<span style="color:var(--warn)" title="Sale de ' + esc(mt.mesPor) + '">mes: ' + esc(nombreMes(mt.periodo)) + ', revisalo</span>') : '', mt.duplicado ? '<span style="color:var(--warn)">duplicado: es la misma factura que <b>' + esc(mt.duplicado.nombre) + '</b></span>' : mt.existente ? '<span style="color:var(--warn)">ya está cargada como ' + esc(verTipo(mt.existente.tipo) + ' ' + mt.existente.numero) + '</span>' : ''].filter(Boolean).join(' · ') : '';
         const btns = d.estado === 'Nuevo' || d.estado === 'Error' ? '<button class="btn sm" data-act="asLeer" data-id="' + esc(d.id) + '"' + (st.ia ? '' : ' disabled') + '>Leer</button>' :
-          d.estado === 'Leído' ? (mt.existente ? '<button class="btn sm primary" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>' : '<button class="btn sm primary" data-act="asCrear" data-id="' + esc(d.id) + '">Cargar factura</button><button class="btn ghost sm" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>') :
+          d.estado === 'Leído' ? (mt.duplicado ? '<button class="btn sm primary" data-act="asIgn" data-id="' + esc(d.id) + '" title="Es el mismo comprobante que ' + esc(mt.duplicado.nombre) + ', que ya está unido a la factura">Descartar duplicado</button>' : mt.existente ? '<button class="btn sm primary" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>' : '<button class="btn sm primary" data-act="asCrear" data-id="' + esc(d.id) + '">Cargar factura</button><button class="btn ghost sm" data-act="asVinc" data-id="' + esc(d.id) + '">Unir a una factura cargada</button>') :
           d.estado === 'Vinculado' && f ? '<button class="btn ghost sm" data-act="aFactura" data-id="' + esc(f.id) + '">Ver factura</button><button class="btn ghost sm" data-act="asDesv" data-id="' + esc(d.id) + '">Separar</button>' : '';
         return '<div class="row" style="cursor:default"><span class="d">' + (d.modificado ? fmt(String(d.modificado).slice(0, 10)) : '') + '</span><span class="t"><b><a href="' + esc(d.link) + '" target="_blank" rel="noopener">' + esc(d.nombre) + '</a></b><span>' + esc(d.carpeta || '') + (desc ? ' · ' + esc(desc) : '') + '</span>' + (reco ? '<span class="as-reco" style="margin-top:2px">' + reco + '</span>' : '') + (d.error ? '<span style="color:var(--crit)">' + esc(d.error) + '</span>' : '') + '</span><span class="toolbar">' + pill(VER_DA[d.estado] || d.estado, { Nuevo: '--s-empezar', 'Leído': '--s-revision', Vinculado: '--s-entregado', Ignorado: '--muted', Error: '--crit' }[d.estado]) + btns + (d.estado !== 'Ignorado' && d.estado !== 'Vinculado' ? '<button class="btn ghost sm" data-act="asIgn" data-id="' + esc(d.id) + '" aria-label="Descartar">✕</button>' : d.estado === 'Ignorado' ? '<button class="btn ghost sm" data-act="asRest" data-id="' + esc(d.id) + '">Restaurar</button>' : '') + '</span></div>';
       }).join('');
@@ -492,7 +493,7 @@ export function initAsistente(ctx, k) {
     asDf: t => { AD.as.df = t.dataset.v; ctx.render(); },
     asSync: async () => {
       AD.as.driveBusy = 'Revisando la carpeta…'; ctx.render();
-      try { const r = await data.asistente({ accion: 'drive_sync' }); toast(r.nuevos ? r.nuevos + ' archivos nuevos (de ' + r.total + ')' : 'No hay archivos nuevos (' + r.total + ' en total)'); }
+      try { const r = await data.asistente({ accion: 'drive_sync' }); toast((r.nuevos ? r.nuevos + ' archivos nuevos (de ' + r.total + ')' : 'No hay archivos nuevos (' + r.total + ' en total)') + (r.faltan ? ' · ' + r.faltan + (r.faltan === 1 ? ' ya no está' : ' ya no están') + ' en Drive' : '')); }
       catch (err) { toast(err.message); }
       AD.as.driveBusy = ''; await ctx.reload();
     },

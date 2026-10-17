@@ -108,7 +108,7 @@ async function gdrive(path: string) {
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
     const m = e?.error?.message || String(res.status);
-    if (res.status === 404) throw new Aviso('Drive: no se encontró la carpeta o el archivo. ¿Lo compartiste con la cuenta de servicio?', 404);
+    if (res.status === 404) throw new Aviso(path.startsWith('files/') && !path.startsWith('files?') ? 'Drive: el archivo ya no está (se borró o se movió fuera de la carpeta). Si se borró, se recupera desde la papelera de Drive.' : 'Drive: no se encontró la carpeta. ¿La compartiste con la cuenta de servicio?', 404);
     throw new Aviso('Drive: ' + m, 502);
   }
   return res;
@@ -118,7 +118,8 @@ async function renombrar(fileId: string, nombre: string) {
   const res = await fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) + '?supportsAllDrives=true&fields=id,name', { method: 'PATCH', headers: { Authorization: 'Bearer ' + await googleToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ name: nombre }) });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
-    if (res.status === 403 || res.status === 404) throw new Aviso('Para ordenar los nombres en Drive, compartí la carpeta con la cuenta de servicio como Editor (ahora es Lector).', 403);
+    if (res.status === 404) throw new Aviso('Drive: el archivo ya no está (se borró o se movió fuera de la carpeta). Si se borró, se recupera desde la papelera de Drive.', 404);
+    if (res.status === 403) throw new Aviso('Para ordenar los nombres en Drive, compartí la carpeta con la cuenta de servicio como Editor (ahora es Lector).', 403);
     throw new Aviso('Drive: ' + (e?.error?.message || res.status), 502);
   }
   return await res.json();
@@ -158,16 +159,23 @@ function parseNombre(nombre: string) {
 
 async function ajuste(sb: SupabaseClient, clave: string) { const { data } = await sb.from('ajustes').select('valor').eq('clave', clave).maybeSingle(); return (data && data.valor) || {}; }
 
+const NO_ESTA = 'No está más en la carpeta de Drive.';
 async function driveSync(ctx: Ctx) {
   const cfg = await ajuste(ctx.sb, 'drive');
   if (!cfg.carpeta) throw new Aviso('Falta indicar la carpeta de facturas de Drive (Configuración → Ajustes).');
   const { files, carpetas } = await listarCarpeta(cfg.carpeta);
-  const ya = new Set<string>(); let from = 0;
-  for (; ;) { const rows = chk(await ctx.sb.from('drive_archivos').select('file_id').range(from, from + 999)) as any[]; rows.forEach(r => ya.add(r.file_id)); if (rows.length < 1000) break; from += 1000; }
+  const ya = new Set<string>(), previos: any[] = []; let from = 0;
+  for (; ;) { const rows = chk(await ctx.sb.from('drive_archivos').select('id,file_id,error,estado').range(from, from + 999)) as any[]; rows.forEach(r => { ya.add(r.file_id); previos.push(r); }); if (rows.length < 1000) break; from += 1000; }
+  // Los que ya no están en la carpeta (borrados o movidos): se marcan; si vuelven, se desmarcan. La factura de la app no se toca.
+  // Si la lista quedó cortada por el tope (3000), no se marca nada como faltante.
+  const enDrive = new Set(files.map(f => f.id)), completa = files.length < 3000;
+  const faltan = completa ? previos.filter(r => !enDrive.has(r.file_id) && r.estado !== 'Ignorado') : [], volvieron = previos.filter(r => enDrive.has(r.file_id) && String(r.error || '').startsWith(NO_ESTA));
+  for (const r of faltan) if (!String(r.error || '').startsWith(NO_ESTA)) await ctx.sb.from('drive_archivos').update({ error: NO_ESTA + ' Si se borró, se recupera desde la papelera de Drive (30 días).' }).eq('id', r.id);
+  for (const r of volvieron) await ctx.sb.from('drive_archivos').update({ error: null }).eq('id', r.id);
   const nuevos = files.filter(f => !ya.has(f.id)).map(f => ({ file_id: f.id, nombre: f.name, mime: f.mimeType, carpeta: f.path, link: f.webViewLink || 'https://drive.google.com/file/d/' + f.id + '/view', tamano: f.size ? Number(f.size) : null, modificado: f.modifiedTime || null, datos: parseNombre(f.name) }));
   for (let i = 0; i < nuevos.length; i += 300) chk(await ctx.sb.from('drive_archivos').insert(nuevos.slice(i, i + 300)));
   await ctx.sb.from('ajustes').update({ valor: { ...cfg, ultima_sync: new Date().toISOString(), archivos: files.length } }).eq('clave', 'drive');
-  return { nuevos: nuevos.length, total: files.length, carpetas };
+  return { nuevos: nuevos.length, total: files.length, carpetas, faltan: faltan.length };
 }
 
 /* ================= Leer comprobantes ================= */
