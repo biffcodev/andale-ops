@@ -2578,3 +2578,7 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 /* fechas y novedades: la fecha no se pisa con el título */
 .inv-r{grid-template-columns:18px auto minmax(0,1fr)}
 .inv-d{min-width:56px}
+/* cabecera sin arte: alto según el texto (2 líneas como máximo, con "…"), nunca cortada a la mitad */
+.rm-pc-a.ph,.rm-pcs.hist .rm-pc-a.ph{height:auto;min-height:84px}
+.rm-pc-a.ph .rm-pc-ph{height:auto;padding:14px 44px 14px 16px}
+.rm-pc-a.ph .rm-pc-ph span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
