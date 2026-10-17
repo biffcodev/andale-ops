@@ -26,6 +26,7 @@ import { masMenu, vistaSel, vistaDe, guardarVista, toastAccion, uiActs, filtrosM
 import * as E from './emails.js';
 import { confirmar, avisar as avisarDlg } from './dialogo.js';
 import { initAtajos } from './atajos.js';
+import { initAyuda } from './ayuda.js';
 initCombo();
 document.querySelectorAll('.brand .logo:empty').forEach(el => { el.innerHTML = LOGO; });
 let ADM = null, ADM_FN = {}, MAIL = null;
@@ -1441,7 +1442,7 @@ function render() {
   const sync = $('#sync');
   sync.className = 'sync ' + (S.status === 'ok' ? 'ok' : S.status === 'offline' ? 'err' : '');
   sync.lastElementChild.textContent = S.status === 'ok' ? 'En vivo' : S.status === 'offline' ? 'Sin conexión' : 'Conectando';
-  $('#me').innerHTML = '<button class="me-b" data-act="perfil" title="Tu perfil, avisos y tema">' + av(S.me.alias, fotoDe(S.me.alias), '') + '<span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>' + ICON.ajustes + '</button>' + (isStaff() ? '<button class="me-kb" data-act="atajos" aria-label="Atajos de teclado" data-kbd="?">⌨</button>' : ''); atajos();
+  $('#me').innerHTML = '<button class="me-b" data-act="perfil" title="Tu perfil, avisos y tema">' + av(S.me.alias, fotoDe(S.me.alias), '') + '<span class="me-t"><b>' + esc(S.me.alias) + '</b><span>' + esc(ROLES[S.me.rol]) + '</span></span>' + ICON.ajustes + '</button>' ; atajos(); initAyuda({ rol: S.me.rol, toast, atajos: () => atajos().ayuda() });
   if (S.status === 'loading') { $('#view').innerHTML = '<section class="sheet">' + emptyBox('Cargando datos del equipo…', '') + '</section>'; return; }
   $('#view').innerHTML = secTabs() + viewFn(S.view)();
   reabrir($('#view'));

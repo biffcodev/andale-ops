@@ -145,3 +145,5 @@ div.po-row{cursor:default}
 .po-inf-meses button{font:inherit;font-size:13.5px;font-weight:650;border:0;border-radius:999px;padding:7px 14px;background:var(--surface-2);color:var(--fg);cursor:pointer}
 .po-inf-meses button[aria-selected="true"]{background:var(--fg);color:var(--surface)}
 .po-infs .ir-hero-a .btn{display:inline-flex;align-items:center;gap:8px}
+.po-help{display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:inherit}
+@media (max-width:720px){.po-help span{display:none}}

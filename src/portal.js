@@ -2,6 +2,7 @@
 // y ve solo lo de su empresa que el equipo marcó como visible: redes del mes para aprobar, proyectos y entregas,
 // la ficha de su web, sus tickets, los informes de redes y (si recibe cobros) su estado de cuenta.
 // No hay acceso directo a tablas: todo pasa por las funciones portal_* de la base (ver 0016).
+import { TUTORIALES } from './ayuda.js';
 import './fonts.css';
 import './style.css';
 import { activarFormato } from './formato.js';
@@ -80,7 +81,7 @@ const TABS = () => [['inicio', 'Inicio'], ...(S.d.meses.length ? [['redes', 'Red
 function render() {
   if (!S.d) return;
   const c = S.d.cliente;
-  $('#top').hidden = false; $('#tabs').hidden = false;
+  $('#top').hidden = false; $('#tabs').hidden = false; { const a = $('#ayuda'); if (a) a.href = TUTORIALES.cliente.url; }
   $('#logo').innerHTML = LOGO;
   $('#cli').innerHTML = (c.avatar ? '<img src="' + esc(c.avatar) + '" alt="">' : '<span class="po-ini">' + esc(c.nombre.slice(0, 2).toUpperCase()) + '</span>') +
     (S.clientes.length > 1 ? '<select class="in sm" id="po-cl" aria-label="Empresa">' + S.clientes.map(x => '<option value="' + esc(x.cliente_id) + '"' + (x.cliente_id === S.c.cliente_id ? ' selected' : '') + '>' + esc(x.cliente) + '</option>').join('') + '</select>' : '<b>' + esc(c.nombre) + '</b>');

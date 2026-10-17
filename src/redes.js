@@ -160,6 +160,8 @@ export function initRedes(ctx) {
   const conteoPorFormato = ps => { const o = {}; enPlan(ps).forEach(z => { o[z.formato] = (o[z.formato] || 0) + 1; }); return o; };
   const pzPill = e => '<span class="pzst" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')">' + esc(pzNombre(e)) + '</span>';
   const mesPill = e => pill(e, MES_COLOR[e] || '--muted');
+  // En listas y tarjetas: la etapa del mes con su nombre de hoy (Diseño, Revisión, Cliente…)
+  const etapaPill = m => { const E = etapaDe(m); return pill(E.n, MES_COLOR[E.mes] || '--muted'); };
   const fechaMes = (mes, d) => mes + '-' + String(d).padStart(2, '0');
   const diasMes = mes => { const [y, m] = mes.split('-').map(Number); return new Date(y, m, 0).getDate(); };
 
@@ -183,10 +185,10 @@ export function initRedes(ctx) {
     if (!cs.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay clientes en Redes', 'Sumalos desde la pestaña “Clientes y planes”.') + '</section>';
     const rf = S.rf || (S.rf = { q: '', resp: '', estado: '', pend: false }), q = norm(rf.q);
     const pend = m => { const ps = m && piezas(m._id); return !!(ps && ps.some(z => z.estado === 'Para el cliente' || z.estado === 'Cambios')); };
-    const vis = cs.filter(c => { const m = mesCliente(c, st.mes); return (!q || norm(c).includes(q)) && (!rf.resp || (rf.resp === '__none' ? !(m && m.resp) : m && m.resp === rf.resp)) && (!rf.estado || (rf.estado === '__sin' ? !m : m && m.estado === rf.estado)) && (!rf.pend || pend(m)); });
+    const vis = cs.filter(c => { const m = mesCliente(c, st.mes); return (!q || norm(c).includes(q)) && (!rf.resp || (rf.resp === '__none' ? !(m && m.resp) : m && m.resp === rf.resp)) && (!rf.estado || (rf.estado === '__sin' ? !m : m && etapaDe(m).mes === rf.estado)) && (!rf.pend || pend(m)); });
     h += '<div class="toolbar fbar2"><input class="in" type="search" id="rfq" data-bind="rf.q" placeholder="Buscar cliente" value="' + esc(rf.q) + '">' +
       (isStaff() ? '<button class="btn mio' + (rf.resp === S.me.alias ? ' on' : '') + '" data-act="soloMio" data-p="redes" aria-pressed="' + (rf.resp === S.me.alias) + '">Solo lo mío</button>' : '') +
-      filtrosMenu('redes', '<label class="lbl" for="rfe">Estado del mes</label><select class="in" id="rfe" data-bind="rf.estado">' + opt('', 'Todos', rf.estado) + opt('__sin', 'Sin arrancar', rf.estado) + ESTADOS_MES.map(e => opt(e, e, rf.estado)).join('') + '</select>' +
+      filtrosMenu('redes', '<label class="lbl" for="rfe">Etapa del mes</label><select class="in" id="rfe" data-bind="rf.estado">' + opt('', 'Todos', rf.estado) + opt('__sin', 'Sin arrancar', rf.estado) + ETAPAS.map(e => opt(e.mes, e.n, rf.estado)).join('') + '</select>' +
         '<label class="lbl" for="rfr">Responsable</label><select class="in" id="rfr" data-bind="rf.resp">' + opt('', 'Todo el equipo', rf.resp) + opt('__none', 'Sin asignar', rf.resp) + personas().map(p => opt(p, p, rf.resp)).join('') + '</select>' +
         '<label class="chk"><input type="checkbox" data-bind="rf.pend"' + (rf.pend ? ' checked' : '') + '> Solo con algo para aprobar o con cambios</label>', (rf.estado ? 1 : 0) + (rf.resp ? 1 : 0) + (rf.pend ? 1 : 0)) + '</div>';
     if (!vis.length) return h + '<section class="sheet">' + emptyBox('Ningún cliente coincide', 'Probá con otro filtro.') + '</section>';
@@ -195,7 +197,7 @@ export function initRedes(ctx) {
         if (!m) return '<tr><td class="name"><span class="who1">' + av(c, cli.avatar, 'sq') + esc(c) + '</span></td><td><span class="muted">Sin arrancar</span></td><td class="muted">—</td><td class="n muted">—</td><td class="n muted">—</td><td class="r">' + (isStaff() ? '<button class="btn sm" data-act="rmArrancar" data-c="' + esc(c) + '">Arrancar</button>' : '') + '</td></tr>';
         const ps = piezas(m._id), n = ps ? enPlan(ps).filter(z => !z.extra).length : null, nx = ps ? enPlan(ps).filter(z => z.extra).length : 0, plan = Object.values(m.plan || {}).reduce((a, x) => a + (+x || 0), 0);
         const ap = ps ? ps.filter(z => z.estado === 'Para el cliente').length : 0, ca = ps ? ps.filter(z => z.estado === 'Cambios').length : 0;
-        return '<tr class="click" data-act="rmAbrir" data-id="' + esc(m._id) + '"><td class="name"><span class="who1">' + av(c, cli.avatar, 'sq') + esc(c) + '</span></td><td>' + mesPill(m.estado) + '</td><td>' + (m.resp ? esc(m.resp) : '<span class="muted">—</span>') + '</td>' +
+        return '<tr class="click" data-act="rmAbrir" data-id="' + esc(m._id) + '"><td class="name"><span class="who1">' + av(c, cli.avatar, 'sq') + esc(c) + '</span></td><td>' + etapaPill(m) + '</td><td>' + (m.resp ? esc(m.resp) : '<span class="muted">—</span>') + '</td>' +
           '<td class="n num">' + (n == null ? '…' : n + (plan ? ' / ' + plan : '') + (nx ? ' <span class="rm-xn" title="Piezas extra, fuera del plan">+' + nx + ' extra' + (nx > 1 ? 's' : '') + '</span>' : '')) + '</td><td class="n">' + (ap ? '<span class="pzst" style="--c:var(--s-revision)">' + ap + ' a aprobar</span>' : '') + (ca ? ' <span class="pzst" style="--c:var(--s-cancelado)">' + ca + (ca > 1 ? ' cambios' : ' cambio') + '</span>' : '') + (!ap && !ca ? '<span class="muted">—</span>' : '') + '</td><td class="r">' + (m.visible ? '<span class="muted" title="El cliente lo ve en el portal">En el portal</span>' : '') + '</td></tr>'; };
       return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Estado</th><th>Responsable</th><th class="n">Piezas</th><th class="n">Pendiente</th><th></th></tr></thead><tbody>' + vis.map(fila).join('') + '</tbody></table></div><div class="count num">' + vis.length + ' clientes</div></section>';
     }
@@ -220,7 +222,7 @@ export function initRedes(ctx) {
     if (!m) return '<div class="rm-card vacio"><div class="rm-ch">' + av(c, cli.avatar, 'sq') + '<div><b>' + esc(c) + '</b>' + (ctx.servChips ? ctx.servChips(c) : '<span class="muted">' + esc((abonoRedes(c) || {}).plan || 'Sin plan') + '</span>') + '</div></div><p class="muted">Todavía no se armó ' + esc(monthLabel(st.mes).split(' ')[0]) + '.</p>' + (isStaff() ? '<button class="btn sm" data-act="rmArrancar" data-c="' + esc(c) + '">Arrancar el mes</button>' : '') + '</div>';
     const ps = piezas(m._id);
     const ap = ps ? ps.filter(z => z.estado === 'Para el cliente').length : 0, ca = ps ? ps.filter(z => z.estado === 'Cambios').length : 0;
-    return '<button class="rm-card" data-act="rmAbrir" data-id="' + esc(m._id) + '"><div class="rm-ch">' + av(c, cli.avatar, 'sq') + '<div><b>' + esc(c) + '</b><span class="muted">' + (m.resp ? esc(m.resp) : 'Sin responsable') + '</span></div>' + mesPill(m.estado) + '</div>' + (ctx.servChips ? ctx.servChips(c) : '') +
+    return '<button class="rm-card" data-act="rmAbrir" data-id="' + esc(m._id) + '"><div class="rm-ch">' + av(c, cli.avatar, 'sq') + '<div><b>' + esc(c) + '</b><span class="muted">' + (m.resp ? esc(m.resp) : 'Sin responsable') + '</span></div>' + etapaPill(m) + '</div>' + (ctx.servChips ? ctx.servChips(c) : '') +
       (ps ? barras(m, ps) : '<p class="muted">Cargando…</p>') +
       '<div class="rm-cf">' + (ap ? '<span class="pzst" style="--c:var(--s-revision)">' + ap + ' para aprobar</span>' : '') + (ca ? '<span class="pzst" style="--c:var(--s-cancelado)">' + ca + ' con cambios</span>' : '') + (m.visible ? '<span class="rm-vis" title="El cliente lo ve en el portal">👁 En el portal</span>' : '') + '</div></button>';
   }
@@ -363,6 +365,8 @@ export function initRedes(ctx) {
       vis.map(fila).join('') + '</tbody></table></div></section></div>';
   }
   // Tablero: una columna por estado. Arrastrar a la columna siguiente = marcarla lista; hacia atrás = devolverla.
+  // Columnas del tablero con los mismos nombres que las etapas de arriba
+  const COL_TAB = { 'Idea': 'Planificación', 'En diseño': 'Diseño', 'Cambios': 'Con cambios', 'Revisión interna': 'Revisión', 'Para el cliente': 'Cliente', 'Aprobada': 'Aprobado' };
   function tablero(m, vis, can, qz) {
     const E = etapaDe(m), cols = ['Idea', 'En diseño', 'Cambios', 'Revisión interna', 'Para el cliente', 'Aprobada', 'Programada', 'Publicada'].filter(e => !['Cambios', 'Programada', 'Publicada'].includes(e) || vis.some(z => z.estado === e));
     const dia = z => z.fecha ? new Date(z.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '') + (z.hora ? ' · ' + z.hora : '') : 'Sin fecha';
@@ -370,7 +374,7 @@ export function initRedes(ctx) {
       '<button class="rm-kc-a" data-act="rmPieza" data-id="' + esc(z._id) + '"><span class="rm-kc-m"><b>' + esc(z.formato) + '</b> · ' + esc(dia(z)) + '</span><span class="rm-kc-t">' + esc(z.tema || 'Sin tema') + '</span></button>' +
       '<div class="rm-kc-f">' + listoCtl(m, z, can) + ((qz.get(z._id) || {}).gente || []).map(a => av(a, fotoDe(a))).join('') + '</div></article>';
     return '<div class="rm-kb" role="list">' + cols.map(e => { const zs = vis.filter(z => z.estado === e).sort((a, b) => (a.lista ? 1 : 0) - (b.lista ? 1 : 0) || (a.fecha || '9').localeCompare(b.fecha || '9')), on = e === E.pz, nl = zs.filter(z => z.lista).length;
-      return '<section class="rm-kcol' + (on ? ' on' : '') + '" data-drop="' + esc(e) + '" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')"><header><b>' + esc(pzNombre(e)) + '</b><span class="muted num">' + zs.length + (on && nl ? ' · ' + nl + ' listas' : '') + '</span></header><div class="rm-kcs">' + (zs.length ? zs.map(carta).join('') : '<p class="muted rm-kv">—</p>') + '</div></section>'; }).join('') + '</div>';
+      return '<section class="rm-kcol' + (on ? ' on' : '') + '" data-drop="' + esc(e) + '" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')"><header><b>' + esc(COL_TAB[e] || pzNombre(e)) + '</b><span class="muted num">' + zs.length + (on && nl ? ' · ' + nl + ' listas' : '') + '</span></header><div class="rm-kcs">' + (zs.length ? zs.map(carta).join('') : '<p class="muted rm-kv">—</p>') + '</div></section>'; }).join('') + '</div>';
   }
   async function soltar(id, T) {
     const x = pzDe(id); if (!x) return; const { m, z } = x, E = etapaDe(m), S = z.estado; if (T === S) return;
