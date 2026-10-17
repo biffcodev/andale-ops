@@ -567,51 +567,70 @@ export function initRedes(ctx) {
       }
       if (!nuevas.length) { toast('Mr. Piggy no propuso nada. Probá de nuevo.'); trabajando(m, null); return; }
       repartirFechas(m, ps, nuevas);
-      ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]);
+      nuevas.forEach((z, i) => { z._id = 'nueva' + i; });
       const quedan = extras ? [] : resta();
-      if (quedan.length) toast('Faltaron ' + quedan.map(([f, n]) => n + ' ' + f).join(', ') + ': volvé a tocar “Proponer contenido”.');
-    } catch (e) { toast(e.message); trabajando(m, null); return; }
-    // 2) día y hora de cada pieza nueva, pensados para la cuenta (si falla, quedan las fechas repartidas y la hora del formato)
-    let agendo = false;
-    try {
-      trabajando(m, 'Eligiendo días y horarios…');
-      const todas = piezas(m._id) || [], r = await agendaIA(m, todas, ins);
-      for (const x of r.piezas) { await data.piezasUpd([x.id], { fecha: x.fecha, hora: x.hora }); local(m._id, [x.id], { fecha: x.fecha, hora: x.hora }); }
-      agendo = r.piezas.length > 0;
-      if (agendo && !horariosCuenta(m.cliente)) { try { await guardarHorarios(m, r); } catch (e) { /* sigue igual */ } }
-    } catch (e) { /* quedan las fechas repartidas */ }
-    // 3) copys de lo que no es historia
-    trabajando(m, 'Escribiendo copys…');
-    const conCopy = ins.filter(z => !esHistoria(z)).map(z => z._id);
-    const n = conCopy.length ? await copys(conCopy, m) : 0;
-    trabajando(m, null);
-    toast('Mr. Piggy armó ' + ins.length + ' piezas' + (n ? ', escribió ' + n + ' copys' : '') + (agendo ? ' y eligió día y horario para cada una' : ' con día y horario') + '. Quedaron en “Planificación”: revisalas.');
+      // 2) día y hora de cada pieza, pensados para la cuenta (si falla, quedan las fechas repartidas y la hora del formato)
+      let agendo = false;
+      try {
+        trabajando(m, 'Eligiendo días y horarios…');
+        const r = await agendaIA(m, [...ps, ...nuevas], nuevas);
+        r.piezas.forEach(x => { const z = nuevas.find(y => y._id === x.id); if (z) { z.fecha = x.fecha; z.hora = x.hora; } });
+        agendo = r.piezas.length > 0;
+        if (agendo && !horariosCuenta(m.cliente)) { try { await guardarHorarios(m, r); } catch (e) { /* sigue igual */ } }
+      } catch (e) { /* quedan las fechas repartidas */ }
+      // 3) copys y hashtags (las historias no llevan: su texto va en la pieza). Se escriben antes de guardar: las piezas aparecen completas.
+      let n = 0, fallo = null;
+      const conCopy = nuevas.filter(z => !esHistoria(z));
+      if (conCopy.length) {
+        const res = await copysIA(m, conCopy, (h, t) => trabajando(m, 'Escribiendo copys ' + h + '/' + t + '…'));
+        fallo = res.fallo;
+        res.hechos.forEach((u, id) => { const z = nuevas.find(y => y._id === id); if (z) { Object.assign(z, u); n++; } });
+      }
+      // 4) se guarda todo junto
+      trabajando(m, 'Guardando…');
+      ins = await insPiezas(m, nuevas.map(({ _id, ...z }) => z)); P.set(m._id, [...ps, ...ins]);
+      trabajando(m, null);
+      toast('Mr. Piggy armó ' + ins.length + ' piezas' + (n ? ', con ' + n + ' copys y sus hashtags' : '') + (agendo ? ', día y horario para cada una' : '') + '. Quedaron en “Planificación”: revisalas.' + (conCopy.length > n ? ' ' + (conCopy.length - n) + ' quedaron sin copy' + (fallo ? ' (' + fallo.message + ')' : '') + ': seleccionalas y tocá “Escribir copys”.' : '') + (quedan.length ? ' Faltaron ' + quedan.map(([f, k]) => k + ' ' + f).join(', ') + '.' : ''));
+    } catch (e) { toast(e.message); trabajando(m, null); }
+  }
+  // Escribe copys y hashtags (sin guardar): de a 4 piezas por pedido, 3 pedidos a la vez. Devuelve { hechos: Map id → cambios, fallo }.
+  async function copysIA(m, lista, avance) {
+    const c = ctxIA(m); delete c._pp; delete c.plan;
+    const hechos = new Map(); let fallo = null, hechas = 0;
+    const tandas = []; for (let i = 0; i < lista.length; i += 4) tandas.push(lista.slice(i, i + 4));
+    if (avance) avance(0, lista.length);
+    const una = async t => {
+      try {
+        const r = await data.ia({ modo: 'redes_copys', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, redes: z.red, fecha: z.fecha, tema: z.tema, contenido: z.contenido || '', copy_actual: z.copy || '', ...((z.fuentes || []).length ? { fuentes: z.fuentes } : {}) }))), contexto: c });
+        const rs = Array.isArray(r.piezas) ? r.piezas : [];
+        rs.forEach((x, i) => {
+          // si el modelo cambió los ids pero respetó el orden, se toma por posición
+          const z = t.find(y => y._id === (x && x.id)) || (rs.length === t.length ? t[i] : null);
+          if (!z || !x || (!x.copy && !esHistoria(z)) || hechos.has(z._id)) return;
+          hechos.set(z._id, { copy: espaciar(x.copy, m.cliente), hashtags: String(x.hashtags || '').trim(), ...(x.contenido && !z.contenido ? { contenido: String(x.contenido).trim() } : {}) });
+        });
+      } catch (e) { fallo = e; }
+      hechas += t.length; if (avance) avance(hechas, lista.length);
+    };
+    for (let i = 0; i < tandas.length; i += 3) await Promise.all(tandas.slice(i, i + 3).map(una));
+    return { hechos, fallo };
   }
   // Copys y hashtags de varias piezas: de a 4 por pedido, 3 pedidos a la vez. Devuelve cuántas escribió.
   async function copys(ids, m, btn) {
     const ps = (piezas(m._id) || []).filter(z => ids.includes(z._id));
     if (!ps.length) return 0;
-    const propio = !st.ia[m._id], t0 = btn ? btn.innerHTML : ''; let hechas = 0, n = 0, fallo = null; const cambios = [];
-    const avance = () => { if (btn) { btn.disabled = true; btn.textContent = 'Escribiendo ' + hechas + '/' + ps.length + '…'; } else trabajando(m, 'Escribiendo copys ' + hechas + '/' + ps.length + '…'); };
-    avance();
-    const c = ctxIA(m); delete c._pp; delete c.plan;
-    const tandas = []; for (let i = 0; i < ps.length; i += 4) tandas.push(ps.slice(i, i + 4));
-    const una = async t => {
-      try {
-        const r = await data.ia({ modo: 'redes_copys', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, redes: z.red, fecha: z.fecha, tema: z.tema, contenido: z.contenido || '', copy_actual: z.copy, ...((z.fuentes || []).length ? { fuentes: z.fuentes } : {}) }))), contexto: c });
-        for (const x of Array.isArray(r.piezas) ? r.piezas : []) {
-          const z = t.find(y => y._id === x.id); if (!z || (!x.copy && !esHistoria(z))) continue;
-          const u0 = { copy: espaciar(x.copy, m.cliente), hashtags: String(x.hashtags || '').trim(), ...(x.contenido && !z.contenido ? { contenido: String(x.contenido).trim() } : {}) };
-          const antes = antesDe(z, u0), u = conVersion(z, u0, 'Copy de Mr. Piggy');
-          await data.piezasUpd([z._id], u); Object.assign(z, u); n++; cambios.push({ id: z._id, antes });
-        }
-      } catch (e) { fallo = e; }
-      hechas += t.length; avance();
-    };
-    for (let i = 0; i < tandas.length; i += 3) await Promise.all(tandas.slice(i, i + 3).map(una));
+    const propio = !st.ia[m._id], t0 = btn ? btn.innerHTML : ''; let n = 0; const cambios = [];
+    const avance = (h, t) => { if (btn) { btn.disabled = true; btn.textContent = 'Escribiendo ' + h + '/' + t + '…'; } else trabajando(m, 'Escribiendo copys ' + h + '/' + t + '…'); };
+    const { hechos, fallo } = await copysIA(m, ps, avance);
+    let error = fallo;
+    for (const [id, u0] of hechos) {
+      const z = ps.find(y => y._id === id); if (!z) continue;
+      const antes = antesDe(z, u0), u = conVersion(z, u0, 'Copy de Mr. Piggy');
+      try { await data.piezasUpd([z._id], u); Object.assign(z, u); n++; cambios.push({ id: z._id, antes }); } catch (e) { error = e; break; }
+    }
     if (btn) { btn.disabled = false; btn.innerHTML = t0; }
     if (propio && !btn) trabajando(m, null);
-    if (fallo && !n) toast(fallo.message); else if (propio || btn) { if (n) ofrecerDeshacerIA(m, cambios.filter(c => c.antes.copy || c.antes.hashtags || c.antes.contenido), 'Mr. Piggy escribió ' + n + (n === 1 ? ' copy' : ' copys') + '. Revisalos.'); if (!n || !cambios.some(c => c.antes.copy || c.antes.hashtags || c.antes.contenido)) toast(n ? 'Mr. Piggy escribió ' + n + (n === 1 ? ' copy' : ' copys') + '. Revisalos.' : 'No se pudo escribir los copys.'); }
+    if (error && !n) toast(error.message); else if (propio || btn) { if (n) ofrecerDeshacerIA(m, cambios.filter(c => c.antes.copy || c.antes.hashtags || c.antes.contenido), 'Mr. Piggy escribió ' + n + (n === 1 ? ' copy' : ' copys') + '. Revisalos.'); if (!n || !cambios.some(c => c.antes.copy || c.antes.hashtags || c.antes.contenido)) toast(n ? 'Mr. Piggy escribió ' + n + (n === 1 ? ' copy' : ' copys') + '. Revisalos.' : 'No se pudo escribir los copys.'); }
     render();
     return n;
   }
@@ -741,7 +760,7 @@ export function initRedes(ctx) {
     if (busy) body += '<p class="full"><span class="ia-dots"><i></i><i></i><i></i></span> Buscando en la web… puede tardar un minuto.</p>';
     else if (inv) {
       body += '<div class="full inv-s"><h3>Fechas del mes <span class="muted num">' + inv.fechas.length + '</span></h3>' + (inv.fechas.length ? inv.fechas.map((x, i) => '<label class="inv-r"><input type="checkbox" data-invusar="f:' + i + '"' + (x.usar !== false ? ' checked' : '') + '><span class="inv-d">' + esc(new Date(x.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '')) + '</span><span class="inv-t"><b>' + esc(x.nombre) + '</b> <span class="pzst" style="--c:var(' + (TIPO_F[x.tipo] || TIPO_F.nacional)[1] + ')">' + esc((TIPO_F[x.tipo] || TIPO_F.nacional)[0]) + '</span>' + (x.idea ? '<small>' + esc(x.idea) + '</small>' : '') + link(x.fuente) + '</span></label>').join('') : '<p class="muted">No encontró fechas para este mes.</p>') + '</div>' +
-        '<div class="full inv-s"><h3>Novedades del rubro <span class="muted num">' + inv.novedades.length + '</span></h3>' + (inv.novedades.length ? inv.novedades.map((x, i) => '<label class="inv-r"><input type="checkbox" data-invusar="n:' + i + '"' + (x.usar !== false ? ' checked' : '') + '><span class="inv-d">' + esc(x.fecha || '') + '</span><span class="inv-t"><b>' + esc(x.titulo) + '</b>' + (x.resumen ? '<small>' + esc(x.resumen) + '</small>' : '') + (x.idea ? '<small class="inv-idea">→ ' + esc(x.idea) + '</small>' : '') + link(x.fuente) + '</span></label>').join('') : '<p class="muted">No encontró novedades que sirvan.</p>') + '</div>' +
+        '<div class="full inv-s"><h3>Novedades del rubro <span class="muted num">' + inv.novedades.length + '</span></h3>' + (inv.novedades.length ? inv.novedades.map((x, i) => '<label class="inv-r"><input type="checkbox" data-invusar="n:' + i + '"' + (x.usar !== false ? ' checked' : '') + '><span class="inv-d">' + esc(/^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') ? new Date(x.fecha + 'T12:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }).replace('.', '') : (x.fecha || '')) + '</span><span class="inv-t"><b>' + esc(x.titulo) + '</b>' + (x.resumen ? '<small>' + esc(x.resumen) + '</small>' : '') + (x.idea ? '<small class="inv-idea">→ ' + esc(x.idea) + '</small>' : '') + link(x.fuente) + '</span></label>').join('') : '<p class="muted">No encontró novedades que sirvan.</p>') + '</div>' +
         '<p class="hint full">Buscado el ' + esc(fmt(inv.at.slice(0, 10))) + (st.invSinGuardar ? ' · para que quede guardado en el mes falta correr el SQL 0033' : '') + '.</p>';
     }
     $('#panel').innerHTML = '<div style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Fechas y novedades</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
