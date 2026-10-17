@@ -1262,7 +1262,8 @@ export function initAdmin(ctx) {
   function formFactura(id, preset, opts = {}) {
     if (id && (AD.F.find(x => x.id === id) || {}).tipo === 'Invoice' && !opts.comoFactura) return formInvoice(id);
     const f = id ? AD.F.find(x => x.id === id) : null;
-    const driveLibres = AD.DA.filter(d => !d.factura_id && d.estado !== 'Ignorado');
+    // Si la factura ya viene de un PDF de Drive, no se ofrece elegir otro (ni el mismo de nuevo)
+    const driveLibres = opts.archivo ? [] : AD.DA.filter(d => !d.factura_id && d.estado !== 'Ignorado');
     const iaBox = '<div class="field full iabox"><span class="lbl">✨ ¿Tenés el PDF? La IA completa todo</span><div class="toolbar">' +
       '<label class="btn sm primary" style="cursor:pointer"><span id="ff-ia-lbl">Subir el PDF</span><input type="file" id="ff-ia" accept="application/pdf,image/*" hidden></label>' +
       (driveLibres.length ? '<select class="in" id="ff-drive" aria-label="Archivo de Drive">' + opt('', 'O elegí uno de Drive (' + driveLibres.length + ')', '') + driveLibres.slice(0, 200).map(d => opt(d.id, d.nombre + (d.datos && d.datos.total != null ? ' · ' + money(d.datos.total, d.datos.moneda) : ''), '')).join('') + '</select>' : '') +
@@ -1294,7 +1295,7 @@ export function initAdmin(ctx) {
         { k: 'notas', label: 'Notas', type: 'textarea', full: 1, rows: 2, adv: 1 },
       ],
       masAbierto: !!f,
-      top: f ? '' : iaBox,
+      top: f || opts.archivo ? '' : iaBox,
       extra: (f && f.cobrado > 0 ? '<p class="formnote">Cobrado: ' + money(f.cobrado, f.moneda) + '. Los cobros están en Gastos e ingresos.</p>' : '') + (opts.archivo ? '<p class="formnote">Desde Drive: <a href="' + esc(opts.archivo.link) + '" target="_blank" rel="noopener">' + esc(opts.archivo.nombre) + '</a>. Al guardar queda unido a esta factura.</p>' : ''),
       onSave: async v => {
         // La misma factura cargada dos veces deja una deuda que no existe (una queda cobrada y la otra "vencida").
