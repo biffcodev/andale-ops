@@ -218,6 +218,17 @@ export function initIntegraciones(ctx) {
       '<button class="kpi" data-act="igVerF" data-v="prox"><span class="eyebrow">Para sumar</span><b>' + nProx + '</b><span>ideas pensadas para àndale</span></button>' +
       '<button class="kpi" data-act="igVerF" data-v="ped"><span class="eyebrow">Pedidas</span><b>' + nPed + '</b><span>las que quieren primero</span></button>' +
       '</section>';
+    // Todas las cuentas y claves en un solo lugar (solo admins): de quién es cada una y para cambiarla sin entrar a Supabase.
+    if (isAdmin()) {
+      const cs = CAT.filter(x => x.cred);
+      const estado = x => { const e = cuentaDe(x); if (st.cargando && !st.est) return ['Consultando…', 'off'];
+        if (e && e.cuenta) return [esc(e.cuenta) + (e.ok === false ? ' · revisar' : ''), e.ok === false ? 'mal' : 'on'];
+        if (e && e.secreto_viejo) return ['Cargada a mano en el servidor (¿compartida?)', 'viejo'];
+        return ['Sin conectar', 'off']; };
+      h += '<section class="sheet ig-ctas"><div class="sheet-h"><h2>Cuentas y claves</h2><span class="muted">Se cargan acá y quedan cifradas en el servidor. No hace falta entrar a Supabase.</span></div><div class="rows">' +
+        cs.map(x => { const [t, c] = estado(x); return '<button class="row" data-act="igVer" data-k="' + x.k + '"><span class="t" style="display:flex;align-items:center;gap:10px">' + logo(x) + '<span><b>' + esc(x.n) + '</b><span>' + esc((CREDS[x.cred] || {}).titulo || '') + '</span></span></span><span class="ig-cs ' + c + '">' + t + '</span><span class="muted">' + (c === 'on' || c === 'mal' ? 'Cambiar' : 'Conectar') + '</span></button>'; }).join('') +
+        '</div><p class="hint" style="margin:8px 16px 14px">“Cargada a mano en el servidor” es la clave que se puso al principio en Supabase: sigue funcionando hasta que conectes la cuenta de àndale acá, y desde ese momento se usa la nueva.</p></section>';
+    }
     if (ped.length) h += '<section class="sheet"><div class="sheet-h"><h2>Hoja de ruta</h2><span class="muted">Lo pedido, por prioridad. Lo usamos para decidir qué conectar primero.</span></div><div class="rows">' +
       ped.map((x, i) => '<button class="row ig-road" data-act="igVer" data-k="' + x.k + '"><span class="d">' + (i + 1) + '</span><span class="t" style="display:flex;align-items:center;gap:10px">' + logo(x) + '<span><b>' + esc(x.n) + '</b><span>' + esc(cfgGet(x.k, 'nota') || x.que) + '</span></span></span><span class="ig-rt"><span class="ig-p p-' + prio(x.k).toLowerCase() + '">' + esc(prio(x.k)) + '</span><span class="ig-esf">' + (x.esf ? ESF[x.esf] : '') + '</span></span></button>').join('') + '</div></section>';
     h += '<div class="toolbar ig-tb"><input class="in" type="search" id="ig-q" placeholder="Buscar: pagos, Instagram, facturas…" value="' + esc(st.q) + '" aria-label="Buscar integración">' +
