@@ -83,6 +83,11 @@ export function initAdmin(ctx) {
       const p = precioEn(a._id, m);
       out.push({ inc: true, origen: 'Abono', ref: 'abono:' + a._id, concepto: conceptoAbono(a, m), monto: p ? String(p.monto) : '', moneda: p ? p.moneda : (cadm(cliente).moneda || 'ARS') });
       const af = AD.ABF.get(a._id);
+      // Piezas extra de Redes que se cobran (si la cuenta las cobra o se marcaron una por una)
+      if (a.tipo === 'Redes' && ctx.extrasACobrar) { const x = ctx.extrasACobrar(cliente, m); if (x && x.cob.length) {
+        const cnt = {}; x.cob.forEach(z => { cnt[z.formato] = (cnt[z.formato] || 0) + 1; });
+        const xm = (af && af.extras_moneda) || (p ? p.moneda : 'ARS');
+        out.push({ inc: true, origen: 'Extras', ref: 'extras:' + a._id + ':' + m, concepto: 'Piezas extra fuera del plan · ' + Object.entries(cnt).map(([f, n]) => n + ' ' + (n === 1 ? f.replace(/es$/, '').replace(/s$/, '') : f)).join(', ') + ' · ' + cap(monthLabel(m).split(' ')[0]) + (x.faltaPrecio.length ? ' (falta precio de ' + x.faltaPrecio.join(', ') + ')' : ''), monto: x.total ? String(x.total) : '', moneda: xm }); } }
       if (a.tipo === 'Ads' && af && af.inversion && af.inversion_paga === 'àndale') out.push({ inc: true, origen: 'Pauta', ref: 'pauta:' + a._id + ':' + m, concepto: 'Inversión en pauta' + (af.plataformas ? ' (' + af.plataformas + ')' : '') + ' · ' + cap(monthLabel(m).split(' ')[0]), monto: String(af.inversion), moneda: af.inversion_moneda || 'ARS' });
     });
     S.P.filter(p => p.cliente === cliente).forEach(p => {
@@ -847,6 +852,30 @@ export function initAdmin(ctx) {
     });
     AD.form.onInput();
   }
+  // Cobro de las piezas extra de una cuenta de Redes: de onda o con precio por formato.
+  const extrasCfg = abonoId => { if (!AD.ok) return null; const af = AD.ABF.get(abonoId) || {}; return { admin: true, cobro: !!af.extras_cobro, precios: af.extras_precios && typeof af.extras_precios === 'object' ? af.extras_precios : {}, moneda: af.extras_moneda || (precioEn(abonoId, thisMonth()) || {}).moneda || 'ARS' }; };
+  function formExtras(abonoId) {
+    const a = S.A.find(x => x._id === abonoId); if (!a) return;
+    const af = AD.ABF.get(abonoId) || {}, cfg = extrasCfg(abonoId) || { precios: {} };
+    const fs = (S.L.formatosRedes && S.L.formatosRedes.length ? S.L.formatosRedes : ['Reels', 'Posts', 'Historias', 'Carruseles']);
+    const pre = f => { const k = Object.keys(cfg.precios).find(x => x.toLowerCase() === f.toLowerCase()); return k ? cfg.precios[k] : ''; };
+    openPanel({
+      title: a.cliente + ' · Piezas extra', eyebrow: 'Redes',
+      intro: 'Las piezas que se hacen fuera del plan del mes. Si se cobran, las del mes aparecen como sugerencia en el resumen, con el precio de cada formato. En cada pieza se puede marcar una excepción (cobrar una suelta o regalar una).',
+      values: { extras_cobro: af.extras_cobro ? 'si' : 'no', extras_moneda: cfg.moneda, ...Object.fromEntries(fs.map(f => ['p_' + f, pre(f)])) },
+      fields: [
+        { k: 'extras_cobro', label: 'Las extras de esta cuenta', type: 'select', html: v => opt('no', 'Van sin cargo (de onda)', v) + opt('si', 'Se cobran', v), full: 1 },
+        { k: 'extras_moneda', label: 'Moneda', type: 'select', opts: MONEDAS },
+        ...fs.map(f => ({ k: 'p_' + f, label: 'Precio por ' + f.toLowerCase().replace(/es$/, '').replace(/s$/, ''), num: 1 })),
+      ],
+      onSave: async v => {
+        const precios = {}; fs.forEach(f => { const n = v['p_' + f]; if (n !== '' && n != null && !isNaN(+n)) precios[f] = +n; });
+        await data.upsert('abono_finanzas', { abono_id: abonoId, extras_cobro: v.extras_cobro === 'si', extras_precios: precios, extras_moneda: v.extras_moneda, updated_at: new Date().toISOString() }, 'abono_id');
+        AD.ABF.set(abonoId, { ...af, abono_id: abonoId, extras_cobro: v.extras_cobro === 'si', extras_precios: precios, extras_moneda: v.extras_moneda });
+        toast('Cobro de extras guardado');
+      },
+    });
+  }
   function formAds(abonoId) {
     const a = S.A.find(x => x._id === abonoId); if (!a) return;
     const af = AD.ABF.get(abonoId) || {};
@@ -1048,7 +1077,7 @@ export function initAdmin(ctx) {
       const reciente = (desdeAlta != null && desdeAlta < 3) || (cur && ult != null && ult < 2 && hist.length > 1);
       const aviso = futuro ? (futuro.aviso_enviado ? '<span class="muted">Avisado ' + fmt(futuro.aviso_enviado) + '</span>' : '<button class="btn sm" data-act="aAviso" data-id="' + esc(futuro.id) + '">Avisar por email</button>') : '';
       const serv = a.tipo === 'Redes' ? 'Redes' + (a.plan ? ' · plan ' + a.plan : '') : a.tipo === 'Ads' ? '+ Ads' : a.tipo;
-      return '<tr class="' + (on ? 'pp-on' : '') + (first ? ' pp-g' : ' pp-sub') + '"><td><input type="checkbox" aria-label="Elegir ' + esc(a.cliente + ' ' + a.tipo) + '" data-ppsel="' + esc(a._id) + '"' + (on ? ' checked' : '') + (cur ? '' : ' disabled') + '></td><td class="name">' + (first ? '<button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button>' : '') + '<span class="pp-sv"><span class="sv" style="--c:var(' + (a.tipo === 'Ads' ? '--t-naranja' : '--t-rosa') + ')">' + esc(serv) + '</span>' + (a.tipo === 'Ads' ? (a.tipo === 'Ads' ? (() => { const af = AD.ABF.get(a._id); return '<button class="sv sv-b" style="--c:var(--c6)" data-act="aAds" data-abono="' + esc(a._id) + '">' + (af && af.inversion ? esc((af.inversion_paga === 'àndale' ? 'Adelanta àndale · ' : 'Paga el cliente · ') + money(af.inversion, af.inversion_moneda)) : 'Cargar pauta') + '</button>'; })() : '') : '') + (desdeAlta != null && desdeAlta < 3 ? '<span class="sv" style="--c:var(--s-revision)">nuevo · entró ' + (desdeAlta <= 0 ? 'este mes' : 'hace ' + desdeAlta + (desdeAlta === 1 ? ' mes' : ' meses')) + '</span>' : '') + '</span></td>' +
+      return '<tr class="' + (on ? 'pp-on' : '') + (first ? ' pp-g' : ' pp-sub') + '"><td><input type="checkbox" aria-label="Elegir ' + esc(a.cliente + ' ' + a.tipo) + '" data-ppsel="' + esc(a._id) + '"' + (on ? ' checked' : '') + (cur ? '' : ' disabled') + '></td><td class="name">' + (first ? '<button class="btn link" data-act="ficha" data-cliente="' + esc(a.cliente) + '">' + esc(a.cliente) + '</button>' : '') + '<span class="pp-sv"><span class="sv" style="--c:var(' + (a.tipo === 'Ads' ? '--t-naranja' : '--t-rosa') + ')">' + esc(serv) + '</span>' + (a.tipo === 'Ads' ? (a.tipo === 'Ads' ? (() => { const af = AD.ABF.get(a._id); return '<button class="sv sv-b" style="--c:var(--c6)" data-act="aAds" data-abono="' + esc(a._id) + '">' + (af && af.inversion ? esc((af.inversion_paga === 'àndale' ? 'Adelanta àndale · ' : 'Paga el cliente · ') + money(af.inversion, af.inversion_moneda)) : 'Cargar pauta') + '</button>'; })() : '') : '') + (a.tipo === 'Redes' ? (() => { const af = AD.ABF.get(a._id); return '<button class="sv sv-b" style="--c:var(--c6)" data-act="aExtras" data-abono="' + esc(a._id) + '" title="Piezas fuera del plan">' + (af && af.extras_cobro ? 'Extras: se cobran' : 'Extras: de onda') + '</button>'; })() : '') + (desdeAlta != null && desdeAlta < 3 ? '<span class="sv" style="--c:var(--s-revision)">nuevo · entró ' + (desdeAlta <= 0 ? 'este mes' : 'hace ' + desdeAlta + (desdeAlta === 1 ? ' mes' : ' meses')) + '</span>' : '') + '</span></td>' +
 
         '<td class="r">' + (cur ? '<b class="money">' + money(cur.monto, cur.moneda) + '</b><span class="sub">desde ' + fmt(cur.desde) + '</span>' : '<span class="sv" style="--c:var(--crit)">Sin precio</span>') + '</td>' +
         '<td>' + (sa != null ? '<span class="sv" style="--c:var(' + (sa >= 6 ? '--s-cancelado' : sa >= 3 ? '--s-revision' : '--s-entregado') + ')">' + (sa <= 0 ? 'este mes' : sa + (sa === 1 ? ' mes' : ' meses')) + '</span>' : '<span class="muted">—</span>') + '</td>' +
@@ -1833,6 +1862,7 @@ export function initAdmin(ctx) {
     aCuotas: t => formCuotas(t.dataset.id),
     aProyAdm: t => formProyectoAdm(t.dataset.id),
     aAds: t => formAds(t.dataset.abono),
+    aExtras: t => formExtras(t.dataset.abono),
     aRtVer: t => { AD.rt.ver = t.dataset.v; ctx.render(); },
     aImpAdd: () => { AD.impDraft.push({ dest: '', monto: '' }); renderImp(); },
     aImpCxp: t => {
@@ -2020,7 +2050,7 @@ export function initAdmin(ctx) {
 
   Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions, MT.actions);
   return {
-    load, actions, fichaSection, deudaLinea, proyectoSection, AD, cfgMarca: () => cfgMarca(),
+    load, actions, extrasCfg, formExtras, fichaSection, deudaLinea, proyectoSection, AD, cfgMarca: () => cfgMarca(),
     precioHoy: id => (AD.ok ? precioEn(id, thisMonth()) : null), moneyFmt: (n, m) => money(n, m),
     // Para la IA: abrir formularios ya completos (nada se guarda sin confirmar).
     abrir: {

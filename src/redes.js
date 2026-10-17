@@ -15,10 +15,23 @@ export const FLUJO_DEF = ['Idea=Cuentas y programación', 'En diseño=Diseño', 
 export const HORAS_DEF = ['Historias=10:00', 'Posts=12:30', 'Carruseles=12:30', 'Reels=19:00'];
 // Un color por formato, para distinguir historias, posts, carruseles y reels de un vistazo.
 const FMT_COLOR = [[/reel/i, '#8b5cf6'], [/histori|stor/i, '#e0598b'], [/carrus/i, '#14a07a'], [/post/i, '#2f7de1'], [/tiktok/i, '#0f9fb5'], [/video|youtube/i, '#d9822b']];
+// Redes que se gestionan, con el color de cada marca (Instagram con su degradé). TikTok, X y Threads usan el negro de la app (se invierte en modo oscuro).
+export const REDES_G = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X', 'Pinterest', 'Threads'];
+const RED_INFO = { Instagram: ['IG', 'linear-gradient(45deg,#f58529,#dd2a7b 55%,#8134af)'], Facebook: ['FB', '#1877F2'], TikTok: ['TT', 'var(--red-negro)'], LinkedIn: ['IN', '#0A66C2'], YouTube: ['YT', '#FF0000'], X: ['X', 'var(--red-negro)'], Pinterest: ['P', '#E60023'], Threads: ['TH', 'var(--red-negro)'], Behance: ['BE', '#1769FF'] };
+const redInfo = r => RED_INFO[r] || RED_INFO[Object.keys(RED_INFO).find(k => k.toLowerCase() === String(r || '').toLowerCase())] || [String(r || '?').slice(0, 2).toUpperCase(), '#888'];
+export const redesDe = txt => String(txt || '').split(/\s*[,+/]\s*/).map(x => x.trim()).filter(Boolean);
+const escR = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+export const redBadges = txt => { const rs = redesDe(txt); return rs.length ? '<span class="rds">' + rs.map(r => { const [ab, c] = redInfo(r); return '<span class="rd" style="--rc:' + c + '" title="' + escR(r) + '">' + escR(ab) + '</span>'; }).join('') + '</span>' : ''; };
+// Selector de redes con el color de cada una (una o varias)
+export function redChips(id, sel, opciones, dis, esc) {
+  const e = esc || escR, todas = [...new Set([...(opciones || []), ...(sel || [])])];
+  return '<div class="rd-chips" id="' + e(id) + '">' + todas.map(r => { const [ab, c] = redInfo(r); return '<label class="rd-chk" style="--rc:' + c + '"><input type="checkbox" value="' + e(r) + '"' + ((sel || []).includes(r) ? ' checked' : '') + (dis || '') + '><span class="rd">' + e(ab) + '</span>' + e(r) + '</label>'; }).join('') + '</div>';
+}
 const FMT_OTROS = ['#b5893b', '#6b7fd7', '#c2569b', '#3f9a5f'];
 export const fmtColor = f => { const x = FMT_COLOR.find(([re]) => re.test(f || '')); if (x) return x[1]; let h = 0; for (const c of String(f || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return FMT_OTROS[h % FMT_OTROS.length]; };
 import { vistaSel, vistaDe, filtrosMenu } from './ui.js';
 import { confirmar } from './dialogo.js';
+import { ICON } from './iconos.js';
 const IMG = /\.(jpe?g|png|gif|webp|tiff?|bmp|heic)$/i;
 const ICO_COPIAR = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
 
@@ -36,7 +49,14 @@ export function initRedes(ctx) {
   const conRol = (cliente, re, tipo) => { for (const a of S.A.filter(x => x.cliente === cliente && x.estado === 'Activo' && (!tipo || x.tipo === tipo))) { const r = Object.entries(a.roles || {}).find(([al, rol]) => re.test(rol) && (a.responsables || []).includes(al)); if (r) return r[0]; } return ''; };
   const respMes = (cliente, ab) => conRol(cliente, /cuenta|community|programa/i, 'Redes') || ((ab && (ab.responsables || [])[0]) || '');
   // Las piezas nuevas no se asignan a una persona: le tocan al rol de cada etapa (ver quienes). "resp" queda para elegir a alguien puntual.
-  const insPiezas = (m, lista) => data.piezasIns(m, lista);
+  // Las redes que se gestionan en la cuenta (servicio de Redes); si no están marcadas, las que el cliente tiene en su ficha.
+  function redesCuenta(cliente) {
+    const ab = abonoRedes(cliente); if (ab && Array.isArray(ab.redes) && ab.redes.length) return ab.redes;
+    const c = S.C.find(x => x.nombre === cliente) || {}, o = c.redes || {};
+    const rs = REDES_G.filter(r => String(o[r.toLowerCase()] || '').trim());
+    return rs.length ? rs : ['Instagram'];
+  }
+  const insPiezas = (m, lista) => data.piezasIns(m, lista.map(u => (u.red ? u : { ...u, red: redesCuenta(m.cliente).join(', ') })));
   const lista2 = (k, def) => (S.L[k] && S.L[k].length ? S.L[k] : def);
   const flujo = () => { const o = {}; lista2('flujoRedes', FLUJO_DEF).forEach(x => { const i = String(x).indexOf('='); if (i > 0) o[x.slice(0, i)] = x.slice(i + 1).split('+').map(r => r.trim()).filter(Boolean); }); return o; };
   const rolesEtapa = e => flujo()[e] || [];
@@ -96,6 +116,9 @@ export function initRedes(ctx) {
   const adsTag = z => z.ads === 'solo' ? '<span class="rm-ads" title="Solo para Ads: no cuenta en el plan">Ads</span>' : z.ads === 'tambien' ? '<span class="rm-ads tb" title="Del plan, y también se pauta">+ Ads</span>' : '';
   // Copiar al portapapeles: data-sel = de un campo del formulario, o data-id + data-k = de una pieza (copy, hashtags o los dos).
   const copiarBtn = (sel, extra) => '<button type="button" class="btn ghost sm cp-b" data-act="rmCopiar"' + (sel ? ' data-sel="' + esc(sel) + '"' : '') + (extra || '') + ' title="Copiar" aria-label="Copiar">' + ICO_COPIAR + '</button>';
+  const filas = (t, ancho, min, max) => Math.min(max, Math.max(min, String(t || '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / ancho)), 0)));
+  // Cobro de las piezas extra de la cuenta (solo lo ven los administradores; para el resto, null)
+  const xCfg = cliente => { const ab = abonoRedes(cliente); return (ab && ctx.extrasCfg && ctx.extrasCfg(ab._id)) || { cobro: false, precios: {}, moneda: 'ARS', admin: false }; };
   const PH_CONT = f => /carrus/i.test(f) ? 'Slide 1: …\nSlide 2: …' : /reel/i.test(f) ? 'Gancho (0-3 s): …\n1. …\nAudio: …' : /histori/i.test(f) ? 'Texto: …\nSticker: encuesta (Sí / No)' : 'Título: …\nBajada: …\nImagen: …';
   const conteoPorFormato = ps => { const o = {}; enPlan(ps).forEach(z => { o[z.formato] = (o[z.formato] || 0) + 1; }); return o; };
   const pzPill = e => '<span class="pzst" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')">' + esc(e) + '</span>';
@@ -186,7 +209,7 @@ export function initRedes(ctx) {
       (can ? '<label class="rm-portal sw"><input type="checkbox" data-rmupd="visible" data-id="' + esc(m._id) + '"' + (m.visible ? ' checked' : '') + '><span></span><b>Visible en el portal</b></label>' : '') +
       (m.aprobadoAt ? '<span class="pzst" style="--c:var(--s-entregado)">Aprobado por ' + esc(m.aprobadoPor || 'el cliente') + '</span>' : '') +
       '</div>' +
-      '<div class="rm-plan">' + barras(m, lista) + (can ? '<button class="btn ghost sm" data-act="rmPlan" data-id="' + esc(m._id) + '">Editar plan</button>' : '') + '</div>' +
+      '<div class="rm-plan">' + barras(m, lista) + '<div class="rm-plan-a">' + extrasBtn(m, lista) + (can ? '<button class="btn ghost sm" data-act="rmPlan" data-id="' + esc(m._id) + '">Editar plan</button>' : '') + '</div></div>' +
       '<nav class="pf-tabs">' + tabs.map(([k, l]) => '<button data-act="rmTab" data-t="' + k + '"' + (tab === k ? ' aria-current="page"' : '') + '>' + l + (k === 'planilla' && lista.length ? ' <span class="muted">' + lista.length + '</span>' : '') + '</button>').join('') + '</nav></div>';
     if (!ps) return h + '<section class="sheet">' + emptyBox('Cargando piezas…', '') + '</section>';
     if (tab === 'planilla') h += planilla(m, lista, can);
@@ -220,13 +243,23 @@ export function initRedes(ctx) {
     const filtros = ps.length ? filtrosMenu('rmpz', '<span class="lbl">Formatos</span>' + presentes.map(f => '<label class="chk rm-fck" style="--fc:' + fmtColor(f) + '"><input type="checkbox" data-rmff="' + esc(f) + '"' + (st.fOff.has(f) ? '' : ' checked') + '> <i class="rm-dot"></i>' + esc(f) + ' <span class="muted num">' + ps.filter(z => z.formato === f).length + '</span></label>').join('') +
       (yo && eq.has(yo) ? '<label class="chk" style="margin-top:6px"><input type="checkbox" data-rmmio' + (st.mio ? ' checked' : '') + '> Solo lo que me toca <span class="muted num">' + mias.length + '</span></label>' : ''), activos) : '';
     const vista = vistaDe('redesPiezas', ['lista', 'cuadricula'], 'cuadricula');
-    const tools = '<div class="toolbar rm-tools">' + (can ? '<form class="rm-add" data-rmadd="' + esc(m._id) + '"><input class="in sm" type="number" min="1" max="60" name="n" value="1" aria-label="Cantidad"><select class="in sm" name="f" aria-label="Formato">' + fs.map(f => opt(f, f, '')).join('') + '</select>' + (tieneAds(m.cliente) ? '<select class="in sm" name="u" aria-label="Para qué">' + opt('', 'Del plan', '') + opt('solo', 'Solo Ads', '') + '</select>' : '') + '<button class="btn sm" title="Agregar piezas">+ Agregar</button></form>' +
-      '<button class="btn sm' + (ocupado ? ' ocupado' : '') + '" data-act="rmIdeas" data-id="' + esc(m._id) + '"' + (ocupado ? ' disabled' : '') + '>' + (ocupado ? '<span class="ia-dots"><i></i><i></i><i></i></span> ' + esc(ocupado) : '<span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido') + '</button>' +
-      (ctx.masMenu ? ctx.masMenu([
-        ps.length ? { act: 'rmAgenda', label: 'Fechas y horarios con Mr. Piggy', attrs: ' data-id="' + esc(m._id) + '"', icon: 'calendario' } : null,
-        { act: 'rmChat', label: 'Pegar chat del cliente', attrs: ' data-id="' + esc(m._id) + '"' },
-        sinHora ? { act: 'rmHoras', label: 'Poner horarios a ' + sinHora + (sinHora === 1 ? ' pieza' : ' piezas'), attrs: ' data-id="' + esc(m._id) + '"' } : null,
-        ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? { act: 'ficha', label: 'Completar la ficha de marca (sin ficha, Mr. Piggy escribe genérico)', attrs: ' data-cliente="' + esc(m.cliente) + '" data-tab="marca"' } : null]) : '') : '') +
+    // Agregar piezas: un botón que abre el formulario (formato con color, cantidad y para qué)
+    const addPop = '<details class="share rm-addm" data-keep="rmadd"><summary class="btn sm">' + ICON.sumar + ' Agregar</summary><div class="menu-pop rm-addp"><form class="rm-add" data-rmadd="' + esc(m._id) + '">' +
+      '<span class="lbl">Formato</span><div class="rm-addf">' + fs.map((f, i) => '<label class="rm-fopt" style="--fc:' + fmtColor(f) + '"><input type="radio" name="f" value="' + esc(f) + '"' + (i === 0 ? ' checked' : '') + '><span>' + esc(f) + '</span></label>').join('') + '</div>' +
+      '<span class="lbl">Cantidad</span><div class="rm-cant"><button type="button" class="btn ghost sm" data-act="rmCant" data-d="-1" aria-label="Menos">−</button><input class="in sm" type="number" min="1" max="60" name="n" value="1" aria-label="Cantidad"><button type="button" class="btn ghost sm" data-act="rmCant" data-d="1" aria-label="Más">+</button></div>' +
+      (tieneAds(m.cliente) ? '<span class="lbl">Para</span><div class="seg rm-adds" role="group"><label><input type="radio" name="u" value="" checked><span>Del plan</span></label><label><input type="radio" name="u" value="solo"><span>Solo para Ads</span></label></div>' : '') +
+      '<button class="btn sm primary">Agregar</button></form></div></details>';
+    const btnIA = (act, ico, txt, tit) => '<button class="btn sm rm-w" data-act="' + act + '" data-id="' + esc(m._id) + '" title="' + esc(tit) + '"' + (ocupado ? ' disabled' : '') + '>' + ico + '<span>' + esc(txt) + '</span></button>';
+    const tools = '<div class="toolbar rm-tools">' + (can ? addPop +
+      '<button class="btn sm' + (ocupado ? ' ocupado' : '') + '" data-act="rmIdeas" data-id="' + esc(m._id) + '"' + (ocupado ? ' disabled' : '') + ' title="Mr. Piggy propone lo que falta del plan">' + (ocupado ? '<span class="ia-dots"><i></i><i></i><i></i></span> ' + esc(ocupado) : '<span class="pig" aria-hidden="true">' + ISO + '</span> Proponer') + '</button>' +
+      (ps.length ? btnIA('rmRevisar', ICON.check, 'Revisar', 'Mr. Piggy revisa las piezas que ya están: tono, copys, hashtags y el mes completo') + btnIA('rmAgenda', ICON.calendario, 'Fechas y horas', 'Mr. Piggy propone día y hora para cada pieza') : '') +
+      '<button class="btn sm ghost rm-w" data-act="rmChat" data-id="' + esc(m._id) + '" title="Pegá lo que dijo el cliente y se reparte en las piezas">' + ICON.charla + '<span>Pegar chat</span></button>' +
+      (ctx.masMenu ? '<span class="rm-masw' + (sinHora || (ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca) ? ' siempre' : '') + '">' + ctx.masMenu([
+        ps.length ? { act: 'rmRevisar', label: 'Revisar con Mr. Piggy', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'check' } : null,
+        ps.length ? { act: 'rmAgenda', label: 'Fechas y horas con Mr. Piggy', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'calendario' } : null,
+        { act: 'rmChat', label: 'Pegar chat del cliente', attrs: ' data-id="' + esc(m._id) + '" data-n="1"', icon: 'charla' },
+        sinHora ? { act: 'rmHoras', label: 'Poner horarios a ' + sinHora + (sinHora === 1 ? ' pieza' : ' piezas'), attrs: ' data-id="' + esc(m._id) + '"', icon: 'reloj' } : null,
+        ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? { act: 'ficha', label: 'Completar la ficha de marca (sin ficha, Mr. Piggy escribe genérico)', attrs: ' data-cliente="' + esc(m.cliente) + '" data-tab="marca"', icon: 'marca' } : null]) + '</span>' : '') : '') +
       '<span class="rm-sp"></span>' + filtros + (ps.length ? vistaSel('redesPiezas', ['lista', 'cuadricula'], vista) : '') + '</div>';
     if (!ps.length) return '<div class="rm-pl">' + tools + '<section class="sheet">' + emptyBox('Todavía no hay piezas este mes', can ? 'Sumalas con “+ Agregar” (de a muchas), o pedile a Mr. Piggy que proponga el contenido según el plan.' : '') + '</section></div>';
     const lunes = f => { const d = new Date(f + 'T12:00'); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; };
@@ -244,11 +277,12 @@ export function initRedes(ctx) {
       if (!q.roles.length) return '<span class="muted">—</span>';
       return '<div class="rm-quien">' + (q.gente.length ? '<span class="avs">' + q.gente.map(a => av(a, fotoDe(a))).join('') + '</span>' : '') + '<span class="rm-qt"><b>' + (q.gente.length ? esc(q.gente.join(', ')) : '<span class="muted">Nadie con ese rol</span>') + '</b>' + (corto ? '' : '<small>' + esc(q.roles.join(' + ')) + (z.resp && q.gente.includes(z.resp) ? ' · elegida' : '') + '</small>') + '</span></div>'; };
     // Texto de la pieza: copy (o, en historias, lo que va escrito), hashtags y botones para copiar
-    const textos = (z, lineas) => { const hist = esHistoria(z), txt = z.copy || (hist ? z.contenido : '') || '';
+    const cpsHtml = z => (z.copy || z.hashtags ? '<span class="rm-cps">' + (z.copy ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="copy">' + ICO_COPIAR + ' Copy</button>' : '') + (z.hashtags ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="hashtags">' + ICO_COPIAR + ' Hashtags</button>' : '') + (z.copy && z.hashtags ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="todo" title="Copy y hashtags juntos, listos para pegar">' + ICO_COPIAR + ' Todo</button>' : '') + '</span>' : '');
+    const textos = (z, lineas, sinBotones) => { const hist = esHistoria(z), txt = z.copy || (hist ? z.contenido : '') || '';
       return '<div class="rm-txt">' + (txt ? '<button class="rm-copy" style="-webkit-line-clamp:' + lineas + '" data-act="rmPieza" data-id="' + esc(z._id) + '">' + esc(txt.replace(/\n\s*\n/g, '\n')) + '</button>' : '<button class="rm-copy vacio" data-act="rmPieza" data-id="' + esc(z._id) + '">' + (hist ? '+ Texto de la historia' : '+ Escribir el copy') + '</button>') +
         (z.hashtags ? '<p class="rm-hash">' + esc(z.hashtags) + '</p>' : '') +
-        (z.copy || z.hashtags ? '<span class="rm-cps">' + (z.copy ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="copy">' + ICO_COPIAR + ' Copy</button>' : '') + (z.hashtags ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="hashtags">' + ICO_COPIAR + ' Hashtags</button>' : '') + (z.copy && z.hashtags ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="todo" title="Copy y hashtags juntos, listos para pegar">' + ICO_COPIAR + ' Todo</button>' : '') + '</span>' : '') + '</div>'; };
-    const tags = (z, d) => '<div class="rm-tags">' + (d === null ? '<span class="rm-fpill">' + esc(z.formato) + '</span>' : '<select class="rm-fsel" data-pz="formato" data-id="' + esc(z._id) + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>') + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + '</div>';
+        (sinBotones ? '' : cpsHtml(z)) + '</div>'; };
+    const tags = (z, d) => '<div class="rm-tags">' + (d === null ? '<span class="rm-fpill">' + esc(z.formato) + '</span>' : '<select class="rm-fsel" data-pz="formato" data-id="' + esc(z._id) + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>') + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + redBadges(z.red) + '</div>';
     pedirThumbs(vis);
     if (!vis.length) return '<div class="rm-pl">' + tools + bulk + '<section class="sheet">' + emptyBox('No hay piezas con ese filtro', 'Cambiá los formatos en el filtro.') + '</section></div>';
     if (vista === 'cuadricula') {
@@ -258,7 +292,7 @@ export function initRedes(ctx) {
           '<button class="rm-pc-a' + (t ? '' : ' ph') + '" data-act="rmPieza" data-id="' + esc(z._id) + '" aria-label="Abrir ' + esc(z.formato + ' ' + (z.tema || '')) + '">' + (t ? '<img src="' + esc(t) + '" alt="">' : '<span class="rm-pc-ph"><b>' + esc(z.formato) + '</b>' + (z.contenido ? '<span>' + esc(z.contenido.split('\n')[0].replace(/^[^:]{1,20}:\s*/, '')) + '</span>' : '') + '</span>') + '</button>' +
           (can ? '<input type="checkbox" class="rm-pc-sel" data-rmsel="' + esc(z._id) + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar">' : '') +
           '<div class="rm-pc-b"><div class="rm-pc-m">' + (z.fecha ? '<span class="rm-pc-d">' + esc(diaDe(z)) + (z.hora ? ' · ' + esc(z.hora) : '') + '</span>' : '<span class="rm-pc-d muted sf">Sin fecha</span>') + pzPill(z.estado) + '</div>' + tags(z, null) +
-          '<b class="rm-pc-t">' + esc(z.tema || 'Sin tema') + '</b>' + textos(z, 4) + '<div class="rm-pc-f">' + quien(z, true) + '</div></div></article>'; };
+          '<b class="rm-pc-t">' + esc(z.tema || 'Sin tema') + '</b>' + (st.rev && st.rev.mesId === m._id && st.rev.items.get(z._id) && !st.rev.items.get(z._id).aplicado ? '<button class="rv-badge" data-act="rmRevisar" data-id="' + esc(m._id) + '" title="Ver la revisión">' + ISO + ' ' + notaPill(st.rev.items.get(z._id).nota) + '</button>' : '') + textos(z, 4, true) + '<div class="rm-pc-bot">' + cpsHtml(z) + '<div class="rm-pc-f">' + quien(z, true) + '</div></div></div></article>'; };
       return '<div class="rm-pl">' + tools + bulk + grupos.map(g => { const feed = g.zs.filter(z => !esHistoria(z)), hist = g.zs.filter(esHistoria);
         return '<div class="rm-semh"><h3>' + esc(g.k) + '</h3>' + (g.k === 'Sin fecha' ? agendaBtn : '') + '</div>' + (feed.length ? '<div class="rm-pcs">' + feed.map(carta).join('') + '</div>' : '') + (hist.length ? histSep(hist.length) + '<div class="rm-pcs hist">' + hist.map(carta).join('') + '</div>' : ''); }).join('') + '</div>';
     }
@@ -331,17 +365,18 @@ export function initRedes(ctx) {
       (z.respuesta ? '<div class="pz-cli full"><b>' + (z.estado === 'Aprobada' ? '✓ El cliente la aprobó' : 'El cliente pidió cambios') + '</b><span>' + esc(z.respuesta) + '</span></div>' : '') +
       '<div class="field"><label for="pz-fecha">Fecha</label><input id="pz-fecha" type="date" value="' + esc(z.fecha) + '"' + d + '></div><div class="field"><label for="pz-hora">Hora</label><input id="pz-hora" type="time" value="' + esc(z.hora) + '"' + d + '></div>' +
       '<div class="field"><label for="pz-formato">Formato</label><select id="pz-formato"' + d + '>' + [...new Set([...formatos(), z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select></div>' +
-      '<div class="field"><label for="pz-red">Red</label><select id="pz-red"' + d + '>' + [...new Set([...REDES, z.red].filter(Boolean))].map(f => opt(f, f, z.red)).join('') + '</select></div>' +
+      '<div class="field full"><span class="lbl">Redes</span>' + redChips('pz-red', redesDe(z.red), redesCuenta(m.cliente), d, esc) + '</div>' +
       '<div class="field"><label for="pz-estado">Estado</label><select id="pz-estado"' + d + '>' + ESTADOS_PIEZA.map(e => opt(e, e, z.estado)).join('') + '</select></div>' +
       '<div class="field"><label for="pz-resp">A cargo de esta pieza</label><select id="pz-resp"' + d + '>' + opt('', 'Según el flujo (el rol de cada etapa)', z.resp) + [...new Set([...personas(), z.resp].filter(Boolean))].map(a => opt(a, a + (equipo(m.cliente).get(a) ? ' · ' + equipo(m.cliente).get(a) : ''), z.resp)).join('') + '</select><span class="hint">Ahora le toca a ' + esc((q => q.gente.length ? q.gente.join(', ') : 'nadie') (quienes(m.cliente, z))) + '. Si elegís a alguien, reemplaza a los de su rol (p. ej. Cata en vez de Vale en el diseño).</span></div>' +
-      '<div class="field full"><label for="pz-tema">Tema</label><input id="pz-tema" value="' + esc(z.tema) + '"' + d + '></div>' +
-      (data.cols && data.cols.piezaContenido === false ? '' : '<div class="field full"><div class="pz-lh"><label for="pz-contenido">' + (esHistoria(z) ? 'Texto de la historia' : 'Qué va en la pieza') + '</label>' + copiarBtn('#pz-contenido') + '</div><textarea id="pz-contenido" rows="' + Math.min(10, Math.max(3, (z.contenido || '').split('\n').length + 1)) + '" placeholder="' + esc(PH_CONT(z.formato)) + '"' + d + '>' + esc(z.contenido || '') + '</textarea><span class="hint">Para quien diseña o graba.</span></div>') +
-      '<div class="field full"><div class="pz-lh"><label for="pz-copy">Copy</label>' + copiarBtn('#pz-copy') + '</div><textarea id="pz-copy" rows="' + Math.min(14, Math.max(5, (z.copy || '').split('\n').length + 2)) + '"' + d + '>' + esc(z.copy) + '</textarea>' + (can ? '<div class="toolbar" style="margin-top:6px"><span class="muted" style="font-size:13px">Mr. Piggy:</span><button type="button" class="btn ghost sm" data-act="rmCopyUno">' + (z.copy ? 'Mejorar' : 'Escribir') + ' el copy</button></div>' : '') + '</div>' +
-      '<div class="field full"><div class="pz-lh"><label for="pz-hashtags">Hashtags</label>' + copiarBtn('#pz-hashtags') + '</div><input id="pz-hashtags" value="' + esc(z.hashtags) + '"' + d + '></div>' +
+      '<div class="field full"><label for="pz-tema">Tema</label><div class="cp-box"><textarea id="pz-tema" class="pz-ta" rows="' + filas(z.tema, 60, 1, 4) + '"' + d + '>' + esc(z.tema) + '</textarea>' + copiarBtn('#pz-tema') + '</div></div>' +
+      (data.cols && data.cols.piezaContenido === false ? '' : '<div class="field full"><label for="pz-contenido">' + (esHistoria(z) ? 'Texto de la historia' : 'Qué va en la pieza') + '</label><div class="cp-box"><textarea id="pz-contenido" class="pz-ta" rows="' + filas(z.contenido, 60, 3, 12) + '" placeholder="' + esc(PH_CONT(z.formato)) + '"' + d + '>' + esc(z.contenido || '') + '</textarea>' + copiarBtn('#pz-contenido') + '</div>' + (can ? '<div class="toolbar pz-ia"><span class="hint" style="margin:0">Para quien diseña o graba.</span><button type="button" class="btn ghost sm" data-act="rmContUno"><span class="pig" aria-hidden="true">' + ISO + '</span> ' + (z.contenido ? 'Mejorar' : 'Escribir') + ' con Mr. Piggy</button></div>' : '<span class="hint">Para quien diseña o graba.</span>') + '</div>') +
+      '<div class="field full"><label for="pz-copy">Copy</label><div class="cp-box"><textarea id="pz-copy" class="pz-ta" rows="' + filas(z.copy, 60, 5, 16) + '"' + d + '>' + esc(z.copy) + '</textarea>' + copiarBtn('#pz-copy') + '</div>' + (can ? '<div class="toolbar pz-ia"><span></span><button type="button" class="btn ghost sm" data-act="rmCopyUno"><span class="pig" aria-hidden="true">' + ISO + '</span> ' + (z.copy ? 'Mejorar' : 'Escribir') + ' el copy y los hashtags</button></div>' : '') + '</div>' +
+      '<div class="field full"><label for="pz-hashtags">Hashtags</label><div class="cp-box"><textarea id="pz-hashtags" class="pz-ta" rows="' + filas(z.hashtags, 60, 1, 4) + '"' + d + '>' + esc(z.hashtags) + '</textarea>' + copiarBtn('#pz-hashtags') + '</div></div>' +
       '<div class="field"><label for="pz-fijo">Se repite cada</label><select id="pz-fijo"' + d + '>' + opt('', 'No se repite', z.fijo) + DIAS.map(x => opt(x, x, z.fijo)).join('') + '</select><span class="hint">Al arrancar el mes siguiente se crea sola en ese día.</span></div>' +
 
       (z.ads || tieneAds(m.cliente) ? '<div class="field"><label for="pz-ads">Ads</label><select id="pz-ads"' + d + '>' + ADS_OPC.map(([k, l]) => opt(k, l, z.ads || '')).join('') + '</select><span class="hint">Si se diseñó aparte para los anuncios, va como “Solo para Ads”: no suma al plan ni como extra.</span></div>' : '') +
       '<label class="chk full"><input type="checkbox" id="pz-extra"' + (z.extra ? ' checked' : '') + d + '> Extra (fuera del plan)</label>' +
+      (z.extra && !soloAds(z) && !(data.cols && data.cols.piezaExtraCobro === false) ? '<div class="field full"><label for="pz-xcobro">¿Esta extra se cobra?</label><select id="pz-xcobro"' + d + '>' + opt('', xCfg(m.cliente).admin ? 'Según la cuenta (' + (xCfg(m.cliente).cobro ? 'las extras se cobran' : 'las extras van sin cargo') + ')' : 'Según lo arreglado con la cuenta', z.extraCobro || '') + opt('si', 'Sí, se cobra', z.extraCobro || '') + opt('no', 'No, sin cargo (de onda)', z.extraCobro || '') + '</select></div>' : '') +
       '<div class="field full"><span class="lbl">Arte</span><div class="pz-artes">' + (artes || '<span class="muted">Sin arte todavía.</span>') + '</div>' + (can ? '<label class="btn sm" style="margin-top:8px;justify-self:start">Subir arte a Dropbox<input type="file" hidden data-rmup="' + esc(z._id) + '" multiple accept="image/*,video/*,application/pdf"></label>' : '') + '</div>' +
       '<div class="full">' + hil().html('pieza', z._id, { cliente: m.cliente, titulo: 'Comentarios', compacto: true, publico: true }) + '</div>' +
       '</div><div class="panel-f"><span>' + (can ? '<button type="button" class="btn ghost danger" data-act="rmPiezaBorrar">Borrar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">' + (can ? 'Cancelar' : 'Cerrar') + '</button>' + (can ? '<button type="submit" class="btn primary">Guardar</button>' : '') + '</span></div></form>';
@@ -350,8 +385,11 @@ export function initRedes(ctx) {
   async function guardarPieza() {
     const f = st.fpz; if (!f) return;
     const g = k => ($('#pz-' + k) || {}).value;
-    const u = { fecha: g('fecha') || '', hora: g('hora') || '', formato: g('formato'), red: g('red'), estado: g('estado'), resp: g('resp') || '', tema: (g('tema') || '').trim(), copy: (g('copy') || '').trim(), ...($('#pz-contenido') ? { contenido: (g('contenido') || '').trim() } : {}), hashtags: (g('hashtags') || '').trim(), fijo: g('fijo') || '', extra: $('#pz-extra').checked };
+    const rs = [...document.querySelectorAll('#pz-red input:checked')].map(i => i.value);
+    const u = { fecha: g('fecha') || '', hora: g('hora') || '', formato: g('formato'), red: rs.join(', '), estado: g('estado'), resp: g('resp') || '', tema: (g('tema') || '').trim(), copy: (g('copy') || '').trim(), ...($('#pz-contenido') ? { contenido: (g('contenido') || '').trim() } : {}), hashtags: (g('hashtags') || '').trim(), fijo: g('fijo') || '', extra: $('#pz-extra').checked };
     if ($('#pz-ads')) { u.ads = g('ads') || ''; if (u.ads === 'solo') u.extra = false; }
+    if ($('#pz-xcobro')) u.extraCobro = g('xcobro') || '';
+    if (!u.extra) u.extraCobro = '';
     try { await data.piezasUpd([f.id], u); local(f.mesId, [f.id], u); ctx.closeForm(); toast('Pieza guardada'); render(); }
     catch (e) { toast(e.message); }
   }
@@ -422,7 +460,7 @@ export function initRedes(ctx) {
   //    se le pide de nuevo lo que falta (hasta 2 veces más) y se descarta lo que sobra. Cada pieza sale con la hora de su formato.
   // 2) los copys y hashtags, de a tandas chicas y en paralelo (escribe mejor y no se corta). Las historias no llevan copy.
   const ctxIA = (m, extra) => { const cli = S.C.find(x => x.nombre === m.cliente) || {}, prev = mesCliente(m.cliente, addMonth(m.mes, -1)), pp = prev ? (piezas(prev._id) || []) : [];
-    return { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, [...pp, ...(piezas(m._id) || [])]) : {}), notas_cliente: cli.notas || '', servicios: ctx.servicios ? ctx.servicios(m.cliente) : '', mes: m.mes, formatos: formatos(), plan: m.plan || {}, notas_del_mes: m.notas, ...(extra || {}), _pp: pp }; };
+    return { cliente: m.cliente, ...(ctx.marcaCtx ? ctx.marcaCtx(m.cliente, [...pp, ...(piezas(m._id) || [])]) : {}), notas_cliente: cli.notas || '', servicios: ctx.servicios ? ctx.servicios(m.cliente) : '', mes: m.mes, formatos: formatos(), plan: m.plan || {}, notas_del_mes: m.notas, redes: redesCuenta(m.cliente), ...(extra || {}), _pp: pp }; };
   const esHistoria = z => /histori|stor/i.test(z.formato || '');
   const trabajando = (m, txt) => { if (txt) st.ia[m._id] = txt; else delete st.ia[m._id]; render(); };
   // Si la IA no dio fecha, se reparten las piezas de cada formato a lo largo del mes.
@@ -555,6 +593,103 @@ export function initRedes(ctx) {
       ctx.closeForm(); toast([ap ? ap + ' aprobadas' : '', ca ? ca + ' con cambios' : '', nu ? nu + ' nuevas (extra)' : ''].filter(Boolean).join(' · ') || 'No encontré cambios en ese chat'); render();
     } catch (e) { toast(e.message); b.disabled = false; b.textContent = 'Repartir en las piezas'; }
   }
+  /* ---------- Revisar el contenido con Mr. Piggy ---------- */
+  // Revisa las piezas que ya están (tono de la marca, copys, hashtags, lo que va en la pieza) y el mes completo.
+  // Devuelve una nota por pieza (bien / mejorar / rehacer) con comentarios y, si hace falta, el texto corregido para aplicar.
+  const NOTA = { bien: ['Bien', '--s-entregado'], mejorar: ['Mejorar', '--s-confirmar'], rehacer: ['Rehacer', '--s-cancelado'] };
+  const notaPill = n => { const x = NOTA[n] || [n, '--muted']; return '<span class="pzst" style="--c:var(' + x[1] + ')">' + esc(x[0]) + '</span>'; };
+  function abrirRevision(m) {
+    const ps = piezas(m._id) || [], rv = st.rev && st.rev.mesId === m._id ? st.rev : null, selN = ps.filter(z => st.sel.has(z._id)).length;
+    const porId = new Map(ps.map(z => [z._id, z]));
+    let body;
+    if (!rv || (!rv.items.size && !rv.busy)) {
+      body = '<p class="formnote full">Mr. Piggy revisa lo que ya está cargado como lo haría la directora de cuentas antes de mandarlo al cliente: si respeta la ficha de marca, si los copys tienen gancho, párrafos y llamado a la acción, los emojis, los hashtags y lo que va en cada pieza. También mira el mes completo. Te marca cada pieza y, si hace falta, te deja el texto corregido para aplicar.</p>' +
+        '<fieldset class="full ag-alc"><legend class="lbl">Qué piezas</legend><label class="chk"><input type="radio" name="rv-alc" value="todas" checked> Todas las del mes <span class="muted num">' + ps.length + '</span></label>' +
+        '<label class="chk"><input type="radio" name="rv-alc" value="sel"' + (selN ? '' : ' disabled') + '> Las seleccionadas <span class="muted num">' + selN + '</span></label></fieldset>';
+    } else {
+      const its = [...rv.items.entries()].map(([id, x]) => ({ id, x, z: porId.get(id) })).filter(o => o.z).sort((a, b) => ['rehacer', 'mejorar', 'bien'].indexOf(a.x.nota) - ['rehacer', 'mejorar', 'bien'].indexOf(b.x.nota));
+      const cuenta = n => its.filter(o => o.x.nota === n).length;
+      body = (rv.busy ? '<p class="formnote full"><span class="ia-dots"><i></i><i></i><i></i></span> Revisando ' + rv.hechas + ' de ' + rv.total + '…</p>' : '') +
+        (rv.resumen || rv.observaciones.length ? '<div class="full ag-crit"><b>El mes</b>' + (rv.resumen ? '<p>' + esc(rv.resumen) + '</p>' : '') + (rv.observaciones.length ? '<ul class="rv-obs">' + rv.observaciones.map(o => '<li>' + esc(o) + '</li>').join('') + '</ul>' : '') + '</div>' : '') +
+        (its.length ? '<div class="full rv-cnt">' + ['rehacer', 'mejorar', 'bien'].map(n => cuenta(n) ? notaPill(n) + ' <b class="num">' + cuenta(n) + '</b>' : '').join(' ') + '</div>' : '') +
+        '<div class="full rv-l">' + its.map(({ id, x, z }) => {
+          const sug = ['contenido', 'copy', 'hashtags'].filter(k => x[k] && String(x[k]).trim() && String(x[k]).trim() !== String(z[k] || '').trim());
+          return '<div class="rv-p" style="--fc:' + fmtColor(z.formato) + '"><div class="rv-h"><span class="rm-fpill">' + esc(z.formato) + '</span><button type="button" class="btn link rv-t" data-act="rmPieza" data-id="' + esc(id) + '">' + esc(z.tema || 'Sin tema') + '</button>' + notaPill(x.nota) + '</div>' +
+            (x.comentarios.length ? '<ul class="rv-c">' + x.comentarios.map(c => '<li>' + esc(c) + '</li>').join('') + '</ul>' : '') +
+            (x.aplicado ? '<p class="rv-ok">✓ Sugerencia aplicada</p>' : sug.length ? '<details class="rv-s"><summary>Ver lo que propone (' + sug.map(k => ({ contenido: 'qué va en la pieza', copy: 'copy', hashtags: 'hashtags' }[k])).join(', ') + ')</summary>' + sug.map(k => '<div class="rv-sb"><span class="lbl">' + ({ contenido: 'Qué va en la pieza', copy: 'Copy', hashtags: 'Hashtags' }[k]) + '</span><p>' + esc(x[k]) + '</p></div>').join('') + '</details><button type="button" class="btn sm" data-act="rmRevAplicar" data-id="' + esc(id) + '">Aplicar sugerencia</button>' : '') + '</div>'; }).join('') + '</div>';
+    }
+    const pend = rv ? [...rv.items.entries()].filter(([id, x]) => !x.aplicado && porId.get(id) && ['contenido', 'copy', 'hashtags'].some(k => x[k] && String(x[k]).trim() !== String(porId.get(id)[k] || '').trim())).length : 0;
+    $('#panel').innerHTML = '<form id="rmrev" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Revisión de Mr. Piggy</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="panel-b">' + body + '</div><div class="panel-f"><span>' + (rv && !rv.busy && rv.items.size ? '<button type="button" class="btn ghost" data-act="rmRevNueva">Revisar de nuevo</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cerrar</button>' +
+      (!rv || (!rv.items.size && !rv.busy) ? '<button type="submit" class="btn primary">Revisar</button>' : pend && !rv.busy ? '<button type="button" class="btn primary" data-act="rmRevAplicarTodas">Aplicar ' + pend + (pend === 1 ? ' sugerencia' : ' sugerencias') + '</button>' : '') + '</span></div></form>';
+    $('#panel').hidden = false; $('#scrim').hidden = false;
+  }
+  async function revisar(m) {
+    const alc = (document.querySelector('input[name="rv-alc"]:checked') || {}).value || 'todas';
+    const ps = (piezas(m._id) || []).filter(z => alc === 'sel' ? st.sel.has(z._id) : true);
+    if (!ps.length) { toast('No hay piezas para revisar'); return; }
+    const rv = st.rev = { mesId: m._id, busy: true, hechas: 0, total: ps.length, items: new Map(), resumen: '', observaciones: [] };
+    abrirRevision(m);
+    const c = ctxIA(m); delete c._pp;
+    const todas = (piezas(m._id) || []).map(z => ({ fecha: z.fecha, hora: z.hora, formato: z.formato, tema: z.tema, estado: z.estado }));
+    const tandas = []; for (let i = 0; i < ps.length; i += 6) tandas.push(ps.slice(i, i + 6));
+    let fallo = null;
+    const una = async (t, general) => {
+      try {
+        const r = await data.ia({ modo: 'redes_revision', texto: JSON.stringify(t.map(z => ({ id: z._id, formato: z.formato, fecha: z.fecha, hora: z.hora, tema: z.tema, contenido: z.contenido || '', copy: z.copy, hashtags: z.hashtags }))), contexto: { ...c, general, ...(general ? { todas } : {}) } });
+        if (general) { rv.resumen = String(r.resumen || ''); rv.observaciones = (Array.isArray(r.observaciones) ? r.observaciones : []).map(String).slice(0, 8); }
+        (Array.isArray(r.piezas) ? r.piezas : []).forEach(x => { if (!x || !t.some(z => z._id === x.id)) return; rv.items.set(x.id, { nota: NOTA[x.nota] ? x.nota : 'mejorar', comentarios: (Array.isArray(x.comentarios) ? x.comentarios : []).map(String).slice(0, 4), copy: x.copy || '', hashtags: x.hashtags || '', contenido: x.contenido || '' }); });
+      } catch (e) { fallo = e; }
+      rv.hechas += t.length; if (st.rev === rv && $('#rmrev')) abrirRevision(m);
+    };
+    for (let i = 0; i < tandas.length; i += 3) await Promise.all(tandas.slice(i, i + 3).map((t, j) => una(t, i + j === 0)));
+    rv.busy = false;
+    if (fallo && !rv.items.size) { st.rev = null; toast(fallo.message); }
+    if ($('#rmrev')) abrirRevision(m); render();
+  }
+  async function aplicarRev(m, ids) {
+    const rv = st.rev; if (!rv) return; let n = 0;
+    for (const id of ids) {
+      const x = rv.items.get(id), z = (piezas(m._id) || []).find(y => y._id === id); if (!x || !z || x.aplicado) continue;
+      const u = {}; ['contenido', 'copy', 'hashtags'].forEach(k => { if (x[k] && String(x[k]).trim() && String(x[k]).trim() !== String(z[k] || '').trim()) u[k] = String(x[k]).trim(); });
+      if (!Object.keys(u).length) continue;
+      try { await data.piezasUpd([id], u); local(m._id, [id], u); x.aplicado = true; n++; } catch (e) { toast(e.message); break; }
+    }
+    if (n) toast(n + (n === 1 ? ' sugerencia aplicada' : ' sugerencias aplicadas'));
+    abrirRevision(m); render();
+  }
+
+  /* ---------- Piezas extra (fuera del plan) ---------- */
+  // Por cuenta se decide si las extras se cobran (con precio por formato) o van de onda; en cada pieza se puede cambiar.
+  // Las que se cobran aparecen como sugerencia en el resumen del mes (Finanzas). Los precios solo los ven los administradores.
+  const extrasDe = ps => (ps || []).filter(z => z.extra && !soloAds(z));
+  const seCobra = (z, cfg) => z.extraCobro === 'si' || (cfg.cobro && z.extraCobro !== 'no');
+  const precioX = (z, cfg) => { const k = Object.keys(cfg.precios || {}).find(f => norm(f) === norm(z.formato)); return k ? +cfg.precios[k] || 0 : null; };
+  function extrasResumen(cliente, ps) {
+    const cfg = xCfg(cliente), xs = extrasDe(ps), cob = xs.filter(z => seCobra(z, cfg));
+    let total = 0, faltaPrecio = [];
+    cob.forEach(z => { const p = precioX(z, cfg); if (p == null) faltaPrecio.push(z.formato); else total += p; });
+    return { cfg, xs, cob, total, faltaPrecio: [...new Set(faltaPrecio)] };
+  }
+  function extrasBtn(m, ps) {
+    const r = extrasResumen(m.cliente, ps); if (!r.xs.length) return '';
+    return '<button class="btn ghost sm rm-xbtn" data-act="rmExtras" data-id="' + esc(m._id) + '">' + r.xs.length + (r.xs.length === 1 ? ' extra' : ' extras') + (r.cfg.admin ? (r.cob.length ? ' · ' + r.cob.length + ' a cobrar' + (r.total ? ' (' + (ctx.money ? ctx.money(r.total, r.cfg.moneda) : r.total) + ')' : '') : ' · sin cargo') : '') + '</button>';
+  }
+  function abrirExtras(m) {
+    const ps = piezas(m._id) || [], r = extrasResumen(m.cliente, ps), cfg = r.cfg, can = isStaff();
+    const fila = z => { const p = precioX(z, cfg), sc = seCobra(z, cfg);
+      return '<div class="xp-r" style="--fc:' + fmtColor(z.formato) + '"><span class="rm-fpill">' + esc(z.formato) + '</span><span class="xp-t"><b>' + esc(z.tema || 'Sin tema') + '</b><small>' + (z.fecha ? esc(fmtShort(z.fecha)) : 'Sin fecha') + ' · ' + esc(z.estado) + '</small></span>' +
+        '<select class="in sm" data-xcobro="' + esc(z._id) + '"' + (can ? '' : ' disabled') + ' aria-label="¿Se cobra?">' + opt('', cfg.admin ? 'Según la cuenta' : 'Según lo arreglado', z.extraCobro || '') + opt('si', 'Se cobra', z.extraCobro || '') + opt('no', 'Sin cargo', z.extraCobro || '') + '</select>' +
+        (cfg.admin ? '<span class="xp-m num">' + (sc ? (p == null ? '<span class="muted">sin precio</span>' : esc(ctx.money ? ctx.money(p, cfg.moneda) : String(p))) : '<span class="muted">—</span>') + '</span>' : '') + '</div>'; };
+    $('#panel').innerHTML = '<div style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Piezas extra</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="panel-b"><p class="formnote full">Las piezas que se hicieron fuera del plan del mes. ' + (cfg.admin ? (cfg.cobro ? 'En esta cuenta las extras se cobran: las marcadas “se cobra” aparecen en el resumen del mes.' : 'En esta cuenta las extras van sin cargo, salvo las que marques “se cobra”.') : 'Si se cobran o no lo define administración.') + '</p>' +
+      '<div class="full xp-l">' + r.xs.map(fila).join('') + '</div>' +
+      (cfg.admin ? '<div class="full xp-tot"><span>' + r.cob.length + (r.cob.length === 1 ? ' pieza a cobrar' : ' piezas a cobrar') + '</span><b class="num">' + esc(ctx.money ? ctx.money(r.total, cfg.moneda) : String(r.total)) + '</b></div>' + (r.faltaPrecio.length ? '<p class="hint full">Falta el precio de ' + esc(r.faltaPrecio.join(', ')) + ' para esta cuenta.</p>' : '') +
+        '<button type="button" class="btn sm full" style="justify-self:start" data-act="rmXCfg" data-c="' + esc(m.cliente) + '">Cobro de extras de ' + esc(m.cliente) + ': ' + (cfg.cobro ? 'se cobran' : 'de onda') + ' · cambiar precios</button>' : '') +
+      '</div><div class="panel-f"><span></span><button type="button" class="btn" data-act="close">Listo</button></div></div>';
+    st.xMes = m._id; $('#panel').hidden = false; $('#scrim').hidden = false;
+  }
+
   /* ---------- Fechas y horarios con Mr. Piggy ---------- */
   // Mira la cuenta (rubro, público, ficha), el contenido de cada pieza, lo que ya está agendado y los informes anteriores si hay,
   // y propone día y hora para cada pieza, con el criterio. Se revisa antes de aplicar. Los horarios pueden quedar como los de la cuenta.
@@ -635,6 +770,7 @@ export function initRedes(ctx) {
     const f = e.target;
     if (f.id === 'pzform') { e.preventDefault(); e.stopImmediatePropagation(); guardarPieza(); return; }
     if (f.id === 'rmchat') { e.preventDefault(); e.stopImmediatePropagation(); repartirChat(); return; }
+    if (f.id === 'rmrev') { e.preventDefault(); e.stopImmediatePropagation(); const m = st.revMes && mesDe(st.revMes); if (m) revisar(m); return; }
     if (f.id === 'rmagenda') { e.preventDefault(); e.stopImmediatePropagation(); const m = st.ag && mesDe(st.ag.mesId); if (!m) return; if (st.ag.res) aplicarAgenda(m); else pedirAgenda(m); return; }
     if (f.id === 'rmplan') {
       e.preventDefault(); e.stopImmediatePropagation();
@@ -646,10 +782,11 @@ export function initRedes(ctx) {
     if (f.dataset && f.dataset.rmadd) {
       e.preventDefault(); e.stopImmediatePropagation();
       const m = mesDe(f.dataset.rmadd); if (!m) return;
-      const n = Math.max(1, Math.min(60, Math.round(+f.elements.n.value || 1))), fo = f.elements.f.value;
-      const ps = piezas(m._id) || [], ya = enPlan(ps).filter(z => z.formato === fo).length, pl = +(m.plan || {})[fo] || 0, uso = f.elements.u ? f.elements.u.value : '';
+      const dd = f.closest('details'); if (dd) dd.open = false;
+      const n = Math.max(1, Math.min(60, Math.round(+f.elements.n.value || 1))), fo = (f.querySelector('input[name="f"]:checked') || f.elements.f).value;
+      const ps = piezas(m._id) || [], ya = enPlan(ps).filter(z => z.formato === fo).length, pl = +(m.plan || {})[fo] || 0, uso = f.querySelector('input[name="u"]:checked') ? f.querySelector('input[name="u"]:checked').value : '';
       if (uso === 'solo' && data.cols && data.cols.piezaAds === false) { toast('Para marcar piezas de Ads falta correr el SQL 0028 en Supabase'); return; }
-      const nuevas = Array.from({ length: n }, (_, i) => ({ formato: fo, estado: 'Idea', extra: uso !== 'solo' && pl > 0 && ya + i >= pl, red: 'Instagram', ...(uso ? { ads: uso } : {}) }));
+      const nuevas = Array.from({ length: n }, (_, i) => ({ formato: fo, estado: 'Idea', extra: uso !== 'solo' && pl > 0 && ya + i >= pl, ...(uso ? { ads: uso } : {}) }));
       try { const ins = await insPiezas(m, nuevas); P.set(m._id, [...ps, ...ins]); toast(n === 1 ? 'Pieza agregada' : n + ' piezas agregadas'); render(); } catch (er) { toast(er.message); }
     }
   }, true);
@@ -672,6 +809,11 @@ export function initRedes(ctx) {
     }
     if (t.dataset && t.dataset.rmsel) { if (t.checked) st.sel.add(t.dataset.rmsel); else st.sel.delete(t.dataset.rmsel); render(); return; }
     if (t.dataset && t.dataset.rmselall) { (piezas(t.dataset.rmselall) || []).filter(z => st.vis.includes(z._id)).forEach(z => t.checked ? st.sel.add(z._id) : st.sel.delete(z._id)); render(); return; }
+    if (t.dataset && t.dataset.xcobro) {
+      const id = t.dataset.xcobro, v = t.value, m = meses().find(x => (piezas(x._id) || []).some(z => z._id === id)); if (!m) return;
+      try { await data.piezasUpd([id], { extraCobro: v }); local(m._id, [id], { extraCobro: v }); abrirExtras(m); render(); } catch (er) { toast(er.message); }
+      return;
+    }
     if (t.dataset && t.dataset.rmff != null) { const f = t.dataset.rmff; if (t.checked) st.fOff.delete(f); else st.fOff.add(f); st.sel.clear(); render(); return; }
     if (t.dataset && t.dataset.rmmio != null) { st.mio = t.checked; st.sel.clear(); render(); return; }
     if (t.dataset && t.dataset.flujo) {
@@ -732,6 +874,25 @@ export function initRedes(ctx) {
     rmHoras: t => { const m = mesDe(t.dataset.id); if (m) ponerHoras(m, !!t.dataset.sel); },
     rmChat: t => { const m = mesDe(t.dataset.id); if (m) abrirChat(m); },
     rmCopys: t => { const ids = [...st.sel]; const m = meses().find(x => (piezas(x._id) || []).some(z => ids.includes(z._id))); if (m) copys(ids, m, t); },
+    rmRevisar: t => { const m = mesDe(t.dataset.id); if (!m) return; st.revMes = m._id; if (st.rev && st.rev.mesId !== m._id) st.rev = null; abrirRevision(m); },
+    rmRevNueva: () => { const m = st.revMes && mesDe(st.revMes); if (!m) return; st.rev = null; abrirRevision(m); },
+    rmRevAplicar: t => { const m = st.revMes && mesDe(st.revMes); if (m) aplicarRev(m, [t.dataset.id]); },
+    rmRevAplicarTodas: () => { const m = st.revMes && mesDe(st.revMes); if (m && st.rev) aplicarRev(m, [...st.rev.items.keys()]); },
+    rmCant: t => { const i = t.closest('form').elements.n; i.value = Math.max(1, Math.min(60, (+i.value || 1) + +t.dataset.d)); },
+    rmContUno: async t => {
+      const f = st.fpz; if (!f) return; const m = mesDe(f.mesId); const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!m || !z) return;
+      const tema = ($('#pz-tema').value || '').trim() || z.tema, actual = ($('#pz-contenido') || {}).value || '';
+      const t0 = t.innerHTML; t.disabled = true; t.textContent = 'Escribiendo…';
+      try {
+        const c = ctxIA(m); delete c._pp; delete c.plan;
+        const r = await data.ia({ modo: 'redes_contenido', texto: JSON.stringify([{ id: z._id, formato: ($('#pz-formato') || {}).value || z.formato, fecha: z.fecha, tema, contenido_actual: actual.trim(), copy: (($('#pz-copy') || {}).value || '').trim() }]), contexto: c });
+        const x = (Array.isArray(r.piezas) ? r.piezas : []).find(y => y && y.contenido);
+        if (x && $('#pz-contenido')) { $('#pz-contenido').value = String(x.contenido).trim(); $('#pz-contenido').rows = filas(x.contenido, 60, 3, 12); toast('Listo: revisalo y guardá la pieza'); } else toast('Mr. Piggy no devolvió nada. Probá de nuevo.');
+      } catch (e) { toast(e.message); }
+      t.disabled = false; t.innerHTML = t0;
+    },
+    rmExtras: t => { const m = mesDe(t.dataset.id); if (m) abrirExtras(m); },
+    rmXCfg: t => { const ab = abonoRedes(t.dataset.c); if (ab && ctx.formExtras) ctx.formExtras(ab._id); },
     rmCopyUno: async t => { const f = st.fpz; if (!f) return; const m = mesDe(f.mesId); const z = (piezas(f.mesId) || []).find(x => x._id === f.id); if (!m || !z) return; z.tema = ($('#pz-tema').value || '').trim() || z.tema; if ($('#pz-contenido')) z.contenido = $('#pz-contenido').value.trim(); if ($('#pz-copy')) z.copy = $('#pz-copy').value.trim(); await copys([z._id], m, t); const zz = piezas(f.mesId).find(x => x._id === f.id); if ($('#pz-copy') && zz) { $('#pz-copy').value = zz.copy; $('#pz-hashtags').value = zz.hashtags; if ($('#pz-contenido')) $('#pz-contenido').value = zz.contenido || ''; } },
     rmBorrar: async () => { const ids = [...st.sel]; if (!ids.length || !await confirmar('¿Borrar ' + ids.length + ' pieza' + (ids.length > 1 ? 's' : '') + '?')) return; try { await data.piezasDel(ids); P.forEach((ps, k) => P.set(k, ps.filter(z => !ids.includes(z._id)))); st.sel.clear(); toast('Borradas'); render(); } catch (e) { toast(e.message); } },
     rmSelNada: () => { st.sel.clear(); render(); },
@@ -742,5 +903,11 @@ export function initRedes(ctx) {
   };
   // Cambio en vivo de piezas: se recargan solo las del mes afectado.
   function enVivo(ev) { const r = (ev && (ev.new && ev.new.mes_id ? ev.new : ev.old)) || {}; const id = r.mes_id || [...P.keys()].find(k => (P.get(k) || []).some(z => z._id === r.id)); if (id && P.has(id)) cargar([id], true); }
-  return { opcionesHtml, tocaA, vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
+  // Para Finanzas: las extras de un mes que se cobran (carga las piezas si hace falta; devuelve null mientras cargan).
+  function extrasACobrar(cliente, mes) {
+    const m = mesCliente(cliente, mes); if (!m) return { cob: [], total: 0, faltaPrecio: [] };
+    const ps = piezas(m._id); if (!ps) { setTimeout(() => cargar([m._id]), 0); return null; }
+    return extrasResumen(cliente, ps);
+  }
+  return { extrasACobrar, opcionesHtml, tocaA, vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
 }

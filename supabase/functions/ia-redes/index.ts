@@ -1,10 +1,13 @@
 // Mr. Piggy arma el contenido de redes: el plan del mes (qué pieza, qué día, qué va en el diseño) y los copys.
 // Aparte de `ia` para poder ajustar las reglas de escritura sin tocar la función grande. Equipo y admins.
 // verify_jwt apagado: se valida el usuario con rpc('yo'). Misma cuenta de IA que `ia`, con el modelo preciso (escribe mejor).
-// POST { modo: 'redes_ideas' | 'redes_copys' | 'redes_agenda', texto, contexto }
+// POST { modo: 'redes_ideas' | 'redes_copys' | 'redes_agenda' | 'redes_contenido' | 'redes_revision', texto, contexto }
 //   redes_ideas → { piezas: [{ formato, fecha, tema, contenido }] }   (los copys se escriben después, en tandas)
 //   redes_copys → texto = JSON [{ id, formato, fecha, tema, contenido, copy_actual }] → { piezas: [{ id, copy, hashtags, contenido? }] }
 //   redes_agenda → contexto con la cuenta, las piezas a ubicar y las que ya tienen lugar → { criterio, horarios: [{ formato, dias, hora }], piezas: [{ id, fecha, hora, motivo }] }
+//   redes_contenido → texto = JSON [{ id, formato, tema, contenido_actual, copy }] → { piezas: [{ id, contenido }] }
+//   redes_revision → texto = JSON [{ id, formato, fecha, hora, tema, contenido, copy, hashtags }] (+ contexto.todas, contexto.general)
+//                    → { resumen?, observaciones?, piezas: [{ id, nota, comentarios, copy?, hashtags?, contenido? }] }
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -72,6 +75,26 @@ const SYS_AGENDA = 'Sos Mr. Piggy, community manager senior de àndale, una agen
   'si una pieza nombra una fecha especial, ubicala para esa fecha; no uses feriados de los que no estés seguro. Horarios en punto o y media, hora de Argentina. ' +
   '\n\nRespondé únicamente llamando una vez a la herramienta agenda_del_mes, sin texto antes ni después.';
 
+const TOOL_CONT = { name: 'escribir_contenido', description: 'Lo que va en cada pieza.', input_schema: { type: 'object', required: ['piezas'], properties: {
+  piezas: { type: 'array', items: { type: 'object', required: ['id', 'contenido'], properties: { id: { type: 'string' }, contenido: { type: 'string', description: 'con saltos de línea, según el formato' } } } } } } };
+const SYS_CONT = BASE + '\n\nEscribís (o mejorás, si ya hay algo en contenido_actual) lo que va en cada pieza para quien diseña o graba. Respetá el tema; si hay copy, que lo que va en la pieza y el copy se complementen sin repetirse.\n\n' + REGLAS_FORMATO +
+  '\n\nRespondé únicamente llamando una vez a la herramienta escribir_contenido, sin texto antes ni después.';
+
+const TOOL_REV = { name: 'revisar_piezas', description: 'Revisión del contenido del mes.', input_schema: { type: 'object', required: ['piezas'], properties: {
+  resumen: { type: 'string', description: 'solo si te piden la mirada general: 2 a 4 frases sobre el mes completo' },
+  observaciones: { type: 'array', items: { type: 'string' }, description: 'solo si te piden la mirada general: puntos concretos del mes (balance de formatos y pilares, fechas amontonadas o vacías, temas repetidos, llamados a la acción repetidos, fechas especiales que faltan). Máx. 6.' },
+  piezas: { type: 'array', items: { type: 'object', required: ['id', 'nota', 'comentarios'], properties: {
+    id: { type: 'string' },
+    nota: { type: 'string', enum: ['bien', 'mejorar', 'rehacer'] },
+    comentarios: { type: 'array', items: { type: 'string' }, description: '1 a 3 observaciones concretas y breves (qué está mal y por qué); si está bien, qué funciona' },
+    copy: { type: 'string', description: 'solo si la nota es mejorar o rehacer y el copy lo necesita: el copy corregido completo, con las reglas' },
+    hashtags: { type: 'string', description: 'solo si hay que cambiarlos' },
+    contenido: { type: 'string', description: 'solo si lo que va en la pieza falta o hay que corregirlo' },
+  } } } } } };
+const SYS_REV = BASE + '\n\nRevisás piezas ya cargadas de un mes de redes, como lo haría la directora de cuentas antes de mandarlas al cliente. Para cada pieza: ¿respeta la ficha de marca (tono, trato, emojis, lo que nunca dice)? ¿el copy tiene gancho, párrafos separados y un llamado a la acción? ¿el largo va con el formato? ¿los hashtags están bien? ¿lo que va en la pieza está claro para quien diseña? ¿el tema y la fecha tienen sentido? ' +
+  'Sé exigente pero justo: "bien" si está para mandar; "mejorar" si con ajustes queda; "rehacer" si no sirve. Cuando corregís, devolvé el texto completo listo para usar, no instrucciones.\n\n' + REGLAS_COPY + '\n\n' + REGLAS_FORMATO +
+  '\n\nRespondé únicamente llamando una vez a la herramienta revisar_piezas, sin texto antes ni después.';
+
 function mesTxt(mes: string) {
   const [y, m] = String(mes || '').split('-').map(Number); if (!y || !m) return '';
   const ult = new Date(y, m, 0).getDate();
@@ -85,29 +108,40 @@ Deno.serve(async req => {
   const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: req.headers.get('Authorization') || '' } }, auth: { persistSession: false } });
   const { data: yoData } = await sb.rpc('yo'); const yo = Array.isArray(yoData) ? yoData[0] : yoData;
   if (!yo || !['admin', 'equipo'].includes(yo.rol)) return json({ error: 'Solo el equipo puede usar la IA.' }, 403);
-  const modo = b.modo === 'redes_copys' ? 'redes_copys' : b.modo === 'redes_agenda' ? 'redes_agenda' : 'redes_ideas';
+  const MODOS = ['redes_ideas', 'redes_copys', 'redes_agenda', 'redes_contenido', 'redes_revision'];
+  const modo = MODOS.includes(b.modo) ? b.modo : 'redes_ideas';
   const texto = String(b.texto || '').slice(0, 40_000), ctx = b.contexto ?? {};
   const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
   let cfg: any = null; try { const { data } = await svc.rpc('cred_leer', { n: 'anthropic' }); if (data) cfg = JSON.parse(data); } catch { cfg = null; }
   const key = (cfg && cfg.key) || Deno.env.get('ANTHROPIC_API_KEY');
   if (!key) return json({ error: 'La IA no está configurada todavía. Conectala en Configuración → Integraciones → Mr. Piggy.' }, 503);
   const modelo = (cfg && cfg.modelo) || Deno.env.get('IA_MODEL') || 'claude-sonnet-5-5';
-  const tool = modo === 'redes_copys' ? TOOL_COPYS : modo === 'redes_agenda' ? TOOL_AGENDA : TOOL_PLAN, system = modo === 'redes_copys' ? SYS_COPYS : modo === 'redes_agenda' ? SYS_AGENDA : SYS_PLAN;
+  const [tool, system] = ({ redes_copys: [TOOL_COPYS, SYS_COPYS], redes_agenda: [TOOL_AGENDA, SYS_AGENDA], redes_contenido: [TOOL_CONT, SYS_CONT], redes_revision: [TOOL_REV, SYS_REV], redes_ideas: [TOOL_PLAN, SYS_PLAN] } as Record<string, [any, string]>)[modo];
   const marca = ctx && ctx.marca ? ctx.marca : null;
   const cab = 'HOY: ' + hoyAR() + (ctx.mes ? '\nMES A PLANIFICAR: ' + mesTxt(ctx.mes) + '. Todas las fechas van dentro de ese mes.' : '') +
     '\nEMOJIS DE LA MARCA: ' + ((marca && marca.emojis) || 'sin dato (usá 1 o 2)') + (marca && marca.hashtags ? '\nHASHTAGS PROPIOS: ' + marca.hashtags : '');
   const user = modo === 'redes_agenda' ? cab + '\n\nCUENTA, MES Y PIEZAS:\n' + JSON.stringify(ctx).slice(0, 60_000) + (texto ? '\n\nPEDIDO:\n' + texto : '')
+    : modo === 'redes_revision' ? cab + '\n\nCLIENTE Y MES:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\n' + (ctx.general ? 'Además de cada pieza, dame la mirada general del mes (resumen y observaciones) mirando "todas".' : 'No hace falta la mirada general: solo cada pieza.') + '\n\nPIEZAS A REVISAR:\n' + texto
+    : modo === 'redes_contenido' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPIEZAS:\n' + texto
     : modo === 'redes_copys' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPIEZAS:\n' + texto
     : cab + '\n\nCLIENTE Y MES:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPEDIDO:\n' + (texto || 'Proponé el contenido que falta del mes.');
+  // Algunos modelos no aceptan forzar la herramienta (tool_choice "tool"): en ese caso se pide con "auto" y la instrucción de usarla.
+  let forzar = true;
   const pedir = (max: number) => fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: modelo, max_tokens: max, system, tools: [tool], tool_choice: { type: 'tool', name: tool.name }, messages: [{ role: 'user', content: user }] }) });
-  let max = modo === 'redes_copys' ? 4000 : modo === 'redes_agenda' ? 6000 : 8000;
+    body: JSON.stringify({ model: modelo, max_tokens: max, system, tools: [tool], tool_choice: forzar ? { type: 'tool', name: tool.name } : { type: 'auto' }, messages: [{ role: 'user', content: user }] }) });
+  let max = ({ redes_copys: 4000, redes_agenda: 6000, redes_contenido: 3000, redes_revision: 8000 } as Record<string, number>)[modo] || 8000;
   let res = await pedir(max), out: any = await res.json().catch(() => ({}));
+  if (!res.ok && /tool_choice/i.test(out?.error?.message || '')) { forzar = false; res = await pedir(max); out = await res.json().catch(() => ({})); }
   if (res.ok && out && out.stop_reason === 'max_tokens') { max = 16000; res = await pedir(max); out = await res.json().catch(() => ({})); }
   const err = res.ok ? null : (out?.error?.message || 'La API respondió ' + res.status);
   try { await sb.from('ia_log').insert({ persona_id: yo.id, accion: modo, modelo, tokens_in: out?.usage?.input_tokens || 0, tokens_out: out?.usage?.output_tokens || 0, ok: !err, error: err }); } catch { /* el registro no frena */ }
   if (err) return json({ error: 'IA: ' + err }, 502);
   const tu = (out.content || []).find((c: any) => c.type === 'tool_use' && c.name === tool.name);
-  if (!tu || !tu.input) return json({ error: 'La IA no devolvió algo utilizable. Probá de nuevo.' }, 502);
-  return json(tu.input);
+  let input: any = tu ? tu.input : null;
+  if (!input) { // sin herramienta: se busca el JSON en el texto
+    const txt = (out.content || []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n');
+    const m = txt.match(/\{[\s\S]*\}/); if (m) { try { input = JSON.parse(m[0]); } catch { input = null; } }
+  }
+  if (!input || typeof input !== 'object') return json({ error: 'La IA no devolvió algo utilizable. Probá de nuevo.' }, 502);
+  return json(input);
 });

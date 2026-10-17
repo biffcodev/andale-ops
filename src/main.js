@@ -13,7 +13,7 @@ import { initMails } from './mails.js';
 import { initIntegraciones } from './integraciones.js';
 import { initTrabajo } from './trabajo.js';
 import { initHilos } from './hilos.js';
-import { initRedes, FLUJO_DEF, HORAS_DEF, PZ_COLOR } from './redes.js';
+import { initRedes, FLUJO_DEF, HORAS_DEF, PZ_COLOR, REDES_G, redChips } from './redes.js';
 import { initTickets } from './tickets.js';
 import { initEntregas } from './entregas.js';
 import { initInformes } from './informes.js';
@@ -1312,7 +1312,7 @@ let RLJ = null;
 const rlj = () => RLJ || (RLJ = initReloj({ S, esc, opt, toast, data, $, today, cmp }));
 let INF = null;
 const inf = () => INF || (INF = initInformes({ marcaCtx: (c, ps) => fm().contexto(c, ps), S, esc, toast, data, render, emptyBox, monthLabel, addMonth, isStaff, fmt, piezas: id => red().piezas(id) || [], cfgMarca: () => (ADM && ADM.cfgMarca ? ADM.cfgMarca() : null), segDe: c => segDe(c), avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
-const red = () => RED || (RED = initRedes({ servChips: (c, o) => servChips(c, o), servAb: c => servicioRedes(c).redes, autoBtn: p => aut().boton(p), toastAccion, masMenu, marcaCtx: (c, ps) => fm().contexto(c, ps), avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
+const red = () => RED || (RED = initRedes({ extrasCfg: id => (ADM && ADM.extrasCfg ? ADM.extrasCfg(id) : null), formExtras: id => ADM && ADM.formExtras && ADM.formExtras(id), money: (n, m) => moneyFmt(n, m), servChips: (c, o) => servChips(c, o), servAb: c => servicioRedes(c).redes, autoBtn: p => aut().boton(p), toastAccion, masMenu, marcaCtx: (c, ps) => fm().contexto(c, ps), avisarCliente: (c, t, i) => avisarCliente(c, t, i), informe: (m, ps) => inf().html(m, ps), S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, lsSet, lsGet, closeForm,
   cfgGet: (k, c) => integr().cfgGet(k, c), servicios: n => serviciosDe(n).map(x => x.tipo).join(', '),
   irMes: id => { S.view = 'redes'; S.rmFicha = id || null; S.ficha = null; S.pficha = null; try { history.replaceState(null, '', '#redes' + (id ? '/' + id : '')); } catch (e) { } render(); window.scrollTo(0, 0); } }));
 const moneyFmt = (n, m) => { try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: m || 'ARS', maximumFractionDigits: 0 }).format(+n || 0); } catch (e) { return (m || '') + ' ' + n; } };
@@ -1501,6 +1501,7 @@ const FORMS = {
     { k: 'cliente', label: 'Cliente', type: 'select', html: v => clienteOpts(v), req: 1, full: 1 },
     { k: 'tipo', label: 'Servicio', type: 'select', opts: () => [...new Set([...(S.L.tiposAbono || ['Redes', 'Ads']), ...(S.L.tipos || [])])], req: 1, hint: 'Lo que se cobra todos los meses con precio fijo: Redes, Ads o, si va mes a mes, Audiovisual, Diseño… Ads va siempre junto con Redes.' },
     { k: 'plan', label: 'Plan', type: 'select', opts: () => S.L.planes, blank: 'Sin plan' },
+    { k: 'redes', label: 'Redes que gestionamos (servicio de Redes)', type: 'chips', opts: () => REDES_G, full: 1, hint: 'Las piezas nuevas salen para estas redes; en cada pieza se puede elegir una o varias.' },
     { k: 'responsables', label: 'Quién trabaja en esta cuenta', type: 'equipo', full: 1, hint: 'Elegí el rol de cada persona. El mes de Redes se asigna a quien está en Cuentas y las piezas nuevas a quien está en Diseño.' },
     { k: 'desde', label: 'Desde (mes)', type: 'month' },
     { k: 'hasta', label: 'Hasta (mes, si se dio de baja)', type: 'month' },
@@ -1580,6 +1581,7 @@ function fieldHtml(f, v, ro) {
   const hint = f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '';
   if (f.type === 'check') return '<label class="chk ' + (f.full ? 'full' : '') + '"><input type="checkbox" id="' + id + '"' + (v ? ' checked' : '') + dis + '> ' + esc(f.label) + '</label>';
   if (f.type === 'equipo') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span>' + equipoField(id, Array.isArray(v) ? v : [], (S.form && S.form.roles) || {}, dis) + hint + '</div>';
+  if (f.type === 'chips') return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span>' + redChips('f-' + f.k, Array.isArray(v) ? v : [], f.opts(), dis, esc) + hint + '</div>';
   if (f.type === 'multi') {
     const sel = Array.isArray(v) ? v : (v ? [v] : []); const ps = personas(); const all = [...ps, ...sel.filter(p => !ps.includes(p))];
     return '<div class="field full"><span class="lbl">' + esc(f.label) + '</span><div class="multi" id="' + id + '">' + (all.length ? all.map(p => '<label><input type="checkbox" value="' + esc(p) + '"' + (sel.includes(p) ? ' checked' : '') + dis + '> ' + esc(p) + '</label>').join('') : '<span class="muted">Cargá personas en Equipo.</span>') + '</div></div>';
@@ -1642,7 +1644,7 @@ async function saveForm() {
     const el = $('#f-' + f.k);
     if (f.type === 'etapas') { out[f.k] = S.form.etapas || []; continue; }
     if (!el) continue;
-    if (f.type === 'multi') out[f.k] = [...el.querySelectorAll('input:checked')].map(i => i.value);
+    if (f.type === 'multi' || f.type === 'chips') out[f.k] = [...el.querySelectorAll('input:checked')].map(i => i.value);
     else if (f.type === 'equipo') { const ss = [...el.querySelectorAll('select[data-eqa]')].filter(x => x.value); out[f.k] = ss.map(x => x.dataset.eqa); out.roles = Object.fromEntries(ss.map(x => [x.dataset.eqa, x.value === '__' ? '' : x.value])); out.rolesPrev = (S.form && S.form.rolesPrev) || {}; }
     else if (f.type === 'redes') { const o = {}; el.querySelectorAll('input[data-red]').forEach(i => { if (i.value.trim()) o[i.dataset.red] = i.value.trim(); }); out.web = o.web || ''; delete o.web; out[f.k] = o; }
     else out[f.k] = f.type === 'check' ? el.checked : el.value.trim();
@@ -2069,7 +2071,7 @@ async function start(sess) {
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
   S.me = me;
   if (me.rol === 'admin' && !ADM) {
-    ADM = initAdmin({ waHref, WA_ICO, icoMail: ICON.mail, icoTel: ICON.telefono, autoBtn: p => aut().boton(p), autoVista: () => aut().vista(), S, av, avEditable, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
+    ADM = initAdmin({ extrasACobrar: (c, m) => red().extrasACobrar(c, m), waHref, WA_ICO, icoMail: ICON.mail, icoTel: ICON.telefono, autoBtn: p => aut().boton(p), autoVista: () => aut().vista(), S, av, avEditable, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
     ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
     Object.assign(ACT, ADM.actions);
   }
