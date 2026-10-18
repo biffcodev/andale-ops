@@ -66,7 +66,7 @@ export function initIA(ctx) {
         go('gastos'); ADM.abrir.movimiento(preset); return;
       }
       case 'charla':
-        openForm('comunicacion', null, { fecha: a.fecha || today(), cliente, canal: a.canal || '', conQuien: a.con_quien || '', resumen: a.resumen || '', acuerdo: a.acuerdo || '', proximo: a.proximo || '', fechaProximo: a.fecha_proximo || '', responsable: personaExacta(a.responsable) || (S.me && S.me.alias) || '' });
+        openForm('comunicacion', null, { tema: a.tema || '', fecha: a.fecha || today(), cliente, canal: a.canal || '', conQuien: a.con_quien || '', resumen: a.resumen || '', acuerdo: a.acuerdo || '', proximo: a.proximo || '', fechaProximo: a.fecha_proximo || '', responsable: personaExacta(a.responsable) || (S.me && S.me.alias) || '' });
         return;
       case 'proyecto':
         openForm('proyecto', null, { cliente, proyecto: a.nombre || '', tipo: a.tipo_trabajo || '', entrega: a.entrega || '', responsables: S.me ? [S.me.alias] : [] });
@@ -147,8 +147,8 @@ export function initIA(ctx) {
     if (btn) { btn.disabled = true; btn.textContent = 'Mr. Piggy está leyendo…'; }
     try {
       const r = await data.ia({ modo: 'charla', texto: t, contexto: { clientes: S.C.map(c => c.nombre), equipo: S.E.map(e => e.persona), canales: S.L.canales || [], cliente_elegido: ($('#f-cliente') || {}).value || '' } });
-      const set = (id, v) => { const el = $('#f-' + id); if (el && v) el.value = v; };
-      set('cliente', clienteExacto(r.cliente)); set('fecha', r.fecha); set('canal', r.canal); set('conQuien', r.con_quien); set('resumen', r.resumen); set('acuerdo', r.acuerdo); set('proximo', r.proximo); set('fechaProximo', r.fecha_proximo); set('responsable', personaExacta(r.responsable));
+      const set = (id, v) => { const el = $('#f-' + id); if (!el || !v) return; const rs = el.querySelectorAll ? el.querySelectorAll('input[type="radio"]') : []; if (rs.length) { const x = [...rs].find(i => i.value.toLowerCase() === String(v).toLowerCase()); if (x) x.checked = true; } else el.value = v; };
+      set('cliente', clienteExacto(r.cliente)); set('tema', r.tema); set('fecha', r.fecha); set('canal', r.canal); set('conQuien', r.con_quien); set('resumen', r.resumen); set('acuerdo', r.acuerdo); set('proximo', r.proximo); set('fechaProximo', r.fecha_proximo); set('responsable', personaExacta(r.responsable));
       toast('Listo: revisalo y guardá.');
     } catch (e) { toast(e.message); }
     if (btn) { btn.disabled = false; btn.textContent = 'Que lo complete Mr. Piggy'; }

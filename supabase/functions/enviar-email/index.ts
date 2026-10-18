@@ -1,6 +1,6 @@
 // Envía un email de àndale por Resend.
 // Administradores: todos los tipos. Equipo: solo 'Mensaje' (mails libres a clientes: novedades, pedidos, coordinación).
-// Registra el envío en `emails`; si es para un cliente, la gestión en `gestiones` (cobranza) o una charla en `comunicaciones` (mensajes).
+// Registra el envío en `emails`; si es de cobranza para un cliente, también la gestión en `gestiones`.
 //
 // Secretos (Supabase → Edge Functions → Secrets):
 //   RESEND_API_KEY   (obligatorio)
@@ -113,13 +113,9 @@ Deno.serve(async req => {
   if (eLog) ({ data: log, error: eLog } = await adm.from('emails').insert({ ...fila, links: tr.links }).select('id').single());
   if (eLog) ({ data: log } = await adm.from('emails').insert(fila).select('id').single()); // sin la columna links (falta el SQL 0020)
 
-  if (ok && b.cliente_id && b.registrar !== false && tipo === 'Mensaje') {
-    // La charla queda atada al mail: si se borra el mail del historial, se va con él (SQL 0025).
-    const charla = { cliente_id: b.cliente_id, fecha: hoyAR(), canal: 'Email', con_quien: para.join(', '), resumen: 'Mail: ' + asunto + (b.nota ? ' · ' + String(b.nota).slice(0, 400) : ''),
-      acuerdo: '', proximo: '', hecho: true, responsable_id: yo.id };
-    const { error: eC } = await adm.from('comunicaciones').insert({ ...charla, email_id: log ? log.id : null });
-    if (eC) await adm.from('comunicaciones').insert(charla);
-  } else if (ok && b.cliente_id && b.registrar !== false) {
+  // Los mails libres (tipo 'Mensaje') quedan solo en `emails`: se ven en la ficha del cliente → Conversaciones. No se anotan como charla
+  // (una charla es una conversación fuera de la app; si el cliente responde, se anota con "El cliente respondió").
+  if (ok && b.cliente_id && b.registrar !== false && tipo !== 'Mensaje') {
     await sb.from('gestiones').insert({
       cliente_id: b.cliente_id, factura_id: b.factura_id || null, periodo: b.periodo || null, tipo, fecha: hoyAR(), canal: 'Email',
       nota: 'Enviado a ' + para.join(', ') + (b.nota ? ' · ' + b.nota : ''), persona_id: yo.id, email_id: log ? log.id : null,

@@ -14,7 +14,10 @@ export const TUTORIALES = {
 export const NOVEDADES = [
   { f: '2026-10-17', t: 'Configuración ordenada', d: 'Seis pantallas por tema: Facturación, Mails, Trabajo y Redes, Integraciones, Automatizaciones y Datos de la app.', roles: ['admin'] },
   { f: '2026-10-17', t: 'Facturas en Drive', d: 'Se nombran solas como CLIENTE-MES-AÑO.pdf, se detectan duplicados y se avisa si alguien borra un PDF. Copia de respaldo opcional.', roles: ['admin'] },
-  { f: '2026-10-17', t: 'Redes por etapas', d: 'El mes avanza solo de Planificación a Diseño, Revisión, Cliente y Aprobado cuando todas las piezas de la etapa están listas, y avisa al equipo.', roles: ['admin', 'equipo', 'externo'] },
+  { f: '2026-10-18', t: 'Conversaciones del cliente', d: 'En la ficha, una sola línea de tiempo con las charlas, los mails que le mandamos y lo que escribió en el portal. Los mails ya no se anotan solos como charla; si el cliente responde, tocá el mail → “El cliente respondió”.', roles: ['admin', 'equipo'] },
+  { f: '2026-10-18', t: '@ a contactos del cliente', d: 'En los comentarios que ve el cliente podés mencionar a una persona del cliente: le llega un mail con lo que le escribiste y lo ve en su portal.', roles: ['admin', 'equipo'] },
+  { f: '2026-10-18', t: 'Lo que vuelve del cliente', d: 'Cuando un cliente pide cambios o comenta una pieza, le llega el aviso a todo el equipo de la cuenta, y en Mis trabajos aparece cada pieza con lo que pidió.', roles: ['admin', 'equipo', 'externo'] },
+  { f: '2026-10-18', t: 'Redes más simple', d: 'Cada pieza avanza sola (Idea · Diseño · Lista). El mes se manda entero al cliente y lo que vuelve se maneja de a una, con la bandeja de Pedidos de clientes.', roles: ['admin', 'equipo', 'externo'] },
   { f: '2026-10-17', t: 'Tablero de Redes', d: 'Una vista nueva para ver las piezas por etapa y moverlas arrastrándolas.', roles: ['admin', 'equipo', 'externo'] },
   { f: '2026-10-17', t: 'Mr. Piggy arma el plan más rápido', d: 'Propone el mes por tandas, separa Efemérides y noticias de Días y horarios, y corrige la redacción.', roles: ['admin', 'equipo'] },
   { f: '2026-10-17', t: 'Cambiar una pieza por otra idea', d: 'Si una idea no va, se reemplaza desde la pieza. Las fuentes son de primer nivel y podés descartar sitios.', roles: ['admin', 'equipo'] },

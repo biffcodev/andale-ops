@@ -21,14 +21,14 @@ const FIELDS = {
   abono: { cliente: ['cliente_id', 'cliente'], tipo: ['tipo'], plan: ['plan'], desde: ['desde', 'month'], hasta: ['hasta', 'month'], estado: ['estado'], notas: ['notas'], redes: ['redes', 'arr'] },
   cliente: { nombre: ['nombre'], desde: ['desde', 'month'], estado: ['estado'], estadoManual: ['estado_manual', 'bool'], servicio: ['servicio'], plan: ['plan'], contacto: ['contacto'], email: ['email'], tel: ['tel'], telFijo: ['tel_fijo', 'col'], web: ['web'], redes: ['redes', 'obj'], carpeta: ['carpeta'], notas: ['notas'] },
   persona: { persona: ['alias'], nombre: ['nombre'], puesto: ['puesto'], email: ['email', 'nullable'], tel: ['tel'], rol: ['rol'], activo: ['activo', 'bool'], notas: ['notas'] },
-  comunicacion: { fecha: ['fecha', 'date'], cliente: ['cliente_id', 'cliente'], canal: ['canal'], conQuien: ['con_quien'], resumen: ['resumen'], acuerdo: ['acuerdo'], proximo: ['proximo'], fechaProximo: ['fecha_proximo', 'date'], hecho: ['hecho', 'bool'], responsable: ['responsable_id', 'persona'] },
+  comunicacion: { tema: ['tema', 'cTxt'], equipo: ['equipo', 'cPers'], emailId: ['email_id', 'cUuid'], fecha: ['fecha', 'date'], cliente: ['cliente_id', 'cliente'], canal: ['canal'], conQuien: ['con_quien'], resumen: ['resumen'], acuerdo: ['acuerdo'], proximo: ['proximo'], fechaProximo: ['fecha_proximo', 'date'], hecho: ['hecho', 'bool'], responsable: ['responsable_id', 'persona'] },
 };
 
 const idx = { clienteId: new Map(), clienteName: new Map(), personaId: new Map(), personaAlias: new Map() };
 const month = d => (d ? String(d).slice(0, 7) : '');
 
 /** Columnas nuevas que puede no tener todavía la base (hasta correr su SQL). */
-export const cols = { clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true, piezaContenido: true, abonoRedes: true, piezaExtraCobro: true, piezaVersiones: true, piezaFuentes: true, piezaLista: true };
+export const cols = { charlaTema: true, comentContactos: true, clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true, piezaContenido: true, abonoRedes: true, piezaExtraCobro: true, piezaVersiones: true, piezaFuentes: true, piezaLista: true };
 function toRow(kind, ui) {
   const row = {};
   for (const [k, v] of Object.entries(ui)) {
@@ -45,6 +45,9 @@ function toRow(kind, ui) {
     else if (t === 'nullable') val = v ? String(v).trim().toLowerCase() : null;
     else if (t === 'cliente') { val = idx.clienteId.get(v) || null; if (v && !val) throw friendly({ message: 'El cliente "' + v + '" no existe.' }); }
     else if (t === 'persona') val = v ? (idx.personaId.get(v) || null) : null;
+    else if (t === 'cTxt') { if (!cols.charlaTema) continue; val = v ?? ''; }   // tema de la charla (SQL 0041)
+    else if (t === 'cPers') { if (!cols.charlaTema) continue; val = (Array.isArray(v) ? v : []).map(a => idx.personaId.get(a)).filter(Boolean); }
+    else if (t === 'cUuid') val = v || null;
     else val = v ?? '';
     row[col] = val;
   }
@@ -87,6 +90,7 @@ export async function loadAll() {
   d.personas.forEach(p => { idx.personaId.set(p.alias, p.id); idx.personaAlias.set(p.id, p.alias); });
   d.clientes.forEach(c => { idx.clienteId.set(c.nombre, c.id); idx.clienteName.set(c.id, c.nombre); });
   if (d.clientes.length) cols.clienteRedes = 'redes' in d.clientes[0];
+  if (d.comunicaciones.length) cols.charlaTema = 'tema' in d.comunicaciones[0];
   if (d.abonos.length) cols.abonoRedes = 'redes' in d.abonos[0];
   const respOf = (rows, key) => { const m = new Map(); rows.forEach(r => { const a = idx.personaAlias.get(r.persona_id); if (!a) return; if (!m.has(r[key])) m.set(r[key], []); m.get(r[key]).push(a); }); return m; };
   const rp = respOf(d.proyecto_responsables, 'proyecto_id'), ra = respOf(d.abono_responsables, 'abono_id'), rc = respOf(d.cliente_responsables, 'cliente_id');
@@ -103,7 +107,7 @@ export async function loadAll() {
     C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, desde: month(c.desde), estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, telFijo: c.tel_fijo || '', web: c.web, redes: (c.redes && typeof c.redes === 'object' && !Array.isArray(c.redes)) ? c.redes : {}, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', marca: 'marca' in c ? (c.marca || {}) : undefined, responsables: rc.get(c.id) || [], ...meta(c) })),
     A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, redes: Array.isArray(a.redes) ? a.redes : [], responsables: ra.get(a.id) || [], roles: rolA.get(a.id) || {}, ...meta(a) })),
     P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: trows ? (tks.get(p.id) || []) : (Array.isArray(p.etapas) ? p.etapas : []), etapaActual: p.etapa_actual || '', prioridad: p.prioridad || '', responsables: rp.get(p.id) || [], ...meta(p) })),
-    M: d.comunicaciones.map(m => ({ _id: m.id, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
+    M: d.comunicaciones.map(m => ({ _id: m.id, tema: m.tema || '', equipo: (m.equipo || []).map(x => idx.personaAlias.get(x)).filter(Boolean), emailId: m.email_id || null, fecha: m.fecha || '', cliente: cname(m.cliente_id), canal: m.canal, conQuien: m.con_quien, resumen: m.resumen, acuerdo: m.acuerdo, proximo: m.proximo, fechaProximo: m.fecha_proximo || '', hecho: m.hecho, responsable: idx.personaAlias.get(m.responsable_id) || '', ...meta(m) })),
     L: Object.fromEntries(d.listas.map(l => [l.clave, l.valores])),
  T: !!trows,
     RM: rmrows ? rmrows.filter(m => idx.clienteName.has(m.cliente_id)).map(mesUI) : null,
@@ -355,7 +359,7 @@ export async function comentarios(entidad, id) {
   const rows = check(await sb.from('comentarios').select('*').eq('entidad', entidad).eq('entidad_id', id).order('created_at').limit(500)) || [];
   return rows.map(comUI);
 }
-export function comUI(c) { return { _id: c.id, entidad: c.entidad, entidadId: c.entidad_id, autor: idx.personaAlias.get(c.autor_id) || c.autor_nombre || '', autorId: c.autor_id, deCliente: !!c.autor_contacto_id, texto: c.texto, interno: c.interno, creado: c.created_at, editado: c.editado_at, pedido: !!c.pedido, resuelto: c.resuelto_at || null, resueltoPor: idx.personaAlias.get(c.resuelto_por) || '' }; }
+export function comUI(c) { return { _id: c.id, entidad: c.entidad, entidadId: c.entidad_id, autor: idx.personaAlias.get(c.autor_id) || c.autor_nombre || '', autorId: c.autor_id, deCliente: !!c.autor_contacto_id, texto: c.texto, interno: c.interno, creado: c.created_at, editado: c.editado_at, contactos: c.menciones_contactos || [], pedido: !!c.pedido, resuelto: c.resuelto_at || null, resueltoPor: idx.personaAlias.get(c.resuelto_por) || '' }; }
 // Pedidos de cambio de los clientes (comentarios con pedido = true). null si falta el SQL 0039.
 export const sinPrefijo = t => String(t || '').replace(/^Pidió cambios:\s*/i, '').replace(/^Anotamos tu pedido:\s*/i, '');
 export async function pedidosAbiertos() {
@@ -365,8 +369,17 @@ export async function pedidosAbiertos() {
 export async function piezasPorId(ids) { if (!ids.length) return []; const rows = await tolerante(sb.from('piezas').select('*').in('id', ids)); return (rows || []).map(piezaUI); }
 export async function pedidoResolver(id, hecho = true) { check(await sb.rpc('pedido_resolver', { p_id: id, p_hecho: hecho })); }
 export async function comentar(row) {
-  const r = check(await sb.from('comentarios').insert({ entidad: row.entidad, entidad_id: row.id, cliente_id: row.clienteId ? (idx.clienteId.get(row.clienteId) || row.clienteId) : null, proyecto_id: row.proyectoId || null, texto: row.texto, menciones: (row.menciones || []).map(a => idx.personaId.get(a)).filter(Boolean), interno: row.interno !== false, ...(row.pedido ? { pedido: true } : {}) }).select().single());
-  return comUI(r);
+  const fila = () => ({ entidad: row.entidad, entidad_id: row.id, cliente_id: row.clienteId ? (idx.clienteId.get(row.clienteId) || row.clienteId) : null, proyecto_id: row.proyectoId || null, texto: row.texto, menciones: (row.menciones || []).map(a => idx.personaId.get(a)).filter(Boolean), interno: row.interno !== false, ...(row.pedido ? { pedido: true } : {}), ...((row.contactos || []).length && cols.comentContactos ? { menciones_contactos: row.contactos } : {}) });
+  let res = await sb.from('comentarios').insert(fila()).select().single();
+  // Sin la columna de menciones a contactos (falta el SQL 0041) se guarda igual; el mail al contacto sale de todos modos.
+  if (res.error && cols.comentContactos && /menciones_contactos/.test(res.error.message || '')) { cols.comentContactos = false; res = await sb.from('comentarios').insert(fila()).select().single(); }
+  return comUI(check(res));
+}
+// Lo que escribieron los contactos de un cliente desde el portal (comentarios, aprobaciones y pedidos de cambio).
+export async function comentariosDeCliente(cliente) {
+  const id = idx.clienteId.get(cliente); if (!id) return [];
+  const rows = check(await sb.from('comentarios').select('*').eq('cliente_id', id).not('autor_contacto_id', 'is', null).order('created_at', { ascending: false }).limit(150)) || [];
+  return rows.map(c => ({ ...comUI(c), proyectoId: c.proyecto_id }));
 }
 export async function borrarComentario(id) { check(await sb.from('comentarios').delete().eq('id', id)); }
 export async function leerAvisos(ids) { if (ids.length) check(await sb.from('notificaciones').update({ leida: true }).in('id', ids)); }
@@ -431,6 +444,7 @@ export async function save(kind, id, ui, prevResp) {
   catch (e) {
     if (kind === 'cliente' && 'desde' in row && /desde/.test(e.message || '')) { clienteSinDesde = true; delete row.desde; return guardar(kind, id, ui, row, prevResp); }
     if (kind === 'abono' && 'redes' in row && /redes/.test((e.raw || e.message || ''))) { cols.abonoRedes = false; delete row.redes; return guardar(kind, id, ui, row, prevResp); }
+    if (kind === 'comunicacion' && 'tema' in row && /tema|equipo/.test((e.raw || e.message || ''))) { cols.charlaTema = false; delete row.tema; delete row.equipo; return guardar(kind, id, ui, row, prevResp); }
     throw e;
   }
 }

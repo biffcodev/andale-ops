@@ -5,6 +5,7 @@ const ENT_CLIENTE = new Set(['mes', 'pieza', 'entrega', 'sitio', 'pedido', 'proy
 
 export function initHilos(ctx) {
   const { S, esc, toast, data, $, av, fotoDe, personas, go, abrirLink } = ctx;
+  const confirmar = ctx.confirmar || (async () => true);
   const cache = new Map();   // 'entidad:id' -> [comentarios]
   const cargando = new Set();
   const borr = new Map();    // borradores por hilo
@@ -22,9 +23,19 @@ export function initHilos(ctx) {
     let h = esc(t);
     const ps = personas().sort((a, b) => b.length - a.length);
     ps.forEach(a => { h = h.replace(new RegExp('@' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'g'), '<b class="men">@' + esc(a) + '</b>'); });
+    h = h.replace(/(^|[\s(])@([A-Za-zÁÉÍÓÚÑáéíóúñü]{2,})/g, (all, pre, n) => pre + '<b class="men cli">@' + n + '</b>');
     return h.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   }
   const menciones = t => personas().filter(a => new RegExp('@' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(t));
+  // Contactos del cliente que se pueden @mencionar (solo en comentarios que ve el cliente). Se mencionan por el nombre de pila;
+  // si se repite o coincide con alguien del equipo, por el nombre completo sin espacios.
+  const reEsc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  function contactosHilo(cliente) {
+    const ks = ctx.contactosDe ? ctx.contactosDe(cliente) : [], eq = new Set(personas().map(a => a.toLowerCase()));
+    const pila = k => (k.nombre || '').trim().split(/\s+/)[0];
+    return ks.map(k => { const p = pila(k), rep = ks.filter(x => pila(x).toLowerCase() === p.toLowerCase()).length > 1 || eq.has(p.toLowerCase()); return { ...k, tok: rep ? (k.nombre || '').replace(/\s+/g, '') : p }; }).filter(k => k.tok);
+  }
+  const contactosEn = (t, cliente) => contactosHilo(cliente).filter(k => new RegExp('@' + reEsc(k.tok) + '(?![\\wáéíóúñü])', 'i').test(t));
 
   function lista(k) {
     const cs = cache.get(k); const o = opts.get(k) || {};
@@ -60,19 +71,26 @@ export function initHilos(ctx) {
     return '<section class="hilo' + (o.compacto ? ' compacto' : '') + '" data-hilo="' + esc(k) + '">' + (o.titulo === false ? '' : '<div class="hl-h"><h3>' + esc(o.titulo || 'Conversación') + '</h3></div>') +
       '<div class="hl-lista">' + lista(k) + '</div>' +
       '<div class="hl-f" data-hlform="' + esc(k) + '" data-entidad="' + esc(entidad) + '" data-id="' + esc(id) + '"><textarea class="in" name="t" id="hlt-' + esc(k.replace(/[^a-z0-9]/gi, '')) + '" rows="2" placeholder="Escribí un comentario… (@ para mencionar)" aria-label="Comentario">' + esc(borr.get(k) || '') + '</textarea>' +
-      '<div class="hl-fb"><span class="hl-men">' + ps.slice(0, 8).map(a => '<button type="button" class="hl-chip" data-act="hlMen" data-a="' + esc(a) + '">@' + esc(a) + '</button>').join('') + '</span>' +
+      '<div class="hl-fb"><span class="hl-men">' + ps.slice(0, 8).map(a => '<button type="button" class="hl-chip" data-act="hlMen" data-a="' + esc(a) + '">@' + esc(a) + '</button>').join('') +
+      (pub ? contactosHilo(o.cliente).slice(0, 6).map(k => '<button type="button" class="hl-chip cli" data-act="hlMen" data-a="' + esc(k.tok) + '" title="' + esc((k.nombre || '') + ' · ' + o.cliente + ' (le llega un mail y lo ve en su portal)') + '">@' + esc(k.tok) + '</button>').join('') : '') + '</span>' +
       (pub ? '<label class="chk hl-pub"><input type="checkbox" name="pub"> Visible al cliente</label>' : '') + '<button type="button" class="btn sm primary" data-act="hlEnviar">Comentar</button></div></div></section>';
   }
   async function enviar(f) {
     const k = f.dataset.hlform, o = opts.get(k) || {};
     if (f.dataset.busy) return; f.dataset.busy = '1';
     const ta = f.querySelector('textarea'), t = ta.value.trim(); if (!t) { delete f.dataset.busy; return; }
+    const pubEl = f.querySelector('[name="pub"]'), ks = pubEl ? contactosEn(t, o.cliente) : [];
+    // Si mencionás a alguien del cliente, el comentario lo ve el cliente y a esa persona le llega un mail.
+    if (ks.length && !await confirmar('A ' + ks.map(x => x.nombre + ' (' + x.email + ')').join(', ') + ' le llega un mail con este comentario y lo ve en su portal' + (ks.some(x => !x.portal) ? ' (le damos acceso, entra con su email)' : '') + '.', { titulo: '¿Le avisamos a ' + ks.map(x => x.tok).join(', ') + '?', ok: 'Comentar y avisar', tipo: 'mail' })) { delete f.dataset.busy; return; }
+    if (ks.length && pubEl) pubEl.checked = true;
     const btn = f.querySelector('button.primary'); btn.disabled = true;
     try {
-      const c = await data.comentar({ entidad: f.dataset.entidad, id: f.dataset.id, clienteId: o.cliente || null, proyectoId: o.proyectoId || null, texto: t, menciones: menciones(t), interno: !(f.querySelector('[name="pub"]') || {}).checked });
+      const c = await data.comentar({ entidad: f.dataset.entidad, id: f.dataset.id, clienteId: o.cliente || null, proyectoId: o.proyectoId || null, texto: t, menciones: menciones(t), contactos: ks.map(x => x._id).filter(Boolean), interno: !(pubEl || {}).checked });
       const arr = cache.get(k) || []; if (!arr.some(x => x._id === c._id)) arr.push(c); cache.set(k, arr);
       ta.value = ''; borr.delete(k); pintar(k);
-      const m = menciones(t); if (m.length) toast('Le llega el aviso a ' + m.join(', '));
+      const m = menciones(t), quien = [...m, ...ks.map(x => x.tok)];
+      if (ks.length && ctx.mencionarContactos) await ctx.mencionarContactos(o.cliente, ks, { texto: t, entidad: f.dataset.entidad });
+      if (quien.length) toast('Le llega el aviso a ' + quien.join(', '));
     } catch (e) { toast(e.message); }
     btn.disabled = false; delete f.dataset.busy;
   }
