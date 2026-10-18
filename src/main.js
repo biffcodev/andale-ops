@@ -1340,8 +1340,8 @@ const moneyFmt = (n, m) => { try { return new Intl.NumberFormat('es-AR', { style
 const tk = () => TKS || (TKS = initTickets({ autoBtn: p => aut().boton(p), S, esc, opt, toast, data, render, $, av, fotoDe, personas, fmt, fmtShort, today, thisMonth, isStaff, isAdmin, cmp, norm, emptyBox, hil, clienteOpts, closeForm, reload, ISO, money: moneyFmt, copyText, waNum, openMail: o => MAIL && MAIL.open(o) }));
 const vTickets = () => tk().vTickets();
 const vBriefs = () => tk().vBriefs();
-const redTabs = () => subnav('redes', [['meses', 'El mes'], ['planes', 'Clientes y planes']]);
-const vRedes = () => S.rmFicha ? red().vMes(S.rmFicha) : redTabs() + (S.tab.redes === 'planes' ? vPlanes() : red().vLista());
+const redTabs = () => subnav('redes', [['meses', 'El mes'], ['pedidos', 'Pedidos de clientes', red().pedidosCount()], ['planes', 'Clientes y planes']]);
+const vRedes = () => S.rmFicha ? red().vMes(S.rmFicha) : redTabs() + (S.tab.redes === 'planes' ? vPlanes() : S.tab.redes === 'pedidos' ? red().vPedidos() : red().vLista());
 let ENT = null;
 const ent = () => ENT || (ENT = initEntregas({ S, esc, opt, toast, data, render, $, fmt, isStaff, emptyBox, hil, closeForm, reload: () => reload(), avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
 // Aviso por email a los contactos con acceso al portal cuando algo queda para revisar (mes de redes o entrega).
@@ -1434,7 +1434,8 @@ function render() {
   const sel = fid && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
   const kb = document.querySelector('.kb'), kbLeft = kb ? kb.scrollLeft : 0, kbTops = kb ? [...kb.querySelectorAll('.col')].map(c => c.scrollTop) : [];
   if (!views().some(v => v[0] === S.view)) S.view = isExt() ? 'mis' : 'inicio';
-  const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length, tickets: S.PD ? S.PD.filter(t => t.estado === 'Nuevo').length : 0, briefs: S.BF ? S.BF.filter(b => b.estado === 'Nuevo').length : 0 };
+  const counts = { ...(isAdmin() && ADM ? ADM.counts() : {}), proyectos: S.P.filter(isOpen).length, abonos: S.A.filter(a => a.estado === 'Activo').length, clientes: isStaff() ? S.C.filter(c => c.estado === 'Activo').length : 0, comunicaciones: pendientes().length, tickets: S.PD ? S.PD.filter(t => t.estado === 'Nuevo').length : 0, briefs: S.BF ? S.BF.filter(b => b.estado === 'Nuevo').length : 0, redes: isStaff() && RED ? RED.pedidosCount() : 0 };
+  if (isStaff() && !S.pedIni) { S.pedIni = true; setTimeout(() => red().cargarPedidos(), 1200); }
   const vs = new Map(views().map(v => [v[0], v[1]]));
   const secAct = seccionDe(S.view);
   S.secLast = S.secLast || {}; S.secLast[secAct] = S.view;
@@ -2124,7 +2125,7 @@ async function start(sess) {
   if (isExt()) S.yo = me.alias; else if (!S.yo) S.yo = me.alias;
   render();
   await reload();
-  data.live(reload, s => { if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') { S.status = 'offline'; render(); } }, (tabla, ev) => { if (tabla === 'piezas') { if (RED) RED.enVivo(ev); } else hil().enVivo(tabla, ev); });
+  data.live(reload, s => { if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') { S.status = 'offline'; render(); } }, (tabla, ev) => { if (tabla === 'piezas') { if (RED) RED.enVivo(ev); } else { hil().enVivo(tabla, ev); if (tabla === 'comentarios' && RED) RED.pedidosVivo(); } });
   window.addEventListener('focus', reload);
 }
 

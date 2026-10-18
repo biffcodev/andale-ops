@@ -355,9 +355,17 @@ export async function comentarios(entidad, id) {
   const rows = check(await sb.from('comentarios').select('*').eq('entidad', entidad).eq('entidad_id', id).order('created_at').limit(500)) || [];
   return rows.map(comUI);
 }
-export function comUI(c) { return { _id: c.id, entidad: c.entidad, entidadId: c.entidad_id, autor: idx.personaAlias.get(c.autor_id) || c.autor_nombre || '', autorId: c.autor_id, deCliente: !!c.autor_contacto_id, texto: c.texto, interno: c.interno, creado: c.created_at, editado: c.editado_at }; }
+export function comUI(c) { return { _id: c.id, entidad: c.entidad, entidadId: c.entidad_id, autor: idx.personaAlias.get(c.autor_id) || c.autor_nombre || '', autorId: c.autor_id, deCliente: !!c.autor_contacto_id, texto: c.texto, interno: c.interno, creado: c.created_at, editado: c.editado_at, pedido: !!c.pedido, resuelto: c.resuelto_at || null, resueltoPor: idx.personaAlias.get(c.resuelto_por) || '' }; }
+// Pedidos de cambio de los clientes (comentarios con pedido = true). null si falta el SQL 0039.
+export const sinPrefijo = t => String(t || '').replace(/^Pidió cambios:\s*/i, '').replace(/^Anotamos tu pedido:\s*/i, '');
+export async function pedidosAbiertos() {
+  const rows = await tolerante(sb.from('comentarios').select('*').eq('pedido', true).is('resuelto_at', null).order('created_at').limit(400));
+  return rows ? rows.map(c => ({ ...comUI(c), cliente: idx.clienteName.get(c.cliente_id) || '' })) : null;
+}
+export async function piezasPorId(ids) { if (!ids.length) return []; const rows = await tolerante(sb.from('piezas').select('*').in('id', ids)); return (rows || []).map(piezaUI); }
+export async function pedidoResolver(id, hecho = true) { check(await sb.rpc('pedido_resolver', { p_id: id, p_hecho: hecho })); }
 export async function comentar(row) {
-  const r = check(await sb.from('comentarios').insert({ entidad: row.entidad, entidad_id: row.id, cliente_id: row.clienteId ? (idx.clienteId.get(row.clienteId) || row.clienteId) : null, proyecto_id: row.proyectoId || null, texto: row.texto, menciones: (row.menciones || []).map(a => idx.personaId.get(a)).filter(Boolean), interno: row.interno !== false }).select().single());
+  const r = check(await sb.from('comentarios').insert({ entidad: row.entidad, entidad_id: row.id, cliente_id: row.clienteId ? (idx.clienteId.get(row.clienteId) || row.clienteId) : null, proyecto_id: row.proyectoId || null, texto: row.texto, menciones: (row.menciones || []).map(a => idx.personaId.get(a)).filter(Boolean), interno: row.interno !== false, ...(row.pedido ? { pedido: true } : {}) }).select().single());
   return comUI(r);
 }
 export async function borrarComentario(id) { check(await sb.from('comentarios').delete().eq('id', id)); }

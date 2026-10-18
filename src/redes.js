@@ -3,8 +3,8 @@
 // Mr. Piggy propone contenido, escribe copys y reparte lo que el cliente dice en un chat.
 export const ESTADOS_PIEZA = ['Idea', 'En diseño', 'Revisión interna', 'Para el cliente', 'Cambios', 'Aprobada', 'Programada', 'Publicada'];
 export const ESTADOS_MES = ['Planificación', 'Producción', 'Revisión interna', 'Con el cliente', 'Aprobado', 'Programado', 'Cerrado'];
-// Un solo nombre para la primera etapa: "Planificación" (en la base sigue guardada como 'Idea').
-export const pzNombre = e => (e === 'Idea' ? 'Planificación' : e);
+// Nombres que ve el equipo (en la base siguen guardados los de siempre).
+export const pzNombre = e => ({ 'Revisión interna': 'Lista para mandar', 'Para el cliente': 'Con el cliente', 'Cambios': 'Cambios pedidos' }[e] || e);
 export const PZ_COLOR = { 'Idea': '--s-empezar', 'En diseño': '--s-curso', 'Revisión interna': '--s-confirmar', 'Para el cliente': '--s-revision', 'Cambios': '--s-cancelado', 'Aprobada': '--s-entregado', 'Programada': '--s-presup', 'Publicada': '--s-entregado' };
 const MES_COLOR = { 'Planificación': '--s-empezar', 'Producción': '--s-curso', 'Revisión interna': '--s-confirmar', 'Con el cliente': '--s-revision', 'Aprobado': '--s-entregado', 'Programado': '--s-presup', 'Cerrado': '--s-pausado' };
 const REDES = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X'];
@@ -64,6 +64,10 @@ export function initRedes(ctx) {
   const { S, esc, opt, toast, data, render, $, av, fotoDe, personas, pill, fmt, fmtShort, today, thisMonth, addMonth, monthLabel, isStaff, cmp, norm, emptyBox, hil, ISO, cfgGet, lsSet, lsGet } = ctx;
   const st = { mes: thisMonth(), sel: new Set(), fOff: new Set(), mio: false, vis: [], ia: {}, abiertos: new Set(), tab: lsGet('rmTab') || 'planilla', cargando: new Set(), thumbs: new Map(), pidiendo: new Set(), fpz: null, abrirPieza: null };
   const P = new Map(); // mesId -> piezas
+  st.pedPz = new Map(); // piezas de los pedidos que no están en los meses cargados
+  // Lo que ve el equipo: pocos estados. En la base siguen los de siempre (Idea, En diseño y Revisión interna son "En proceso").
+  const VISIBLE = { 'Idea': 'En proceso', 'En diseño': 'En proceso', 'Revisión interna': 'En proceso', 'Para el cliente': 'Con el cliente', 'Cambios': 'Cambios pedidos' };
+  const estadoVisible = e => VISIBLE[e] || e;
 
   const formatos = () => (S.L.formatosRedes && S.L.formatosRedes.length ? S.L.formatosRedes : FORMATOS_DEF);
   const meses = () => S.RM || [];
@@ -241,10 +245,9 @@ export function initRedes(ctx) {
     let h = '<div class="pf-head rm-head"><div class="pf-top"><button class="pf-logo" data-act="ficha" data-cliente="' + esc(m.cliente) + '">' + av(m.cliente, cli.avatar, 'xl sq') + '</button><div class="pf-tit"><button class="btn link pf-cli" data-act="ficha" data-cliente="' + esc(m.cliente) + '">' + esc(m.cliente) + '</button>' +
       '<h1 class="rm-tit">' + (prev ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(prev._id) + '" aria-label="Mes anterior" data-kbd="[">←</button>' : '') + 'Redes · ' + esc(cap(monthLabel(m.mes))) + (next ? '<button class="btn ghost sm" data-act="rmAbrir" data-id="' + esc(next._id) + '" aria-label="Mes siguiente" data-kbd="]">→</button>' : '') + '</h1>' + (ctx.servChips ? '<div class="rm-serv">' + ctx.servChips(m.cliente, { precio: true, mes: m.mes }) + (can && ctx.servAb && ctx.servAb(m.cliente) ? '<button class="btn link sm" data-act="edit" data-kind="abono" data-id="' + esc(ctx.servAb(m.cliente)._id) + '">Editar servicio</button>' : '') + '</div>' : '') + '</div>' +
       '<div class="toolbar pf-acc">' + (can ? carpetaBtn(m) + enviarBtn(m, lista) + (ctx.masMenu ? ctx.masMenu([
-        lista.length ? { act: 'rmPasar', label: 'Cambiar la etapa a mano', attrs: ' data-id="' + esc(m._id) + '"', icon: 'flecha' } : null,
         next ? null : { act: 'rmSiguiente', label: 'Arrancar ' + monthLabel(addMonth(m.mes, 1)).split(' ')[0], attrs: ' data-id="' + esc(m._id) + '"', icon: 'calendario' },
         { act: 'rmBorrarMes', label: 'Borrar este mes', attrs: ' data-id="' + esc(m._id) + '"', danger: true, icon: 'alerta' }]) : '') : '') + '</div></div>' +
-      '<div class="pf-meta rm-meta">' + etapasHtml(m, lista, can) +
+      '<div class="pf-meta rm-meta">' + etapasHtml(m, lista) +
 
       (m.aprobadoAt ? '<span class="pzst" style="--c:var(--s-entregado)">Aprobado por ' + esc(m.aprobadoPor || 'el cliente') + '</span>' : '') +
       '</div>' +
@@ -260,18 +263,19 @@ export function initRedes(ctx) {
   }
   const carpetaBtn = m => m.carpetaUrl ? '<a class="btn" href="' + esc(m.carpetaUrl) + '" target="_blank" rel="noopener" title="' + esc(m.carpeta) + '">Carpeta ↗</a><button class="btn ghost sm" data-act="rmContar" data-id="' + esc(m._id) + '" title="Contar los archivos de la carpeta">↻</button>' : cfgGet && cfgGet('dropbox', 'crear') === 'si' ? '<button class="btn" data-act="rmCarpeta" data-id="' + esc(m._id) + '">Crear carpetas en Dropbox</button>' : '';
   function enviarBtn(m, ps) {
-    // Solo cuando toca: con todo revisado o ya con el cliente (para volver a avisarle)
-    if (ps.length && !['Revisión interna', 'Para el cliente'].includes(etapaDe(m).pz)) return '';
+    if (!ps.length) return '';
     const listas = ps.filter(z => z.estado === 'Revisión interna').length;
-    return '<button class="btn primary" data-act="rmEnviar" data-id="' + esc(m._id) + '"' + (listas ? '' : ' title="Pasa al cliente las piezas en Revisión interna"') + '>Enviar al cliente' + (listas ? ' (' + listas + ')' : '') + '</button>';
+    if (etapaDe(m) === ETAPAS[0]) return '<button class="btn primary" data-act="rmEnviar" data-id="' + esc(m._id) + '" title="Manda al cliente las piezas listas y publica el mes en su portal">Mandar el mes al cliente <span class="rm-bn">' + listas + '/' + ps.length + '</span></button>';
+    return listas ? '<button class="btn primary" data-act="rmEnviar" data-id="' + esc(m._id) + '" title="Las piezas listas que todavía no vio (extras o que faltaban)">Mandar al cliente (' + listas + ')</button>' : '';
   }
+
 
   function planilla(m, ps, can) {
     const fs = formatos(), sel = st.sel, eq = equipo(m.cliente), yo = (st.mio && st.mioDe) || (S.me && S.me.alias), ocupado = st.ia[m._id];
     const ordenadas = [...ps].sort((a, b) => (a.fecha || '9999').localeCompare(b.fecha || '9999') || (a.hora || '').localeCompare(b.hora || '') || a.orden - b.orden);
     const bulk = sel.size ? '<div class="bulkbar rm-bulk"><b>' + sel.size + ' seleccionada' + (sel.size > 1 ? 's' : '') + '</b><select class="in sm" id="rm-bk-est" aria-label="Cambiar el estado a mano">' + opt('', 'Estado a mano…', '') + ESTADOS_PIEZA.map(e => opt(e, pzNombre(e), '')).join('') + '</select>' +
       '<select class="in sm" id="rm-bk-resp" aria-label="A cargo de">' + opt('', 'A cargo de…', '') + opt('__nadie', 'Según el flujo', '') + personas().map(a => opt(a, a, '')).join('') + '</select>' +
-      (etapaDe(m).fin ? '' : '<button class="btn sm" data-act="rmListoSel" data-id="' + esc(m._id) + '">' + (etapaDe(m).cliente ? 'Aprobadas' : 'Marcar listas') + '</button>') + '<button class="btn sm" data-act="rmDevolverSel" data-id="' + esc(m._id) + '">Devolver a diseño</button>' +
+      '<button class="btn sm" data-act="rmListoSel" data-id="' + esc(m._id) + '" title="Las que están en proceso pasan a Lista para mandar">Marcar listas</button>' + '<button class="btn sm" data-act="rmDevolverSel" data-id="' + esc(m._id) + '">Devolver a diseño</button>' +
       '<button class="btn sm" data-act="rmHoras" data-id="' + esc(m._id) + '" data-sel="1">Poner horarios</button>' +
       '<button class="btn sm" data-act="rmCopys"><span class="pig" aria-hidden="true">' + ISO + '</span> Escribir copys</button><button class="btn sm danger" data-act="rmBorrar">Borrar</button><button class="btn ghost sm" data-act="rmSelNada">Listo</button></div>' : '';
     const sinHora = ps.filter(z => !z.hora).length;
@@ -279,7 +283,7 @@ export function initRedes(ctx) {
     const presentes = [...new Set([...fs.filter(f => ps.some(z => z.formato === f)), ...ps.map(z => z.formato).filter(Boolean)])];
     const qz = new Map(ps.map(z => [z._id, quienes(m.cliente, z, eq)]));
     const mias = ps.filter(z => yo && qz.get(z._id).gente.includes(yo));
-    const vis = ordenadas.filter(z => !st.fOff.has(z.formato) && (!st.mio || mias.includes(z)) && (st.fEt == null || iPz(z.estado) === st.fEt));
+    const vis = ordenadas.filter(z => !st.fOff.has(z.formato) && (!st.mio || mias.includes(z)) && (st.fGr == null || grupoDe(z.estado) === st.fGr));
     st.vis = vis.map(z => z._id);
     const activos = presentes.filter(f => st.fOff.has(f)).length + (st.mio ? 1 : 0);
     const filtros = ps.length ? filtrosMenu('rmpz', '<span class="lbl">Formatos</span><div data-todos="rmff" data-todos-dentro style="display:flex;flex-direction:column">' + presentes.map(f => '<label class="chk rm-fck" style="--fc:' + fmtColor(f) + '"><input type="checkbox" data-rmff="' + esc(f) + '"' + (st.fOff.has(f) ? '' : ' checked') + '> <i class="rm-dot"></i>' + esc(f) + ' <span class="muted num">' + ps.filter(z => z.formato === f).length + '</span></label>').join('') + '</div>' +
@@ -364,29 +368,23 @@ export function initRedes(ctx) {
     return '<div class="rm-pl">' + tools + bulk + '<section class="sheet"><div class="tbl rm-tbl"><table><thead><tr>' + (can ? '<th class="sel"><input type="checkbox" data-rmselall="' + esc(m._id) + '" aria-label="Seleccionar las que se ven"></th>' : '') + '<th>Arte</th><th>Cuándo</th><th>Pieza</th><th>Etapa</th><th title="Según el rol de cada uno en la cuenta y el estado de la pieza">Le toca a</th><th></th></tr></thead><tbody>' +
       vis.map(fila).join('') + '</tbody></table></div></section></div>';
   }
-  // Tablero: una columna por estado. Arrastrar a la columna siguiente = marcarla lista; hacia atrás = devolverla.
-  // Columnas del tablero con los mismos nombres que las etapas de arriba
-  const COL_TAB = { 'Idea': 'Planificación', 'En diseño': 'Diseño', 'Cambios': 'Con cambios', 'Revisión interna': 'Revisión', 'Para el cliente': 'Cliente', 'Aprobada': 'Aprobado' };
+  // Tablero: una columna por estado; arrastrar una pieza a otra columna le cambia el estado (a Diseño, con una nota).
+  const COL_TAB = { 'Idea': 'Idea', 'En diseño': 'En diseño', 'Revisión interna': 'Lista para mandar', 'Para el cliente': 'Con el cliente', 'Cambios': 'Cambios pedidos', 'Aprobada': 'Aprobada' };
   function tablero(m, vis, can, qz) {
-    const E = etapaDe(m), cols = ['Idea', 'En diseño', 'Cambios', 'Revisión interna', 'Para el cliente', 'Aprobada', 'Programada', 'Publicada'].filter(e => !['Cambios', 'Programada', 'Publicada'].includes(e) || vis.some(z => z.estado === e));
+    const cols = ['Idea', 'En diseño', 'Revisión interna', 'Para el cliente', 'Cambios', 'Aprobada', 'Programada', 'Publicada'].filter(e => !['Cambios', 'Programada', 'Publicada'].includes(e) || vis.some(z => z.estado === e));
     const dia = z => z.fecha ? new Date(z.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '') + (z.hora ? ' · ' + z.hora : '') : 'Sin fecha';
-    const carta = z => '<article class="rm-kc' + (z.lista ? ' lista' : '') + '"' + (can ? ' draggable="true" data-drag="' + esc(z._id) + '"' : '') + ' style="--fc:' + fmtColor(z.formato) + '">' +
+    const carta = z => '<article class="rm-kc"' + (can ? ' draggable="true" data-drag="' + esc(z._id) + '"' : '') + ' style="--fc:' + fmtColor(z.formato) + '">' +
       '<button class="rm-kc-a" data-act="rmPieza" data-id="' + esc(z._id) + '"><span class="rm-kc-m"><b>' + esc(z.formato) + '</b> · ' + esc(dia(z)) + '</span><span class="rm-kc-t">' + esc(z.tema || 'Sin tema') + '</span></button>' +
-      '<div class="rm-kc-f">' + listoCtl(m, z, can) + ((qz.get(z._id) || {}).gente || []).map(a => av(a, fotoDe(a))).join('') + '</div></article>';
-    return '<div class="rm-kb" role="list">' + cols.map(e => { const zs = vis.filter(z => z.estado === e).sort((a, b) => (a.lista ? 1 : 0) - (b.lista ? 1 : 0) || (a.fecha || '9').localeCompare(b.fecha || '9')), on = e === E.pz, nl = zs.filter(z => z.lista).length;
-      return '<section class="rm-kcol' + (on ? ' on' : '') + '" data-drop="' + esc(e) + '" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')"><header><b>' + esc(COL_TAB[e] || pzNombre(e)) + '</b><span class="muted num">' + zs.length + (on && nl ? ' · ' + nl + ' listas' : '') + '</span></header><div class="rm-kcs">' + (zs.length ? zs.map(carta).join('') : '<p class="muted rm-kv">—</p>') + '</div></section>'; }).join('') + '</div>';
+      '<div class="rm-kc-f">' + (grupoDe(z.estado) === 'proceso' ? '' : listoCtl(m, z, can)) + ((qz.get(z._id) || {}).gente || []).map(a => av(a, fotoDe(a))).join('') + '</div></article>';
+    return '<div class="rm-kb" role="list">' + cols.map(e => { const zs = vis.filter(z => z.estado === e).sort((a, b) => (a.fecha || '9').localeCompare(b.fecha || '9'));
+      return '<section class="rm-kcol" data-drop="' + esc(e) + '" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')"><header><b>' + esc(COL_TAB[e] || pzNombre(e)) + '</b><span class="muted num">' + zs.length + '</span></header><div class="rm-kcs">' + (zs.length ? zs.map(carta).join('') : '<p class="muted rm-kv">—</p>') + '</div></section>'; }).join('') + '</div>';
   }
   async function soltar(id, T) {
-    const x = pzDe(id); if (!x) return; const { m, z } = x, E = etapaDe(m), S = z.estado; if (T === S) return;
-    const iT = iPz(T), iS = iPz(S), l = lugar(m, z);
-    if ((l === 'en' && iT === iEt(E) + 1) || (l === 'en' && E.cliente && T === 'Aprobada')) {
-      await marcarListas(m, [id], true);
-      if (l === 'en' && !E.cliente && etapaDe(m) === E) toast('Quedó lista. Pasa a ' + ETAPAS[iEt(E) + 1].n + ' cuando estén todas.');
-      return;
-    }
-    if (T === 'En diseño' || T === 'Cambios') { if (iS <= 1) return; const nota = await pedirNota(1); if (nota === null) return; await devolver(m, [id], nota); return; }
-    if (!await confirmar('¿Pasar esta pieza a “' + pzNombre(T) + '” a mano? Saltea el flujo de la etapa.')) return;
-    try { await data.piezasUpd([id], { estado: T, lista: false }); local(m._id, [id], { estado: T, lista: false }); render(); await revisarAvance(m); } catch (e) { toast(e.message); }
+    const x = pzDe(id); if (!x) return; const { m, z } = x; if (T === z.estado) return;
+    if (T === 'En diseño' && !PROCESO.slice(0, 2).includes(z.estado)) { const nota = await pedirNota(1); if (nota === null) return; await devolver(m, [id], nota); return; }
+    if (T === 'Cambios') { toast('Para pedir cambios, anotá el pedido en la pieza.'); abrirPieza(id); return; }
+    if (T === 'Para el cliente') { await mandarPiezas(m, [id]); return; }
+    await setEstado(m, [id], T);
   }
   document.addEventListener('dragstart', e => { const c = e.target.closest && e.target.closest('[data-drag]'); if (!c) return; e.dataTransfer.setData('text/plain', c.dataset.drag); e.dataTransfer.effectAllowed = 'move'; c.classList.add('arr'); });
   document.addEventListener('dragend', e => { const c = e.target.closest && e.target.closest('[data-drag]'); if (c) c.classList.remove('arr'); document.querySelectorAll('.rm-kcol.sobre').forEach(x => x.classList.remove('sobre')); });
@@ -436,11 +434,11 @@ export function initRedes(ctx) {
     const artes = (z.arte || []).map((a, i) => { const t = st.thumbs.get(a.path); return '<div class="pz-a">' + (t ? '<img src="' + esc(t) + '" alt="">' : '<span class="pz-ai">' + (/\.(mp4|mov|m4v|webm)$/i.test(a.path) ? '▶' : '▣') + '</span>') + '<span class="pz-an">' + esc(a.nombre || a.path.split('/').pop()) + '</span><span class="pz-aa"><button type="button" class="btn ghost sm" data-act="rmArteVer" data-path="' + esc(a.path) + '">Abrir</button>' + (can ? '<button type="button" class="btn ghost sm" data-act="rmArteQuitar" data-i="' + i + '" aria-label="Quitar">✕</button>' : '') + '</span></div>'; }).join('');
     $('#panel').innerHTML = '<form id="pzform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">' + esc(z.formato || 'Pieza') + (z.fecha ? ' · ' + fmt(z.fecha) : '') + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b">' +
-      (z.respuesta ? '<div class="pz-cli full"><b>' + (z.estado === 'Aprobada' ? '✓ El cliente la aprobó' : 'El cliente pidió cambios') + '</b><span>' + esc(z.respuesta) + '</span></div>' : '') +
+      (st.ped === false ? (z.respuesta ? '<div class="pz-cli full"><b>' + (z.estado === 'Aprobada' ? '✓ El cliente la aprobó' : 'El cliente pidió cambios') + '</b><span>' + esc(z.respuesta) + '</span></div>' : '') : pedPiezaHtml(z)) +
       '<div class="field"><label for="pz-fecha">Fecha</label><input id="pz-fecha" type="date" value="' + esc(z.fecha) + '"' + d + '></div><div class="field"><label for="pz-hora">Hora</label><input id="pz-hora" type="time" value="' + esc(z.hora) + '"' + d + '></div>' +
       '<div class="field"><label for="pz-formato">Formato</label><select id="pz-formato"' + d + '>' + [...new Set([...formatos(), z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select></div>' +
       '<div class="field full"><span class="lbl">Redes</span>' + redChips('pz-red', redesDe(z.red), redesCuenta(m.cliente), d, esc) + '</div>' +
-      '<div class="field"><span class="lbl">Etapa · ' + esc(etapaDe(m).n) + '</span><div class="pz-et">' + listoCtl(m, z, can) + (can && iPz(z.estado) >= 2 && iPz(z.estado) <= 3 ? '<button type="button" class="btn ghost sm" data-act="rmDevolverUno" data-id="' + esc(z._id) + '">Devolver a diseño</button>' : '') + '</div>' +
+      '<div class="field"><span class="lbl">Estado</span><div class="pz-et">' + listoCtl(m, z, can) + (can && ['Revisión interna', 'Para el cliente'].includes(z.estado) ? '<button type="button" class="btn ghost sm" data-act="rmDevolverUno" data-id="' + esc(z._id) + '">Devolver a diseño</button>' : '') + '</div>' +
         '<details class="pz-man"><summary>Cambiar el estado a mano</summary><select id="pz-estado"' + d + '>' + ESTADOS_PIEZA.map(e => opt(e, pzNombre(e), z.estado)).join('') + '</select></details></div>' +
       '<div class="field"><label for="pz-resp">A cargo de esta pieza</label><select id="pz-resp"' + d + '>' + opt('', 'Según el flujo (el rol de cada etapa)', z.resp) + [...new Set([...personas(), z.resp].filter(Boolean))].map(a => opt(a, a + (equipo(m.cliente).get(a) ? ' · ' + equipo(m.cliente).get(a) : ''), z.resp)).join('') + '</select><span class="hint">Ahora le toca a ' + esc((q => q.gente.length ? q.gente.join(', ') : 'nadie') (quienes(m.cliente, z))) + '. Si elegís a alguien, reemplaza a los de su rol (p. ej. Cata en vez de Vale en el diseño).</span></div>' +
       '<div class="field full"><label for="pz-tema">Tema</label><div class="cp-box"><textarea id="pz-tema" class="pz-ta" rows="' + filas(z.tema, 60, 1, 4) + '"' + d + '>' + esc(z.tema) + '</textarea>' + copiarBtn('#pz-tema') + '</div>' + (can ? '<div class="pz-camb"><input id="pz-camb-q" class="in sm" placeholder="Opcional: qué querés en su lugar (otro tema, otra fuente…)"><button type="button" class="btn sm" data-act="rmCambiarIdea"><span class="pig" aria-hidden="true">' + ISO + '</span> Cambiar por otra idea</button></div>' : '') + '</div>' +
@@ -458,6 +456,7 @@ export function initRedes(ctx) {
       '<div class="full">' + hil().html('pieza', z._id, { cliente: m.cliente, titulo: 'Comentarios', compacto: true, publico: true }) + '</div>' +
       '</div><div class="panel-f"><span>' + (can ? '<button type="button" class="btn ghost danger" data-act="rmPiezaBorrar">Borrar</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">' + (can ? 'Cancelar' : 'Cerrar') + '</button>' + (can ? '<button type="submit" class="btn primary">Guardar</button>' : '') + '</span></div></form>';
     $('#panel').hidden = false; $('#scrim').hidden = false; requestAnimationFrame(() => document.querySelectorAll('#pzform .pz-ta').forEach(autoAlto));
+    if (st.ped !== false && !(st.pzPed && st.pzPed.id === id)) { st.pzPed = { id, rows: null }; cargarPedPieza(id); }
   }
   // Los campos de texto de la pieza crecen con el contenido: el copy se lee entero haciendo scroll en el panel.
   const autoAlto = ta => { if (!ta || !ta.offsetParent) return; ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; };
@@ -475,55 +474,124 @@ export function initRedes(ctx) {
     try { await data.piezasUpd([f.id], uv); local(f.mesId, [f.id], uv); ctx.closeForm(); toast('Pieza guardada'); render(); }
     catch (e) { toast(e.message); }
   }
+  /* ---------- Pedidos de los clientes: cada "pedir cambios" es un ítem para tildar ---------- */
+  // st.ped: undefined (sin cargar) · false (falta el SQL 0039) · [pedidos abiertos de piezas]
+  const piezaLocal = id => { for (const [mesId, ps] of P) { const z = (ps || []).find(x => x._id === id); if (z) return z.mesId ? z : { ...z, mesId }; } return st.pedPz.get(id) || null; };
+  const mesDePieza = z => z && meses().find(m => m._id === z.mesId);
+  const sinPref = t => data.sinPrefijo ? data.sinPrefijo(t) : String(t || '').replace(/^Pidió cambios:\s*/i, '');
+  const hace = iso => { const d = (Date.now() - Date.parse(iso)) / 60000; return d < 60 ? 'hace ' + Math.max(1, Math.round(d)) + ' min' : d < 1440 ? 'hace ' + Math.round(d / 60) + ' h' : d < 2880 ? 'ayer' : fmt(String(iso).slice(0, 10)); };
+  async function cargarPedidos() {
+    if (st.pedCargando) return; st.pedCargando = true;
+    try {
+      const r = await data.pedidosAbiertos();
+      st.ped = r === null ? false : r.filter(c => c.entidad === 'pieza');
+      const faltan = [...new Set((st.ped || []).map(c => c.entidadId))].filter(id => !piezaLocal(id));
+      if (faltan.length && data.piezasPorId) (await data.piezasPorId(faltan)).forEach(z => st.pedPz.set(z._id, z));
+    } catch (e) { st.ped = st.ped || []; }
+    st.pedCargando = false; if (ctx.badges) ctx.badges(); render();
+  }
+  const pedidosCount = () => (st.ped ? st.ped.length : 0);
+  let pedT = null;
+  const pedidosVivo = () => { if (st.ped === undefined) return; clearTimeout(pedT); pedT = setTimeout(cargarPedidos, 800); };
+  function vPedidos() {
+    if (st.ped === undefined) setTimeout(cargarPedidos, 0);
+    let h = '<div class="head"><div><h1>Pedidos de clientes</h1><p>Lo que los clientes pidieron cambiar en sus piezas. Tildá cada pedido cuando esté hecho; cuando una pieza no tiene más pendientes, mandala de nuevo.</p></div></div>';
+    if (st.ped === false) return h + '<section class="sheet">' + emptyBox('Falta un paso en la base de datos', 'Corré el SQL 0039 en Supabase para usar los pedidos.') + '</section>';
+    if (!st.ped) return h + '<section class="sheet"><p class="muted" style="padding:16px">Cargando…</p></section>';
+    if (!st.ped.length) return h + '<section class="sheet">' + emptyBox('No hay pedidos sin resolver', 'Cuando un cliente pida cambios en una pieza, aparece acá.') + '</section>';
+    const porPieza = new Map(); st.ped.forEach(c => { if (!porPieza.has(c.entidadId)) porPieza.set(c.entidadId, []); porPieza.get(c.entidadId).push(c); });
+    const porCli = new Map(); [...porPieza.keys()].forEach(id => { const c = porPieza.get(id)[0].cliente || '—'; if (!porCli.has(c)) porCli.set(c, []); porCli.get(c).push(id); });
+    const todas = [...porPieza.keys()].map(piezaLocal).filter(Boolean); pedirThumbs(todas);
+    h += [...porCli.keys()].sort(cmp).map(cli => { const c = S.C.find(x => x.nombre === cli) || {};
+      return '<section class="sheet pd-cli"><div class="sheet-h"><h2 class="who1">' + av(cli, c.avatar, 'sq') + esc(cli) + '</h2><span class="muted">' + porCli.get(cli).reduce((a, id) => a + porPieza.get(id).length, 0) + ' sin resolver</span></div>' +
+        porCli.get(cli).map(id => { const z = piezaLocal(id) || {}, cs = porPieza.get(id);
+          return '<article class="pd-pz"><div class="pd-h">' + ((z.arte || []).length ? arteMini(z).replace('data-act="rmPieza"', 'data-act="rmPedAbrir"') : '<span class="rm-sin">—</span>') + '<div class="pd-t"><b>' + esc(z.formato || 'Pieza') + (z.fecha ? ' · ' + esc(fmtShort ? fmtShort(z.fecha) : fmt(z.fecha)) : '') + '</b><span>' + esc(z.tema || '') + '</span></div>' + (z.estado ? '<span class="pzst" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')">' + esc(estadoVisible(z.estado)) + '</span>' : '') + '<button class="btn sm" data-act="rmPedAbrir" data-id="' + esc(id) + '">Abrir pieza</button></div>' +
+            '<div class="pd-its">' + cs.map(x => '<label class="pd-it"><input type="checkbox" data-pdok="' + esc(x._id) + '"' + (isStaff() ? '' : ' disabled') + '><span class="pd-tx">' + esc(sinPref(x.texto)) + '</span><span class="pd-m">' + esc(x.autor || 'Cliente') + ' · ' + esc(hace(x.creado)) + '</span></label>').join('') + '</div></article>'; }).join('') + '</section>'; }).join('');
+    return h;
+  }
+  // En la pieza: lo que pidió el cliente, arriba y resaltado, para tildar.
+  async function cargarPedPieza(id) {
+    try { const rs = await data.comentarios('pieza', id); st.pzPed = { id, rows: rs.filter(c => c.pedido) }; } catch (e) { st.pzPed = { id, rows: [] }; }
+    const el = document.getElementById('pz-ped'); if (el && st.fpz && st.fpz.id === id) el.outerHTML = pedPiezaHtml(piezaLocal(id));
+  }
+  function pedPiezaHtml(z) {
+    if (!z) return '';
+    const rows = st.pzPed && st.pzPed.id === z._id ? st.pzPed.rows : null, can = isStaff();
+    if (rows === null) return '<div class="pz-ped full" id="pz-ped"><span class="muted">Cargando lo que pidió el cliente…</span></div>';
+    const abiertos = rows.filter(x => !x.resuelto), hechos = rows.filter(x => x.resuelto).slice(-4);
+    const it = x => '<label class="pd-it' + (x.resuelto ? ' ok' : '') + '"><input type="checkbox" data-pdok="' + esc(x._id) + '" data-pz="1"' + (x.resuelto ? ' checked' : '') + (can ? '' : ' disabled') + '><span class="pd-tx">' + esc(sinPref(x.texto)) + '</span><span class="pd-m">' + esc(x.autor || 'Cliente') + ' · ' + esc(hace(x.creado)) + (x.resuelto ? ' · hecho' + (x.resueltoPor ? ' por ' + esc(x.resueltoPor) : '') : '') + '</span></label>';
+    if (!rows.length && z.estado !== 'Cambios') return '<div class="pz-ped vacio full" id="pz-ped">' + (can ? '<details><summary>Anotar un pedido del cliente</summary>' + anotarHtml() + '</details>' : '') + '</div>';
+    return '<div class="pz-ped full' + (abiertos.length ? ' abierto' : '') + '" id="pz-ped"><div class="pz-ped-h"><b>Lo que pidió el cliente</b><span>' + (abiertos.length ? abiertos.length + (abiertos.length === 1 ? ' sin resolver' : ' sin resolver') : 'todo resuelto') + '</span></div>' +
+      '<div class="pd-its">' + abiertos.map(it).join('') + hechos.map(it).join('') + '</div>' +
+      (can ? anotarHtml() : '') +
+      (can && z.estado === 'Cambios' ? (abiertos.length ? '<p class="hint" style="margin:8px 0 0">Cuando tildes todo, la mandás de nuevo al cliente.</p>' : '<div class="pz-ped-f"><button type="button" class="btn primary sm" data-act="rmReenviar">Mandar de nuevo al cliente</button><span class="hint">Le avisa qué se cambió.</span></div>') : '') + '</div>';
+  }
+  const anotarHtml = () => '<div class="pz-ped-add"><input class="in sm" id="pz-ped-n" placeholder="Anotar un pedido que llegó por WhatsApp o mail"><button type="button" class="btn sm" data-act="rmPedAnotar">Anotar</button></div>';
+  async function resolverPedido(t) {
+    const id = t.dataset.pdok, ok = t.checked;
+    try { await data.pedidoResolver(id, ok); } catch (e) { t.checked = !ok; toast(e.message); return; }
+    if (st.pzPed) { const x = st.pzPed.rows.find(r => r._id === id); if (x) { x.resuelto = ok ? new Date().toISOString() : null; x.resueltoPor = ok ? S.me.alias : ''; } }
+    let pzId = null;
+    if (st.ped) { const x = st.ped.find(r => r._id === id); if (x) pzId = x.entidadId; if (ok) st.ped = st.ped.filter(r => r._id !== id); }
+    if (t.dataset.pz) { const el = document.getElementById('pz-ped'); const z = st.fpz && piezaLocal(st.fpz.id); if (el && z) el.outerHTML = pedPiezaHtml(z); if (ok && !st.pzPed.rows.some(r => !r.resuelto) && z && z.estado === 'Cambios') toast('Listo: ya no quedan pedidos. Podés mandarla de nuevo al cliente.'); }
+    else { if (pzId && ok && st.ped && !st.ped.some(r => r.entidadId === pzId) && ctx.toastAccion) ctx.toastAccion('Esa pieza ya no tiene pedidos pendientes', 'Mandar de nuevo', () => reenviar(pzId)); render(); }
+    if (ctx.badges) ctx.badges();
+  }
+  async function anotarPedido() {
+    const inp = $('#pz-ped-n'), txt = (inp && inp.value || '').trim(); if (!txt) { toast('Escribí qué pidió'); return; }
+    const z = st.fpz && piezaLocal(st.fpz.id), m = mesDePieza(z); if (!z || !m) return;
+    try { const c = await data.comentar({ entidad: 'pieza', id: z._id, clienteId: m.cliente, texto: 'Anotamos tu pedido: ' + txt, interno: false, pedido: true }); c.pedido = true; (st.pzPed.rows = st.pzPed.rows || []).push(c); if (st.ped) { st.ped.push({ ...c, cliente: m.cliente }); } }
+    catch (e) { toast(e.message); return; }
+    if (z.estado === 'Para el cliente' || z.estado === 'Aprobada') { await data.piezasUpd([z._id], { estado: 'Cambios' }); local(z.mesId, [z._id], { estado: 'Cambios' }); }
+    const el = document.getElementById('pz-ped'); if (el) el.outerHTML = pedPiezaHtml(piezaLocal(z._id));
+    toast('Pedido anotado'); if (ctx.badges) ctx.badges();
+  }
+  // Volver a mandar una pieza que tenía cambios: pasa a "Para el cliente" y le cuenta qué se hizo.
+  async function reenviar(id) {
+    const z = piezaLocal(id), m = mesDePieza(z); if (!z) return;
+    let hechos = [];
+    try { const rs = await data.comentarios('pieza', id); let corte = -1; rs.forEach((c, i) => { if (!c.deCliente && /^Listo, hicimos los cambios/.test(c.texto || '')) corte = i; }); hechos = rs.slice(corte + 1).filter(c => c.pedido && c.resuelto).map(c => sinPref(c.texto)); } catch (e) { /* sigue sin el detalle */ }
+    try {
+      await data.piezasUpd([id], { estado: 'Para el cliente' }); local(z.mesId, [id], { estado: 'Para el cliente' }); if (st.pedPz.has(id)) st.pedPz.get(id).estado = 'Para el cliente';
+      if (m) await data.comentar({ entidad: 'pieza', id, clienteId: m.cliente, texto: 'Listo, hicimos los cambios' + (hechos.length ? ':\n' + hechos.map(t => '· ' + t).join('\n') : '.') + '\nYa la podés ver de nuevo.', interno: false });
+      toast('Pieza mandada de nuevo al cliente'); if (st.fpz && st.fpz.id === id) ctx.closeForm(); render();
+    } catch (e) { toast(e.message); }
+  }
+
   function local(mesId, ids, u) { const ps = piezas(mesId) || []; ps.forEach(z => { if (ids.includes(z._id)) Object.assign(z, u); }); }
 
-  /* ---------- Flujo: una sola etapa por mes ---------- */
-  // Circuito: Planificación → Diseño → Revisión → Cliente → Aprobado (ahí termina). La etapa del mes es la de las piezas que
-  // van más atrás: en esa etapa cada pieza se marca "lista" y, cuando están todas, pasan juntas a la siguiente y se avisa a
-  // quien le toca. Revisión → Cliente pregunta antes de mandar. Con el cliente, cada pieza la aprueba el cliente (o el equipo
-  // por él); las que piden cambios vuelven a Diseño y siguen el circuito de nuevo.
+  /* ---------- Flujo: cada pieza avanza sola; el mes se manda completo al cliente ---------- */
+  // Pieza: En proceso (Idea → En diseño → Lista para mandar) → Con el cliente → Aprobada (→ Programada → Publicada).
+  // Si el cliente pide cambios vuelve como "Cambios pedidos" y se manda de nuevo de a una; las extras también van de a una.
+  // El mes muestra en qué está (En producción · Con el cliente · Aprobado): sale de sus piezas, nada lo frena.
   const ETAPAS = [
-    { mes: 'Planificación', pz: 'Idea', n: 'Planificación', verbo: 'Planificar' },
-    { mes: 'Producción', pz: 'En diseño', n: 'Diseño', verbo: 'Diseñar' },
-    { mes: 'Revisión interna', pz: 'Revisión interna', n: 'Revisión', verbo: 'Revisar' },
-    { mes: 'Con el cliente', pz: 'Para el cliente', n: 'Cliente', cliente: true },
+    { mes: 'Producción', pz: 'En diseño', n: 'En producción' },
+    { mes: 'Con el cliente', pz: 'Para el cliente', n: 'Con el cliente', cliente: true },
     { mes: 'Aprobado', pz: 'Aprobada', n: 'Aprobado', fin: true }];
-  const iEt = e => ETAPAS.indexOf(e);
-  const iPz = estado => estado === 'Cambios' ? 1 : ['Aprobada', 'Programada', 'Publicada'].includes(estado) ? 4 : Math.max(0, ETAPAS.findIndex(e => e.pz === estado));
-  // La etapa del mes sale de sus piezas (la más atrasada); sin piezas cargadas, de lo guardado en el mes.
-  const etapaDe = m => { const ps = piezas(m._id); if (ps && ps.length) return ETAPAS[Math.min(...ps.map(z => iPz(z.estado)))]; return ETAPAS.find(e => e.mes === m.estado) || (['Programado', 'Cerrado'].includes(m.estado) ? ETAPAS[4] : ETAPAS[0]); };
-  const lugar = (m, z) => iPz(z.estado) > iEt(etapaDe(m)) ? 'adelante' : 'en';
-  const hecha = (m, z) => { const E = etapaDe(m); return E.fin || lugar(m, z) === 'adelante' || (!E.cliente && !!z.lista); };
-  const avance = (m, ps) => { const en = ps.filter(z => lugar(m, z) === 'en'), h = en.filter(z => hecha(m, z)).length; return { t: en.length, h, todo: en.length > 0 && h === en.length }; };
-  const sinLista = () => data.cols && data.cols.piezaLista === false;
-  async function marcarListas(m, ids, valor) {
-    const E = etapaDe(m); if (E.fin) return;
-    if (!E.cliente && sinLista()) { toast('Para marcar piezas listas falta correr el SQL 0036 en Supabase.'); return; }
-    const xs = (piezas(m._id) || []).filter(z => ids.includes(z._id) && lugar(m, z) === 'en').map(z => z._id); if (!xs.length) return;
-    const u = E.cliente ? { estado: valor ? 'Aprobada' : 'Para el cliente' } : { lista: !!valor };
-    try { await data.piezasUpd(xs, u); local(m._id, xs, u); } catch (e) { toast(e.message); render(); return; }
-    render(); await revisarAvance(m);
-  }
+  const PROCESO = ['Idea', 'En diseño', 'Revisión interna'], APROB = ['Aprobada', 'Programada', 'Publicada'];
+  const grupoDe = e => PROCESO.includes(e) ? 'proceso' : e === 'Para el cliente' ? 'cliente' : e === 'Cambios' ? 'cambios' : e === 'Publicada' ? 'publicada' : 'aprobada';
+  const GRUPOS = [['proceso', 'En proceso', '--s-curso'], ['cliente', 'Con el cliente', '--s-revision'], ['cambios', 'Cambios pedidos', '--s-cancelado'], ['aprobada', 'Aprobadas', '--s-entregado'], ['publicada', 'Publicadas', '--s-presup']];
+  const etapaDe = m => {
+    const ps = piezas(m._id);
+    if (ps && ps.length) { if (ps.every(z => APROB.includes(z.estado))) return ETAPAS[2]; if (m.visible || ps.some(z => z.estado === 'Para el cliente' || z.estado === 'Cambios')) return ETAPAS[1]; return ETAPAS[0]; }
+    return m.estado === 'Con el cliente' ? ETAPAS[1] : ['Aprobado', 'Programado', 'Cerrado'].includes(m.estado) ? ETAPAS[2] : ETAPAS[0];
+  };
+  const avance = (m, ps) => { const E = etapaDe(m), h = E === ETAPAS[0] ? ps.filter(z => z.estado === 'Revisión interna').length : ps.filter(z => APROB.includes(z.estado)).length; return { t: ps.length, h, todo: ps.length > 0 && h === ps.length }; };
   // El mes guarda su etapa (para la lista de meses, el portal y los avisos); se mantiene al día con la de las piezas.
   async function sincEtapa(m) { const E = etapaDe(m); if (m.estado !== E.mes && !(E.fin && ['Programado', 'Cerrado'].includes(m.estado))) { try { await data.mesUpd(m._id, { estado: E.mes }); m.estado = E.mes; } catch (e) { /* queda como estaba */ } } return E; }
-  async function revisarAvance(m) {
-    const E = await sincEtapa(m), ps = piezas(m._id) || [], a = avance(m, ps);
-    if (E.fin || E.cliente || !a.todo) { render(); return; }
-    if (E.pz === 'Revisión interna') {
-      if (await confirmar('Está todo revisado. ¿Lo mandamos al cliente ahora? Se publica en su portal y le avisamos.')) { await enviarMes(m, true); return; }
-      const q = quienes(m.cliente, { estado: 'Para el cliente', formato: '', resp: '' });
-      if (q.gente.length) { try { await data.avisarEquipo(q.gente, 'redes', m.cliente + ': todo revisado, listo para mandar al cliente', cap(monthLabel(m.mes)), '#redes/' + m._id); } catch (e) { /* el aviso no frena */ } }
-      toast('Todo revisado. Quedó listo para mandar al cliente' + (q.gente.length ? ' (avisé a ' + q.gente.join(', ') + ')' : '') + '.'); return;
+  // Cambiar el estado de una o varias piezas y avisar a quien le toca seguir (diseño, o quien manda al cliente).
+  async function setEstado(m, ids, estado) {
+    const xs = (piezas(m._id) || []).filter(z => ids.includes(z._id) && z.estado !== estado).map(z => z._id); if (!xs.length) return;
+    try { await data.piezasUpd(xs, { estado, lista: false }); local(m._id, xs, { estado, lista: false }); } catch (e) { toast(e.message); render(); return; }
+    await sincEtapa(m); render();
+    if (['En diseño', 'Revisión interna'].includes(estado)) {
+      const q = quienes(m.cliente, { estado, formato: '', resp: '' }), yo = S.me && S.me.alias, gente = q.gente.filter(a => a !== yo);
+      if (gente.length) { try { await data.avisarEquipo(gente, 'redes', m.cliente + ': ' + (estado === 'En diseño' ? (xs.length === 1 ? 'una pieza para diseñar' : xs.length + ' piezas para diseñar') : (xs.length === 1 ? 'una pieza lista para mandar' : xs.length + ' piezas listas para mandar')), cap(monthLabel(m.mes)), '#redes/' + m._id); } catch (e) { /* el aviso no frena */ } }
     }
-    const N = ETAPAS[iEt(E) + 1], ids = ps.filter(z => lugar(m, z) === 'en').map(z => z._id), antes = ps.filter(z => ids.includes(z._id)).map(z => ({ id: z._id, estado: z.estado }));
-    try { await data.piezasUpd(ids, { estado: N.pz, lista: false }); local(m._id, ids, { estado: N.pz, lista: false }); } catch (e) { toast(e.message); return; }
-    const E2 = await sincEtapa(m);
-    const q = quienes(m.cliente, { estado: N.pz, formato: '', resp: '' }); let av = 0;
-    if (q.gente.length) { try { const r = await data.avisarEquipo(q.gente, 'redes', m.cliente + ': te toca ' + N.n.toLowerCase(), cap(monthLabel(m.mes)) + ' · ' + ids.length + (ids.length === 1 ? ' pieza pasó' : ' piezas pasaron') + ' a ' + N.n, '#redes/' + m._id); av = r === false ? -1 : r; } catch (e) { /* el aviso no frena */ } }
-    render();
-    const txt = ids.length + (ids.length === 1 ? ' pieza lista pasó' : ' piezas listas pasaron') + ' a ' + N.n + (av > 0 ? '; le avisé a ' + q.gente.join(', ') : av === -1 ? ' (para avisar falta correr el SQL 0035)' : '') + (E2 !== N ? '. El mes sigue en ' + E2.n + '.' : '');
-    if (ctx.toastAccion) ctx.toastAccion(txt, 'Deshacer', async () => { for (const x of antes) { await data.piezasUpd([x.id], { estado: x.estado, lista: true }); local(m._id, [x.id], { estado: x.estado, lista: true }); } await sincEtapa(m); render(); }, 12000); else toast(txt);
+    const listas = (piezas(m._id) || []).filter(z => z.estado === 'Revisión interna').length, total = (piezas(m._id) || []).length;
+    if (estado === 'Revisión interna' && etapaDe(m) === ETAPAS[0] && listas === total) toast('Están todas listas: ya podés mandar el mes al cliente.');
   }
+
   // Devolver piezas a diseño (desde revisión o con el cliente), con un comentario para quien diseña.
   async function devolver(m, ids, nota) {
     try { await data.piezasUpd(ids, { estado: 'En diseño', lista: false }); local(m._id, ids, { estado: 'En diseño', lista: false }); } catch (e) { toast(e.message); return; }
@@ -532,23 +600,22 @@ export function initRedes(ctx) {
     if (q.gente.length) { try { await data.avisarEquipo(q.gente, 'redes', m.cliente + ': ' + (ids.length === 1 ? 'una pieza volvió' : ids.length + ' piezas volvieron') + ' a diseño', (temas.slice(0, 3).join(' · ') + (nota ? ' — ' + nota : '')).slice(0, 400), '#redes/' + m._id); } catch (e) { /* sigue */ } }
     render(); toast((ids.length === 1 ? 'Volvió' : 'Volvieron') + ' a diseño' + (q.gente.length ? '; le avisé a ' + q.gente.join(', ') : ''));
   }
-  // Control de la pieza: en la etapa del mes, "Marcar lista" / "✓ Lista"; si va adelantada, su estado (espera a las demás).
+  // Control de la pieza en la planilla, el tablero y su panel: en proceso, tres pasos para tocar; después, su estado.
   function listoCtl(m, z, can) {
-    const E = etapaDe(m), l = lugar(m, z), id = esc(z._id);
-    if (E.fin || l === 'adelante') return '<span title="' + (l === 'adelante' ? 'Ya está lista: espera a que las demás terminen ' + esc(E.n) : 'Aprobada') + '">' + pzPill(z.estado) + '</span>';
-    if (E.cliente) return '<span class="rm-lc"><span class="pzst" style="--c:var(--s-revision)">Para aprobar</span>' + (can ? '<button class="rm-ok" data-act="rmListo" data-id="' + id + '" data-v="1" title="El cliente la aprobó por otro medio (WhatsApp, reunión…)">Aprobó</button>' : '') + '</span>';
-    const camb = z.estado === 'Cambios' ? '<span class="pzst" style="--c:var(--s-cancelado)" title="El cliente pidió cambios">Cambios</span>' : '';
-    return '<span class="rm-lc">' + camb + (can ? '<button class="rm-ok' + (z.lista ? ' on' : '') + '" data-act="rmListo" data-id="' + id + '" data-v="' + (z.lista ? '0' : '1') + '" title="' + (z.lista ? 'Desmarcar' : 'Marcar lista en ' + esc(E.n) + '. Cuando estén todas, pasan a ' + esc(ETAPAS[iEt(E) + 1].n)) + '">' + (z.lista ? '✓ Lista' : 'Marcar lista') + '</button>' : (z.lista ? '<span class="pzst" style="--c:var(--ok)">✓ Lista</span>' : pzPill(z.estado))) + '</span>';
+    const id = esc(z._id), g = grupoDe(z.estado);
+    if (g === 'proceso') { const k = PROCESO.indexOf(z.estado);
+      return '<span class="rm-step" role="group" aria-label="Avance de la pieza">' + [['Idea', 'Idea'], ['En diseño', 'Diseño'], ['Revisión interna', 'Lista']].map(([e, l], i) => can ? '<button type="button" class="' + (i < k ? 'ok' : i === k ? 'on' : '') + '" data-act="rmEstado" data-id="' + id + '" data-e="' + esc(e) + '"' + (i === k ? ' aria-pressed="true"' : '') + ' title="' + (i === 2 ? 'Lista para mandar al cliente' : 'Pasar a ' + esc(l)) + '">' + (i < k || (i === 2 && k === 2) ? '✓ ' : '') + l + '</button>' : '<span class="' + (i < k ? 'ok' : i === k ? 'on' : '') + '">' + l + '</span>').join('') + '</span>'; }
+    if (g === 'cliente') return '<span class="rm-lc"><span class="pzst" style="--c:var(--s-revision)">Con el cliente</span>' + (can ? '<button class="rm-ok" data-act="rmEstado" data-id="' + id + '" data-e="Aprobada" title="El cliente la aprobó por otro medio (WhatsApp, reunión…)">Aprobó</button>' : '') + '</span>';
+    if (g === 'cambios') return '<span class="rm-lc"><span class="pzst" style="--c:var(--s-cancelado)">Cambios pedidos</span>' + (can ? '<button class="rm-ok" data-act="rmReenviarId" data-id="' + id + '" title="Con los cambios hechos, vuelve al cliente">Mandar de nuevo</button>' : '') + '</span>';
+    return pzPill(z.estado);
   }
-  // Las etapas del mes con cuántas piezas hay en cada una (tocar una filtra la planilla) y el avance de la actual.
-  function etapasHtml(m, ps, can) {
-    const E = etapaDe(m), i = iEt(E), a = avance(m, ps), cnt = ETAPAS.map((e, k) => ps.filter(z => iPz(z.estado) === k).length);
-    const AYUDA = ['Se arma el contenido del mes.', 'Cada pieza se marca lista; cuando están todas, pasan a Revisión.', 'Se revisa cada pieza o se devuelve a diseño; con todo revisado, se manda al cliente.', 'El cliente aprueba cada pieza en su portal; las que piden cambios vuelven a Diseño.', 'Aprobadas: el circuito terminó.'];
-    const pasos = ETAPAS.map((e, k) => '<button class="rm-et' + (k < i ? ' ok' : k === i ? ' on' : '') + (st.fEt === k ? ' sel' : '') + '" data-act="rmEtFiltro" data-k="' + k + '" title="' + esc(e.n + ': ' + AYUDA[k] + (cnt[k] ? ' Tocá para ver solo estas.' : '')) + '"' + (cnt[k] || st.fEt === k ? '' : ' disabled') + '>' + (k < i && !cnt[k] ? '✓ ' : '') + esc(e.n) + (cnt[k] ? ' <span class="num">' + cnt[k] + '</span>' : '') + '</button>').join('<i aria-hidden="true">›</i>');
-    let acc = '';
-    if (!E.fin && ps.length && !E.cliente) acc = '<span class="rm-prog" title="Piezas en ' + esc(E.n) + ' marcadas listas"><b>' + a.h + '/' + a.t + '</b> listas<span class="rm-pbar"><i style="width:' + (a.t ? Math.round(a.h / a.t * 100) : 0) + '%"></i></span></span>' + (can && a.h < a.t ? '<button class="btn ghost sm" data-act="rmListoTodas" data-id="' + esc(m._id) + '">' + (E.pz === 'Idea' ? 'Planificación lista · pasar a Diseño' : 'Marcar todas listas') + '</button>' : '');
-    else if (E.cliente) acc = '<span class="rm-prog"><b>' + ps.filter(z => iPz(z.estado) === 4).length + '/' + ps.length + '</b> aprobadas</span>';
-    return '<div class="rm-etapas" role="list" aria-label="Etapas del mes">' + pasos + '</div>' + acc;
+  // Arriba del mes: en qué está, cuántas piezas hay en cada estado (tocar uno filtra la planilla) y cuántas faltan.
+  function etapasHtml(m, ps) {
+    const E = etapaDe(m), cnt = Object.fromEntries(GRUPOS.map(([k]) => [k, ps.filter(z => grupoDe(z.estado) === k).length]));
+    const chips = GRUPOS.filter(([k]) => cnt[k] || st.fGr === k).map(([k, l, c]) => '<button class="rm-gr' + (st.fGr === k ? ' sel' : '') + '" data-act="rmGrFiltro" data-k="' + k + '" style="--c:var(' + c + ')" title="' + (st.fGr === k ? 'Ver todas' : 'Ver solo estas') + '"><i></i>' + l + ' <span class="num">' + cnt[k] + '</span></button>').join('');
+    const a = avance(m, ps);
+    const prog = !ps.length ? '' : E === ETAPAS[0] ? '<span class="rm-prog"><b>' + a.h + '/' + a.t + '</b> listas para mandar<span class="rm-pbar"><i style="width:' + Math.round(a.h / a.t * 100) + '%"></i></span></span>' : E.cliente ? '<span class="rm-prog"><b>' + a.h + '/' + a.t + '</b> aprobadas</span>' : '';
+    return '<span class="pzst rm-mes-e" style="--c:var(' + (MES_COLOR[E.mes] || '--muted') + ')">' + esc(E.n) + '</span>' + (chips ? '<div class="rm-grs" role="group" aria-label="Piezas por estado">' + chips + '</div>' : '') + prog;
   }
 
   /* ---------- Acciones ---------- */
@@ -827,7 +894,7 @@ export function initRedes(ctx) {
       const eq = equipo(m.cliente); if (!eq.has(alias) && !ps.some(z => z.resp === alias)) return;
       // Solo lo que se puede hacer ya: piezas de la etapa actual del mes, sin marcar listas (Planificación va como "revisar la planificación")
       const E = etapaDe(m); if (E.fin || E.cliente || E.pz === 'Idea') return;
-      const o = {}; ps.forEach(z => { if (z.lista || lugar(m, z) !== 'en') return; if (quienes(m.cliente, z, eq).gente.includes(alias)) o[z.estado] = (o[z.estado] || 0) + 1; });
+      const o = {}; ps.forEach(z => { if (!['Idea', 'En diseño', 'Revisión interna', 'Cambios'].includes(z.estado)) return; if (quienes(m.cliente, z, eq).gente.includes(alias)) o[z.estado] = (o[z.estado] || 0) + 1; });
       ESTADOS_PIEZA.filter(e => o[e]).forEach(e => out.push({ m, estado: e, n: o[e], verbo: VERBO[e] || e }));
     });
     if (falta.length) setTimeout(() => cargar(falta), 0);
@@ -895,16 +962,25 @@ export function initRedes(ctx) {
   const pzDe = id => { for (const m of meses()) { const z = (piezas(m._id) || []).find(x => x._id === id); if (z) return { m, z }; } return null; };
   // Comentario para quien diseña al devolver piezas (null si se cancela)
   const pedirNota = n => pedirTexto('¿Qué hay que cambiar? Le llega a quien diseña' + (n > 1 ? ' y vale para las ' + n + ' piezas' : '') + '.', { titulo: 'Devolver a diseño', ok: 'Devolver', ph: 'Ej.: achicar el logo, cambiar la foto del slide 3' });
+  // Manda al cliente las piezas listas. La primera vez publica el mes en el portal; después, lo que se sume va de a una.
   async function enviarMes(m, yaConfirmado) {
-    const ps = piezas(m._id) || [];
-    const ids = ps.filter(z => z.estado === 'Revisión interna').map(z => z._id);
-    if (!ids.length && !ps.some(z => z.estado === 'Para el cliente')) { toast('No hay piezas revisadas para mandar.'); return; }
-    if (!yaConfirmado && !await confirmar((ids.length ? ids.length + ' piezas pasan al cliente y ' : '') + 'el mes se publica en el portal de ' + m.cliente + '. ¿Seguimos?')) return;
+    const ps = piezas(m._id) || [], primera = etapaDe(m) === ETAPAS[0];
+    const ids = ps.filter(z => z.estado === 'Revisión interna').map(z => z._id), faltan = ps.filter(z => ['Idea', 'En diseño'].includes(z.estado)).length;
+    if (!ids.length) { toast(faltan ? 'Todavía no hay piezas listas: marcalas como Lista cuando estén terminadas.' : 'No hay piezas nuevas para mandar.'); return; }
+    if (!yaConfirmado) {
+      const txt = primera ? (faltan ? 'Hay ' + ids.length + ' piezas listas y ' + faltan + ' en proceso.\nSe mandan las listas y el mes se publica en el portal de ' + m.cliente + '; las que faltan se mandan de a una cuando estén.' : 'Se mandan las ' + ids.length + ' piezas y el mes se publica en el portal de ' + m.cliente + '.')
+        : (ids.length === 1 ? 'Una pieza nueva' : ids.length + ' piezas nuevas') + ' pasan al cliente para que las apruebe.';
+      if (!await confirmar(txt, { titulo: primera ? '¿Mandamos el mes al cliente?' : '¿Las mandamos al cliente?', ok: 'Mandar' })) return;
+    }
+    await mandarPiezas(m, ids, true);
+  }
+  async function mandarPiezas(m, ids, avisar) {
     try {
-      if (ids.length) { await data.piezasUpd(ids, { estado: 'Para el cliente', lista: false }); local(m._id, ids, { estado: 'Para el cliente', lista: false }); }
-      const u = { visible: true, estado: 'Con el cliente', enviadoAt: new Date().toISOString() }; await data.mesUpd(m._id, u); Object.assign(m, u);
+      await data.piezasUpd(ids, { estado: 'Para el cliente', lista: false }); local(m._id, ids, { estado: 'Para el cliente', lista: false });
+      if (!m.visible || !m.enviadoAt) { const u = { visible: true, enviadoAt: new Date().toISOString() }; await data.mesUpd(m._id, u); Object.assign(m, u); }
+      await sincEtapa(m);
       toast('Listo: ' + m.cliente + ' ya lo ve en el portal'); render();
-      if (ctx.avisarCliente) ctx.avisarCliente(m.cliente, 'redes', m);
+      if (avisar !== false && ctx.avisarCliente) ctx.avisarCliente(m.cliente, 'redes', m);
     } catch (e) { toast(e.message); }
   }
   // Para el resumen de la ficha del cliente: cómo vienen sus meses de redes abiertos.
@@ -1304,7 +1380,7 @@ export function initRedes(ctx) {
     if (t.dataset && t.dataset.pz) {
       const id = t.dataset.id, k = t.dataset.pz, v = t.value;
       const m = meses().find(x => (piezas(x._id) || []).some(z => z._id === id)); if (!m) return;
-      try { await data.piezasUpd([id], { [k]: v }); local(m._id, [id], { [k]: v }); if (k === 'estado' || k === 'formato' || k === 'fecha') render(); if (k === 'estado') revisarAvance(m); } catch (er) { toast(er.message); render(); }
+      try { await data.piezasUpd([id], { [k]: v }); local(m._id, [id], { [k]: v }); if (k === 'estado' || k === 'formato' || k === 'fecha') render(); if (k === 'estado') sincEtapa(m); } catch (er) { toast(er.message); render(); }
       return;
     }
     if (t.dataset && t.dataset.rmupd) {
@@ -1349,10 +1425,16 @@ export function initRedes(ctx) {
     }
   });
 
+  document.addEventListener('change', e => { const t = e.target; if (t && t.dataset && t.dataset.pdok) resolverPedido(t); });
   const acts = {
+    rmPedAbrir: async t => { const id = t.dataset.id; let z = piezaLocal(id); if (z && !P.has(z.mesId)) { await cargar([z.mesId]); } z = piezaLocal(id); if (z && P.has(z.mesId)) abrirPieza(id); else toast('No encontré esa pieza'); },
+    rmPedAnotar: () => anotarPedido(),
+    rmReenviar: () => { if (st.fpz) reenviar(st.fpz.id); },
     rmMes: t => { const d = +t.dataset.d; st.mes = d ? addMonth(st.mes, d) : thisMonth(); render(); },
-    rmAbrir: t => { st.mio = false; st.mioDe = null; st.fEt = null; ctx.irMes(t.dataset.id); },
-    rmEtFiltro: t => { const k = +t.dataset.k; st.fEt = st.fEt === k ? null : k; st.sel.clear(); render(); },
+    rmAbrir: t => { st.mio = false; st.mioDe = null; st.fGr = null; ctx.irMes(t.dataset.id); },
+    rmGrFiltro: t => { const k = t.dataset.k; st.fGr = st.fGr === k ? null : k; st.sel.clear(); render(); },
+    rmEstado: t => { const z = pzDe(t.dataset.id); if (z) setEstado(z.m, [z.z._id], t.dataset.e); },
+    rmReenviarId: t => reenviar(t.dataset.id),
     rmFuenteNo: async t => {
       const m = mesDe(st.invMes), d = String(dominio(t.dataset.u)).toLowerCase(); if (!d) return;
       const arr = [...new Set([...(S.L.fuentesNo || []), d])]; S.L.fuentesNo = arr;
@@ -1378,9 +1460,8 @@ export function initRedes(ctx) {
     rmContar: t => { const m = mesDe(t.dataset.id); if (m) contar(m); },
     rmEnviar: t => { const m = mesDe(t.dataset.id); if (m) enviarMes(m); },
     rmSoltar: t => soltar(t.dataset.id, t.dataset.e),
-    rmListo: t => { const z = pzDe(t.dataset.id); if (z) marcarListas(z.m, [z.z._id], t.dataset.v === '1'); },
-    rmListoTodas: async t => { const m = mesDe(t.dataset.id); if (!m) return; const ps = (piezas(m._id) || []).filter(z => !hecha(m, z)); if (ps.length && await confirmar('¿Marco las ' + ps.length + ' piezas que faltan como listas en ' + etapaDe(m).n + '? Pasan todas a ' + ETAPAS[iEt(etapaDe(m)) + 1].n + '.')) marcarListas(m, ps.map(z => z._id), true); },
-    rmListoSel: t => { const m = mesDe(t.dataset.id); if (!m) return; const ids = [...st.sel]; st.sel.clear(); marcarListas(m, ids, true); },
+    rmListoTodas: async t => { const m = mesDe(t.dataset.id); if (!m) return; const ps = (piezas(m._id) || []).filter(z => ['Idea', 'En diseño'].includes(z.estado)); if (ps.length && await confirmar('¿Marco las ' + ps.length + ' piezas que faltan como listas para mandar?')) setEstado(m, ps.map(z => z._id), 'Revisión interna'); },
+    rmListoSel: t => { const m = mesDe(t.dataset.id); if (!m) return; const ids = [...st.sel].filter(id => { const z = (piezas(m._id) || []).find(x => x._id === id); return z && ['Idea', 'En diseño'].includes(z.estado); }); st.sel.clear(); if (ids.length) setEstado(m, ids, 'Revisión interna'); else { toast('Esas piezas ya no están en proceso.'); render(); } },
     rmDevolverSel: async t => { const m = mesDe(t.dataset.id); if (!m) return; const ids = [...st.sel]; const nota = await pedirNota(ids.length); if (nota === null) return; st.sel.clear(); devolver(m, ids, nota); },
     rmDevolverUno: async t => { const z = pzDe(t.dataset.id); if (!z) return; const nota = await pedirNota(1); if (nota === null) return; await devolver(z.m, [z.z._id], nota); abrirPieza(z.z._id); },
     rmPlan: t => { const m = mesDe(t.dataset.id); if (m) abrirPlan(m); },
@@ -1401,7 +1482,7 @@ export function initRedes(ctx) {
       const m = mesDe(t.dataset.id); if (!m) return; t.checked = false;
       const ps = piezas(m._id) || (await cargar([m._id]), piezas(m._id)) || [];
       const ideas = ps.filter(z => z.estado === 'Idea');
-      if (ideas.length) { if (await confirmar('¿Planificación de ' + m.cliente + ' revisada? Las ' + ideas.length + ' piezas pasan a Diseño y le aviso a quien diseña.')) await marcarListas(m, ideas.map(z => z._id), true); return; }
+      if (ideas.length) { if (await confirmar('¿Planificación de ' + m.cliente + ' revisada? Las ' + ideas.length + ' piezas pasan a Diseño y le aviso a quien diseña.')) await setEstado(m, ideas.map(z => z._id), 'En diseño'); return; }
       try { await data.mesUpd(m._id, { estado: 'Producción' }); m.estado = 'Producción'; render(); toast('Planificación de ' + m.cliente + ' revisada'); } catch (e) { toast(e.message); }
     },
     rmPasar: t => { const m = mesDe(t.dataset.id); if (m) abrirPasar(m, t.dataset.de); },
@@ -1455,5 +1536,5 @@ export function initRedes(ctx) {
     const ps = piezas(m._id); if (!ps) { setTimeout(() => cargar([m._id]), 0); return null; }
     return extrasResumen(cliente, ps);
   }
-  return { resumenCliente, tareasRedes, planificacionesDe, extrasACobrar, opcionesHtml, tocaA, vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
+  return { vPedidos, pedidosCount, pedidosVivo, cargarPedidos, resumenCliente, tareasRedes, planificacionesDe, extrasACobrar, opcionesHtml, tocaA, vLista, vMes, acts, enVivo, abrirPieza, piezas, cargar, meses, mesCliente, clientesMes, ESTADOS_PIEZA, closePieza: () => { st.fpz = null; }, mesActual: () => st.mes };
 }

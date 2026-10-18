@@ -2754,3 +2754,48 @@ h3>.todos-b{margin:0 0 0 10px;font-size:12px;vertical-align:middle}
 .ec-aviso b{font-weight:650}
 /* Cobro: si se usa un cobro ya registrado, no hace falta completar uno nuevo */
 #aform:has(#af-usar input:checked:not([value="nuevo"])) .field:has(:is(#af-fecha,#af-monto,#af-usd,#af-caja,#af-subcuenta,#af-detalle)){display:none}
+
+/* Redes · pedidos de los clientes (bandeja y en la pieza) */
+.pd-cli .sheet-h h2{display:flex;align-items:center;gap:10px}
+.pd-pz{padding:12px 18px;border-top:1px solid var(--line)}
+.pd-h{display:flex;align-items:center;gap:12px}
+.pd-h .rm-mini,.pd-h .pz-mini{flex:none}
+.pd-t{flex:1;min-width:0;display:grid;gap:1px}
+.pd-t b{font-weight:600;font-size:14px}
+.pd-t span{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pd-its{display:grid;gap:6px;margin-top:10px}
+.pd-it{display:grid;grid-template-columns:20px minmax(0,1fr);column-gap:10px;align-items:start;padding:9px 12px;border-radius:10px;background:color-mix(in srgb,var(--warn) 9%,var(--surface));cursor:pointer}
+.pd-it input{margin-top:2px}
+.pd-tx{font-size:14.5px;font-weight:550;color:var(--fg);white-space:pre-line}
+.pd-m{grid-column:2;font-size:12.5px;color:var(--muted)}
+.pd-it.ok{background:var(--surface-2)}
+.pd-it.ok .pd-tx{text-decoration:line-through;color:var(--muted);font-weight:400}
+.pz-ped{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--surface)}
+.pz-ped.abierto{border-color:color-mix(in srgb,var(--warn) 45%,var(--line));background:color-mix(in srgb,var(--warn) 4%,var(--surface))}
+.pz-ped.vacio{border:0;padding:0;background:none}
+.pz-ped.vacio summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.pz-ped-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.pz-ped-h b{font-weight:650;font-size:14.5px}
+.pz-ped-h span{font-size:12.5px;color:var(--muted)}
+.pz-ped-add{display:flex;gap:8px;margin-top:10px}
+.pz-ped-add .in{flex:1}
+.pz-ped-f{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+
+/* Redes · flujo pieza por pieza */
+.rm-step{display:inline-flex;border:1px solid var(--line);border-radius:99px;overflow:hidden;background:var(--surface)}
+.rm-step > *{font:inherit;font-size:12.5px;font-weight:600;padding:4px 10px;border:0;background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap}
+.rm-step > span{cursor:default}
+.rm-step > * + *{border-left:1px solid var(--line)}
+.rm-step .ok{color:var(--fg)}
+.rm-step .on{background:color-mix(in srgb,var(--accent) 14%,var(--surface));color:var(--accent-text,var(--accent))}
+.rm-step > button:hover:not(.on){background:var(--surface-2)}
+.rm-mes-e{font-size:13px}
+.rm-grs{display:inline-flex;gap:6px;flex-wrap:wrap}
+.rm-gr{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:13px;font-weight:600;padding:4px 10px;border-radius:99px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.rm-gr i{width:8px;height:8px;border-radius:50%;background:var(--c)}
+.rm-gr .num{color:var(--muted);font-weight:600}
+.rm-gr.sel{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,var(--surface))}
+.rm-bn{font-size:12px;font-weight:700;padding:1px 7px;border-radius:99px;background:color-mix(in srgb,#fff 25%,transparent);margin-left:4px}
+.rm-pc-m{flex-wrap:wrap;row-gap:6px}
+.rm-pc-m .rm-step{order:3;flex:1 1 100%;display:flex}
+.rm-pc-m .rm-step > *{flex:1;text-align:center;padding:4px 6px}
