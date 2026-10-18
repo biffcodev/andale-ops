@@ -2748,3 +2748,9 @@ h3>.todos-b{margin:0 0 0 10px;font-size:12px;vertical-align:middle}
 .dv-a .btn svg{width:14px;height:14px}
 .dv-ed{display:flex;gap:8px;flex:1 1 100%;flex-wrap:wrap}
 .dv-ed .in{flex:1;min-width:240px}
+
+/* Estado de cuenta: aviso cuando la factura del mes no coincide con lo estimado */
+.ec-aviso{display:block;margin-top:6px;font-size:13px;color:var(--warn)}
+.ec-aviso b{font-weight:650}
+/* Cobro: si se usa un cobro ya registrado, no hace falta completar uno nuevo */
+#aform:has(#af-usar input:checked:not([value="nuevo"])) .field:has(:is(#af-fecha,#af-monto,#af-usd,#af-caja,#af-subcuenta,#af-detalle)){display:none}

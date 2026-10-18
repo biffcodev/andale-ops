@@ -1159,6 +1159,10 @@ export function initAdmin(ctx) {
     const ca = cadm(c.nombre), ec = estadoCuenta(c.nombre), m = thisMonth(), cu = cuenta(c.nombre, m);
     const proys = S.P.filter(p => p.cliente === c.nombre && !['Cancelado'].includes(p.estado));
     const n = (v, l, sub, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(v) + '</b><span>' + esc(l) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>';
+    // Si ya hay factura del mes y no coincide con lo estimado, se avisa (y qué abono no tiene precio ese mes).
+    const facMes = cu.res ? [] : AD.F.filter(f => f.cliente === c.nombre && f.periodo === m && !/cr[eé]dito/i.test(f.tipo || '') && (f.moneda || 'ARS') === (cu.moneda || 'ARS'));
+    const totFac = facMes.reduce((a, f) => a + (+f.monto || 0), 0), sinP = S.A.filter(a => a.cliente === c.nombre && abonoEnMes(a, m) && !precioEn(a._id, m));
+    const avisoMes = facMes.length && Math.abs(totFac - (cu.total || 0)) > 1 ? '<span class="ec-aviso">Ya hay factura del mes por <b>' + money(totFac, cu.moneda) + '</b>, ' + money(Math.abs(totFac - (cu.total || 0)), cu.moneda) + (totFac > (cu.total || 0) ? ' más' : ' menos') + ' que lo estimado.' + (sinP.length ? ' Falta el precio de ' + esc(monthLabel(m)) + ' de: <b>' + sinP.map(a => esc(a.tipo + (a.plan ? ' ' + a.plan : ''))).join(', ') + '</b>.' : '') + '</span>' : (!cu.res && sinP.length ? '<span class="ec-aviso">Falta el precio de ' + esc(monthLabel(m)) + ' de: <b>' + sinP.map(a => esc(a.tipo + (a.plan ? ' ' + a.plan : ''))).join(', ') + '</b>: no entra en lo estimado.</span>' : '');
     const resEst = cu.res ? (cu.res.estado === 'Enviado' ? 'Enviado el ' + fmt(cu.res.enviado_el || '').slice(0, 5) : 'Preparado, sin enviar') : (cu.total ? 'Sin preparar' : 'Nada para cobrar este mes');
     let h = '<section class="sheet sx"><div class="sx-h"><span class="sx-i">' + ICON.plata + '</span><h2>Estado de cuenta</h2><div class="sx-der toolbar">' +
       (ec.vencidas.length ? '<button class="btn sm" data-act="aRecCliente" data-cliente="' + esc(c.nombre) + '">Mandar recordatorio</button>' : '') +
@@ -1166,7 +1170,7 @@ export function initAdmin(ctx) {
       '<div class="kqs kqs-in">' + kq('Debe hoy', ec.debe, { sub: nada(ec.debe) ? '<span class="pill-n pos">Está al día</span>' : nada(ec.venc) ? 'nada vencido' : '<span class="pill-n neg">' + esc(multi(ec.venc)) + ' vencido</span>', tono: nada(ec.venc) ? '' : 'neg' }) +
       kq('Pagó en ' + ec.y, ec.cobAnio, { sub: ec.ultimoPago ? 'último pago ' + fmt(ec.ultimoPago) : 'sin pagos registrados', tono: 'pos' }) +
       kq('Se le facturó en ' + ec.y, ec.facAnio, { sub: ec.facs.length + ' factura' + (ec.facs.length === 1 ? '' : 's') + ' en total' }) + '</div>' +
-      '<div class="ec-mes"><div><span class="lbl">' + esc(cap(monthLabel(m))) + '</span><b class="money">' + (cu.total ? money(cu.total, cu.moneda) : '—') + '</b><span class="muted">' + esc(resEst) + (cu.res ? '' : cu.total ? ' · estimado con abonos y cuotas' : '') + '</span></div>' +
+      '<div class="ec-mes"><div><span class="lbl">' + esc(cap(monthLabel(m))) + '</span><b class="money">' + (cu.total ? money(cu.total, cu.moneda) : '—') + '</b><span class="muted">' + esc(resEst) + (cu.res ? '' : cu.total ? ' · estimado con abonos y cuotas' : '') + '</span>' + avisoMes + '</div>' +
       (cu.total || cu.res ? '<button class="btn ' + (cu.res && cu.res.estado === 'Enviado' ? '' : 'primary') + '" data-act="aCuentaDe" data-cliente="' + esc(c.nombre) + '">' + (cu.res && cu.res.estado === 'Enviado' ? 'Ver resumen' : cu.res ? 'Revisar y mandar resumen' : 'Preparar resumen') + '</button>' : '') + '</div>' +
       '<div class="sx-panel">' + libroCuenta(ec) + '</div></section>';
     if (proys.length) h += '<section class="sheet"><div class="sheet-h"><h2>Proyectos: precio y cobro</h2></div><div class="rows">' + proys.map(p => { const f = finProyecto(p), pend = f.presupuesto != null ? Math.max(0, (f.presupuesto || 0) - f.facturado) : null;
@@ -1277,6 +1281,21 @@ export function initAdmin(ctx) {
   }
 
   // Al anular una factura, el PDF de Drive unido a ella se suelta y vuelve a Por revisar.
+  // Cobros (ingresos) que no están unidos a una factura vigente: sin factura o de una factura que se anuló.
+  const facViva = id => !!id && AD.F.some(f => f.id === id);
+  const cobrosSueltos = f => AD.MV.filter(m => (+m.ingreso || 0) > 0 && !facViva(m.factura_id) && (m.cliente_id ? m.cliente_id === f.cliente_id : m.contraparte === f.cliente) && (m.moneda || 'ARS') === (f.moneda || 'ARS') && /^Venta/.test(m.cuenta || ''));
+  // Al anular: los cobros de esa factura quedan sueltos (la plata entró igual) para unirlos a la factura nueva.
+  async function anularFactura(f, nombre) {
+    const cob = AD.MV.filter(m => m.factura_id === f.id && (+m.ingreso || 0) > 0);
+    if (cob.length) {
+      const tot = cob.reduce((a, m) => a + (+m.ingreso || 0), 0);
+      const ok = await confirmar('Esta ' + nombre + ' tiene ' + (cob.length === 1 ? 'un cobro' : cob.length + ' cobros') + ' por ' + money(tot, f.moneda) + '.\nLa plata ya entró, así que el cobro queda en Gastos e ingresos, sin factura. Cuando cargues la factura nueva, al registrar el cobro la app te ofrece usar este en vez de cargar otro.', { titulo: '¿Anular la ' + nombre + '?', ok: 'Anular', tipo: 'pregunta' });
+      if (!ok) return false;
+      for (const m of cob) await data.upd('movimientos', m.id, { factura_id: null });
+    }
+    await data.upd('facturas', f.id, { anulada: true }); await soltarDrive(f.id);
+    return true;
+  }
   async function soltarDrive(fid) { for (const x of (AD.DA || []).filter(x => x.factura_id === fid)) { try { await data.upd('drive_archivos', x.id, { factura_id: null }); } catch (e) { /* sigue */ } } }
   function formFactura(id, preset, opts = {}) {
     if (id && (AD.F.find(x => x.id === id) || {}).tipo === 'Invoice' && !opts.comoFactura) return formInvoice(id);
@@ -1331,7 +1350,7 @@ export function initAdmin(ctx) {
         toast(f ? 'Factura actualizada' : 'Factura cargada');
       },
       deleteLabel: 'Anular factura',
-      onDelete: f ? async () => { await data.upd('facturas', f.id, { anulada: true }); await soltarDrive(f.id); toast('Factura anulada: su PDF de Drive vuelve a Por revisar'); } : null,
+      onDelete: f ? async () => { if (!(await anularFactura(f, 'factura'))) return false; toast('Factura anulada: su PDF de Drive vuelve a Por revisar'); } : null,
     });
   }
   /* ---------- Invoice para clientes del exterior (en inglés). En Argentina se factura en ARCA. ---------- */
@@ -1388,7 +1407,7 @@ export function initAdmin(ctx) {
         AD.postSave = () => { const nf = AD.F.find(x => x.id === fid); if (nf && !f) actions.aInvoicePdf({ dataset: { id: fid } }); };
       },
       deleteLabel: 'Anular invoice',
-      onDelete: f ? async () => { await data.upd('facturas', f.id, { anulada: true }); await soltarDrive(f.id); toast('Invoice anulado'); } : null,
+      onDelete: f ? async () => { if (!(await anularFactura(f, 'factura'))) return false; toast('Invoice anulado'); } : null,
     });
     renderInv();
   }
@@ -1402,11 +1421,16 @@ export function initAdmin(ctx) {
     const f = AD.F.find(x => x.id === id); if (!f) return;
     const cuenta = f.moneda === 'USD' ? 'Ventas en USD' : f.moneda === 'EUR' ? 'Venta en Euros' : f.moneda === 'GBP' ? 'Venta en Libras' : f.moneda === 'ARS' ? 'Ventas en Pesos' : 'Venta en ' + f.moneda;
     const cjs = cajasDe(f.moneda);
+    // Si hay un cobro de este cliente que quedó sin factura (por ejemplo, de una factura anulada), se ofrece usarlo.
+    const sueltos = cobrosSueltos(f).sort((a, b) => (Math.abs(a.ingreso - f.saldo) - Math.abs(b.ingreso - f.saldo)) || String(b.fecha).localeCompare(a.fecha)).slice(0, 4);
+    const igual = sueltos.find(m => Math.abs(m.ingreso - f.saldo) < 0.01);
+    const usar = sueltos.length ? [{ k: 'usar', label: '¿Es un cobro nuevo?', type: 'radio', full: 1, opciones: [...sueltos.map(m => ({ v: m.id, label: 'Ya lo registré: ' + fmt(m.fecha) + ' · ' + money(m.ingreso, m.moneda), sub: (m.detalle || 'Cobro sin factura') + ' · quedó sin factura. Se une a esta, sin cargar otro.' })), { v: 'nuevo', label: 'Es un cobro nuevo', sub: 'Se registra como ingreso en Gastos e ingresos.' }] }] : [];
     openPanel({
       title: 'Cobro de ' + f.cliente, eyebrow: verTipo(f.tipo) + ' ' + (f.numero || 'sin número'), saveLabel: 'Registrar cobro',
       intro: 'Falta cobrar: <b class="money">' + money(f.saldo, f.moneda) + '</b>. El cobro queda como ingreso en Gastos e ingresos.',
-      values: { fecha: today(), monto: f.saldo, caja: cjs[0] ? cjs[0].id : '', subcuenta: subcuentaSugerida(f.cliente), detalle: (f.periodo ? 'Mes de ' + monthLabel(f.periodo) : f.concepto) },
+      values: { usar: igual ? igual.id : 'nuevo', fecha: today(), monto: f.saldo, caja: cjs[0] ? cjs[0].id : '', subcuenta: subcuentaSugerida(f.cliente), detalle: (f.periodo ? 'Mes de ' + monthLabel(f.periodo) : f.concepto) },
       fields: [
+        ...usar,
         { k: 'fecha', label: 'Fecha de cobro', type: 'date', req: 1 },
         { k: 'monto', label: 'Monto cobrado (' + f.moneda + ')', num: 1, req: 1 },
         ...(esExterior(f.moneda) ? [{ k: 'usd', label: '¿Cuántos USD entraron?', num: 1, hint: 'Si ya lo pasaste a dólares (Wise, banco), poné lo que llegó. Si todavía no, dejalo vacío y lo completás después.' }] : []),
@@ -1415,6 +1439,7 @@ export function initAdmin(ctx) {
         { k: 'detalle', label: 'Detalle', full: 1 },
       ],
       onSave: async v => {
+        if (v.usar && v.usar !== 'nuevo') { await data.upd('movimientos', v.usar, { factura_id: f.id }); toast('Cobro unido a la factura, sin cargar otro'); return; }
         await data.ins('movimientos', { fecha: v.fecha, cuenta, subcuenta: v.subcuenta, contraparte: f.cliente, cliente_id: f.cliente_id, detalle: v.detalle, ingreso: v.monto, egreso: 0, moneda: f.moneda, caja_id: v.caja || null, factura_id: f.id, ...(esExterior(f.moneda) ? { usd: v.usd ?? null } : {}) });
         toast('Cobro registrado');
       },
@@ -1666,7 +1691,7 @@ export function initAdmin(ctx) {
     const cuentasMes = [...new Set(delMes.map(x => x.cuenta))].sort(cmp);
     const list = delMes.filter(x => (!cj.cuenta || x.cuenta === cj.cuenta) && (!cj.moneda || x.moneda === cj.moneda) && (!q || norm([x.contraparte, x.detalle, x.subcuenta, x.cuenta].join(' ')).includes(q))).sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.created_at || '').localeCompare(a.created_at || ''));
     h += '<section class="sheet"><div class="sheet-h"><div><h2>Movimientos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Tocá cualquiera para corregirlo o borrarlo.</p></div></div><div class="fbar"><label class="fbar-q">' + ICON.buscar + '<input class="in" type="search" id="cj-q" data-acj="q" placeholder="Buscar por cliente, proveedor o detalle" aria-label="Buscar" value="' + esc(cj.q) + '"></label><select class="in" id="cj-c" data-acj="cuenta" aria-label="Categoría">' + opt('', 'Todas las categorías', cj.cuenta) + cuentasMes.map(c => opt(c, c, cj.cuenta)).join('') + '</select><select class="in" id="cj-m" data-acj="moneda" aria-label="Moneda">' + opt('', 'Todas las monedas', cj.moneda) + MONEDAS.map(c => opt(c, c, cj.moneda)).join('') + '</select></div>' +
-      (list.length ? '<div class="tbl"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Cliente / proveedor</th><th>Detalle</th><th class="r">Ingreso</th><th class="r">Gasto</th></tr></thead><tbody>' + list.map(x => '<tr class="click" data-act="aMov" data-id="' + esc(x.id) + '"><td class="mono">' + fmt(x.fecha) + '</td><td>' + esc(x.cuenta) + '<span class="sub">' + esc(x.subcuenta) + '</span></td><td>' + esc(x.contraparte) + (x.factura_id ? '<span class="sub">cobro de factura</span>' : '') + (x.reintegro_a ? '<span class="sub">pagó ' + esc(x.reintegro_a) + (x.reintegrado ? ' · devuelto' : '') + '</span>' : '') + '</td><td>' + esc(x.detalle) + '</td><td class="r">' + (x.ingreso ? '<span class="money">' + money(x.ingreso, x.moneda) + '</span>' : '') + '</td><td class="r">' + (x.egreso ? money(x.egreso, x.moneda) : '') + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('No hay nada con ese filtro', '')) +
+      (list.length ? '<div class="tbl"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Cliente / proveedor</th><th>Detalle</th><th class="r">Ingreso</th><th class="r">Gasto</th></tr></thead><tbody>' + list.map(x => '<tr class="click" data-act="aMov" data-id="' + esc(x.id) + '"><td class="mono">' + fmt(x.fecha) + '</td><td>' + esc(x.cuenta) + '<span class="sub">' + esc(x.subcuenta) + '</span></td><td>' + esc(x.contraparte) + (x.factura_id ? '<span class="sub">' + (facViva(x.factura_id) ? 'cobro de factura' : 'cobro de una factura anulada') + '</span>' : '') + (x.reintegro_a ? '<span class="sub">pagó ' + esc(x.reintegro_a) + (x.reintegrado ? ' · devuelto' : '') + '</span>' : '') + '</td><td>' + esc(x.detalle) + '</td><td class="r">' + (x.ingreso ? '<span class="money">' + money(x.ingreso, x.moneda) + '</span>' : '') + '</td><td class="r">' + (x.egreso ? money(x.egreso, x.moneda) : '') + '</td></tr>').join('') + '</tbody></table></div>' : emptyBox('No hay nada con ese filtro', '')) +
       '<div class="count num">' + list.length + ' de ' + delMes.length + ' gastos e ingresos · ' + esc(R.label) + '</div></section>';
     return h;
   }
@@ -1929,7 +1954,7 @@ export function initAdmin(ctx) {
         onSave: async v => { await data.upd('precios_abono', p.id, { aviso_enviado: v.fecha }); await data.ins('gestiones', { cliente_id: data.ids.cliente(a.cliente), periodo: p.desde + '-01', tipo: 'Aviso de aumento', fecha: v.fecha, canal: v.canal, persona_id: data.ids.persona(S.me.alias) }); toast('Aviso registrado'); } });
     },
     aDel: () => { $('#adel').innerHTML = '<span class="muted" style="font-size:13px">¿Seguro?</span> <button type="button" class="btn danger sm" data-act="aDelYes">Sí</button>'; },
-    aDelYes: async () => { try { await AD.form.onDelete(); ctx.closeForm(); await ctx.reload(); } catch (err) { toast(err.message); } },
+    aDelYes: async () => { try { if ((await AD.form.onDelete()) === false) { $('#adel').innerHTML = ''; return; } ctx.closeForm(); await ctx.reload(); } catch (err) { toast(err.message); } },
   };
 
   // Entradas propias de Administración
