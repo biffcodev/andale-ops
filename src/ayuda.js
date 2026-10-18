@@ -14,6 +14,7 @@ export const TUTORIALES = {
 export const NOVEDADES = [
   { f: '2026-10-17', t: 'Configuración ordenada', d: 'Seis pantallas por tema: Facturación, Mails, Trabajo y Redes, Integraciones, Automatizaciones y Datos de la app.', roles: ['admin'] },
   { f: '2026-10-17', t: 'Facturas en Drive', d: 'Se nombran solas como CLIENTE-MES-AÑO.pdf, se detectan duplicados y se avisa si alguien borra un PDF. Copia de respaldo opcional.', roles: ['admin'] },
+  { f: '2026-10-18', t: 'Más simple en el celular', d: 'Abajo tenés Inicio, Trabajo, Redes, + Cargar y Más. Inicio arranca por lo que te toca; los números van de a dos, las tablas se leen como lista y los gráficos entran en la pantalla.', roles: ['admin', 'equipo', 'externo'] },
   { f: '2026-10-18', t: 'Conversaciones del cliente', d: 'En la ficha, una sola línea de tiempo con las charlas, los mails que le mandamos y lo que escribió en el portal. Los mails ya no se anotan solos como charla; si el cliente responde, tocá el mail → “El cliente respondió”.', roles: ['admin', 'equipo'] },
   { f: '2026-10-18', t: '@ a contactos del cliente', d: 'En los comentarios que ve el cliente podés mencionar a una persona del cliente: le llega un mail con lo que le escribiste y lo ve en su portal.', roles: ['admin', 'equipo'] },
   { f: '2026-10-18', t: 'Lo que vuelve del cliente', d: 'Cuando un cliente pide cambios o comenta una pieza, le llega el aviso a todo el equipo de la cuenta, y en Mis trabajos aparece cada pieza con lo que pidió.', roles: ['admin', 'equipo', 'externo'] },

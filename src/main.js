@@ -493,6 +493,7 @@ function pedirHoras(p, x) {
 const kpiBtn = (n, label, sub, attrs, cls) => '<button class="kpi ' + (cls || '') + '" ' + attrs + '><span class="eyebrow">' + label + '</span><b>' + n + '</b><span>' + sub + '</span></button>';
 
 function vInicio() {
+  if (esCel()) return vInicioCel();
   const t = today(), open = S.P.filter(isOpen), yo = S.me.alias;
   const late = open.filter(p => p.entrega && p.entrega < t);
   const in7 = open.filter(p => plazoOk(p, '7dias'));
@@ -582,6 +583,36 @@ function vInicio() {
   return h;
 }
 
+
+// Inicio en el celular: primero lo que te toca, después cuatro números y la semana (solo los días con algo). Lo demás, en Trabajo.
+function vInicioCel() {
+  const t = today(), yo = S.me.alias, open = S.P.filter(isOpen);
+  const mias = tareasDe(yo), pasos = pendientes().filter(m => m.responsable === yo || !m.responsable);
+  const red_ = (RED || S.RM) ? red().tareasRedes(yo) : [], nPed = isStaff() && RED ? RED.pedidosCount() : 0;
+  const late = open.filter(p => p.entrega && p.entrega < t), cobVenc = isAdmin() && ADM ? (ADM.counts().cobros || 0) : 0;
+  const hora = new Date().getHours(), saludo = hora < 13 ? 'Buen día' : hora < 20 ? 'Buenas tardes' : 'Buenas noches';
+  const it = (attrs, tit, sub, tag, cls) => '<button class="ic-it' + (cls ? ' ' + cls : '') + '" ' + attrs + '><span class="ic-t"><b>' + tit + '</b>' + (sub ? '<span>' + sub + '</span>' : '') + '</span>' + (tag || '') + '</button>';
+  const items = [];
+  red_.filter(r => r.z).forEach(r => items.push(it('data-act="rmPedAbrir" data-id="' + esc(r.z._id) + '"', 'Cambios en «' + esc(r.z.tema || r.z.formato || 'pieza') + '»', esc(r.m.cliente) + ' · volvió del cliente', '', 'cli')));
+  if (nPed && !red_.some(r => r.z)) items.push(it('data-act="go" data-view="redes" data-tab="pedidos"', nPed + (nPed === 1 ? ' pedido de cliente' : ' pedidos de clientes'), 'Lo que pidieron cambiar en sus piezas', '', 'cli'));
+  mias.slice(0, 4).forEach(({ p, x, i }) => items.push(it('data-act="gqTarea" data-id="' + esc(p._id) + '" data-i="' + i + '"', esc(x.n), esc(p.proyecto + ' · ' + p.cliente), fechaTarea(x.fecha))));
+  red_.filter(r => !r.z).slice(0, 4).forEach(r => items.push(it('data-act="rmMio" data-id="' + esc(r.m._id) + '" data-p="' + esc(yo) + '"', esc(r.verbo + ' ' + r.n + (r.n === 1 ? ' pieza' : ' piezas') + ' de ' + r.m.cliente), 'Redes · ' + esc(monthLabel(r.m.mes)))));
+  pasos.filter(m => m.fechaProximo && m.fechaProximo <= t).slice(0, 3).forEach(m => items.push(it('data-act="charlaVer" data-id="' + esc(m._id) + '"', esc(m.proximo), esc(m.cliente || '') + ' · paso con el cliente', '<span class="tk-f late">' + (m.fechaProximo === t ? 'Hoy' : 'Vencido') + '</span>')));
+  const total = mias.length + red_.length + pasos.length;
+  let h = '<div class="ic-hola"><span>' + esc(cap1(new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }))) + '</span><h1>' + saludo + ', ' + esc(yo) + '</h1></div>';
+  h += '<section class="sheet ic-sec"><div class="sheet-h"><h2>Te toca</h2>' + (total > items.length ? '<button class="btn ghost sm" data-act="go" data-view="mis">Ver todo</button>' : '') + '</div>' +
+    (items.length ? '<div class="ic-l">' + items.slice(0, 8).join('') + '</div>' : '<p class="muted ic-vacio">Nada pendiente por ahora. 🎉</p>') + '</section>';
+  const k = (n, l, attrs, cls) => '<button class="hk ' + (cls || '') + '" ' + attrs + '><span class="hk-t"><span class="hk-l">' + l + '</span><b>' + n + '</b></span></button>';
+  h += '<section class="hks">' + k(mias.length + red_.length, 'Tareas', 'data-act="go" data-view="mis"') + k(nPed, 'Pedidos de clientes', 'data-act="go" data-view="redes" data-tab="pedidos"', nPed ? 'warn' : '') +
+    k(late.length, 'Proyectos atrasados', 'data-act="goProy"', late.length ? 'alert' : '') +
+    (isAdmin() && ADM ? k(cobVenc, 'Cobros vencidos', 'data-act="go" data-view="cuentas"', cobVenc ? 'alert' : '') : k(pasos.length, 'Pasos con clientes', 'data-act="go" data-view="comunicaciones" data-pend="1"')) + '</section>';
+  // La semana: solo los días que tienen algo
+  const lunes = new Date(); lunes.setHours(12, 0, 0, 0); lunes.setDate(lunes.getDate() - ((lunes.getDay() + 6) % 7));
+  const dias = Array.from({ length: 7 }, (_, i) => { const d = new Date(lunes); d.setDate(d.getDate() + i); return d.toISOString().slice(0, 10); }).filter(d => d >= t);
+  const sem = dias.map(d => { const ents = open.filter(p => p.entrega === d); if (!ents.length) return ''; return '<div class="ic-d"><span class="ic-dd">' + esc(cap1(new Date(d + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }))) + '</span><div>' + ents.map(p => '<button class="ic-e" data-act="pver" data-id="' + esc(p._id) + '"><b>' + esc(p.proyecto) + '</b><span>' + esc(p.cliente) + '</span></button>').join('') + '</div></div>'; }).join('');
+  if (sem) h += '<section class="sheet ic-sec"><div class="sheet-h"><h2>Entregas de esta semana</h2></div><div class="ic-sem">' + sem + '</div></section>';
+  return h;
+}
 const pcRing = pct => '<svg viewBox="0 0 36 36" class="ring" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--line)" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--s-entregado)" stroke-width="4" stroke-linecap="round" stroke-dasharray="' + (pct * 0.9425).toFixed(1) + ' 100" transform="rotate(-90 18 18)"/></svg>';
 function projCard(p) { const pct = avance(p), e = etapasDe(p); return '<button class="pc" style="--t:var(' + (TIPO_COLOR[p.tipo] || '--accent') + ')" data-act="pver" data-id="' + esc(p._id) + '"><span class="pc-top"><span class="pc-cli">' + esc(p.cliente) + '</span>' + prioFlag(p.prioridad) + '</span><b class="pc-n">' + esc(p.proyecto) + '</b>' +
     '<span class="pc-m"><span class="pc-r">' + pcRing(pct) + '<i>' + pct + '%</i></span><span class="pc-d">' + stPill(p.estado) + '<span>' + (e.length ? e.filter(x => x.ok).length + ' de ' + e.length + ' tareas' : 'Sin tareas') + '</span>' + (p.entrega ? '<span>Entrega ' + fmtShort(p.entrega) + ' ' + daysBadge(p) + '</span>' : '') + '</span></span>' +
@@ -626,7 +657,7 @@ function vLista() {
       '<td><select class="cellsel st" style="--c:var(' + stVar(p.estado) + ')" aria-label="Estado" data-upd="proyecto" data-id="' + esc(p._id) + '" data-field="estado"' + dis + '>' + optsFrom(S.L.estadosProyecto, p.estado || '') + '</select></td>' +
       '</tr>';
   };
-  const head = '<thead><tr><th>Proyecto</th><th>Tipo</th><th>Responsables</th><th>Tareas</th><th>Entrega</th><th>Estado</th></tr></thead>';
+  const head = '<thead><tr><th>Proyecto</th><th data-cel="no">Tipo</th><th data-cel="no">Responsables</th><th>Tareas</th><th>Entrega</th><th data-cel="sin">Estado</th></tr></thead>';
   return grupos.map(([e, arr]) => {
     const cerrado = S.gcl.has(e);
     return '<section class="sheet grp' + (cerrado ? ' cerrado' : '') + '" style="--c:var(' + stVar(e) + ')"><button class="grp-h" data-act="grpTog" data-g="' + esc(e) + '" aria-expanded="' + !cerrado + '"><span class="chev" aria-hidden="true">▾</span><span class="grp-pill">' + esc(e) + '</span><span class="grp-n">' + arr.length + '</span></button>' +
@@ -1533,8 +1564,56 @@ function render() {
   $('#view').innerHTML = secTabs() + viewFn(S.view)();
   reabrir($('#view'));
   ponerHerramientas();
+  barraCel(counts);
+  if (esCel()) celTablas($('#view'));
   const kb2 = document.querySelector('.kb'); if (kb2) { kb2.scrollLeft = kbLeft; kb2.querySelectorAll('.col').forEach((c, i) => { c.scrollTop = kbTops[i] || 0; }); kbFlechas(kb2); }
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { } } }
+}
+
+/* ---------- Celular: barra de abajo, "+ Cargar" y tablas como lista ---------- */
+const esCel = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+const ICO_MAS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+const ICO_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+function barraCel(counts) {
+  if (!S.me) return;
+  let bb = document.getElementById('bbar');
+  if (!bb) { bb = document.createElement('nav'); bb.id = 'bbar'; bb.className = 'bbar'; bb.setAttribute('aria-label', 'Accesos rápidos'); document.body.appendChild(bb); document.body.classList.add('con-bbar'); }
+  const vs = new Set(views().map(v => v[0])), sec = seccionDe(S.view);
+  const nTrab = (() => { try { return tareasDe(S.me.alias).length; } catch (e) { return 0; } })();
+  const it = (v, l, ic, n, on) => '<button class="bb" data-act="go" data-view="' + v + '"' + (on ? ' aria-current="page"' : '') + '><span class="bb-i">' + ic + '</span><span>' + l + '</span>' + (n ? '<span class="bb-n">' + (n > 9 ? '9+' : n) + '</span>' : '') + '</button>';
+  bb.innerHTML = (vs.has('inicio') ? it('inicio', 'Inicio', ICON.inicio, 0, S.view === 'inicio') : '') +
+    it('mis', 'Trabajo', ICON.tarea, nTrab, sec === 'trabajo' && S.view !== 'redes') +
+    (vs.has('redes') ? it('redes', 'Redes', ICON.redes, (counts && counts.redes) || 0, S.view === 'redes') : '') +
+    '<button class="bb bb-add" data-act="bbCargar" aria-haspopup="dialog"><span class="bb-i">' + ICO_PLUS + '</span><span>Cargar</span></button>' +
+    '<button class="bb" data-act="menu" aria-label="Más secciones"><span class="bb-i">' + ICO_MAS + '</span><span>Más</span></button>';
+  // Arriba, en el celular: logo, buscador y avisos (lo demás va en "Cargar" y "Más").
+  const tb = $('#topbar'); if (tb && !document.getElementById('tbrand')) { const b = document.createElement('button'); b.id = 'tbrand'; b.className = 'tbrand'; b.dataset.act = 'go'; b.dataset.view = isExt() ? 'mis' : 'inicio'; b.setAttribute('aria-label', 'Inicio'); const lg = document.querySelector('.mbar .logo, .side .logo'); b.innerHTML = '<span class="brand">' + (lg ? lg.outerHTML : 'àndale') + '</span>'; tb.prepend(b); }
+}
+// "+ Cargar": lo que se carga rápido desde el celular.
+function hojaCargar() {
+  const ops = [];
+  if (isAdmin() && ADM) ops.push(['aMov', {}, 'Gasto o ingreso', 'Un pago, un cobro sin factura, un gasto'], ['go', { view: 'cobros' }, 'Cobro de una factura', 'Elegís la factura y registrás lo que entró']);
+  if (isStaff() || isExt()) ops.push(['new', { kind: 'comunicacion', ...(S.ficha ? { preset: JSON.stringify({ cliente: S.ficha }) } : {}) }, 'Charla', 'Una reunión, llamada o WhatsApp con un cliente']);
+  if (isStaff() && S.pficha) ops.push(['tkNueva', { id: S.pficha }, 'Tarea en este proyecto', '']);
+  if (isStaff()) ops.push(['new', { kind: 'proyecto', ...(S.ficha ? { preset: JSON.stringify({ cliente: S.ficha }) } : {}) }, 'Proyecto', 'Un trabajo puntual con entrega'], ['mail', S.ficha ? { cliente: S.ficha } : {}, 'Mail a un cliente', ''], ['new', { kind: 'cliente' }, 'Cliente', '']);
+  if (!$('#treloj') || !$('#treloj').hidden) ops.push(['rlAbrir', {}, 'Horas', 'En qué estuviste trabajando']);
+  let h = document.getElementById('bsheet');
+  if (!h) { h = document.createElement('div'); h.id = 'bsheet'; h.className = 'bsheet'; document.body.appendChild(h); }
+  h.innerHTML = '<div class="bs-fondo" data-act="bsCerrar"></div><div class="bs-caja" role="dialog" aria-modal="true" aria-label="Cargar"><div class="bs-h"><b>¿Qué querés cargar?</b><button class="btn ghost sm" data-act="bsCerrar" aria-label="Cerrar">✕</button></div>' +
+    ops.map(([a, ds, l, d]) => '<button class="bs-op" data-act="' + a + '"' + Object.entries(ds).map(([k, v]) => ' data-' + k + '="' + esc(v) + '"').join('') + ' data-bs="1"><b>' + esc(l) + '</b>' + (d ? '<span>' + esc(d) + '</span>' : '') + '</button>').join('') + '</div>';
+  h.hidden = false; document.body.classList.add('bs-open');
+}
+// Si se pasa de celular a compu (o se gira la tablet), se vuelve a dibujar con el diseño que corresponde.
+try { const mq = window.matchMedia('(max-width: 760px)'); (mq.addEventListener ? mq.addEventListener.bind(mq, 'change') : mq.addListener.bind(mq))(() => { if (S.me) render(); }); } catch (e) { /* navegadores viejos */ }
+const cerrarHoja = () => { const h = document.getElementById('bsheet'); if (h) h.hidden = true; document.body.classList.remove('bs-open'); };
+document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-bs]')) setTimeout(cerrarHoja, 0); }, true);
+// En el celular las tablas se leen como lista: cada fila es una tarjeta y cada dato lleva el nombre de su columna.
+function celTablas(root) {
+  (root || document).querySelectorAll('.tbl > table:not(.rm-flujo):not(.sr-only):not([data-cel])').forEach(t => {
+    const thEls = [...t.querySelectorAll(':scope > thead > tr:last-child > th')], ths = thEls.map(th => th.dataset.cel === 'sin' ? '' : th.textContent.trim()), modo = thEls.map(th => th.dataset.cel || '');
+    t.dataset.cel = '1'; t.closest('.tbl').classList.add('tbl-cel');
+    t.querySelectorAll(':scope > tbody > tr').forEach(tr => { let i = 0; [...tr.children].forEach(td => { const span = +(td.getAttribute('colspan') || 1); if (span === 1 && ths[i] && !td.dataset.l) td.dataset.l = ths[i]; if (span === 1 && (modo[i] === 'no' || (i > 0 && /^[—–-]?$/.test(td.textContent.trim()) && !td.querySelector('input,select,button,img,svg')))) td.classList.add('cel-no'); if (span > 1) td.classList.add('cel-full'); i += span; }); });
+  });
 }
 function banner(msg, err) { const b = $('#banner'); if (!msg) { b.hidden = true; return; } b.innerHTML = msg; b.className = 'banner' + (err ? ' err' : ''); b.hidden = false; }
 // Impresión con la estética de los documentos: encabezado (Mr. Piggy + logotipo, qué es y fecha) y pie (sitio y contacto)
@@ -1905,6 +1984,8 @@ const ACT = {
   },
   sumarAds: t => { const r = servicioRedes(t.dataset.c).redes; openForm('abono', null, { cliente: t.dataset.c, tipo: 'Ads', plan: '', responsables: r ? resp(r).slice() : [], roles: r ? Object.assign({}, r.roles || {}) : {}, desde: thisMonth() }); },
   ctab: t => { S.ctab = t.dataset.t; render(); },
+  bbCargar: () => hojaCargar(),
+  bsCerrar: () => cerrarHoja(),
   convF: t => { S.convF = t.dataset.f; S.mlF = 'todos'; render(); },
   irLink: t => { closeForm(); abrirLink(t.dataset.l); },
   mlF: t => { S.mlF = t.dataset.f; S.mlAbierto = null; render(); },

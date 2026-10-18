@@ -1621,7 +1621,9 @@ export function initAdmin(ctx) {
   // filas = [{ l, a, b, v? }]  a = entra, b = sale, v = valor de la línea
   function grafBarras(filas, M, { linea = 'Queda en las cuentas', titulo = 'Entra y sale' } = {}) {
     const n = filas.length; if (!n) return '';
-    const W = 1000, H = 290, L = 104, R = 14, T = 24, B = 32, iw = W - L - R, ih = H - T - B;
+    // En el celular el gráfico se dibuja al ancho de la pantalla (sin scroll de costado).
+    const cel = !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+    const W = cel ? 380 : 1000, H = cel ? 250 : 290, L = cel ? 76 : 104, R = cel ? 8 : 14, T = 24, B = 32, iw = W - L - R, ih = H - T - B;
     const conLinea = filas.some(f => f.v != null);
     const vals = filas.flatMap(f => [f.a || 0, f.b || 0, ...(conLinea ? [f.v || 0] : [])]);
     const top = Math.max(1, ...vals), bot = Math.min(0, ...vals);

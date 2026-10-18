@@ -61,12 +61,12 @@ export function initStats(ctx, k) {
   const grande = (valor, label, extra, cls) => '<div class="sx-n' + (cls ? ' ' + cls : '') + '"><b>' + esc(valor) + '</b><span>' + esc(label) + '</span>' + (extra || '') + '</div>';
 
   // Curva suave (monótona: no inventa picos ni baja de cero) con área y comparación gris.
-  function curva(main0, prev0, etiquetas, mon, { W = 600, H = 230, color = 'var(--c1)', nombre = '', nombrePrev = '' } = {}) {
+  function curva(main0, prev0, etiquetas, mon, { W = (window.matchMedia && window.matchMedia('(max-width: 760px)').matches ? 360 : 600), H = 230, color = 'var(--c1)', nombre = '', nombrePrev = '' } = {}) {
     const n0 = etiquetas.length;
     // Arranca en el primer mes con datos (de este año o del anterior), así no se pierde medio gráfico en ceros.
     let d0 = 0; while (d0 < n0 - 2 && !(main0[d0] || (prev0 && prev0[d0]))) d0++;
     const main = main0.slice(d0), prev = prev0 ? prev0.slice(d0) : null, n = n0 - d0, MS = etiquetas.slice(d0);
-    const L = 92, R = 12, T = 12, B = 26, iw = W - L - R, ih = H - T - B;
+    const L = W < 500 ? 70 : 92, R = 12, T = 12, B = 26, iw = W - L - R, ih = H - T - B;
     const mx = niceMax(Math.max(...main.slice(0, n), ...(prev || []).slice(0, n), 1));
     const X = i => n > 1 ? L + iw * i / (n - 1) : L + iw / 2, Y = v => T + ih - (v / mx) * ih;
     const path = vals => {
