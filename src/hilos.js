@@ -108,8 +108,11 @@ export function initHilos(ctx) {
   // Cambio en vivo de avisos o comentarios.
   function enVivo(tabla, ev) {
     if (tabla === 'notificaciones') {
+      // Un aviso que se juntó con otro (el cliente aprobó o pidió varias cosas seguidas) llega como cambio: también se muestra.
+      const prev = ev && ev.new && (S.N || []).find(n => n._id === ev.new.id);
+      const nuevo = ev && ev.new && !ev.new.leida && (ev.eventType === 'INSERT' || (ev.eventType === 'UPDATE' && prev && prev.creado !== ev.new.created_at));
       refrescar();
-      if (ev && ev.eventType === 'INSERT' && ev.new && !ev.new.leida) toast('🔔 ' + (ev.new.titulo || 'Tenés un aviso nuevo'));
+      if (nuevo) toast('🔔 ' + (ev.new.titulo || 'Tenés un aviso nuevo'));
     }
     if (tabla === 'comentarios' && ev) {
       const r = ev.new && ev.new.id ? ev.new : ev.old; if (!r) return;

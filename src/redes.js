@@ -886,19 +886,30 @@ export function initRedes(ctx) {
     return ESTADOS_PIEZA.filter(e => o[e]).map(e => [e, o[e]]);
   }
   // Tareas de Redes de una persona: por mes y etapa, las piezas que le tocan (la Planificación va aparte, como "revisar la planificación")
-  const VERBO = { 'En diseño': 'Diseñar', 'Revisión interna': 'Revisar', 'Para el cliente': 'Seguir la aprobación de', 'Cambios': 'Hacer los cambios de', 'Aprobada': 'Programar', 'Programada': 'Controlar la publicación de', 'Idea': 'Planificar' };
+  const VERBO = { 'En diseño': 'Diseñar', 'Revisión interna': 'Revisar y mandar', 'Cambios': 'Hacer los cambios de', 'Aprobada': 'Programar', 'Idea': 'Planificar' };
+  const PRIO = { 'Cambios': 0, 'En diseño': 1, 'Revisión interna': 2, 'Idea': 3, 'Aprobada': 4 };
+  const pedidosDe = id => (st.ped || []).filter(c => c.entidadId === id);
+  // Todo lo que le toca hacer ya, pieza por pieza, sin importar en qué etapa esté el mes:
+  // lo que volvió del cliente (una por pieza, con lo que pidió), lo que hay que diseñar, mandar o programar.
   function tareasRedes(alias) {
     const out = [], falta = [];
+    if (st.ped === undefined && isStaff()) setTimeout(cargarPedidos, 0);
     mesesAbiertos().forEach(m => {
       const ps = piezas(m._id); if (!ps) { falta.push(m._id); return; }
       const eq = equipo(m.cliente); if (!eq.has(alias) && !ps.some(z => z.resp === alias)) return;
-      // Solo lo que se puede hacer ya: piezas de la etapa actual del mes, sin marcar listas (Planificación va como "revisar la planificación")
-      const E = etapaDe(m); if (E.fin || E.cliente || E.pz === 'Idea') return;
-      const o = {}; ps.forEach(z => { if (!['Idea', 'En diseño', 'Revisión interna', 'Cambios'].includes(z.estado)) return; if (quienes(m.cliente, z, eq).gente.includes(alias)) o[z.estado] = (o[z.estado] || 0) + 1; });
-      ESTADOS_PIEZA.filter(e => o[e]).forEach(e => out.push({ m, estado: e, n: o[e], verbo: VERBO[e] || e }));
+      const o = {};
+      ps.forEach(z => {
+        if (!(z.estado in PRIO)) return;
+        if (z.estado === 'Idea' && m.estado === 'Planificación') return; // va como "revisar la planificación"
+        if (z.estado === 'Aprobada' && ['Programado', 'Cerrado'].includes(m.estado)) return;
+        if (!quienes(m.cliente, z, eq).gente.includes(alias)) return;
+        if (z.estado === 'Cambios') { out.push({ m, estado: 'Cambios', n: 1, z, verbo: VERBO.Cambios, pedidos: pedidosDe(z._id) }); return; }
+        o[z.estado] = (o[z.estado] || 0) + 1;
+      });
+      Object.keys(o).forEach(e => out.push({ m, estado: e, n: o[e], verbo: VERBO[e] || e }));
     });
     if (falta.length) setTimeout(() => cargar(falta), 0);
-    return out.sort((a, b) => a.m.mes.localeCompare(b.m.mes) || ESTADOS_PIEZA.indexOf(b.estado) - ESTADOS_PIEZA.indexOf(a.estado) || cmp(a.m.cliente, b.m.cliente));
+    return out.sort((a, b) => PRIO[a.estado] - PRIO[b.estado] || a.m.mes.localeCompare(b.m.mes) || cmp(a.m.cliente, b.m.cliente));
   }
   // Lo que dijo el cliente: chat de WhatsApp o mail, notas de una reunión o la transcripción de un Meet.
   // Mr. Piggy lo reparte en las piezas (aprobadas, cambios, nuevas) y, si es una reunión, queda además como charla del cliente.

@@ -704,6 +704,8 @@ input.tk-n:focus{border-color:var(--accent);background:var(--surface);outline:0}
 .tk-lnk{display:grid;gap:1px;border:0;background:transparent;text-align:left;cursor:pointer;padding:2px 0;min-width:0}
 .tk-lnk b{font-weight:600;font-size:14px}
 .tk-lnk span{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tk-lnk span.tk-ped{color:var(--fg);font-size:13px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin:2px 0}
+.tk.tk-cli{background:color-mix(in srgb,var(--s-cancelado) 6%,transparent);border-radius:10px}
 @media (max-width:640px){.tk{grid-template-columns:auto minmax(0,1fr) auto}.tk-who select{display:none}.tk-del{opacity:1}.tk-add{grid-template-columns:1fr 1fr}.tk-add .in:first-child{grid-column:1/-1}}
 @media print{.tk-add,.tk-tools,.tk-del,.grp-h .chev{display:none!important}}
 
@@ -1222,7 +1224,7 @@ h2,h3{font-weight:650}
 .nt.nuevo .nt-i{background:var(--accent);color:#fff}
 .nt-t{display:grid;gap:2px;min-width:0}
 .nt-t b{font-size:13.5px;font-weight:600}
-.nt-t span{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.nt-t span{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:4;white-space:pre-line;-webkit-box-orient:vertical}
 .nt-t small{font-size:11.5px;color:var(--muted)}
 
 /* ---------- ¿Cuánto te llevó? ---------- */

@@ -24,7 +24,7 @@ const plata = (n, m) => { try { return new Intl.NumberFormat('es-AR', { style: '
 const IMG = /\.(jpe?g|png|gif|webp|heic)$/i;
 const ESTADO_CLI = { 'Para el cliente': ['Para aprobar', '--s-revision'], 'Cambios': ['Pediste cambios', '--s-cancelado'], 'Aprobada': ['Aprobada', '--s-entregado'], 'Programada': ['Programada', '--s-presup'], 'Publicada': ['Publicada', '--s-entregado'] };
 const pz = e => { const [l, c] = ESTADO_CLI[e] || [e, '--muted']; return '<span class="pzst" style="--c:var(' + c + ')">' + esc(l) + '</span>'; };
-const S = { yo: null, clientes: [], c: null, d: null, tab: 'inicio', mes: null, archivos: {}, pidiendo: new Set(), vista: 'revisar', fz: null, pzId: null, busy: false, pidiendoCambio: null };
+const S = { yo: null, clientes: [], c: null, d: null, tab: 'inicio', mes: null, archivos: {}, pidiendo: new Set(), vista: 'revisar', fz: null, pzId: null, busy: false, pidiendoCambio: null, feed: null, irA: null };
 
 let toastT; function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3200); }
 const check = r => { if (r.error) throw new Error(/No tenés acceso/.test(r.error.message) ? r.error.message : r.error.message.replace(/^.*?: /, '')); return r.data; };
@@ -129,6 +129,8 @@ const comsDe = id => (S.d.comentarios || []).filter(c => c.entidad === 'pieza' &
 const esPedido = c => c.pedido || (c.de_cliente && /^Pidió cambios:/i.test(c.texto || ''));
 const mesActual = () => { const ms = S.d.meses || []; return ms.find(x => x.id === S.mes) || ms[0]; };
 // Las piezas que se recorren en "Revisar": las del estado elegido arriba (o todas), por fecha.
+// En el feed: grilla (como el perfil de Instagram) o scroll (como el inicio). En el celular arranca en scroll.
+const feedModo = () => S.feed || (window.matchMedia && matchMedia('(max-width: 720px)').matches ? 'scroll' : 'grilla');
 const listaRevisar = m => { const g = S.fz && grupoCli(S.fz); return [...m.piezas].filter(z => !g || g[3](z)).sort(ordenPz); };
 function vRedes() {
   const ms = S.d.meses || [];
@@ -146,9 +148,12 @@ function vRedes() {
     (pend > 1 ? '<button class="btn" data-act="aprobarMes" data-id="' + esc(m.id) + '">Aprobar las ' + pend + ' pendientes</button>' : '') + '</div>';
   const filtrar = z => { const g = S.fz && grupoCli(S.fz); return !g || g[3](z); };
   if (S.vista === 'feed') {
-    const pubs = ps.filter(z => !/histori/i.test(z.formato)).filter(filtrar).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
-    const hist = ps.filter(z => /histori/i.test(z.formato)).filter(filtrar).sort(ordenPz);
-    h += '<div class="po-fwrap"><div class="rm-feed po-feed">' + pubs.map(tileFeed).join('') + '</div>' + (hist.length ? '<div class="po-hist"><h3>Historias</h3><div class="po-hs">' + hist.map(tileFeed).join('') + '</div></div>' : '') + '</div>' + (pubs.length || hist.length ? '' : '<p class="muted">No hay piezas con ese estado.</p>');
+    const pubs = ps.filter(z => !/histori/i.test(z.formato)).filter(filtrar).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.hora || '').localeCompare(a.hora || ''));
+    const hist = ps.filter(z => /histori/i.test(z.formato)).filter(filtrar).sort(ordenPz), modo = feedModo();
+    h += '<div class="po-fm" role="group" aria-label="Cómo ver el feed">' + [['grilla', '▦', 'Grilla'], ['scroll', '▤', 'Scroll']].map(([k, i, l]) => '<button data-act="feedModo" data-m="' + k + '" aria-pressed="' + (modo === k) + '"><span aria-hidden="true">' + i + '</span> ' + l + '</button>').join('') + '</div>';
+    if (!pubs.length && !hist.length) h += '<p class="muted">No hay piezas con ese estado.</p>';
+    else if (modo === 'scroll') h += '<div class="po-scroll">' + pubs.map(z => detallePieza(z, { post: true })).join('') + (hist.length ? '<h3 class="po-sc-h">Historias</h3>' + hist.map(z => detallePieza(z, { post: true })).join('') : '') + '</div>';
+    else h += '<div class="po-fwrap"><div class="rm-feed po-feed">' + pubs.map(tileFeed).join('') + '</div>' + (hist.length ? '<div class="po-hist"><h3>Historias</h3><div class="po-hs">' + hist.map(tileFeed).join('') + '</div></div>' : '') + '</div>';
   } else if (S.vista === 'calendario') {
     const xs = ps.filter(filtrar).sort(ordenPz), dias = [...new Set(xs.map(z => z.fecha || ''))];
     h += dias.map(d => '<div class="po-dia"><h3>' + (d ? esc(cap(corta(d))) : 'Sin fecha') + '</h3>' + xs.filter(z => (z.fecha || '') === d).map(filaPieza).join('') + '</div>').join('') || '<p class="muted">No hay piezas con ese estado.</p>';
@@ -172,13 +177,14 @@ function filaPieza(z) {
 function detallePieza(z, o = {}) {
   const as = arteDe(z.id), a = as[0], coms = comsDe(z.id), ped = coms.filter(esPedido), otros = coms.filter(c => !esPedido(c) && !/^✓ Aprobado$/.test(c.texto || ''));
   const listo = [...coms].reverse().find(c => !c.de_cliente && /^Listo, hicimos los cambios/i.test(c.texto || ''));
-  const media = a ? (esVideo(a.path) && a.link ? '<video src="' + esc(a.link) + '" controls playsinline preload="metadata"' + (a.miniatura ? ' poster="' + esc(a.miniatura) + '"' : '') + '></video>' : a.miniatura ? '<img src="' + esc(a.miniatura) + '" alt="">' : '<span class="po-ph">' + (esVideo(a.path) ? '▶ Video' : 'Archivo') + '</span>') : '<span class="po-ph">' + esc(z.formato) + '<small>El arte todavía no está cargado</small></span>';
+  const media = a ? (esVideo(a.path) && a.link ? '<video src="' + esc(a.link) + '" controls playsinline preload="metadata"' + (a.miniatura ? ' poster="' + esc(a.miniatura) + '"' : '') + '></video>' : a.miniatura ? '<img src="' + esc(a.miniatura) + '" alt="">' : '<span class="po-ph">' + (esVideo(a.path) ? '▶ Video' : 'Archivo') + '</span>') : '<span class="po-ph' + (/reel|histori/i.test(z.formato) ? ' po-ph-v' : '') + '">' + esc(z.formato) + '<small>El arte todavía no está cargado</small></span>';
   const pedHtml = ped.length ? '<div class="po-ped"><b>Lo que pediste</b>' + ped.map(c => '<div class="po-pi' + (c.resuelto_at ? ' ok' : '') + '"><span class="po-pic">' + (c.resuelto_at ? '✓' : '…') + '</span><span>' + esc(sinPrefijo(c.texto)) + '<small>' + esc(fecha(c.created_at)) + ' · ' + (c.resuelto_at ? 'hecho' : 'lo estamos haciendo') + '</small></span></div>').join('') + '</div>' : '';
   const acciones = ['Para el cliente', 'Cambios', 'Aprobada'].includes(z.estado) ? (S.pidiendoCambio === z.id
     ? '<form class="po-cambio" data-cambio="' + esc(z.id) + '"><label for="po-cambio-t">¿Qué cambiarías?</label><textarea id="po-cambio-t" class="in" rows="3" placeholder="Cuanto más concreto, mejor: textos, colores, fotos…" required></textarea><div class="po-acc"><button class="btn primary">Mandar el pedido</button><button type="button" class="btn ghost" data-act="cambioNo">Cancelar</button></div></form>'
     : '<div class="po-acc po-acc-g">' + (z.estado === 'Aprobada' ? '<span class="po-okb">✓ La aprobaste</span>' : '<button class="btn primary" data-act="aprobar" data-e="pieza" data-id="' + esc(z.id) + '">✓ Aprobar</button>') + '<button class="btn" data-act="cambios" data-e="pieza" data-id="' + esc(z.id) + '">Pedir cambios</button></div>') : '';
   const nav = o.n ? '<div class="po-nav"><button class="btn ghost sm" data-act="pzMover" data-d="-1"' + (o.i > 0 ? '' : ' disabled') + ' aria-label="Anterior">← Anterior</button><span>' + (o.i + 1) + ' de ' + o.n + '</span><button class="btn ghost sm" data-act="pzMover" data-d="1"' + (o.i < o.n - 1 ? '' : ' disabled') + ' aria-label="Siguiente">Siguiente →</button></div>' : '';
-  return (o.panel ? '' : nav) + '<article class="po-rev' + (o.panel ? ' en-panel' : '') + '" id="pz-' + esc(z.id) + '"><div class="po-rv-a">' + media +
+  const cli = S.d.cliente || {}, cab = o.post ? '<header class="po-ig-h">' + (cli.avatar ? '<img src="' + esc(cli.avatar) + '" alt="">' : '<span class="po-ig-av">' + esc((cli.nombre || '?').slice(0, 2).toUpperCase()) + '</span>') + '<span><b>' + esc(cli.nombre || '') + '</b><small>' + esc(z.formato) + (z.fecha ? ' · ' + esc(corta(z.fecha)) : '') + (z.hora ? ' ' + esc(z.hora) : '') + '</small></span>' + pz(z.estado) + '</header>' : '';
+  return (o.panel || o.post ? '' : nav) + '<article class="po-rev' + (o.panel ? ' en-panel' : '') + (o.post ? ' en-post' : '') + '" id="pz-' + esc(z.id) + '">' + cab + '<div class="po-rv-a">' + media +
     (as.length > 1 ? '<div class="po-rv-ts">' + as.map(x => x.link ? '<a href="' + esc(x.link) + '" target="_blank" rel="noopener">' + (x.miniatura ? '<img src="' + esc(x.miniatura) + '" alt="">' : '<span>' + (esVideo(x.path) ? '▶' : '▣') + '</span>') + '</a>' : '').join('') + '</div>' : (a && a.link ? '<a class="po-rv-ab" href="' + esc(a.link) + '" target="_blank" rel="noopener">Abrir en grande ↗</a>' : '')) + '</div>' +
     '<div class="po-rv-b"><div class="po-cm"><b>' + esc(z.formato) + '</b>' + (z.red ? ' · ' + esc(z.red) : '') + (z.fecha ? ' · ' + esc(corta(z.fecha)) : '') + (z.hora ? ' ' + esc(z.hora) : '') + pz(z.estado) + (z.extra ? '<span class="pzst" style="--c:var(--muted)">Extra</span>' : '') + '</div>' +
     (z.tema ? '<h2>' + esc(z.tema) + '</h2>' : '') +
@@ -280,7 +286,8 @@ const ACT = {
   vista: t => { S.vista = t.dataset.v; if (S.vista === 'revisar' && S.fz === null) S.fz = null; render(); },
   fz: t => { S.fz = t.dataset.k || ''; S.pzId = null; render(); },
   pzMover: t => moverPz(+t.dataset.d),
-  pzVer: t => { if (S.vista === 'revisar') { S.pzId = t.dataset.id; render(); } else verPieza(t.dataset.id); },
+  pzVer: t => { if (S.vista === 'revisar') { S.pzId = t.dataset.id; render(); } else if (S.vista === 'feed') { S.feed = 'scroll'; render(); irAPieza(t.dataset.id, false); } else verPieza(t.dataset.id); },
+  feedModo: t => { S.feed = t.dataset.m; render(); },
   cambioNo: () => { S.pidiendoCambio = null; rerender(); },
   salir: async () => { await sb.auth.signOut(); location.reload(); },
   cerrar: () => cerrar(),
@@ -296,7 +303,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#panel
 // Revisar de a una: anterior / siguiente, y después de responder pasa sola a la próxima pendiente.
 function moverPz(d) { const m = mesActual(); if (!m) return; const xs = listaRevisar(m), i = xs.findIndex(z => z.id === S.pzId), j = Math.min(xs.length - 1, Math.max(0, (i < 0 ? 0 : i) + d)); if (xs[j]) { S.pzId = xs[j].id; render(); } }
 function siguientePend(id) { const m = mesActual(); if (!m) return null; const xs = [...m.piezas].sort(ordenPz), i = xs.findIndex(z => z.id === id); return (xs.slice(i + 1).find(z => z.estado === 'Para el cliente' && z.id !== id) || xs.find(z => z.estado === 'Para el cliente' && z.id !== id) || {}).id || null; }
-function despues(sig) { S.pidiendoCambio = null; if (S.panelPz) { cerrar(); S.panelPz = null; } if (S.vista === 'revisar') { S.pzId = sig; if (!sig && S.fz === 'pend') S.fz = 'pend'; } render(); }
+function despues(sig) { S.pidiendoCambio = null; if (S.panelPz) { cerrar(); S.panelPz = null; } if (S.vista === 'revisar') { S.pzId = sig; if (!sig && S.fz === 'pend') S.fz = 'pend'; } render(); if (S.vista === 'feed' && feedModo() === 'scroll' && sig) irAPieza(sig, true); }
+// En el scroll: lleva a una pieza (la que tocaste en la grilla, o la próxima para revisar después de responder).
+function irAPieza(id, suave) { setTimeout(() => { const el = document.getElementById('pz-' + id); if (!el) return; const y = el.getBoundingClientRect().top + window.scrollY - 70; window.scrollTo({ top: Math.max(0, y), behavior: suave ? 'smooth' : 'auto' }); }, 30); }
 const rerender = () => { if (S.panelPz && !$('#panel').hidden) verPieza(S.panelPz); else render(); };
 document.addEventListener('change', async e => {
   const t = e.target;
