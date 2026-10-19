@@ -194,6 +194,21 @@ export function libreEmail(d) {
   return { asunto, html: layout({ cfg: d.cfg, asunto, preheader: (d.mensaje || '').replace(/\s+/g, ' ').slice(0, 90), filas }), texto: textoPlano([d.mensaje, d.botonUrl, d.firma], d.cfg) };
 }
 
+/** Mail personal: se ve como uno escrito a mano (sin logo, sin botón grande, sin pie de agencia).
+ *  Para avisos uno a uno (una mención, "tenés para revisar"): Gmail los trata como correspondencia y no como promoción. */
+export function personalEmail(d) {
+  const asunto = d.asunto || 'àndale';
+  const par = t => '<p style="margin:0 0 14px">' + esc(t).replace(/\n/g, '<br>') + '</p>';
+  const cuerpo = String(d.mensaje || '').split(/\n{2,}/).filter(Boolean).map(par).join('') +
+    (d.linkUrl ? '<p style="margin:0 0 14px">' + esc(d.linkTexto || 'Ver') + ': <a href="' + esc(d.linkUrl) + '" style="color:#0B86C4">' + esc(d.linkUrl.replace(/^https?:\/\//, '')) + '</a></p>' : '');
+  const f = d.firma && typeof d.firma === 'object' ? [d.firma.saludo, d.firma.nombre, [d.firma.cargo, d.firma.marca || 'àndale'].filter(Boolean).join(' · '), d.firma.tel].filter(Boolean) : d.firma ? [String(d.firma)] : [];
+  const html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + esc(asunto) + '</title></head><body style="margin:0;padding:0">' +
+    '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2328;max-width:600px;padding:8px 4px">' + cuerpo +
+    (f.length ? '<p style="margin:18px 0 0;color:#444">' + f.map(esc).join('<br>') + '</p>' : '') + '</div></body></html>';
+  const texto = [d.mensaje, d.linkUrl ? (d.linkTexto || 'Ver') + ': ' + d.linkUrl : '', f.join('\n')].filter(Boolean).join('\n\n');
+  return { asunto, html, texto };
+}
+
 /** Plantillas para los mails de acceso de Supabase (se pegan en Authentication → Emails). */
 export function authEmail(cfg, { titulo, mensaje, boton }) {
   return layout({ cfg, asunto: titulo, preheader: mensaje, filas: B.etiqueta(['àndale Operaciones']) + sp(18) + B.titular(titulo) + sp(26) + B.mensaje(mensaje) + sp(6) +

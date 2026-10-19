@@ -86,13 +86,17 @@ Deno.serve(async req => {
     const pide = typeof b.firmante_id === 'string' && /^[0-9a-f-]{36}$/i.test(b.firmante_id) ? b.firmante_id : yo.id;
     let { data: p } = await adm.from('personas').select('alias, nombre, email, activo, rol').eq('id', pide).maybeSingle();
     if (!p || p.activo === false || p.rol === 'externo') ({ data: p } = await adm.from('personas').select('alias, nombre, email, activo, rol').eq('id', yo.id).maybeSingle());
-    const dir = (from.match(/<([^>]+)>/) || [, from])[1];
+    let dir = (from.match(/<([^>]+)>/) || [, from])[1];
+    // Avisos personales (una mención, "tenés para revisar"): salen desde la casilla de la persona si es del mismo dominio,
+    // como un mail escrito por ella. Gmail los trata como correspondencia y no como promoción.
+    if (b.personal && p && p.email && EMAIL_RE.test(p.email) && p.email.split('@')[1].toLowerCase() === String(dir).split('@')[1]?.toLowerCase()) dir = p.email.toLowerCase();
     const nombre = String((p && (p.nombre || p.alias)) || yo.alias || '').replace(/[<>"]/g, '').trim();
-    if (nombre) from = nombre + ' · àndale <' + dir + '>';
+    if (nombre) from = (b.personal ? nombre : nombre + ' · àndale') + ' <' + dir + '>';
     if (p && p.email && EMAIL_RE.test(p.email)) replyTo = p.email;
   }
   const copia = b.copia === false ? [] : [replyTo];
-  const eid = crypto.randomUUID(), tr = await rastrear(String(b.html), eid);
+  // Sin seguimiento en los avisos personales: la imagen invisible y los links redirigidos son señales de mail masivo.
+  const eid = crypto.randomUUID(), tr = b.personal ? { html: String(b.html), links: [] as string[] } : await rastrear(String(b.html), eid);
   const enviar = (o: Record<string, unknown>) => fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(o) });
 
   // Al cliente va con seguimiento; la copia para àndale sale aparte y sin seguimiento, así abrirla no cuenta como "lo abrió el cliente".

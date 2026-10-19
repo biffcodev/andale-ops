@@ -1452,8 +1452,8 @@ async function avisarCliente(cliente, tipo, info) {
   const nombres = ks.map(k => (k.nombre || '').split(' ')[0]).filter(Boolean);
   const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\n' + (tipo === 'informe' ? 'Ya está en el portal de àndale ' + que + ': cómo fue el mes, qué funcionó mejor y qué proponemos para el que viene.' : 'Ya tenés para revisar ' + que + ' en el portal de àndale. Desde ahí podés aprobar o pedirnos cambios, y comentar lo que quieras.') + '\n\nEntrás con tu email, sin contraseña.';
   const fir = firmanteDe(S, 'Mensaje');
-  const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: tipo === 'redes' ? 'Tus redes del mes, listas para revisar' : tipo === 'informe' ? 'Tu informe de redes de ' + mesTxt : 'Tenés una entrega para revisar', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ir al portal', firma: fir ? firmaDe(S, fir) : null, asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : tipo === 'informe' ? 'Informe de redes de ' + mesTxt + ' · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
-  try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false, firmante_id: fir ? personaIdDe(S, fir) : null }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); return true; }
+  const b = E.personalEmail({ mensaje, linkUrl: PORTAL_URL, linkTexto: 'Entrá al portal', firma: fir ? firmaDe(S, fir) : null, asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : tipo === 'informe' ? 'Informe de redes de ' + mesTxt + ' · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
+  try { await data.sendEmail({ tipo: 'Mensaje', personal: true, cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false, firmante_id: fir ? personaIdDe(S, fir) : null }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); return true; }
   catch (e) { toast('No se pudo mandar el aviso: ' + e.message); return false; }
 }
 const hil = () => HIL || (HIL = initHilos({ S, esc, toast, data, $, av, fotoDe, personas, go, abrirLink, confirmar, contactosDe: c => (c ? contactosDe(c) : []).filter(k => k.email && k.nombre), mencionarContactos }));
@@ -1466,8 +1466,9 @@ async function mencionarContactos(cliente, ks, info) {
   const nombres = ks.map(k => (k.nombre || '').split(' ')[0]).filter(Boolean);
   const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\n' + yo + ' te escribió sobre ' + donde + ':\n\n“' + String(info.texto || '').slice(0, 1500) + '”\n\nPodés responder desde el portal de àndale. Entrás con tu email, sin contraseña.';
   const fir = firmanteDe(S, 'Mensaje');
-  const b = E.libreEmail({ cfg: {}, cuenta: cliente, titulo: yo + ' te escribió', mensaje, botonUrl: PORTAL_URL, botonTexto: 'Ver y responder', firma: fir ? firmaDe(S, fir) : null, asunto: yo + ' te escribió sobre ' + donde + ' · àndale' });
-  try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false, firmante_id: fir ? personaIdDe(S, fir) : null }); return true; }
+  // Mail personal (sin diseño de newsletter ni seguimiento), así Gmail lo trata como correspondencia y no como promoción.
+  const b = E.personalEmail({ mensaje, linkUrl: PORTAL_URL, linkTexto: 'Ver y responder en el portal', firma: fir ? firmaDe(S, fir) : (S.me && S.me.nombre) || null, asunto: yo + ' te escribió sobre ' + donde });
+  try { await data.sendEmail({ tipo: 'Mensaje', personal: true, cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false, firmante_id: fir ? personaIdDe(S, fir) : null }); return true; }
   catch (e) { toast('El comentario quedó, pero no se pudo mandar el mail: ' + e.message); return false; }
 }
 // Link a Google Calendar (sin API): abre el evento ya armado para guardarlo.
