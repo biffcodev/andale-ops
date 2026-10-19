@@ -2272,7 +2272,7 @@ async function start(sess) {
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
   S.me = me;
   if (me.rol === 'admin' && !ADM) {
-    ADM = initAdmin({ extrasACobrar: (c, m) => red().extrasACobrar(c, m), waHref, WA_ICO, icoMail: ICON.mail, icoTel: ICON.telefono, autoBtn: p => aut().boton(p), autoVista: () => aut().vista(), S, av, avEditable, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
+    ADM = initAdmin({ red: () => red(), extrasACobrar: (c, m) => red().extrasACobrar(c, m), waHref, WA_ICO, icoMail: ICON.mail, icoTel: ICON.telefono, autoBtn: p => aut().boton(p), autoVista: () => aut().vista(), S, av, avEditable, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });
     ADM_FN = Object.fromEntries(ADM.views.map(([k, , fn]) => [k, fn]));
     Object.assign(ACT, ADM.actions);
   }

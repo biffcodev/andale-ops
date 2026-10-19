@@ -2936,3 +2936,26 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 .rm-brief textarea{display:block;width:calc(100% - 28px);margin:0 14px}
 .rm-brief-h{margin:6px 14px 12px;font-size:12.5px;color:var(--muted)}
 .rm-conv{max-width:820px}
+/* Costo por cliente */
+.ct .sx-der.ct-mes{display:flex;gap:4px}
+.ct-nota{font-size:13px;color:var(--muted);padding:0 22px 14px;margin:0}
+.ct-t td .sub,.ct-eq td .sub{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.ct-t .neg,.ct-det .neg{color:var(--crit)}
+.ct-h{width:84px;text-align:right}
+.ct-sup>summary{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:16px 22px;cursor:pointer}
+.ct-sup>summary h2{margin:0;font-size:17px}
+.ct-supb{padding:0 22px 18px;display:grid;gap:14px}
+.ct-fmts{display:grid;gap:6px;max-width:560px}
+.ct-fh,.ct-fr{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;align-items:center}
+.ct-fh span{font-size:12px;color:var(--muted)}
+.ct-g{display:flex;flex-wrap:wrap;gap:12px}
+.ct-g label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.ct-g input{width:150px}
+.ct-lbl{margin:4px 0 0;font-size:13px;font-weight:600}
+.ct-dl{display:grid;gap:2px}
+.ct-dr{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.ct-dr span{color:var(--muted)}
+.ct-dr.tot span{color:var(--fg);font-weight:600}
+.ct-h3{font-size:14px;margin:10px 0 2px}
+.ct .sx-ns>.sx-n b{font-size:clamp(20px,2.2vw,28px)}
+.ct-aviso{color:var(--fg);background:color-mix(in srgb,var(--s-confirmar) 14%,transparent);border-radius:10px;margin:0 22px 14px;padding:10px 14px}

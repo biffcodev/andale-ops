@@ -6,6 +6,7 @@ import { firmaDe, firmanteDe, firmaSelect, personaIdDe } from './firma.js';
 import * as data from './data.js';
 import * as E from './emails.js';
 import { initEquipo } from './equipo.js';
+import { initCostos } from './costos.js';
 import { initAsistente } from './asistente.js';
 import { initStats } from './stats.js';
 import { masMenu } from './ui.js';
@@ -23,7 +24,7 @@ export function initAdmin(ctx) {
   const esExterior = m => m && m !== 'ARS' && m !== 'USD';
   const EMISORES = ['Fer', 'Jime'];
   const TIPOS_COMP = ['Factura ARCA', 'Invoice', 'Otro'];
-  const AD = { EP: [], EI: [], CXP: [], CTP: [], ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], LA: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'horas' },
+  const AD = { EP: [], EI: [], CXP: [], CTP: [], ok: false, CA: new Map(), PR: [], PF: [], R: [], F: [], CJ: [], PC: [], MV: [], G: [], EM: [], AJ: {}, adj: [], PFZ: new Map(), ABF: new Map(), IMP: [], impDraft: [], CO: [], RM: [], LA: [], CF: [], LQ: [], DA: [], IL: [], postSave: null, rt: { anio: String(new Date().getFullYear()), ver: 'costos' },
     mes: thisMonth(), sel: null, rd: null, ff: { estado: 'abiertas', cliente: '', emisor: '', anio: String(new Date().getFullYear()) },
     pp: { sel: new Set(), pct: '', desde: addMonth(thisMonth(), 1), motivo: '' }, form: null };
 
@@ -960,12 +961,13 @@ export function initAdmin(ctx) {
     const sinImp = provAnio.map(v => ({ v, falta: r2(v.egreso - imputadoDe(v.id)) })).filter(x => x.falta > 0.009).sort((a, b) => (b.v.fecha || '').localeCompare(a.v.fecha || ''));
     const accSin = {}; sinImp.forEach(x => add(accSin, x.v.moneda, x.falta));
     const accImp = {}; AD.IMP.forEach(x => { const mv = movDe(x.movimiento_id); if (mv && enRango(mv.fecha, R)) add(accImp, mv.moneda, x.monto); });
-    let h = '<div class="head"><div>' + lock + '<h1>Qué deja cada cliente</h1><p>Lo que queda de cada cliente de Redes y de cada proyecto después de pagar proveedores (sin sueldos ni gastos fijos).</p></div>' +
-      '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['horas', 'Con horas'], ['proyectos', 'Proyectos'], ['abonos', 'Redes']].map(([k, l]) => '<button data-act="aRtVer" data-v="' + k + '" aria-pressed="' + (rt.ver === k) + '">' + l + '</button>').join('') + '</div>' +
-      selector(AD.per, anios, esc, today()) + '</div></div>';
-    h += '<section class="kpis"><div class="kpi"><span class="eyebrow">Gastos asignados a clientes ' + esc(y) + '</span><b style="font-size:20px" class="money">' + esc(multi(accImp)) + '</b><span>a abonos y proyectos</span></div>' +
+    let h = '<div class="head"><div>' + lock + '<h1>Qué deja cada cliente</h1><p>' + (rt.ver === 'costos' ? 'Cuánto cuesta cada cliente contando el tiempo del equipo (con el valor hora de cada persona), los gastos directos y su parte de la estructura.' : 'Lo que queda de cada cliente de Redes y de cada proyecto después de pagar proveedores (sin sueldos ni gastos fijos).') + '</p></div>' +
+      '<div class="toolbar"><div class="seg" role="group" aria-label="Ver">' + [['costos', 'Costo por cliente'], ['horas', 'Con horas cargadas'], ['proyectos', 'Proyectos'], ['abonos', 'Redes']].map(([k, l]) => '<button data-act="aRtVer" data-v="' + k + '" aria-pressed="' + (rt.ver === k) + '">' + l + '</button>').join('') + '</div>' +
+      (rt.ver === 'costos' ? '' : selector(AD.per, anios, esc, today())) + '</div></div>';
+    if (rt.ver !== 'costos') h += '<section class="kpis"><div class="kpi"><span class="eyebrow">Gastos asignados a clientes ' + esc(y) + '</span><b style="font-size:20px" class="money">' + esc(multi(accImp)) + '</b><span>a abonos y proyectos</span></div>' +
       '<div class="kpi ' + (sinImp.length ? 'warn' : '') + '"><span class="eyebrow">Pagos a proveedores sin asignar</span><b style="font-size:20px" class="money">' + esc(multi(accSin)) + '</b><span>' + sinImp.length + ' pagos · ' + esc(y) + '</span></div></section>';
-    if (rt.ver === 'horas') h += rentHoras(R);
+    if (rt.ver === 'costos') h += CT.vista();
+    else if (rt.ver === 'horas') h += rentHoras(R);
     else if (rt.ver === 'proyectos') {
       const ps = S.P.filter(p => p.estado !== 'Cancelado' && (AD.PFZ.has(p._id) || AD.PF.some(c => c.proyecto_id === p._id) || AD.IMP.some(x => x.proyecto_id === p._id) || cxpDe(p._id).length)).map(p => ({ p, f: finProyecto(p) })).sort((a, b) => cmp(a.p.cliente, b.p.cliente));
       const sinPres = S.P.filter(p => isOpenP(p) && !AD.PFZ.has(p._id) && !AD.PF.some(c => c.proyecto_id === p._id)).length;
@@ -1780,6 +1782,7 @@ export function initAdmin(ctx) {
     formFactura: (...a) => formFactura(...a), conceptoDe: (c, m) => conceptoDe(c, m), formMovimiento: (...a) => formMovimiento(...a),
     openComposer: o => openComposer(o), cfgMarca: () => cfgMarca(), firma: () => firma(), mailsDe: c => mailsDe(c), cuotasPlan };
   const EQ = initEquipo(ctx, kit); kit.equipo = EQ;
+  const CT = initCostos(ctx, { ...kit, costosDe: (k, id, R) => costos(k, id, R), movDe: id => movDe(id), ICON });
   const MT = initMantenimiento(ctx, { ...kit, data });
   const AS = initAsistente(ctx, kit);
   const ST = initStats(ctx, kit);
@@ -2109,7 +2112,7 @@ export function initAdmin(ctx) {
     return tabs + ((S.tab.numeros || 'stats') === 'rent' ? vRent() : ST.view());
   }
 
-  Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions, MT.actions);
+  Object.assign(actions, EQ.actions, AS.actions, ST.actions, PZ.actions, MT.actions, CT.actions);
   return {
     load, actions, carpetasDrive: () => AS.carpetasDrive(), extrasCfg, formExtras, fichaSection, deudaLinea, proyectoSection, AD, cfgMarca: () => cfgMarca(),
     precioHoy: (id, m) => (AD.ok ? precioEn(id, m || thisMonth()) : null), moneyFmt: (n, m) => money(n, m),
