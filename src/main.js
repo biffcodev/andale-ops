@@ -300,6 +300,7 @@ function abrirContacto(cliente, id) {
     fld('email', 'Email', v.email, 'email') + fld('tel', 'WhatsApp / celular', v.tel, 'tel') + fld('telFijo', 'Teléfono fijo', v.telFijo, 'tel', { ph: 'Si tiene' }) +
     '<label class="chk full"><input type="checkbox" id="k-principal"' + (v.principal ? ' checked' : '') + (k && k.principal ? ' disabled' : '') + '> <span><b>Contacto principal</b> <span class="muted">· con quien hablamos del día a día. Es el que aparece en la lista de clientes y en el botón de WhatsApp.' + (k && k.principal ? ' Para cambiarlo, marcá a otra persona como principal.' : '') + '</span></span></label>' +
     '<label class="chk full"><input type="checkbox" id="k-cobros"' + (v.cobros ? ' checked' : '') + '> <span><b>Recibe resúmenes de cuenta y facturas</b> <span class="muted">· le llegan los resúmenes, facturas, invoices y recordatorios de pago.</span></span></label>' +
+    '<label class="chk full"><input type="checkbox" id="k-avisos"' + (v.avisos !== false ? ' checked' : '') + '> <span><b>Recibe avisos por mail</b> <span class="muted">· cuando lo mencionan en un comentario o tiene algo para revisar en el portal. Si pide no recibirlos, destildalo.</span></span></label>' +
     (Array.isArray(S.RM) ? '<label class="chk full"><input type="checkbox" id="k-portal"' + (v.portal ? ' checked' : '') + '> <span><b>Acceso al portal de clientes</b> <span class="muted">· entra con su email a ' + esc(PORTAL_URL.replace('https://', '')) + ' y ve lo que marquen como visible: redes para aprobar, entregas, su web, pedidos e informes.' + (k && k.portalUltimo ? ' Entró por última vez el ' + esc(fmt(String(k.portalUltimo).slice(0, 10))) + '.' : '') + '</span></span></label>' +
       '<div class="toolbar full k-inv"' + (v.portal ? '' : ' hidden') + '><button type="button" class="btn sm" data-act="kInvitar" data-m="copiar">Copiar invitación</button><button type="button" class="btn sm" data-act="kInvitar" data-m="wa">Mandar por WhatsApp</button><button type="button" class="btn sm" data-act="kInvitar" data-m="mail">Mandar por email</button></div>' : '') +
     '<div class="field full"><label for="k-notas">Notas</label><textarea id="k-notas" rows="2" placeholder="Ej.: prefiere WhatsApp, no escribirle después de las 19">' + esc(v.notas || '') + '</textarea></div>' +
@@ -317,7 +318,7 @@ async function guardarContacto() {
   const f = S.kf; if (!f) return;
   const g = n => ((($('#k-' + n) || {}).value) || '').trim();
   const tel = g('tel') ? await fmtTel(g('tel')) : '', fijo = g('telFijo') ? await fmtFijo(g('telFijo')) : '';
-  const row = { nombre: g('nombre'), rol: g('rol'), email: g('email').toLowerCase(), tel, ...(data.cols && data.cols.contactoFijo === false ? {} : { tel_fijo: fijo }), principal: f.principal || $('#k-principal').checked, cobros: $('#k-cobros').checked, notas: g('notas'), ...($('#k-portal') ? { portal: $('#k-portal').checked } : {}) };
+  const row = { nombre: g('nombre'), rol: g('rol'), email: g('email').toLowerCase(), tel, ...(data.cols && data.cols.contactoFijo === false ? {} : { tel_fijo: fijo }), principal: f.principal || $('#k-principal').checked, cobros: $('#k-cobros').checked, ...(data.cols && data.cols.contactoAvisos === false ? {} : { avisos: $('#k-avisos').checked }), notas: g('notas'), ...($('#k-portal') ? { portal: $('#k-portal').checked } : {}) };
   if (row.portal && !row.email) { const e = $('#ke-email'); if (e) { e.textContent = 'Para entrar al portal necesita email'; e.hidden = false; } return; }
   document.querySelectorAll('#kform .err').forEach(e => { e.hidden = true; });
   const err = (n, m) => { const e = $('#ke-' + n); if (e) { e.textContent = m; e.hidden = false; } };
@@ -329,8 +330,9 @@ async function guardarContacto() {
   const btn = $('#ksave'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
     let kid = f.id;
-    if (f.id) await data.upd('contactos', f.id, row);
-    else kid = (await data.ins('contactos', { ...row, cliente_id: data.ids.cliente(f.cliente), orden: otros.length })).id;
+    const guardarK = async r => { if (f.id) { await data.upd('contactos', f.id, r); return f.id; } return (await data.ins('contactos', { ...r, cliente_id: data.ids.cliente(f.cliente), orden: otros.length })).id; };
+    // Sin la columna de avisos (falta el SQL 0042) se guarda igual, sin ese dato.
+    try { kid = await guardarK(row); } catch (e) { if (!('avisos' in row) || !/avisos/.test(e.message || '')) throw e; if (data.cols) data.cols.contactoAvisos = false; delete row.avisos; kid = await guardarK(row); }
     if (row.portal && kid) { try { await data.avisosFn({ accion: 'portal_alta', contacto_id: kid }); } catch (e) { toast('Guardado, pero no se pudo habilitar el acceso: ' + e.message); } }
     if (row.principal) { for (const o of otros.filter(x => x.principal)) await data.upd('contactos', o._id, { principal: false }); await sincPrincipal(f.cliente, row); }
     closeForm(); toast(f.id ? 'Contacto guardado' : 'Contacto agregado'); await reload();
@@ -1435,7 +1437,7 @@ let ENT = null;
 const ent = () => ENT || (ENT = initEntregas({ S, esc, opt, toast, data, render, $, fmt, isStaff, emptyBox, hil, closeForm, reload: () => reload(), avisarCliente: (c, t, i) => avisarCliente(c, t, i) }));
 // Aviso por email a los contactos con acceso al portal cuando algo queda para revisar (mes de redes o entrega).
 async function avisarCliente(cliente, tipo, info) {
-  let ks = contactosDe(cliente).filter(k => k.portal && k.email);
+  let ks = contactosDe(cliente).filter(k => k.portal && k.email && k.avisos !== false);
   if (!ks.length) {
     // Sin nadie con acceso al portal: se ofrece darle acceso al contacto con email (principal primero) y seguir con el aviso.
     const cand = contactosDe(cliente).filter(k => k.email && k._id && !k._virt);
@@ -1453,7 +1455,7 @@ async function avisarCliente(cliente, tipo, info) {
   const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\n' + (tipo === 'informe' ? 'Ya está en el portal de àndale ' + que + ': cómo fue el mes, qué funcionó mejor y qué proponemos para el que viene.' : 'Ya tenés para revisar ' + que + ' en el portal de àndale. Desde ahí podés aprobar o pedirnos cambios, y comentar lo que quieras.') + '\n\nEntrás con tu email, sin contraseña.';
   const fir = firmanteDe(S, 'Mensaje');
   const b = E.personalEmail({ mensaje, linkUrl: PORTAL_URL, linkTexto: 'Entrá al portal', firma: fir ? firmaDe(S, fir) : null, asunto: tipo === 'redes' ? 'Tus redes del mes para revisar · àndale' : tipo === 'informe' ? 'Informe de redes de ' + mesTxt + ' · àndale' : 'Entrega para revisar: ' + info.titulo + ' · àndale' });
-  try { await data.sendEmail({ tipo: 'Mensaje', personal: true, cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false, firmante_id: fir ? personaIdDe(S, fir) : null }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); return true; }
+  try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false, firmante_id: fir ? personaIdDe(S, fir) : null }); toast('Aviso enviado a ' + ks.map(nomContacto).join(', ')); return true; }
   catch (e) { toast('No se pudo mandar el aviso: ' + e.message); return false; }
 }
 const hil = () => HIL || (HIL = initHilos({ S, esc, toast, data, $, av, fotoDe, personas, go, abrirLink, confirmar, contactosDe: c => (c ? contactosDe(c) : []).filter(k => k.email && k.nombre), mencionarContactos }));
@@ -1461,14 +1463,15 @@ const hil = () => HIL || (HIL = initHilos({ S, esc, toast, data, $, av, fotoDe, 
 // Si no tenía acceso al portal, se lo damos (entra con su email, sin contraseña).
 const DONDE_COM = { pieza: 'una pieza de tus redes', mes: 'tus redes del mes', entrega: 'una entrega', proyecto: 'tu proyecto', pedido: 'tu pedido', sitio: 'tu sitio web' };
 async function mencionarContactos(cliente, ks, info) {
+  ks = ks.filter(k => k.avisos !== false); if (!ks.length) return false;
   for (const k of ks.filter(k => !k.portal && k._id && !k._virt)) { try { await data.upd('contactos', k._id, { portal: true }); k.portal = true; try { await data.avisosFn({ accion: 'portal_alta', contacto_id: k._id }); } catch (e) { /* sigue */ } } catch (e) { /* sin acceso, el mail sale igual */ } }
   const yo = (S.me && (String(S.me.nombre || '').split(' ')[0] || S.me.alias)) || 'àndale', donde = DONDE_COM[info.entidad] || 'el portal';
   const nombres = ks.map(k => (k.nombre || '').split(' ')[0]).filter(Boolean);
   const mensaje = 'Hola' + (nombres.length === 1 ? ' ' + nombres[0] : '') + ', ¿cómo estás?\n\n' + yo + ' te escribió sobre ' + donde + ':\n\n“' + String(info.texto || '').slice(0, 1500) + '”\n\nPodés responder desde el portal de àndale. Entrás con tu email, sin contraseña.';
   const fir = firmanteDe(S, 'Mensaje');
-  // Mail personal (sin diseño de newsletter ni seguimiento), así Gmail lo trata como correspondencia y no como promoción.
+  // Aviso simple (texto y un link, sin diseño de newsletter) y con seguimiento: se ve si lo abrió y si entró al portal.
   const b = E.personalEmail({ mensaje, linkUrl: PORTAL_URL, linkTexto: 'Ver y responder en el portal', firma: fir ? firmaDe(S, fir) : (S.me && S.me.nombre) || null, asunto: yo + ' te escribió sobre ' + donde });
-  try { await data.sendEmail({ tipo: 'Mensaje', personal: true, cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false, firmante_id: fir ? personaIdDe(S, fir) : null }); return true; }
+  try { await data.sendEmail({ tipo: 'Mensaje', cliente_id: data.ids.cliente(cliente), para: ks.map(k => k.email).join(', '), cc: '', asunto: b.asunto, html: b.html, texto: b.texto, copia: false, firmante_id: fir ? personaIdDe(S, fir) : null }); return true; }
   catch (e) { toast('El comentario quedó, pero no se pudo mandar el mail: ' + e.message); return false; }
 }
 // Link a Google Calendar (sin API): abre el evento ya armado para guardarlo.

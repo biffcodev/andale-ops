@@ -28,7 +28,7 @@ const idx = { clienteId: new Map(), clienteName: new Map(), personaId: new Map()
 const month = d => (d ? String(d).slice(0, 7) : '');
 
 /** Columnas nuevas que puede no tener todavía la base (hasta correr su SQL). */
-export const cols = { charlaTema: true, comentContactos: true, clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true, piezaContenido: true, abonoRedes: true, piezaExtraCobro: true, piezaVersiones: true, piezaFuentes: true, piezaLista: true };
+export const cols = { contactoAvisos: true, charlaTema: true, comentContactos: true, clienteRedes: true, contactoFijo: true, piezaAds: true, abonoRol: true, piezaContenido: true, abonoRedes: true, piezaExtraCobro: true, piezaVersiones: true, piezaFuentes: true, piezaLista: true };
 function toRow(kind, ui) {
   const row = {};
   for (const [k, v] of Object.entries(ui)) {
@@ -84,6 +84,7 @@ export async function loadAll() {
   const res = await Promise.all(names.map(n => sb.from(n).select('*').limit(5000)));
   const [krows, trows, frows, nrows, rmrows, pdrows, bfrows, enrows, sirows] = await Promise.all([kq, tq, fq, nq, rmq, pdq, bfq, enq, siq]);
   if (krows && krows.length) cols.contactoFijo = 'tel_fijo' in krows[0];
+  if (krows && krows.length) cols.contactoAvisos = 'avisos' in krows[0];
   const d = {}; names.forEach((n, i) => { d[n] = check(res[i]) || []; });
 
   idx.clienteId.clear(); idx.clienteName.clear(); idx.personaId.clear(); idx.personaAlias.clear();
@@ -117,7 +118,7 @@ export async function loadAll() {
     SI: sirows ? sirows.map(sitioUI) : null,
     FL: frows ? Object.fromEntries(frows.map(f => [f.tipo, { etapas: Array.isArray(f.etapas) ? f.etapas : [], reglas: f.reglas || {} }])) : null,
     N: nrows ? nrows.map(n => ({ _id: n.id, tipo: n.tipo, titulo: n.titulo, cuerpo: n.cuerpo, link: n.link, leida: n.leida, actor: idx.personaAlias.get(n.actor_id) || '', creado: n.created_at })) : null,
-    K: krows ? krows.filter(k => idx.clienteName.has(k.cliente_id)).map(k => ({ _id: k.id, cliente: cname(k.cliente_id), nombre: k.nombre || '', rol: k.rol || '', email: k.email || '', tel: k.tel || '', telFijo: k.tel_fijo || '', principal: !!k.principal, cobros: !!k.cobros, portal: !!k.portal, portalUltimo: k.portal_ultimo || null, notas: k.notas || '', orden: k.orden || 0 })) : null,
+    K: krows ? krows.filter(k => idx.clienteName.has(k.cliente_id)).map(k => ({ _id: k.id, cliente: cname(k.cliente_id), nombre: k.nombre || '', rol: k.rol || '', email: k.email || '', tel: k.tel || '', telFijo: k.tel_fijo || '', principal: !!k.principal, cobros: !!k.cobros, avisos: k.avisos !== false, portal: !!k.portal, portalUltimo: k.portal_ultimo || null, notas: k.notas || '', orden: k.orden || 0 })) : null,
   };
 }
 

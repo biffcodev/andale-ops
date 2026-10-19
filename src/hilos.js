@@ -81,7 +81,8 @@ export function initHilos(ctx) {
     const ta = f.querySelector('textarea'), t = ta.value.trim(); if (!t) { delete f.dataset.busy; return; }
     const pubEl = f.querySelector('[name="pub"]'), ks = pubEl ? contactosEn(t, o.cliente) : [];
     // Si mencionás a alguien del cliente, el comentario lo ve el cliente y a esa persona le llega un mail.
-    if (ks.length && !await confirmar('A ' + ks.map(x => x.nombre + ' (' + x.email + ')').join(', ') + ' le llega un mail con este comentario y lo ve en su portal' + (ks.some(x => !x.portal) ? ' (le damos acceso, entra con su email)' : '') + '.', { titulo: '¿Le avisamos a ' + ks.map(x => x.tok).join(', ') + '?', ok: 'Comentar y avisar', tipo: 'mail' })) { delete f.dataset.busy; return; }
+    const sinMail = ks.filter(x => x.avisos === false), conMail = ks.filter(x => x.avisos !== false);
+    if (ks.length && !await confirmar((conMail.length ? 'A ' + conMail.map(x => x.nombre + ' (' + x.email + ')').join(', ') + ' le llega un aviso por mail con este comentario y lo ve en su portal' + (conMail.some(x => !x.portal) ? ' (le damos acceso, entra con su email)' : '') + '. ' : '') + (sinMail.length ? sinMail.map(x => x.nombre).join(', ') + ' no recibe avisos por mail: lo va a ver cuando entre al portal.' : ''), { titulo: '¿Le avisamos a ' + ks.map(x => x.tok).join(', ') + '?', ok: 'Comentar y avisar', tipo: 'mail' })) { delete f.dataset.busy; return; }
     if (ks.length && pubEl) pubEl.checked = true;
     const btn = f.querySelector('button.primary'); btn.disabled = true;
     try {
