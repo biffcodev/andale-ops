@@ -258,7 +258,7 @@ export function initRedes(ctx) {
     else if (tab === 'calendario') h += calendario(m, lista);
     else if (tab === 'feed') h += feed(m, lista);
     else if (tab === 'informe') h += ctx.informe(m, lista);
-    else if (tab === 'conv') h += '<div class="pf-grid"><div>' + hil().html('mes', m._id, { cliente: m.cliente, titulo: 'Conversación del mes', publico: true, vacio: 'Lo que se habla de las redes de ' + m.cliente + ' este mes. Marcá “Visible al cliente” para que lo lea en el portal.' }) + '</div><aside class="pf-side"><section class="pf-card"><h3>Notas del mes</h3><textarea class="in" rows="8" data-rmupd="notas" data-id="' + esc(m._id) + '" placeholder="Fechas especiales, promos, lo que pidió el cliente…"' + (can ? '' : ' disabled') + '>' + esc(m.notas) + '</textarea></section></aside></div>';
+    else if (tab === 'conv') h += '<div class="rm-conv"><div>' + hil().html('mes', m._id, { cliente: m.cliente, titulo: 'Conversación del mes', publico: true, vacio: 'Lo que se habla de las redes de ' + m.cliente + ' este mes. Marcá “Visible al cliente” para que lo lea en el portal.' }) + '</div></div>';
     return h;
   }
   const carpetaBtn = m => m.carpetaUrl ? '<a class="btn" href="' + esc(m.carpetaUrl) + '" target="_blank" rel="noopener" title="' + esc(m.carpeta) + '">Carpeta ↗</a><button class="btn ghost sm" data-act="rmContar" data-id="' + esc(m._id) + '" title="Contar los archivos de la carpeta">↻</button>' : cfgGet && cfgGet('dropbox', 'crear') === 'si' ? '<button class="btn" data-act="rmCarpeta" data-id="' + esc(m._id) + '">Crear carpetas en Dropbox</button>' : '';
@@ -270,6 +270,15 @@ export function initRedes(ctx) {
   }
 
 
+  // Brief del mes: lo especial de este mes (fechas, promos, lo que quiere el cliente). Está arriba de la planilla,
+  // donde se planifica, y Mr. Piggy lo usa cuando propone el contenido.
+  const briefRes = t => { const x = String(t || '').trim().split('\n').find(Boolean) || ''; return x.length > 110 ? x.slice(0, 108) + '…' : x; };
+  function briefHtml(m, can) {
+    const tx = String(m.notas || '').trim(); if (!tx && !can) return '';
+    return '<details class="rm-brief"' + (st.briefOpen === m._id ? ' open' : '') + ' data-brief="' + esc(m._id) + '"><summary><b>Brief del mes</b><span class="rm-brief-r">' + (tx ? esc(briefRes(tx)) : 'Fechas especiales, promos, lo que quiere el cliente este mes…') + '</span></summary>' +
+      '<textarea class="in" rows="4" data-rmupd="notas" data-id="' + esc(m._id) + '" placeholder="Ej.: Día de la Madre el 19, promo 2x1 en tortas, no hablar de precios."' + (can ? '' : ' disabled') + '>' + esc(m.notas || '') + '</textarea>' +
+      '<p class="rm-brief-h">Mr. Piggy lo tiene en cuenta cuando propone el contenido del mes.</p></details>';
+  }
   function planilla(m, ps, can) {
     const fs = formatos(), sel = st.sel, eq = equipo(m.cliente), yo = (st.mio && st.mioDe) || (S.me && S.me.alias), ocupado = st.ia[m._id];
     const ordenadas = [...ps].sort((a, b) => (a.fecha || '9999').localeCompare(b.fecha || '9999') || (a.hora || '').localeCompare(b.hora || '') || a.orden - b.orden);
@@ -307,7 +316,7 @@ export function initRedes(ctx) {
         sinHora ? { act: 'rmHoras', label: 'Poner horarios a ' + sinHora + (sinHora === 1 ? ' pieza' : ' piezas'), attrs: ' data-id="' + esc(m._id) + '"', icon: 'reloj' } : null,
         ctx.marcaCtx && !ctx.marcaCtx(m.cliente).marca ? { act: 'ficha', label: 'Completar la ficha de marca (sin ficha, Mr. Piggy escribe genérico)', attrs: ' data-cliente="' + esc(m.cliente) + '" data-tab="marca"', icon: 'marca' } : null]) + '</span>' : '') : '') +
       '<span class="rm-sp"></span>' + filtros + (ps.length ? vistaSel('redesPiezas', ['lista', 'cuadricula', 'tablero'], vista) : '') + '</div>';
-    if (!ps.length) return '<div class="rm-pl">' + tools + '<section class="sheet">' + emptyBox('Todavía no hay piezas este mes', can ? 'Sumalas con “+ Agregar” (de a muchas), o pedile a Mr. Piggy que proponga el contenido según el plan.' : '') + '</section></div>';
+    if (!ps.length) return '<div class="rm-pl">' + briefHtml(m, can) + tools + '<section class="sheet">' + emptyBox('Todavía no hay piezas este mes', can ? 'Sumalas con “+ Agregar” (de a muchas), o pedile a Mr. Piggy que proponga el contenido según el plan.' : '') + '</section></div>';
     const lunes = f => { const d = new Date(f + 'T12:00'); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; };
     const semTxt = f => { const l = lunes(f), dom = new Date(l); dom.setDate(l.getDate() + 6); const mesL = d => d.toLocaleDateString('es-AR', { month: 'short' }).replace('.', ''); return 'Semana del ' + l.getDate() + (l.getMonth() !== dom.getMonth() ? ' ' + mesL(l) : '') + ' al ' + dom.getDate() + ' ' + mesL(dom); };
     const semDe = z => z.fecha ? semTxt(z.fecha) : 'Sin fecha';
@@ -332,8 +341,8 @@ export function initRedes(ctx) {
         (sinBotones ? '' : cpsHtml(z)) + '</div>'; };
     const tags = (z, d) => '<div class="rm-tags">' + (d === null ? '<span class="rm-fpill">' + esc(z.formato) + '</span>' : '<select class="rm-fsel" data-pz="formato" data-id="' + esc(z._id) + '"' + d + ' aria-label="Formato">' + [...new Set([...fs, z.formato].filter(Boolean))].map(f => opt(f, f, z.formato)).join('') + '</select>') + (z.extra && !soloAds(z) ? '<span class="rm-extra" title="Fuera del plan">extra</span>' : '') + adsTag(z) + (z.fijo ? '<span class="rm-fijo" title="Se repite cada ' + esc(z.fijo) + '">↻ ' + esc(z.fijo) + '</span>' : '') + redBadges(z.red) + ((z.fuentes || []).length ? '<span class="rm-fu" title="Tiene ' + z.fuentes.length + ((z.fuentes.length === 1) ? ' fuente' : ' fuentes') + ' de la web">🔗 ' + z.fuentes.length + '</span>' : '') + '</div>';
     pedirThumbs(vis);
-    if (!vis.length) return '<div class="rm-pl">' + tools + bulk + '<section class="sheet">' + emptyBox('No hay piezas con ese filtro', 'Cambiá los formatos en el filtro.') + '</section></div>';
-    if (vista === 'tablero') return '<div class="rm-pl">' + tools + bulk + tablero(m, vis, can, qz) + '</div>';
+    if (!vis.length) return '<div class="rm-pl">' + briefHtml(m, can) + tools + bulk + '<section class="sheet">' + emptyBox('No hay piezas con ese filtro', 'Cambiá los formatos en el filtro.') + '</section></div>';
+    if (vista === 'tablero') return '<div class="rm-pl">' + briefHtml(m, can) + tools + bulk + tablero(m, vis, can, qz) + '</div>';
     if (vista === 'cuadricula') {
       const agrupar = lista => { const gs = []; lista.forEach(z => { const k = semDe(z), g = gs[gs.length - 1]; if (g && g.k === k) g.zs.push(z); else gs.push({ k, zs: [z] }); }); return gs; };
       const feedV = vis.filter(z => !esHistoria(z)), histV = vis.filter(esHistoria);
@@ -344,7 +353,7 @@ export function initRedes(ctx) {
           '<div class="rm-pc-b"><div class="rm-pc-m">' + (z.fecha ? '<span class="rm-pc-d">' + esc(diaDe(z)) + (z.hora ? ' · ' + esc(z.hora) : '') + '</span>' : '<span class="rm-pc-d muted sf">Sin fecha</span>') + listoCtl(m, z, can) + '</div>' + tags(z, null) +
           '<b class="rm-pc-t" title="' + esc(z.tema || '') + '">' + esc(z.tema || 'Sin tema') + '</b>' + (st.rev && st.rev.mesId === m._id && st.rev.items.get(z._id) && !st.rev.items.get(z._id).aplicado ? '<button class="rv-badge" data-act="rmRevisar" data-id="' + esc(m._id) + '" title="Ver la revisión">' + ISO + ' ' + notaPill(st.rev.items.get(z._id).nota) + '</button>' : '') + textos(z, 4, true) + '<div class="rm-pc-bot">' + cpsHtml(z) + '<div class="rm-pc-f">' + quien(z, true) + '</div></div></div></article>'; };
       const bloque = (lista, cls) => agrupar(lista).map(g => '<div class="rm-semh"><h3>' + esc(g.k) + '</h3>' + (g.k === 'Sin fecha' ? agendaBtn : '') + '</div><div class="rm-pcs' + cls + '">' + g.zs.map(carta).join('') + '</div>').join('');
-      return '<div class="rm-pl">' + tools + bulk + (feedV.length ? bloque(feedV, '') : '') + (histV.length ? histSep(histV.length) + bloque(histV, ' hist') : '') + '</div>';
+      return '<div class="rm-pl">' + briefHtml(m, can) + tools + bulk + (feedV.length ? bloque(feedV, '') : '') + (histV.length ? histSep(histV.length) + bloque(histV, ' hist') : '') + '</div>';
     }
     const cols = can ? 7 : 6;
     let semPrev = null, histPrev = false;
@@ -365,7 +374,7 @@ export function initRedes(ctx) {
         '<td class="rm-qc">' + quien(z) + '</td>' +
         '<td><button class="btn ghost sm" data-act="rmPieza" data-id="' + id + '" aria-label="Abrir pieza">⋯</button></td></tr>';
     };
-    return '<div class="rm-pl">' + tools + bulk + '<section class="sheet"><div class="tbl rm-tbl"><table><thead><tr>' + (can ? '<th class="sel"><input type="checkbox" data-rmselall="' + esc(m._id) + '" aria-label="Seleccionar las que se ven"></th>' : '') + '<th>Arte</th><th>Cuándo</th><th>Pieza</th><th>Etapa</th><th title="Según el rol de cada uno en la cuenta y el estado de la pieza">Le toca a</th><th></th></tr></thead><tbody>' +
+    return '<div class="rm-pl">' + briefHtml(m, can) + tools + bulk + '<section class="sheet"><div class="tbl rm-tbl"><table><thead><tr>' + (can ? '<th class="sel"><input type="checkbox" data-rmselall="' + esc(m._id) + '" aria-label="Seleccionar las que se ven"></th>' : '') + '<th>Arte</th><th>Cuándo</th><th>Pieza</th><th>Etapa</th><th title="Según el rol de cada uno en la cuenta y el estado de la pieza">Le toca a</th><th></th></tr></thead><tbody>' +
       vis.map(fila).join('') + '</tbody></table></div></section></div>';
   }
   // Tablero: una columna por estado; arrastrar una pieza a otra columna le cambia el estado (a Diseño, con una nota).
@@ -386,6 +395,7 @@ export function initRedes(ctx) {
     if (T === 'Para el cliente') { await mandarPiezas(m, [id]); return; }
     await setEstado(m, [id], T);
   }
+  document.addEventListener('toggle', e => { const d = e.target; if (d && d.classList && d.classList.contains('rm-brief')) st.briefOpen = d.open ? d.dataset.brief : null; }, true);
   document.addEventListener('dragstart', e => { const c = e.target.closest && e.target.closest('[data-drag]'); if (!c) return; e.dataTransfer.setData('text/plain', c.dataset.drag); e.dataTransfer.effectAllowed = 'move'; c.classList.add('arr'); });
   document.addEventListener('dragend', e => { const c = e.target.closest && e.target.closest('[data-drag]'); if (c) c.classList.remove('arr'); document.querySelectorAll('.rm-kcol.sobre').forEach(x => x.classList.remove('sobre')); });
   document.addEventListener('dragover', e => { const c = e.target.closest && e.target.closest('[data-drop]'); if (!c) return; e.preventDefault(); document.querySelectorAll('.rm-kcol.sobre').forEach(x => { if (x !== c) x.classList.remove('sobre'); }); c.classList.add('sobre'); });
@@ -1399,7 +1409,7 @@ export function initRedes(ctx) {
       const k = t.dataset.rmupd, v = t.type === 'checkbox' ? t.checked : t.value;
       const u = { [k]: v };
       if (k === 'visible' && v && !m.enviadoAt) u.enviadoAt = new Date().toISOString();
-      try { await data.mesUpd(m._id, u); Object.assign(m, u); if (k !== 'notas' && k !== 'horas') render(); if (k === 'visible') toast(v ? 'El cliente ya lo ve en su portal' : 'Ya no se ve en el portal'); } catch (er) { toast(er.message); }
+      try { await data.mesUpd(m._id, u); Object.assign(m, u); if (k === 'notas') { const r = document.querySelector('[data-brief="' + m._id + '"] .rm-brief-r'); if (r) r.textContent = briefRes(v) || 'Fechas especiales, promos, lo que quiere el cliente este mes…'; } if (k !== 'notas' && k !== 'horas') render(); if (k === 'visible') toast(v ? 'El cliente ya lo ve en su portal' : 'Ya no se ve en el portal'); } catch (er) { toast(er.message); }
       return;
     }
     if (t.dataset && t.dataset.rmsel) { if (t.checked) st.sel.add(t.dataset.rmsel); else st.sel.delete(t.dataset.rmsel); render(); return; }
