@@ -90,6 +90,7 @@ const hayMarca = () => { const m = S.cu && S.cu.marca; if (!m) return false; con
 const TABS = () => [['inicio', 'Inicio'], ...(S.d.meses.length ? [['redes', 'Redes']] : []), ...(S.d.proyectos.length ? [['proyectos', 'Proyectos']] : []), ['tickets', 'Pedidos'], ...(S.d.informes.length ? [['informes', 'Informes']] : []), ...(hayMarca() ? [['marca', 'Tu marca']] : []), ...(S.d.cuenta || S.cu ? [['cuenta', 'Tu cuenta']] : [])];
 function render() {
   if (!S.d) return;
+  setTimeout(() => { if (S.foco) pintarFoco(); }, 0);
   const c = S.d.cliente;
   $('#top').hidden = false; $('#tabs').hidden = false; { const a = $('#ayuda'); if (a) a.href = TUTORIALES.cliente.url; }
   $('#logo').innerHTML = LOGO;
@@ -148,29 +149,30 @@ const mesActual = () => { const ms = S.d.meses || []; return ms.find(x => x.id =
 // En el feed: grilla (como el perfil de Instagram) o scroll (como el inicio). En el celular arranca en scroll.
 const feedModo = () => S.feed || (window.matchMedia && matchMedia('(max-width: 720px)').matches ? 'scroll' : 'grilla');
 const listaRevisar = m => { const g = S.fz && grupoCli(S.fz); return [...m.piezas].filter(z => !g || g[3](z)).sort(ordenPz); };
-// Redes: una bandeja de revisión. Arriba el mes (con flechas) y cuánto falta revisar; a la izquierda las piezas del mes
-// por día; al lado, la pieza como se ve en la red con su texto y las acciones. Calendario y Feed son otras formas de mirar
-// el mismo mes: tocar una pieza ahí la abre en la bandeja.
+// Redes, pensado para alguien que entra un minuto desde el celular:
+// arriba el mes y cuántas piezas le quedan, con un botón grande para empezar a revisar; abajo las piezas en tarjetas.
+// Revisar abre la pieza sola, a pantalla completa, con los botones siempre abajo y "siguiente" para pasar a la próxima.
 function vRedes() {
   const ms = S.d.meses || [];
   if (!ms.length) return '<section class="po-sec"><p class="muted">Todavía no hay contenido para revisar.</p></section>';
   const m = mesActual(), ps = m.piezas, pend = ps.filter(z => z.estado === 'Para el cliente').length;
-  if (S.fz === null && S.vista === 'revisar') S.fz = pend ? 'pend' : '';
+  if (S.fz === null) S.fz = '';
   const plan = Object.entries(m.plan || {}).map(([f, n]) => n + ' ' + f.toLowerCase()).join(' · ');
   const i = ms.indexOf(m), ant = ms[i + 1], sig = ms[i - 1];
   const flecha = (x, d, l) => '<button class="po-mn-b" data-act="mesNav" data-id="' + esc(x ? x.id : '') + '"' + (x ? '' : ' disabled') + ' aria-label="' + l + (x ? ': ' + esc(cap(mesTxt(x.mes))) : '') + '">' + (d < 0 ? '‹' : '›') + '</button>';
   const hechas = ps.length - pend, pct = ps.length ? Math.round(hechas / ps.length * 100) : 0;
-  let h = '<section class="po-sec po-redes"><header class="po-rd-h"><div class="po-mn">' + flecha(ant, -1, 'Mes anterior') + '<h1>' + esc(cap(mesTxt(m.mes))) + '</h1>' + flecha(sig, 1, 'Mes siguiente') + '</div>' +
-    '<div class="po-rd-av"><div class="po-rd-t">' + (!ps.length ? 'Todavía no hay piezas este mes.' : pend ? '<b>Te ' + (pend === 1 ? 'queda 1 pieza' : 'quedan ' + pend + ' piezas') + ' para revisar</b>' : '<b>✓ Revisaste todo el mes</b>') +
-      (ps.length ? '<span class="muted"> · ' + hechas + ' de ' + ps.length + ' revisadas</span>' : '') + (plan ? '<span class="muted po-rd-plan">Tu plan: ' + esc(plan) + '</span>' : '') + '</div>' +
-      (ps.length ? '<span class="po-rd-bar" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100" aria-label="Avance de la revisión"><i style="width:' + pct + '%"></i></span>' : '') + '</div>' +
-    (pend > 1 ? '<button class="btn primary po-rd-all" data-act="aprobarMes" data-id="' + esc(m.id) + '">✓ Aprobar las ' + pend + '</button>' : '') + '</header>';
-  if (!ps.length) return h + '</section>';
-  // Cómo mirar el mes y qué piezas
-  const vistas = [['revisar', 'Piezas', '▤'], ['calendario', 'Calendario', '▦'], ['feed', 'Feed', '◫']];
-  h += '<div class="po-rd-tools"><div class="seg po-rd-v" role="tablist" aria-label="Cómo ver el mes">' + vistas.map(([k, l, ic]) => '<button role="tab" data-act="vista" data-v="' + k + '" aria-selected="' + (S.vista === k) + '" aria-pressed="' + (S.vista === k) + '"><span aria-hidden="true">' + ic + '</span>' + l + '</button>').join('') + '</div>' +
-    '<div class="po-chips" role="group" aria-label="Filtrar por estado">' + GRUPOS_CLI.map(([k, l, c, f]) => { const n = ps.filter(f).length; return n || S.fz === k ? '<button class="po-chip' + (S.fz === k ? ' on' : '') + '" data-act="fz" data-k="' + k + '" style="--c:var(' + c + ')" aria-pressed="' + (S.fz === k) + '"><i></i>' + esc(l) + ' <b>' + n + '</b></button>' : ''; }).join('') +
-    '<button class="po-chip' + (!S.fz ? ' on' : '') + '" data-act="fz" data-k="" aria-pressed="' + !S.fz + '">Todas <b>' + ps.length + '</b></button></div></div>';
+  let h = '<section class="po-sec po-redes"><div class="po-mn">' + flecha(ant, -1, 'Mes anterior') + '<h1>' + esc(cap(mesTxt(m.mes))) + '</h1>' + flecha(sig, 1, 'Mes siguiente') + '</div>';
+  if (!ps.length) return h + '<p class="muted">Todavía no hay piezas este mes.</p></section>';
+  // Lo que le toca: un solo mensaje y un solo botón
+  h += '<div class="po-rd-cta' + (pend ? '' : ' ok') + '"><div><b>' + (pend ? (pend === 1 ? 'Tenés 1 pieza para revisar' : 'Tenés ' + pend + ' piezas para revisar') : '✓ Ya revisaste todo el mes') + '</b>' +
+    '<span>' + hechas + ' de ' + ps.length + ' revisadas' + (plan ? ' · Tu plan: ' + esc(plan) : '') + '</span><span class="po-rd-bar" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100" aria-label="Avance"><i style="width:' + pct + '%"></i></span></div>' +
+    (pend ? '<div class="po-rd-cta-b"><button class="btn primary" data-act="revisar">Empezar a revisar</button>' + (pend > 1 ? '<button class="btn ghost" data-act="aprobarMes" data-id="' + esc(m.id) + '">Aprobar las ' + pend + '</button>' : '') + '</div>' : '') + '</div>';
+  // Cómo mirar el mes
+  const vistas = [['revisar', 'Piezas'], ['calendario', 'Calendario'], ['feed', 'Feed']];
+  const cuantos = GRUPOS_CLI.map(([k, l, c, f]) => [k, l, c, ps.filter(f).length]).filter(x => x[3]);
+  h += '<div class="po-rd-tools"><div class="seg po-rd-v" role="tablist" aria-label="Cómo ver el mes">' + vistas.map(([k, l]) => '<button role="tab" data-act="vista" data-v="' + k + '" aria-selected="' + (S.vista === k) + '" aria-pressed="' + (S.vista === k) + '">' + l + '</button>').join('') + '</div>' +
+    (cuantos.length > 1 ? '<div class="po-chips" role="group" aria-label="Filtrar por estado"><button class="po-chip' + (!S.fz ? ' on' : '') + '" data-act="fz" data-k="" aria-pressed="' + !S.fz + '">Todas <b>' + ps.length + '</b></button>' +
+      cuantos.map(([k, l, c, n]) => '<button class="po-chip' + (S.fz === k ? ' on' : '') + '" data-act="fz" data-k="' + k + '" style="--c:var(' + c + ')" aria-pressed="' + (S.fz === k) + '"><i></i>' + esc(l) + ' <b>' + n + '</b></button>').join('') + '</div>' : '') + '</div>';
   const filtrar = z => { const g = S.fz && grupoCli(S.fz); return !g || g[3](z); };
   if (S.vista === 'feed') {
     const pubs = ps.filter(z => !/histori/i.test(z.formato)).filter(filtrar).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.hora || '').localeCompare(a.hora || ''));
@@ -184,19 +186,42 @@ function vRedes() {
     h += xs.length ? calendarioMes(m, xs) : '<p class="muted">No hay piezas con ese estado.</p>';
   } else {
     const xs = listaRevisar(m);
-    if (!xs.length) h += '<div class="po-vacio"><b>' + (S.fz === 'pend' ? '¡Listo! No te queda nada para revisar.' : 'No hay piezas con ese estado.') + '</b><button class="btn sm" data-act="fz" data-k="">Ver todas</button></div>';
-    else { let j = xs.findIndex(z => z.id === S.pzId); if (j < 0) j = 0; S.pzId = xs[j].id; h += '<div class="po-rd">' + railPiezas(xs) + '<div class="po-rd-main" id="po-rd-main">' + detallePieza(xs[j], { i: j, n: xs.length }) + '</div></div>'; }
+    h += xs.length ? '<div class="po-pcs">' + xs.map(cardPieza).join('') + '</div>' : '<div class="po-vacio"><b>No hay piezas con ese estado.</b><button class="btn sm" data-act="fz" data-k="">Ver todas</button></div>';
   }
   return h + '</section>';
 }
-// La lista de piezas del mes, por día: miniatura, tema, formato y estado. La elegida se ve al lado.
-function railPiezas(xs) {
-  const dias = [...new Set(xs.map(z => z.fecha || ''))];
-  const item = z => { const a = arteDe(z.id)[0], e = ESTADO_CLI[z.estado] || [z.estado, '--muted'], v = /reel|histori|tiktok|video/i.test(z.formato), on = z.id === S.pzId;
-    return '<button class="po-ri' + (on ? ' on' : '') + '" data-act="pzVer" data-id="' + esc(z.id) + '"' + (on ? ' aria-current="true"' : '') + ' style="--c:var(' + e[1] + ')">' +
-      '<span class="po-ri-t' + (v ? ' v' : '') + '" style="--fc:' + fmtColor(z.formato) + '">' + (a && a.miniatura ? '<img src="' + esc(a.miniatura) + '" alt="" loading="lazy">' : '<b>' + esc(String(z.formato || '?').slice(0, 1)) + '</b>') + '</span>' +
-      '<span class="po-ri-x"><b>' + esc(z.tema || z.formato) + '</b><small>' + esc(z.formato) + (z.hora ? ' · ' + esc(z.hora) : '') + '</small><span class="po-ri-e"><i></i>' + esc(e[0]) + '</span></span></button>'; };
-  return '<nav class="po-rail" aria-label="Piezas del mes">' + dias.map(d => '<div class="po-rg"><h4>' + esc(d ? cap(corta(d)) : 'Sin fecha') + '</h4>' + xs.filter(z => (z.fecha || '') === d).map(item).join('') + '</div>').join('') + '</nav>';
+// Una pieza en la grilla: el arte (o su tapa), el estado arriba, y abajo cuándo sale y de qué se trata.
+function cardPieza(z) {
+  const a = arteDe(z.id)[0], e = ESTADO_CLI[z.estado] || [z.estado, '--muted'], v = /reel|histori|tiktok|video/i.test(z.formato);
+  return '<button class="po-pc" data-act="pzVer" data-id="' + esc(z.id) + '"><span class="po-pc-m" style="--fc:' + fmtColor(z.formato) + '">' +
+    (a && a.miniatura ? '<img src="' + esc(a.miniatura) + '" alt="" loading="lazy">' : '<span class="po-pc-ph"><small>' + esc(z.formato) + '</small><b>' + esc(z.tema || '') + '</b></span>') +
+    '<span class="pzst" style="--c:var(' + e[1] + ')">' + esc(e[0]) + '</span>' + (v ? '<span class="po-pc-v" aria-hidden="true">▶</span>' : '') + '</span>' +
+    '<span class="po-pc-t"><small>' + esc(z.fecha ? cap(corta(z.fecha)) : 'Sin fecha') + (z.hora ? ' · ' + esc(z.hora) : '') + '</small><b>' + esc(z.tema || z.formato) + '</b><span>' + esc(z.formato) + (z.red ? ' · ' + esc(z.red) : '') + '</span></span></button>';
+}
+// Revisar: la pieza sola, a pantalla completa. Arriba volver y "3 de 8"; abajo los botones; se pasa con las flechas o deslizando.
+const listaFoco = m => listaRevisar(m);
+function abrirFoco(id) { const nuevo = !S.foco; S.foco = id; S.pidiendoCambio = null; S.rechazando = null; pintarFoco(); if (nuevo) { try { history.pushState({ poFoco: 1 }, ''); } catch (e) { } } }
+function cerrarFoco(desdeAtras) { if (!S.foco) return; S.foco = null; S.pidiendoCambio = null; S.rechazando = null; pintarFoco(); if (!desdeAtras) { try { if (history.state && history.state.poFoco) history.back(); } catch (e) { } } }
+function pintarFoco() {
+  let el = document.getElementById('po-foco');
+  const m = S.foco && mesActual(), xs = m ? listaFoco(m) : [], z = m && m.piezas.find(x => x.id === S.foco);
+  if (!S.foco || !z) { S.foco = null; if (el) el.remove(); document.documentElement.classList.remove('po-foco-on'); return; }
+  const lista = xs.some(x => x.id === z.id) ? xs : [...m.piezas].sort(ordenPz), i = lista.findIndex(x => x.id === z.id), n = lista.length;
+  if (!el) { el = document.createElement('div'); el.id = 'po-foco'; el.className = 'po-foco'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Revisar pieza'); document.body.appendChild(el); focoGestos(el); }
+  const sc = el.querySelector('.po-fo-b'), y = sc && sc.dataset.id === z.id ? sc.scrollTop : 0;
+  el.innerHTML = '<header class="po-fo-h"><button class="po-fo-x" data-act="focoCerrar" aria-label="Volver a las piezas">‹ <span>Piezas</span></button><span class="po-fo-n">' + (i + 1) + ' de ' + n + '</span>' +
+    '<span class="po-fo-nav"><button data-act="focoMover" data-d="-1"' + (i > 0 ? '' : ' disabled') + ' aria-label="Anterior">‹</button><button data-act="focoMover" data-d="1"' + (i < n - 1 ? '' : ' disabled') + ' aria-label="Siguiente">›</button></span></header>' +
+    '<div class="po-fo-b" data-id="' + esc(z.id) + '"><div class="po-fo-in">' + detallePieza(z, { panel: true, foco: true }) + '</div></div>' +
+    (accionesPieza(z) ? '<footer class="po-fo-f"><div class="po-fo-in">' + accionesPieza(z, true) + '</div></footer>' : '');
+  document.documentElement.classList.add('po-foco-on');
+  const nb = el.querySelector('.po-fo-b'); if (nb && y) nb.scrollTop = y;
+}
+function moverFoco(d) { const m = mesActual(); if (!m || !S.foco) return; const xs = listaFoco(m).some(x => x.id === S.foco) ? listaFoco(m) : [...m.piezas].sort(ordenPz), i = xs.findIndex(x => x.id === S.foco), j = i + d; if (j < 0 || j >= xs.length) return; S.foco = xs[j].id; S.pidiendoCambio = null; S.rechazando = null; pintarFoco(); }
+// Deslizar con el dedo para pasar de pieza
+function focoGestos(el) {
+  let x0 = null, y0 = 0;
+  el.addEventListener('touchstart', e => { if (e.target.closest('textarea, input, .cel-car-in')) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+  el.addEventListener('touchend', e => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null; if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) moverFoco(dx < 0 ? 1 : -1); }, { passive: true });
 }
 // Calendario del mes como grilla (lunes a domingo); cada pieza con el color de su estado. Tocar una la abre.
 function calendarioMes(m, xs) {
@@ -236,7 +261,7 @@ function detallePieza(z, o = {}) {
     '<div class="po-rv-b"><div class="po-cm"><b>' + esc(z.formato) + '</b>' + (z.red ? ' · ' + esc(z.red) : '') + (z.fecha ? ' · ' + esc(corta(z.fecha)) : '') + (z.hora ? ' ' + esc(z.hora) : '') + pz(z.estado) + (z.extra ? '<span class="pzst" style="--c:var(--muted)">Extra</span>' : '') + '</div>' +
     (z.tema ? '<h2>' + esc(z.tema) + '</h2>' : '') +
     (listo && z.estado === 'Para el cliente' ? '<div class="po-listo"><b>Ya hicimos los cambios que pediste</b><span>' + esc(String(listo.texto).replace(/^Listo, hicimos los cambios:?\s*/i, '').replace(/\n?Ya la podés ver de nuevo\.?$/i, '')) + '</span></div>' : '') +
-    (z.copy ? '<details class="po-copyd"' + (o.panel ? '' : ' open') + '><summary>El texto de la publicación</summary><p class="po-copy">' + esc(z.copy) + '</p>' + (z.hashtags ? '<p class="po-tags">' + esc(z.hashtags) + '</p>' : '') + '</details>' : '') +
+    (z.copy ? '<details class="po-copyd"' + (o.panel && !o.foco ? '' : ' open') + '><summary>El texto de la publicación</summary><p class="po-copy">' + esc(z.copy) + '</p>' + (z.hashtags ? '<p class="po-tags">' + esc(z.hashtags) + '</p>' : '') + '</details>' : '') +
     pedHtml + acciones + hiloHtml('pieza', z.id, otros, 'Escribirle al equipo') + '</div></article>';
   return '<article class="po-rev' + (o.panel ? ' en-panel' : '') + (o.post ? ' en-post' : '') + '" id="pz-' + esc(z.id) + '">' + cab + '<div class="po-rv-a">' + media +
     (as.length > 1 ? '<div class="po-rv-ts">' + as.map(x => x.link ? '<a href="' + esc(x.link) + '" target="_blank" rel="noopener">' + (x.miniatura ? '<img src="' + esc(x.miniatura) + '" alt="">' : '<span>' + (esVideo(x.path) ? '▶' : '▣') + '</span>') + '</a>' : '').join('') + '</div>' : (a && a.link ? '<a class="po-rv-ab" href="' + esc(a.link) + '" target="_blank" rel="noopener">Abrir en grande ↗</a>' : '')) + '</div>' +
@@ -417,24 +442,27 @@ const ACT = {
     } catch (e) { toast('No se pudo armar el PDF'); }
     t.disabled = false; t.innerHTML = txt;
   },
-  tab: t => { S.tab = t.dataset.t; render(); window.scrollTo(0, 0); },
+  tab: t => { if (S.foco) cerrarFoco(); S.tab = t.dataset.t; render(); window.scrollTo(0, 0); },
   copiarLink: async t => { try { await navigator.clipboard.writeText(t.dataset.v); toast('Link copiado'); } catch (e) { toast(t.dataset.v); } },
   vista: t => { S.vista = t.dataset.v; if (S.vista === 'revisar' && S.fz === null) S.fz = null; render(); },
   fz: t => { S.fz = t.dataset.k || ''; S.pzId = null; render(); },
   pzMover: t => moverPz(+t.dataset.d),
   pzVer: t => { const id = t.dataset.id, m = mesActual(), z = m && m.piezas.find(x => x.id === id);
-    if (S.tab === 'redes' && z) { const g = S.fz && grupoCli(S.fz); if (g && !g[3](z)) S.fz = ''; const desde = S.vista; S.vista = 'revisar'; S.pzId = id; S.pidiendoCambio = null; S.rechazando = null; render(); verPiezaArriba(desde !== 'revisar'); return; }
+    if (S.tab === 'redes' && z) { const g = S.fz && grupoCli(S.fz); if (g && !g[3](z)) S.fz = ''; abrirFoco(id); return; }
     verPieza(id); },
+  revisar: () => { const m = mesActual(); if (!m) return; const z = [...m.piezas].sort(ordenPz).find(x => x.estado === 'Para el cliente'); if (z) abrirFoco(z.id); },
+  focoCerrar: () => cerrarFoco(),
+  focoMover: t => moverFoco(+t.dataset.d),
   mesNav: t => { if (!t.dataset.id) return; S.mes = t.dataset.id; S.pzId = null; S.fz = null; render(); pedirArchivos(); },
   celRed: t => { (S.celRed ||= {})[t.dataset.id] = t.dataset.r; render(); if (S.panelPz) verPieza(S.panelPz); },
   feedModo: t => { S.feed = t.dataset.m; render(); },
   calModo: t => { S.cal = t.dataset.m; render(); },
   cambioNo: () => { S.pidiendoCambio = null; S.rechazando = null; rerender(); },
   rechazar: t => { S.rechazando = t.dataset.id; S.pidiendoCambio = null; rerender(); setTimeout(() => { const x = $('#po-rech-t'); if (x) x.focus(); }, 30); },
-  comentarPz: t => { const root = t.closest('#panel') || t.closest('.po-rev') || document; const d = root.querySelector('.po-hilo'); if (!d) return; d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => { const x = d.querySelector('textarea'); if (x) x.focus(); }, 250); },
+  comentarPz: t => { const root = t.closest('#po-foco') || t.closest('#panel') || t.closest('.po-rev') || document; const d = root.querySelector('.po-hilo'); if (!d) return; d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => { const x = d.querySelector('textarea'); if (x) x.focus(); }, 250); },
   salir: async () => { await sb.auth.signOut(); location.reload(); },
   cerrar: () => cerrar(),
-  pieza: t => { S.tab = 'redes'; S.vista = 'revisar'; S.fz = 'pend'; S.pzId = t.dataset.id; render(); window.scrollTo(0, 0); },
+  pieza: t => { S.tab = 'redes'; S.vista = 'revisar'; S.fz = ''; render(); window.scrollTo(0, 0); abrirFoco(t.dataset.id); },
   irProy: t => { S.tab = 'proyectos'; render(); setTimeout(() => { const el = document.getElementById('py-' + t.dataset.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); },
   aprobar: async t => { const sig = t.dataset.e === 'pieza' ? siguientePend(t.dataset.id) : null; await responder(t.dataset.e, t.dataset.id, 'aprobar', ''); if (t.dataset.e === 'pieza') despues(sig); },
   cambios: t => { if (t.dataset.e === 'pieza') { S.pidiendoCambio = t.dataset.id; S.rechazando = null; rerender(); setTimeout(() => { const x = $('#po-cambio-t'); if (x) x.focus(); }, 30); return; } pedirTexto('¿Qué cambiarías?', 'Contanos qué cambiar. Cuanto más concreto, mejor (textos, colores, fotos…).', txt => responder(t.dataset.e, t.dataset.id, 'cambios', txt)); },
@@ -442,16 +470,19 @@ const ACT = {
 };
 document.addEventListener('click', e => { const t = e.target.closest('[data-act]'); if (!t || t.tagName === 'A') return; const fn = ACT[t.dataset.act]; if (fn) { e.preventDefault(); fn(t); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#panel').hidden) cerrar();
-  if (S.tab === 'redes' && S.vista === 'revisar' && $('#panel').hidden && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '') && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) moverPz(e.key === 'ArrowRight' ? 1 : -1); });
+  if (S.foco && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) { if (e.key === 'Escape') cerrarFoco(); else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') moverFoco(e.key === 'ArrowRight' ? 1 : -1); } });
+window.addEventListener('popstate', () => { if (S.foco) cerrarFoco(true); });
 // Revisar de a una: anterior / siguiente, y después de responder pasa sola a la próxima pendiente.
 // En celular, la pieza elegida queda abajo de la tira: se lleva a la vista. Si venís del calendario o el feed, arriba de todo.
 function verPiezaArriba(todo) { setTimeout(() => { const el = document.getElementById('po-rd-main'); if (!el) return; const r = el.getBoundingClientRect(); if (todo || r.top < 0 || r.top > window.innerHeight * .6) window.scrollTo({ top: Math.max(0, r.top + window.scrollY - (window.innerWidth < 821 ? 150 : 80)), behavior: 'smooth' }); }, 30); }
 function moverPz(d) { const m = mesActual(); if (!m) return; const xs = listaRevisar(m), i = xs.findIndex(z => z.id === S.pzId), j = Math.min(xs.length - 1, Math.max(0, (i < 0 ? 0 : i) + d)); if (xs[j]) { S.pzId = xs[j].id; render(); } }
 function siguientePend(id) { const m = mesActual(); if (!m) return null; const xs = [...m.piezas].sort(ordenPz), i = xs.findIndex(z => z.id === id); return (xs.slice(i + 1).find(z => z.estado === 'Para el cliente' && z.id !== id) || xs.find(z => z.estado === 'Para el cliente' && z.id !== id) || {}).id || null; }
-function despues(sig) { S.pidiendoCambio = null; S.rechazando = null; if (S.panelPz) { cerrar(); S.panelPz = null; } if (S.vista === 'revisar') { S.pzId = sig; if (!sig && S.fz === 'pend') S.fz = 'pend'; } render(); if (S.vista === 'feed' && feedModo() === 'scroll' && sig) irAPieza(sig, true); }
+function despues(sig) { S.pidiendoCambio = null; S.rechazando = null; if (S.panelPz) { cerrar(); S.panelPz = null; }
+  if (S.foco) { if (sig) { S.foco = sig; render(); pintarFoco(); } else { render(); cerrarFoco(); toast('¡Listo! Revisaste todas las piezas.'); } return; }
+  render(); if (S.vista === 'feed' && feedModo() === 'scroll' && sig) irAPieza(sig, true); }
 // En el scroll: lleva a una pieza (la que tocaste en la grilla, o la próxima para revisar después de responder).
 function irAPieza(id, suave) { setTimeout(() => { const el = document.getElementById('pz-' + id); if (!el) return; const y = el.getBoundingClientRect().top + window.scrollY - 70; window.scrollTo({ top: Math.max(0, y), behavior: suave ? 'smooth' : 'auto' }); }, 30); }
-const rerender = () => { if (S.panelPz && !$('#panel').hidden) verPieza(S.panelPz); else render(); };
+const rerender = () => { if (S.foco) pintarFoco(); else if (S.panelPz && !$('#panel').hidden) verPieza(S.panelPz); else render(); };
 document.addEventListener('change', async e => {
   const t = e.target;
   if (t.id === 'po-cl') { S.c = S.clientes.find(c => c.cliente_id === t.value) || S.c; try { localStorage.setItem('po-cli', S.c.cliente_id); } catch (er) { } S.mes = null; S.archivos = {}; S.pidiendo.clear(); await cargar(); return; }
