@@ -11,7 +11,9 @@ import { LOGO, ISO } from './marca.js';
 import { fmtColor } from './formatos.js';
 import { celularPieza, celularPerfil, CEL_CSS } from './celular.js';
 import { manualHTML, MANUAL_CSS, cargarFuentesManual, activarManual } from './manual-vista.js';
-import { kitDeTexto } from './kitmarca.js';
+import { kitDeTexto, formatos, bajarFmt } from './kitmarca.js';
+import { fondosAuto } from './fondo.js';
+import { activarVisor } from './visor.js';
 { const st = document.createElement('style'); st.textContent = CEL_CSS; document.head.appendChild(st); }
 import { iconizar, ICON } from './iconos.js';
 import { informeVista } from './informe-vista.js';
@@ -102,7 +104,7 @@ function render() {
   $('#tabs').innerHTML = tabs.map(([k, l]) => '<button data-act="tab" data-t="' + k + '"' + (S.tab === k ? ' aria-current="page"' : '') + '>' + l + (k === 'inicio' && nAprobar ? ' <span class="po-n">' + nAprobar + '</span>' : '') + '</button>').join('');
   const V = { inicio: vInicio, redes: vRedes, proyectos: vProyectos, tickets: vTickets, informes: vInformes, marca: vMarca, cuenta: vCuenta }[S.tab];
   $('#view').innerHTML = V();
-  if (S.tab === 'marca') activarManual($('#view'));
+  if (S.tab === 'marca') activarVisor($('#view'));
   $('#foot').innerHTML = '<span class="po-iso">' + ISO + '</span><a href="https://weareandale.com" target="_blank" rel="noopener">weareandale.com</a>';
 }
 function vInicio() {
@@ -302,14 +304,41 @@ function fechasProy(p) {
   const falta = d == null ? '' : d > 1 ? 'faltan ' + d + ' días' : d === 1 ? 'es mañana' : d === 0 ? 'es hoy' : '';
   return [p.inicio ? 'Empezamos el ' + fecha(p.inicio) : '', p.entrega ? 'Entrega estimada: ' + fecha(p.entrega) + (falta ? ' (' + falta + ')' : '') : ''].filter(Boolean).join('  ·  ');
 }
+// Comentarios del cliente sobre cada etapa (tarea): aprobó, pidió cambios o escribió.
+const comsTarea = id => (S.d.comentarios || []).filter(c => c.entidad === 'tarea' && c.entidad_id === id);
+const aprobada = id => comsTarea(id).some(c => c.de_cliente && /^✓ Aprobad/.test(c.texto || ''));
+// La hoja de ruta: cada etapa con su estado; en las hechas, si la aprobaste; en todas, para comentar.
 function hojaHtml(p) {
   const h = p.hoja || []; if (!h.length) return '';
   const ahora = h.some(t => !t.hecha && t.en_curso), sig = ahora ? null : h.find(t => !t.hecha);
-  return '<h3>En qué estamos</h3><ol class="po-hoja">' + h.map(t => {
-    const k = t.hecha ? 'ok' : t.en_curso ? 'ahora' : t === sig ? 'sig' : '';
-    const sub = t.hecha ? 'Hecho' + (t.hecha_at ? ' · ' + fecha(t.hecha_at) : '') : t.en_curso ? 'En esto estamos' + (t.fecha ? ' · para el ' + fecha(t.fecha) : '') : t === sig ? 'Lo que sigue' + (t.fecha ? ' · ' + fecha(t.fecha) : '') : t.fecha ? fecha(t.fecha) : '';
-    return '<li class="' + k + '"><i aria-hidden="true">' + (t.hecha ? '✓' : '') + '</i><span><b>' + esc(t.titulo) + (t.hace ? ' <em>te toca a vos</em>' : '') + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></li>';
-  }).join('') + '</ol>';
+  return '<details class="po-hd"' + (S.hojaAbierta === p.id ? ' open' : '') + ' data-hoja="' + esc(p.id) + '"><summary><b>Todas las etapas</b><span class="muted">' + h.filter(t => t.hecha).length + ' de ' + h.length + ' hechas</span></summary><ol class="po-hoja">' + h.map(t => {
+    const k = t.hecha ? 'ok' : t.en_curso ? 'ahora' : t === sig ? 'sig' : '', cs = comsTarea(t.id);
+    const sub = t.hecha ? 'Hecho' + (t.hecha_at ? ' · ' + fecha(t.hecha_at) : '') + (aprobada(t.id) ? ' · la aprobaste' : '') : t.en_curso ? 'En esto estamos' + (t.fecha ? ' · para el ' + fecha(t.fecha) : '') : t === sig ? 'Lo que sigue' + (t.fecha ? ' · ' + fecha(t.fecha) : '') : t.fecha ? fecha(t.fecha) : '';
+    return '<li class="' + k + '"><i aria-hidden="true">' + (t.hecha ? '✓' : '') + '</i><span><b>' + esc(t.titulo) + (t.hace ? ' <em>te toca a vos</em>' : '') + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') +
+      hiloHtml('tarea', t.id, cs, 'Comentar') + '</span></li>';
+  }).join('') + '</ol></details>';
+}
+// Lo que pasa ahora en el proyecto y lo que el cliente puede hacer: aprobar la última etapa terminada, comentar la de ahora.
+function ahoraHtml(p) {
+  const h = p.hoja || []; if (!h.length) return '';
+  const actual = h.find(t => !t.hecha && t.en_curso) || h.find(t => !t.hecha), hechas = h.filter(t => t.hecha);
+  const paraOk = [...hechas].reverse().find(t => !aprobada(t.id) && !comsTarea(t.id).some(c => c.de_cliente && /^Pidió cambios/i.test(c.texto || '')));
+  let out = '<div class="po-now">';
+  if (paraOk) out += '<div class="po-now-b"><span class="po-now-k">Terminamos</span><b>' + esc(paraOk.titulo) + '</b><p class="muted">¿Te parece bien? Si lo aprobás, seguimos con lo que viene.</p><div class="po-acc"><button class="btn primary" data-act="pyAprobar" data-id="' + esc(paraOk.id) + '" data-n="' + esc(paraOk.titulo) + '">✓ Aprobar</button><button class="btn" data-act="pyCambios" data-id="' + esc(paraOk.id) + '" data-n="' + esc(paraOk.titulo) + '">Tengo cambios</button></div></div>';
+  if (actual) out += '<div class="po-now-b"><span class="po-now-k">' + (actual.en_curso ? 'Ahora estamos en' : 'Lo que sigue') + '</span><b>' + esc(actual.titulo) + '</b><p class="muted">' + (actual.fecha ? 'Para el ' + fecha(actual.fecha) + '. ' : '') + (actual.hace ? 'Esta parte la necesitamos de vos.' : 'Si tenés algo para sumar, contanos.') + '</p><div class="po-acc"><button class="btn" data-act="pyComentar" data-id="' + esc(actual.id) + '" data-n="' + esc(actual.titulo) + '">Comentar esta etapa</button></div></div>';
+  if (!paraOk && !actual) out += '<div class="po-now-b"><span class="po-now-k">Todas las etapas están hechas</span><b>Estamos cerrando el proyecto</b><p class="muted">En breve te mandamos la entrega final.</p></div>';
+  return out + '</div>';
+}
+// El cierre: cuando el proyecto se entrega, un resumen, lo que se puede bajar, una calificación y qué sigue.
+function cierreHtml(p) {
+  const fin = p.estado === 'Entregado' || p.estado === 'Terminado' || p.estado === 'Cerrado'; if (!fin) return '';
+  const h = p.hoja || [], ok = (p.entregas || []).filter(e => e.estado === 'Aprobada'), cal = (S.d.comentarios || []).filter(c => c.entidad === 'proyecto' && c.entidad_id === p.id && c.de_cliente && /^⭐ Calificación/.test(c.texto || '')).pop();
+  const man = ((S.cu || {}).marca || {}).manual || {}, lman = man.slug_c && (man.completo || man.version !== 'simple') ? location.origin + '/m/' + man.slug_c : man.publicado && man.slug ? location.origin + '/m/' + man.slug : '';
+  const links = [...ok.flatMap(e => (e.links || []).map(l => [l.nombre || e.titulo, l.url])), ...(lman && /marca|branding|identidad/i.test((p.tipo || '') + ' ' + p.nombre) ? [['Tu manual de marca', lman]] : [])];
+  return '<div class="po-fin"><span class="po-fin-e" aria-hidden="true">🎉</span><h3>¡Tu proyecto está listo!</h3><p>' + esc([p.inicio ? 'Empezamos el ' + fecha(p.inicio) : '', h.length ? h.length + ' etapas' : '', ok.length ? ok.length + (ok.length === 1 ? ' entrega aprobada' : ' entregas aprobadas') : ''].filter(Boolean).join(' · ')) + '</p>' +
+    (links.length ? '<div class="po-fin-l">' + links.map(([n, u]) => '<a class="btn" href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(n) + ' ↗</a>').join('') + '</div>' : '') +
+    '<div class="po-fin-c">' + (cal ? '<p class="muted">Gracias por tu calificación: ' + esc(String(cal.texto).replace(/^⭐ Calificación:\s*/, '')) + '</p>' : '<span>¿Cómo te fue con nosotros?</span><div class="po-stars" role="group" aria-label="Calificación">' + [1, 2, 3, 4, 5].map(n => '<button data-act="pyCalificar" data-id="' + esc(p.id) + '" data-n="' + n + '" aria-label="' + n + ' de 5">★</button>').join('') + '</div>') + '</div>' +
+    '<div class="po-acc"><button class="btn primary" data-act="tab" data-t="tickets">Contanos qué sigue</button></div></div>';
 }
 function tuyasHtml(p) {
   const ts = tuyas(p); if (!ts.length) return '';
@@ -322,13 +351,15 @@ function vProyectos() {
   const ps = S.d.proyectos || [];
   if (!ps.length) return '<section class="po-sec"><h1>Proyectos</h1><p class="muted">Todavía no hay proyectos en curso.</p></section>';
   return '<section class="po-sec"><h1>Proyectos</h1>' + ps.map(p => {
-    const s = p.sitio, fs = fechasProy(p);
-    return '<article class="po-proy" id="py-' + esc(p.id) + '"><div class="po-ph2"><div><span class="po-pct">' + esc(p.tipo || 'Proyecto') + '</span><h2>' + esc(p.nombre) + '</h2>' + (fs ? '<p class="po-fechas">' + esc(fs) + '</p>' : '') + '</div>' + (p.avance != null ? '<span class="po-ring"><b>' + p.avance + '%</b><span>' + esc(p.etapa || p.estado) + '</span></span>' : '<span class="muted">' + esc(p.estado) + '</span>') + '</div>' +
-      (p.avance != null ? '<span class="po-bar"><i style="width:' + p.avance + '%"></i></span>' : '') +
-      tuyasHtml(p) +
+    const s = p.sitio, fs = fechasProy(p), est = cap(String(p.estado || 'En curso').toLowerCase());
+    return '<article class="po-proy" id="py-' + esc(p.id) + '"><header class="po-py-h"><div><span class="po-pct">' + esc(p.tipo || 'Proyecto') + '</span><h2>' + esc(p.nombre) + '</h2>' + (fs ? '<p class="po-fechas">' + esc(fs) + '</p>' : '') + '</div><span class="pzst" style="--c:var(' + (/entreg|termin|cerr/i.test(p.estado || '') ? '--pz-aprobada' : '--accent') + ')">' + esc(est) + '</span></header>' +
+      (p.avance != null ? '<div class="po-py-av"><span class="po-bar"><i style="width:' + p.avance + '%"></i></span><b>' + p.avance + '%</b></div>' : '') +
+      cierreHtml(p) + (/entreg|termin|cerr/i.test(p.estado || '') ? '' : ahoraHtml(p)) + tuyasHtml(p) +
       (p.entregas.length ? '<h3>Entregas</h3>' + p.entregas.map(e => entregaHtml(e)).join('') : '') +
+      (s ? sitioHtml(s) : '') +
+      '<div class="po-py-acc"><button class="btn" data-act="pyMaterial" data-id="' + esc(p.id) + '">📎 Mandar material</button><button class="btn" data-act="pyReunion" data-id="' + esc(p.id) + '">📅 Pedir una reunión</button></div>' +
       hojaHtml(p) +
-      (s ? sitioHtml(s) : '') + hiloHtml('proyecto', p.id, (S.d.comentarios || []).filter(c => c.entidad === 'proyecto' && c.entidad_id === p.id), 'Escribirle al equipo sobre este proyecto') + '</article>';
+      hiloHtml('proyecto', p.id, (S.d.comentarios || []).filter(c => c.entidad === 'proyecto' && c.entidad_id === p.id), 'Escribirle al equipo sobre este proyecto') + '</article>';
   }).join('') + '</section>';
 }
 function entregaHtml(e) {
@@ -368,19 +399,44 @@ function vInformes() {
     informeVista({ inf: sel, cliente: S.d.cliente.nombre, mesLabel: mesTxt(sel.mes), piezas: (mesDeInforme(sel) || {}).piezas, descargar: btn }) + '</section>';
 }
 // Tu marca: el manual adentro del portal (con los colores y tipografías de la marca) y, si está publicado, el link para compartir.
+// Tu marca: lo esencial a mano (logos, colores, tipografías) y el manual completo, que se abre a pantalla completa.
+const lumH = h => { const v = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(x => x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+const manualDe = () => { const m = (S.cu && S.cu.marca) || {}, man = m.manual || {}, completo = man.completo !== undefined ? !!man.completo : man.version !== 'simple';
+  return { m, man, completo, lc: completo && man.slug_c ? location.origin + '/m/' + man.slug_c : '', lp: man.publicado && man.slug ? location.origin + '/m/' + man.slug : '' }; };
 function vMarca() {
   if (!document.getElementById('mm-css')) { const st = document.createElement('style'); st.id = 'mm-css'; st.textContent = MANUAL_CSS; document.head.appendChild(st); }
-  const m = (S.cu && S.cu.marca) || {}, man = m.manual || {};
-  cargarFuentesManual(kitDeTexto(m));
   seg('portal_vio', 'marca', 'Tu marca');
-  // El cliente ve el manual completo (si la marca la hicimos nosotros) y tiene los dos links: el suyo y la guía pública.
-  const completo = man.completo !== undefined ? !!man.completo : man.version !== 'simple';
-  const lc = completo && man.slug_c ? location.origin + '/m/' + man.slug_c : '', lp = man.publicado && man.slug ? location.origin + '/m/' + man.slug : '';
-  const boton = (u, t, d) => '<div class="po-ml"><span><b>' + t + '</b><small>' + d + '</small></span><a class="btn sm" href="' + esc(u) + '" target="_blank" rel="noopener">Abrir ↗</a><button class="btn ghost sm" data-act="copiarLink" data-v="' + esc(u) + '">Copiar link</button></div>';
-  return '<section class="po-sec"><div class="po-sh"><div><h1>Tu marca</h1><p class="muted">' + (completo ? 'Tu manual de marca completo: la estrategia, la voz, el logo, los colores, las tipografías y todo para descargar.' : 'Logo, colores, tipografías y todo lo de tu marca, para descargar y compartir con quien lo necesite.') + '</p></div></div>' +
-    (lc || lp ? '<div class="po-mls">' + (lc ? boton(lc, 'Manual completo', 'Es tuyo: compartilo con quien quieras.') : '') + (lp ? boton(lp, 'Guía de marca', 'La versión corta, para imprentas, proveedores o medios.') : '') + '</div>' : '') +
-    manualHTML({ nombre: (S.cu.datos || {}).nombre || S.d.cliente.nombre, avatar: S.d.cliente.avatar, marca: m }, { embed: true, version: completo ? 'completo' : 'simple' }) + '</section>';
+  const { m, completo, lc, lp } = manualDe(), kit = kitDeTexto(m), nombre = (S.cu.datos || {}).nombre || S.d.cliente.nombre;
+  cargarFuentesManual(kit);
+  const cols = kit.colores.filter(c => /^#[0-9a-f]{6}$/i.test(c.hex || '')), pri = (cols.find(c => /principal/i.test(c.rol)) || cols[0] || { hex: '#141414' }).hex, sobre = lumH(pri) > 0.42 ? '#141414' : '#ffffff';
+  const img = l => /^image\//.test(l.tipo || '') || /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(l.url || '');
+  const logoHero = kit.logos.filter(img).find(l => sobre === '#ffffff' ? ['marca', 'oscuro'].includes(l.fondo) : (l.fondo || 'claro') === 'claro') || kit.logos.filter(img)[0];
+  const chips = x => '<span class="po-mk-fx">' + formatos(x).map(f => '<a href="' + esc(bajarFmt(x, f)) + '"' + (f.link ? ' target="_blank" rel="noopener"' : '') + '>' + esc(f.fmt) + '</a>').join('') + '</span>';
+  const fam = t => "'" + String(t.familia || '').replace(/'/g, '') + "', system-ui, sans-serif";
+  let h = '<section class="po-sec po-mk"><h1>Tu marca</h1>' +
+    '<div class="po-mk-hero" style="--p:' + esc(pri) + ';--po:' + sobre + '"><div class="po-mk-l">' + (logoHero ? '<img src="' + esc(logoHero.url) + '" alt="' + esc(nombre) + '">' : '<b>' + esc(nombre) + '</b>') + '</div>' +
+      '<div class="po-mk-t"><span>' + (completo ? 'Manual de marca' : 'Guía de marca') + '</span><h2>Todo lo de ' + esc(nombre) + ' en un lugar</h2><p>' + (completo ? 'La estrategia, la voz, el logo y sus reglas, los colores, las tipografías y todos los archivos para descargar.' : 'El logo, los colores, las tipografías y los archivos para descargar.') + '</p>' +
+      '<div class="po-mk-b"><button class="btn po-mk-open" data-act="abrirManual">Abrir el manual</button>' + (lc ? '<button class="btn ghost" data-act="copiarLink" data-v="' + esc(lc) + '">Copiar link</button>' : '') + (lp ? '<button class="btn ghost" data-act="copiarLink" data-v="' + esc(lp) + '" title="La versión corta, para imprentas o proveedores">Copiar link de la guía</button>' : '') + '</div></div></div>';
+  if (kit.logos.length) h += '<h2 class="po-mk-h">Logos</h2><div class="po-mk-logos" data-visor-grupo>' + kit.logos.map(l => '<figure class="po-mk-lg"><div class="po-mk-lf f-' + esc(l.fondo || 'claro') + '"' + (l.fondo === 'marca' ? ' style="background:' + esc(pri) + '"' : '') + (img(l) ? ' data-visor="' + esc(l.url) + '" data-n="' + esc(l.n) + '" data-vk="logo"' : '') + '>' + (img(l) ? '<img src="' + esc(l.url) + '" alt="' + esc(l.n) + '" loading="lazy">' : '<b>' + esc((formatos(l)[0] || {}).fmt || '') + '</b>') + '</div><figcaption><b>' + esc(String(l.n || '').replace(/\s*\(ejemplo\)/i, '')) + '</b>' + chips(l) + '</figcaption></figure>').join('') + '</div>';
+  if (cols.length) h += '<h2 class="po-mk-h">Colores <small>Tocá uno para copiar el código</small></h2><div class="po-mk-cols">' + cols.map(c => '<button class="po-mk-col" data-act="copiarLink" data-v="' + esc(c.hex) + '"><i style="background:' + esc(c.hex) + '"></i><b>' + esc(c.n || c.hex) + '</b><span>' + esc(c.hex) + (c.rol ? ' · ' + esc(c.rol) : '') + '</span></button>').join('') + '</div>';
+  if (kit.tipos.length) h += '<h2 class="po-mk-h">Tipografías</h2><div class="po-mk-tps">' + kit.tipos.map(t => '<div class="po-mk-tp"><span class="po-mk-aa" style="font-family:' + esc(fam(t)) + ';font-weight:' + esc(t.peso || '400') + '">Aa</span><span><small>' + esc(t.rol || 'Tipografía') + '</small><b style="font-family:' + esc(fam(t)) + '">' + esc(t.familia) + '</b></span>' + (formatos(t).length ? chips({ ...t, n: t.familia }) : '<a class="btn sm" href="https://fonts.google.com/specimen/' + esc(String(t.familia || '').replace(/ /g, '+')) + '" target="_blank" rel="noopener">Bajar ↗</a>') + '</div>').join('') + '</div>';
+  const nArch = kit.recursos.length;
+  if (nArch) h += '<button class="po-mk-mas" data-act="abrirManual" data-ir="descargas"><span><b>' + nArch + ' archivos más</b><small>Papelería, íconos, plantillas, perfiles de redes y más, en el manual</small></span><span aria-hidden="true">→</span></button>';
+  setTimeout(() => fondosAuto($('#view')), 0);
+  return h + '</section>';
 }
+// El manual a pantalla completa, adentro del portal (con su menú, animaciones y descargas). Se cierra con el botón, Esc o atrás.
+function abrirManual(ir) {
+  if (document.getElementById('po-man')) return;
+  const { m, completo } = manualDe(), nombre = (S.cu.datos || {}).nombre || S.d.cliente.nombre;
+  const el = document.createElement('div'); el.id = 'po-man'; el.className = 'po-man'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Manual de marca');
+  el.innerHTML = '<div class="po-man-sc">' + manualHTML({ nombre, avatar: S.d.cliente.avatar, marca: m }, { version: completo ? 'completo' : 'simple' }) + '</div><button class="po-man-x" data-act="cerrarManual">✕ Volver al portal</button>';
+  document.body.appendChild(el); document.documentElement.classList.add('po-foco-on');
+  const sc = el.querySelector('.po-man-sc'); activarManual(el, sc);
+  if (ir) setTimeout(() => { const t = el.querySelector('#' + ir); if (t) sc.scrollTo({ top: t.offsetTop - 60 }); }, 60);
+  try { history.pushState({ poMan: 1 }, ''); } catch (e) { }
+}
+function cerrarManual(desdeAtras) { const el = document.getElementById('po-man'); if (!el) return; el.remove(); if (!S.foco) document.documentElement.classList.remove('po-foco-on'); if (!desdeAtras) { try { if (history.state && history.state.poMan) history.back(); } catch (e) { } } }
 // Tu cuenta: sus datos, lo que tiene contratado, el equipo de àndale, su gente, lo hecho juntos y la facturación.
 function vCuenta() {
   seg('portal_vio', 'cuenta', 'Tu cuenta');
@@ -418,8 +474,15 @@ function cuentaFacturacion() {
 }
 
 /* ---------- Acciones ---------- */
-function pedirTexto(titulo, ayuda, cb) {
+async function comentar(entidad, id, texto, ok) {
+  if (S.busy) return; S.busy = true;
+  try { check(await sb.rpc('portal_comentar', { p_entidad: entidad, p_id: id, p_texto: texto })); toast(ok || 'Enviado'); await cargar(true); }
+  catch (e) { toast(e.message); } finally { S.busy = false; }
+}
+function pedirTexto(titulo, ayuda, cb, o = {}) {
+  S.txtOpcional = !!o.opcional;
   $('#panel').innerHTML = '<form id="po-txt" style="display:contents"><div class="panel-h"><div><h2 id="panel-title">' + esc(titulo) + '</h2></div><button type="button" class="btn ghost" data-act="cerrar" aria-label="Cerrar">✕</button></div><div class="panel-b"><p class="formnote full">' + esc(ayuda) + '</p><div class="field full"><textarea id="po-t" class="in" rows="6" required></textarea></div></div><div class="panel-f"><span></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="cerrar">Cancelar</button><button class="btn primary">Enviar</button></span></div></form>';
+  if (o.opcional) $('#po-t').removeAttribute('required');
   $('#panel').hidden = false; $('#scrim').hidden = false; setTimeout(() => $('#po-t').focus(), 30);
   S.cbTexto = cb;
 }
@@ -450,6 +513,14 @@ const ACT = {
   pzVer: t => { const id = t.dataset.id, m = mesActual(), z = m && m.piezas.find(x => x.id === id);
     if (S.tab === 'redes' && z) { const g = S.fz && grupoCli(S.fz); if (g && !g[3](z)) S.fz = ''; abrirFoco(id); return; }
     verPieza(id); },
+  pyAprobar: async t => { await comentar('tarea', t.dataset.id, '✓ Aprobado', '¡Gracias! Le avisamos al equipo.'); },
+  pyCambios: t => pedirTexto('Cambios en «' + t.dataset.n + '»', 'Contanos qué cambiarías. Cuanto más concreto, mejor.', txt => comentar('tarea', t.dataset.id, 'Pidió cambios: ' + txt, 'Listo, le llegó al equipo.')),
+  pyComentar: t => pedirTexto('Sobre «' + t.dataset.n + '»', 'Lo que quieras sumar: ideas, datos, referencias, dudas.', txt => comentar('tarea', t.dataset.id, txt, 'Comentario enviado')),
+  pyMaterial: t => pedirTexto('Mandar material', 'Pegá los links (Drive, WeTransfer, Dropbox…) y contanos qué es: logos, fotos, textos, datos.', txt => comentar('proyecto', t.dataset.id, '📎 Material: ' + txt, '¡Recibido! Le avisamos al equipo.')),
+  pyReunion: t => pedirTexto('Pedir una reunión', '¿De qué querés hablar y qué días y horarios te quedan bien?', txt => comentar('proyecto', t.dataset.id, '📅 Pedido de reunión: ' + txt, 'Listo, te escribimos para coordinar.')),
+  pyCalificar: t => { const n = +t.dataset.n; pedirTexto('Gracias por tu ' + '★'.repeat(n), '¿Querés contarnos algo más? Es opcional.', txt => comentar('proyecto', t.dataset.id, '⭐ Calificación: ' + n + '/5' + (txt ? ' — ' + txt : ''), '¡Gracias!'), { opcional: true }); },
+  abrirManual: t => abrirManual(t.dataset.ir),
+  cerrarManual: () => cerrarManual(),
   revisar: () => { const m = mesActual(); if (!m) return; const z = [...m.piezas].sort(ordenPz).find(x => x.estado === 'Para el cliente'); if (z) abrirFoco(z.id); },
   focoCerrar: () => cerrarFoco(),
   focoMover: t => moverFoco(+t.dataset.d),
@@ -470,8 +541,10 @@ const ACT = {
 };
 document.addEventListener('click', e => { const t = e.target.closest('[data-act]'); if (!t || t.tagName === 'A') return; const fn = ACT[t.dataset.act]; if (fn) { e.preventDefault(); fn(t); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#panel').hidden) cerrar();
+  if (e.key === 'Escape' && document.getElementById('po-man')) { cerrarManual(); return; }
   if (S.foco && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) { if (e.key === 'Escape') cerrarFoco(); else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') moverFoco(e.key === 'ArrowRight' ? 1 : -1); } });
-window.addEventListener('popstate', () => { if (S.foco) cerrarFoco(true); });
+document.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.hoja) S.hojaAbierta = d.open ? d.dataset.hoja : null; }, true);
+window.addEventListener('popstate', () => { if (document.getElementById('po-man')) { cerrarManual(true); return; } if (S.foco) cerrarFoco(true); });
 // Revisar de a una: anterior / siguiente, y después de responder pasa sola a la próxima pendiente.
 // En celular, la pieza elegida queda abajo de la tira: se lleva a la vista. Si venís del calendario o el feed, arriba de todo.
 function verPiezaArriba(todo) { setTimeout(() => { const el = document.getElementById('po-rd-main'); if (!el) return; const r = el.getBoundingClientRect(); if (todo || r.top < 0 || r.top > window.innerHeight * .6) window.scrollTo({ top: Math.max(0, r.top + window.scrollY - (window.innerWidth < 821 ? 150 : 80)), behavior: 'smooth' }); }, 30); }
@@ -502,7 +575,7 @@ document.addEventListener('submit', async e => {
     msg.textContent = 'Listo. Revisá tu email (' + email + ') y abrí el link. Si no aparece, mirá en spam.'; btn.textContent = 'Link enviado ✓';
     return;
   }
-  if (f.id === 'po-txt') { const v = $('#po-t').value.trim(); if (!v) return; const cb = S.cbTexto; cerrar(); if (cb) cb(v); return; }
+  if (f.id === 'po-txt') { const v = $('#po-t').value.trim(); if (!v && !S.txtOpcional) return; const cb = S.cbTexto; cerrar(); if (cb) cb(v); return; }
   if (f.id === 'po-tk') {
     const tt = $('#tk-t').value.trim(); if (!tt) return;
     const b = f.querySelector('button'); b.disabled = true;
