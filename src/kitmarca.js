@@ -4,6 +4,8 @@
 import { ICON } from './iconos.js';
 import { logoRed, REDES } from './redes-logos.js';
 import { activarVisor } from './visor.js';
+import { fondosAuto, fondoPara } from './fondo.js';
+import { perfilRed, CEL_CSS } from './celular.js';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ROLES_COLOR = ['Principal', 'Secundario', 'Acento', 'Fondo', 'Texto'];
@@ -109,11 +111,14 @@ export function initKit(ctx) {
     const editar = (k, x) => can ? '<button class="km-ed" data-act="kmEditar" data-k="' + k + '" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Editar y sumar formatos" aria-label="Editar ' + esc(x.n) + '">' + ICON.editar + '</button>' : '';
     const media = x => /^video\//.test(x.tipo || '') || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(x.url || '') ? '<video src="' + esc(x.url) + '" muted playsinline preload="metadata"></video>' : esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="' + esc(x.n) + '" loading="lazy">' : '<span class="km-ext">' + esc((formatos(x)[0] || {}).fmt || 'ARCHIVO') + '</span>';
     const pie = x => '<figcaption><b title="' + esc(x.n) + '">' + esc(x.n) + '</b>' + chips(x) + '</figcaption>';
-    const verGrande = x => (esImg(x.tipo, x.url) || /^video\//.test(x.tipo || '')) ? ' data-visor="' + esc(x.url) + '" data-n="' + esc(x.n) + '"' : '';
+    const KIND = { iconos: 'icono', fotos: 'foto', texturas: 'foto', videos: 'foto' };
+    const verGrande = (x, k) => (esImg(x.tipo, x.url) || /^video\//.test(x.tipo || '')) ? ' data-visor="' + esc(x.url) + '" data-n="' + esc(x.n) + '" data-vk="' + (k || KIND[catDe(x)] || 'doc') + '"' : '';
+    const autoBg = x => esImg(x.tipo, x.url) && !['fotos', 'texturas'].includes(catDe(x)) ? ' data-autobg="' + esc(x.url) + '"' : '';
+    setTimeout(() => fondosAuto(document), 0);
     const redB = x => { if (!['redes', 'plantillas'].includes(catDe(x))) return ''; const r = redDe(x), u = usoDe(x); return '<span class="km-redb">' + (r ? logoRed(r, 14) : '<i>Todas</i>') + (u ? '<i>' + esc((USOS.find(y => y[0] === u) || [])[1] || '') + '</i>' : '') + '</span>'; };
     const vacio = t => '<p class="km-v">' + t + '</p>';
 
-    const logos = kit.logos.length ? '<div class="km-logos" data-visor-grupo>' + kit.logos.map(x => '<figure class="km-t km-logo"><div class="km-lf f-' + esc(x.fondo || 'claro') + '"' + (x.fondo === 'marca' && kit.colores[0] ? ' style="--km:' + esc(kit.colores[0].hex) + '"' : '') + verGrande(x) + '>' + media(x) +
+    const logos = kit.logos.length ? '<div class="km-logos" data-visor-grupo>' + kit.logos.map(x => '<figure class="km-t km-logo"><div class="km-lf f-' + esc(x.fondo || 'claro') + '"' + (x.fondo === 'marca' && kit.colores[0] ? ' style="--km:' + esc(kit.colores[0].hex) + '"' : '') + verGrande(x, 'logo') + '>' + media(x) +
       (can ? '<button class="km-fbtn" data-act="kmFondo" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Cambiar el fondo" aria-label="Cambiar el fondo">◐</button>' : '') + editar('logos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div>' : vacio('Subí el logo principal y sus versiones: horizontal, vertical, isotipo, negativo, monocromo. Si subís el mismo logo en SVG, PNG y AI juntos, queda uno solo con sus tres formatos.');
 
     const cols = kit.colores.length ? '<div class="km-cols">' + kit.colores.map(x => { const h = hexOk(x.hex) ? x.hex : '#999999', [r, g, b] = rgb(h);
@@ -131,9 +136,25 @@ export function initKit(ctx) {
     const subeCat = (k, txt, cls) => can ? '<label class="' + cls + (st.subiendo === 'recursos:' + k ? ' disabled' : '') + '">' + ICON.sumar + esc(st.subiendo === 'recursos:' + k ? 'Subiendo…' : txt) + '<input type="file" hidden multiple' + (ACC[k] ? ' accept="' + ACC[k] + '"' : '') + ' data-kitup="recursos" data-cat="' + k + '" data-id="' + id + '"></label>' : '';
     const recC = kit.recursos.map(x => ({ ...x, cat: catDe(x) }));
     const recursosG = CATS.map(([k, l]) => [k, l, recC.filter(x => x.cat === k)]).filter(g => g[2].length);
+    const grilla = (k, xs) => '<div class="km-recs c-' + k + '" data-visor-grupo>' + xs.map(x => '<figure class="km-t km-rec"><div class="km-rf"' + verGrande(x) + autoBg(x) + '>' + media(x) + redB(x) + editar('recursos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div>';
+    // Perfiles, portadas y plantillas: se eligen por red (con su logo) y al lado se ve cómo queda el perfil en esa red.
+    const redesEnKit = () => { const rs = recC.filter(x => x.cat === 'redes' || x.cat === 'plantillas'), marcadas = [...new Set(rs.map(redDe).filter(Boolean))];
+      return { rs, redes: REDES_KIT.filter(r => marcadas.includes(r) || (rs.some(x => !redDe(x)) && ['instagram', 'facebook'].includes(r))) }; };
+    const redesBloque = (k, xs) => {
+      const { rs, redes } = redesEnKit(); if (!redes.length) return grilla(k, xs);
+      const sel = redes.includes(st.red) ? st.red : st.red === '' ? '' : redes[0];
+      const vis = sel ? xs.filter(x => !redDe(x) || redDe(x) === sel) : xs;
+      const chips = '<div class="km-redsel" role="group" aria-label="Ver por red">' + [['', 'Todas']].concat(redes.map(r => [r, (REDES.find(y => y[0] === r) || [r, r])[1]])).map(([r, l]) => '<button type="button" data-act="kmRed" data-r="' + r + '"' + (r === sel ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"') + '>' + (r ? logoRed(r, 15) : '') + esc(l) + '</button>').join('') + '</div>';
+      if (k !== 'redes' || !sel) return chips + grilla(k, vis);
+      const de = uso => rs.filter(x => (redDe(x) === sel || !redDe(x)) && usoDe(x) === uso && esImg(x.tipo, x.url)).sort((a, b) => (redDe(b) === sel) - (redDe(a) === sel));
+      const iso = kit.logos.find(l => /iso|s[ií]mbolo/i.test(l.n || '')) || kit.logos[0];
+      const perfil = (de('perfil')[0] || iso || {}).url, portada = (de('portada')[0] || {}).url;
+      const posts = de('post').map(x => x.url).concat(recC.filter(x => x.cat === 'fotos' && esImg(x.tipo, x.url)).map(x => x.url)).slice(0, 6);
+      return chips + '<div class="km-red-w">' + grilla(k, vis) + '<div class="km-red-p"><span class="km-red-pt">Así se ve en ' + esc((REDES.find(y => y[0] === sel) || [sel, sel])[1]) + '</span>' + perfilRed({ nombre: c.nombre, avatar: perfil }, sel, { portada, posts, historias: de('historia').map(x => x.url), bio: (m.rubro || '').slice(0, 120) }) + '</div></div>';
+    };
     const faltan = CATS.filter(([k]) => !recursosG.some(g => g[0] === k));
     const recursos = (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><div class="km-gh"><h4>' + esc(l) + '</h4><span class="km-n">' + xs.length + '</span><span class="km-sp"></span>' + subeCat(k, 'Subir', 'btn ghost sm km-up') + '</div>' +
-        '<div class="km-recs c-' + k + '" data-visor-grupo>' + xs.map(x => '<figure class="km-t km-rec"><div class="km-rf"' + verGrande(x) + '>' + media(x) + redB(x) + editar('recursos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div></div>').join('') : vacio('Subí cada cosa en su tipo. Si tenés la misma pieza en varios formatos (por ejemplo tarjeta.pdf, tarjeta.png y tarjeta.ai), subilos juntos y quedan como una sola con sus formatos.')) +
+        (k === 'redes' || k === 'plantillas' ? redesBloque(k, xs) : grilla(k, xs)) + '</div>').join('') : vacio('Subí cada cosa en su tipo. Si tenés la misma pieza en varios formatos (por ejemplo tarjeta.pdf, tarjeta.png y tarjeta.ai), subilos juntos y quedan como una sola con sus formatos.')) +
       (can && faltan.length ? '<div class="km-mas"><span>' + (recursosG.length ? 'Sumar otro tipo' : 'Subir') + '</span>' + faltan.map(([k, l]) => subeCat(k, l, 'km-cat-b')).join('') + '</div>' : '');
 
     const links = kit.links.length ? '<div class="km-links">' + kit.links.map(x => '<span class="km-link"><a class="btn sm" href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.n) + ' ' + ICON.externo + '</a>' + (can ? '<button class="btn ghost sm" data-act="kmEditar" data-k="links" data-i="' + esc(x.id) + '" data-id="' + id + '" aria-label="Editar">' + ICON.editar + '</button>' : '') + '</span>').join('') + '</div>' : vacio('El manual, la carpeta del Drive, el kit de Canva o el archivo de Figma.');
@@ -301,7 +322,9 @@ export function initKit(ctx) {
         }
         if (!archivos.length) continue;
         const pv = previaDe(archivos);
-        nuevos.push({ id: uid(), n: lindo(fs[0].name), url: pv.url, path: pv.path, tipo: pv.tipo, archivos, ...(k === 'logos' ? { fondo: 'claro' } : {}), ...(cat ? { cat } : {}) });
+        // Un logo claro (blanco, negativo) arranca sobre fondo oscuro para que se vea
+        const fondo = k === 'logos' ? ((await fondoPara(pv.url)) === 'oscuro' ? 'oscuro' : 'claro') : '';
+        nuevos.push({ id: uid(), n: lindo(fs[0].name), url: pv.url, path: pv.path, tipo: pv.tipo, archivos, ...(fondo ? { fondo } : {}), ...(cat ? { cat } : {}) });
       }
     } catch (er) { toast(er.message); }
     st.subiendo = '';
@@ -360,6 +383,7 @@ export function initKit(ctx) {
     kmManual: t => { const c = cli(t.dataset.id); if (c) panelManual(c); },
     kmPrevia: t => { const c = cli(t.dataset.id); if (c) verComoCliente(c, t.dataset.v); },
     kmBorrar: () => borrar(),
+    kmRed: t => { st.red = t.dataset.r; render(); },
     kmGf: async t => { const inp = document.getElementById('km-fam'); if (!inp) return; inp.value = t.dataset.f; st.gfLista = await gfLista(); gfPesos(t.dataset.f); document.querySelectorAll('.km-gf-i').forEach(b => b.classList.toggle('on', b === t)); },
     kmGfCat: t => { st.gfCat = t.dataset.v; document.querySelectorAll('[data-act="kmGfCat"]').forEach(b => b.classList.toggle('on', b === t)); gfBuscar(); },
     kmFmtQuitar: t => formatosCambiar(async x => { const f = x.archivos.find(y => y.id === t.dataset.f); if (!f) return false;
@@ -384,5 +408,6 @@ export function initKit(ctx) {
     if (c && fs.length && !st.subiendo) subir(c, t.dataset.kitup, fs, t.dataset.cat || '');
   });
   activarVisor(document.body);
+  if (typeof document !== 'undefined' && !document.getElementById('cel-css')) { const x = document.createElement('style'); x.id = 'cel-css'; x.textContent = CEL_CSS; document.head.appendChild(x); }
   return { html, acts };
 }

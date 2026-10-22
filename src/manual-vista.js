@@ -8,6 +8,7 @@ import { kitDeTexto, CATS, catDe, formatos, redDe, usoDe, REDES_KIT } from './ki
 import { perfilRed, plantillaRed, tabsRedes, CEL_CSS } from './celular.js';
 import { nombreRed } from './redes-logos.js';
 import { activarVisor } from './visor.js';
+import { fondosAuto } from './fondo.js';
 import { LOGO } from './marca.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -90,7 +91,7 @@ export function manualHTML(d, o = {}) {
   const card = (k, v) => '<div class="mm-card"><span class="mm-k">' + k + '</span><p>' + esc(v) + '</p></div>';
   const recs = kit.recursos.map(r => ({ ...r, cat: catDe(r) }));
   const secs = []; // [id, título, html, parte]
-  const ver = x => (esImg(x.tipo, x.url) || esVid(x.tipo, x.url)) ? ' data-visor="' + esc(x.url) + '" data-n="' + esc(x.n || '') + '"' : '';
+  const ver = (x, k) => (esImg(x.tipo, x.url) || esVid(x.tipo, x.url)) ? ' data-visor="' + esc(x.url) + '" data-n="' + esc(x.n || '') + '" data-vk="' + (k || ({ iconos: 'icono', fotos: 'foto', texturas: 'foto' })[x.cat] || 'doc') + '"' : '';
 
   // ── Estrategia: esencia y voz primero
   if (completo) {
@@ -128,7 +129,7 @@ export function manualHTML(d, o = {}) {
     const logoSobre = hex => lum(hex) > .42 ? (imgL.find(l => (l.fondo || 'claro') === 'claro') || imgL[0]) : (imgL.find(l => l.fondo === 'marca') || imgL.find(l => l.fondo === 'oscuro') || imgL[0]);
     secs.push(['logo', 'Logo', (stage ? rv(stage) : '') +
       (specs.length ? '<div class="mm-specs n' + specs.length + '">' + specs.map(([k, v], i) => rv(card(k, v), i * 100)).join('') + '</div>' : '') +
-      '<h3 class="mm-h3 rv">Versiones</h3><div class="mm-logos" data-visor-grupo>' + kit.logos.map((l, i) => rv('<figure class="mm-logo"><div class="mm-lf f-' + esc(l.fondo || 'claro') + '"' + ver(l) + '>' + (esImg(l.tipo, l.url) ? '<img src="' + esc(l.url) + '" alt="' + esc(l.n) + '" loading="lazy">' : '<span class="mm-ext">' + esc(ext(l.url) || 'ARCHIVO') + '</span>') + '</div><figcaption><b>' + esc(l.n) + '</b>' + bajarX(l) + '</figcaption></figure>', (i % 4) * 80)).join('') + '</div>' +
+      '<h3 class="mm-h3 rv">Versiones</h3><div class="mm-logos" data-visor-grupo>' + kit.logos.map((l, i) => rv('<figure class="mm-logo"><div class="mm-lf f-' + esc(l.fondo || 'claro') + '"' + ver(l, 'logo') + '>' + (esImg(l.tipo, l.url) ? '<img src="' + esc(l.url) + '" alt="' + esc(l.n) + '" loading="lazy">' : '<span class="mm-ext">' + esc(ext(l.url) || 'ARCHIVO') + '</span>') + '</div><figcaption><b>' + esc(l.n) + '</b>' + bajarX(l) + '</figcaption></figure>', (i % 4) * 80)).join('') + '</div>' +
       (fondosL.length > 1 ? '<h3 class="mm-h3 rv">Sobre cada fondo</h3><div class="mm-fondos">' + fondosL.map((f, i) => rv('<div class="mm-fondo" style="background:' + esc(f.hex) + ';color:' + sobre(f.hex) + '"><img src="' + esc(logoSobre(f.hex).url) + '" alt="" loading="lazy"><span>' + esc(f.n) + '</span></div>', (i % 3) * 70)).join('') + '</div>' : '') +
       (nos.length ? '<h3 class="mm-h3 rv">Lo que no hacemos con el logo</h3><div class="mm-nos">' + nos.map((x, i) => rv('<div class="mm-no">' + (base ? '<div class="mm-no-v"><img src="' + esc(base.url) + '" alt="" style="' + MAL[i % MAL.length] + '"><span class="mm-x" aria-hidden="true"></span></div>' : '') + '<p>' + esc(x) + '</p></div>', (i % 3) * 80)).join('') + '</div>' : ''), 'Identidad visual']);
   }
@@ -177,7 +178,7 @@ export function manualHTML(d, o = {}) {
   if (apps.length) secs.push(['aplicaciones', 'Aplicaciones', apps.map(([k, l, xs]) => '<div class="mm-app"><h3 class="mm-h3 rv">' + esc(l) + '</h3>' + appGrid(k, xs) + '</div>').join(''), 'Aplicaciones']);
   function appGrid(k, xs) {
     return '<div class="mm-app-g g-' + k + '" data-visor-grupo>' + xs.map((r, i) => rv('<figure class="mm-ap">' +
-      (esVid(r.tipo, r.url) ? '<div class="mm-ap-m vid"><video src="' + esc(r.url) + '" controls playsinline preload="metadata"></video></div>' : esImg(r.tipo, r.url) ? '<div class="mm-ap-m"' + ver(r) + '><img src="' + esc(r.url) + '" alt="' + esc(r.n) + '" loading="lazy"><span class="mm-zoom" aria-hidden="true">' + I.zoom + '</span></div>' : '<div class="mm-ap-m doc"><span>' + esc(ext(r.url) || 'ARCHIVO') + '</span></div>') +
+      (esVid(r.tipo, r.url) ? '<div class="mm-ap-m vid"><video src="' + esc(r.url) + '" controls playsinline preload="metadata"></video></div>' : esImg(r.tipo, r.url) ? '<div class="mm-ap-m"' + ver(r) + ' data-autobg="' + esc(r.url) + '"><img src="' + esc(r.url) + '" alt="' + esc(r.n) + '" loading="lazy"><span class="mm-zoom" aria-hidden="true">' + I.zoom + '</span></div>' : '<div class="mm-ap-m doc"><span>' + esc(ext(r.url) || 'ARCHIVO') + '</span></div>') +
       '<figcaption><b>' + esc(r.n) + '</b>' + bajarX(r) + '</figcaption></figure>', (i % 4) * 70)).join('') + '</div>';
   }
 
@@ -257,7 +258,7 @@ export function activarManual(root, scroller) {
   };
   sc.addEventListener('scroll', onScroll, { passive: true }); onScroll();
   const toast = t => { const el = mm.querySelector('.mm-toast'); if (!el) return; el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 1500); };
-  activarVisor(mm);
+  activarVisor(mm); fondosAuto(mm);
   mm.addEventListener('click', async e => {
     const tb = e.target.closest('[data-mmtab]'); if (tb) { const g = tb.dataset.mmtab, v = tb.dataset.v; mm.querySelectorAll('[data-mmtab="' + g + '"]').forEach(b => { const on = b === tb; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); mm.querySelectorAll('[data-mmpane^="' + g + ':"]').forEach(p => { p.hidden = p.dataset.mmpane !== g + ':' + v; }); return; }
     const c = e.target.closest('[data-copiar]'); if (c) { try { await navigator.clipboard.writeText(c.dataset.copiar); toast('Copiado ' + c.dataset.copiar); } catch (er) { toast(c.dataset.copiar); } c.classList.add('ok'); setTimeout(() => c.classList.remove('ok'), 700); return; }
@@ -629,4 +630,5 @@ export const MANUAL_CSS = CEL_CSS + `
 .mm-tst-f button.on{background:#fff;color:var(--mm-ink);box-shadow:0 1px 3px rgba(0,0,0,.1)}
 .mm-tester .mm-try{min-height:1.3em;height:auto;max-height:3.6em}
 @media (max-width:820px){.mm-fams.n2{grid-template-columns:1fr}.mm-jer{padding:4px 20px}.mm-jer-r{grid-template-columns:1fr;gap:10px;padding:20px 0}.mm-jer-e{font-size:min(var(--px),calc(var(--px) * .72 + 4px))}.mm-fam{padding:24px}.mm-fam-aa{width:72px;height:72px;font-size:36px}}
+.mm-ap-m.bg-osc{background:#141414}.mm-ap-m.bg-cla{background:#fff}
 `;
