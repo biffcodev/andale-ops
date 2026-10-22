@@ -10,6 +10,8 @@ import './portal.css';
 import { LOGO, ISO } from './marca.js';
 import { fmtColor } from './formatos.js';
 import { celularPieza, celularPerfil, CEL_CSS } from './celular.js';
+import { manualHTML, MANUAL_CSS, cargarFuentesManual, activarManual } from './manual-vista.js';
+import { kitDeTexto } from './kitmarca.js';
 { const st = document.createElement('style'); st.textContent = CEL_CSS; document.head.appendChild(st); }
 import { iconizar, ICON } from './iconos.js';
 import { informeVista } from './informe-vista.js';
@@ -54,6 +56,8 @@ async function arrancar() {
 async function cargar(silencio) {
   try { S.d = check(await sb.rpc('portal_datos', { p_cliente: S.c.cliente_id })); }
   catch (e) { if (!silencio) toast(e.message); return; }
+  // Sus datos, servicios, equipo y marca (SQL 0046). Si todavía no está, el portal sigue igual.
+  try { S.cu = check(await sb.rpc('portal_cuenta', { p_cliente: S.c.cliente_id })); } catch (e) { S.cu = null; }
   const ms = S.d.meses || [];
   if (!S.mes || !ms.some(m => m.id === S.mes)) S.mes = (ms.find(m => m.mes.slice(0, 7) === new Date().toISOString().slice(0, 7)) || ms[0] || {}).id || null;
   pedirArchivos();
@@ -81,7 +85,9 @@ async function pedirArchivos() {
 }
 
 /* ---------- Pantallas ---------- */
-const TABS = () => [['inicio', 'Inicio'], ...(S.d.meses.length ? [['redes', 'Redes']] : []), ...(S.d.proyectos.length ? [['proyectos', 'Proyectos']] : []), ['tickets', 'Pedidos'], ...(S.d.informes.length ? [['informes', 'Informes']] : []), ...(S.d.cuenta ? [['cuenta', 'Mi cuenta']] : [])];
+// Hay marca para mostrar si el kit tiene logos, colores o tipografías.
+const hayMarca = () => { const m = S.cu && S.cu.marca; if (!m) return false; const k = kitDeTexto(m); return !!(k.logos.length || k.colores.length || k.tipos.length); };
+const TABS = () => [['inicio', 'Inicio'], ...(S.d.meses.length ? [['redes', 'Redes']] : []), ...(S.d.proyectos.length ? [['proyectos', 'Proyectos']] : []), ['tickets', 'Pedidos'], ...(S.d.informes.length ? [['informes', 'Informes']] : []), ...(hayMarca() ? [['marca', 'Tu marca']] : []), ...(S.d.cuenta || S.cu ? [['cuenta', 'Tu cuenta']] : [])];
 function render() {
   if (!S.d) return;
   const c = S.d.cliente;
@@ -93,8 +99,9 @@ function render() {
   const tabs = TABS(); if (!tabs.some(t => t[0] === S.tab)) S.tab = 'inicio';
   const nAprobar = (S.d.meses || []).reduce((a, m) => a + m.piezas.filter(z => z.estado === 'Para el cliente').length, 0) + (S.d.proyectos || []).reduce((a, p) => a + p.entregas.filter(e => e.estado === 'Enviada').length + tuyas(p).length, 0);
   $('#tabs').innerHTML = tabs.map(([k, l]) => '<button data-act="tab" data-t="' + k + '"' + (S.tab === k ? ' aria-current="page"' : '') + '>' + l + (k === 'inicio' && nAprobar ? ' <span class="po-n">' + nAprobar + '</span>' : '') + '</button>').join('');
-  const V = { inicio: vInicio, redes: vRedes, proyectos: vProyectos, tickets: vTickets, informes: vInformes, cuenta: vCuenta }[S.tab];
+  const V = { inicio: vInicio, redes: vRedes, proyectos: vProyectos, tickets: vTickets, informes: vInformes, marca: vMarca, cuenta: vCuenta }[S.tab];
   $('#view').innerHTML = V();
+  if (S.tab === 'marca') activarManual($('#view'));
   $('#foot').innerHTML = '<span class="po-iso">' + ISO + '</span><a href="https://weareandale.com" target="_blank" rel="noopener">weareandale.com</a>';
 }
 function vInicio() {
@@ -309,11 +316,49 @@ function vInformes() {
   return '<section class="po-sec po-infs">' + (is.length > 1 ? '<div class="po-inf-meses" role="tablist" aria-label="Elegí el mes">' + is.map(i => '<button role="tab" data-act="infVer" data-id="' + esc(i.id) + '" aria-selected="' + (i === sel) + '">' + esc(cap(mesTxt(i.mes))) + '</button>').join('') + '</div>' : '') +
     informeVista({ inf: sel, cliente: S.d.cliente.nombre, mesLabel: mesTxt(sel.mes), piezas: (mesDeInforme(sel) || {}).piezas, descargar: btn }) + '</section>';
 }
+// Tu marca: el manual adentro del portal (con los colores y tipografías de la marca) y, si está publicado, el link para compartir.
+function vMarca() {
+  if (!document.getElementById('mm-css')) { const st = document.createElement('style'); st.id = 'mm-css'; st.textContent = MANUAL_CSS; document.head.appendChild(st); }
+  const m = (S.cu && S.cu.marca) || {}, man = m.manual || {};
+  cargarFuentesManual(kitDeTexto(m));
+  seg('portal_vio', 'marca', 'Tu marca');
+  const link = man.publicado && man.slug ? location.origin + '/m/' + man.slug : '';
+  return '<section class="po-sec"><div class="po-sh"><div><h1>Tu marca</h1><p class="muted">Logo, colores, tipografías y todo lo de tu marca, para descargar y compartir con quien lo necesite.</p></div>' +
+    (link ? '<span class="po-mlink"><a class="btn" href="' + esc(link) + '" target="_blank" rel="noopener">Abrir en pantalla completa ↗</a><button class="btn ghost" data-act="copiarLink" data-v="' + esc(link) + '">Copiar link</button></span>' : '') + '</div>' +
+    manualHTML({ nombre: (S.cu.datos || {}).nombre || S.d.cliente.nombre, avatar: S.d.cliente.avatar, marca: m }, { embed: true }) + '</section>';
+}
+// Tu cuenta: sus datos, lo que tiene contratado, el equipo de àndale, su gente, lo hecho juntos y la facturación.
 function vCuenta() {
+  seg('portal_vio', 'cuenta', 'Tu cuenta');
+  const cu = S.cu || {}, d = cu.datos || {}, sv = cu.servicios || [], eq = cu.equipo || [], ks = cu.contactos || [];
+  const ms = S.d.meses || [], piezas = ms.flatMap(m => m.piezas || []), pub = piezas.filter(z => z.estado === 'Publicada').length, aprob = piezas.filter(z => ['Aprobada', 'Programada', 'Publicada'].includes(z.estado)).length;
+  const proys = S.d.proyectos || [], tks = S.d.pedidos || [];
+  const redes = d.redes && typeof d.redes === 'object' ? Object.entries(d.redes).filter(([, v]) => v) : [];
+  const dato = (k, v) => v ? '<div class="po-dt"><span>' + k + '</span><b>' + v + '</b></div>' : '';
+  const ini = n => esc(String(n || '?').split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase());
+  let h = '<section class="po-sec"><h1>Tu cuenta</h1>';
+  // Lo hecho juntos
+  const desde = d.desde ? new Date(String(d.desde).slice(0, 7) + '-15') : null, meses = desde ? Math.max(1, Math.round((Date.now() - desde) / 2.63e9)) : null;
+  h += '<div class="po-stats">' + [[meses, meses === 1 ? 'mes juntos' : 'meses juntos'], [aprob, 'piezas aprobadas'], [pub, 'publicadas'], [proys.length, proys.length === 1 ? 'proyecto' : 'proyectos'], [tks.filter(t => t.estado === 'Hecho').length, 'pedidos resueltos']].filter(([n]) => n != null).map(([n, l]) => '<div><b>' + n + '</b><span>' + l + '</span></div>').join('') + '</div>';
+  // Servicios
+  if (sv.length) h += '<h2>Lo que tenés con àndale</h2><div class="po-svs">' + sv.map(a => '<article class="po-sv"><span class="po-sv-t">' + esc(a.tipo) + (a.estado !== 'Activo' ? ' <small>' + esc(a.estado) + '</small>' : '') + '</span><b>' + esc(a.plan ? 'Plan ' + a.plan : a.tipo === 'Ads' ? 'Publicidad en redes' : 'Servicio mensual') + '</b>' +
+    ((a.redes || []).length ? '<span class="po-sv-r">' + a.redes.map(r => '<i>' + esc(r) + '</i>').join('') + '</span>' : '') + '<span class="muted">Desde ' + esc(cap(mesTxt(a.desde))) + '</span>' + (a.precio ? '<span class="po-sv-p">' + plata(a.precio.monto, a.precio.moneda) + ' <small>por mes</small></span>' : '') + '</article>').join('') + '</div>';
+  // Equipo de àndale
+  if (eq.length) h += '<h2>Tu equipo en àndale</h2><div class="po-eq">' + eq.map(p => '<div class="po-eqp">' + (p.avatar ? '<img src="' + esc(p.avatar) + '" alt="">' : '<span>' + ini(p.nombre) + '</span>') + '<div><b>' + esc(p.nombre) + '</b><small>' + esc([(p.roles || []).join(' · '), p.puesto].filter(Boolean)[0] || '') + '</small></div></div>').join('') + '</div>';
+  // Datos y contactos
+  h += '<div class="po-cols2"><div><h2>Tus datos</h2><div class="po-box">' + dato('Empresa', esc(d.nombre || S.d.cliente.nombre)) + dato('Web', d.web ? '<a href="' + esc(/^https?:/.test(d.web) ? d.web : 'https://' + d.web) + '" target="_blank" rel="noopener">' + esc(d.web.replace(/^https?:\/\//, '')) + '</a>' : '') + dato('Email', esc(d.email || '')) + dato('Teléfono', esc(d.tel || '')) +
+    (redes.length ? dato('Redes', redes.map(([k, v]) => '<a href="' + esc(/^https?:/.test(v) ? v : '#') + '" target="_blank" rel="noopener">' + esc(k) + '</a>').join(' · ')) : '') + dato('Clientes desde', d.desde ? esc(cap(mesTxt(d.desde))) : '') +
+    '<p class="muted po-cambio">¿Algo cambió? <button class="btn link" data-act="tab" data-t="tickets">Avisanos con un pedido</button></p></div></div>' +
+    (ks.length ? '<div><h2>Tu gente</h2><div class="po-box">' + ks.map(x => '<div class="po-k"><span class="po-k-a">' + ini(x.nombre) + '</span><div><b>' + esc(x.nombre || x.email) + (x.yo ? ' <small class="po-yo">Vos</small>' : '') + '</b><small>' + esc([x.rol, x.email].filter(Boolean).join(' · ')) + '</small><span class="po-k-b">' + (x.principal ? '<i>Principal</i>' : '') + (x.cobros ? '<i>Facturación</i>' : '') + (x.portal ? '<i class="ok">Entra al portal</i>' : '') + '</span></div></div>').join('') + '</div></div>' : '') + '</div>';
+  // Facturación (solo quien la recibe)
+  h += cuentaFacturacion();
+  return h + '</section>';
+}
+function cuentaFacturacion() {
   const c = S.d.cuenta || {}, fs = c.facturas || [], rs = c.resumenes || [];
-  seg('portal_vio', 'cuenta', 'Mi cuenta');
   const deuda = {}; fs.forEach(f => { if (+f.saldo > 0.009) deuda[f.moneda] = (deuda[f.moneda] || 0) + +f.saldo; });
-  return '<section class="po-sec"><h1>Mi cuenta</h1>' + (Object.keys(deuda).length ? '<div class="po-deuda">Saldo pendiente: <b>' + Object.entries(deuda).map(([m, n]) => plata(n, m)).join(' · ') + '</b></div>' : '<div class="po-deuda ok">✓ No tenés saldo pendiente.</div>') +
+  if (!S.d.cuenta) return '';
+  return '<h2>Facturación</h2>' + (Object.keys(deuda).length ? '<div class="po-deuda">Saldo pendiente: <b>' + Object.entries(deuda).map(([m, n]) => plata(n, m)).join(' · ') + '</b></div>' : '<div class="po-deuda ok">✓ No tenés saldo pendiente.</div>') +
     (rs.length ? '<h2>Resúmenes de cuenta</h2><div class="po-tbl">' + rs.map(r => '<div class="po-tr"><span>' + esc(cap(mesTxt(r.periodo))) + (r.numero ? ' · ' + esc(r.numero) : '') + '</span><b>' + plata(r.total, r.moneda) + '</b>' + (r.link_pdf ? '<a href="' + esc(r.link_pdf) + '" target="_blank" rel="noopener" data-seg="' + esc(r.id) + '" data-segd="' + esc('Resumen de cuenta ' + mesTxt(r.periodo) + (r.numero ? ' · ' + r.numero : '')) + '">PDF ↗</a>' : '<span></span>') + '</div>').join('') + '</div>' : '') +
     (fs.length ? '<h2>Facturas</h2><div class="po-tbl">' + fs.map(f => '<div class="po-tr"><span>' + esc(f.tipo === 'Invoice' ? 'Invoice' : 'Factura') + ' ' + esc(f.numero || '') + ' · ' + fecha(f.fecha) + '</span><b>' + plata(f.monto, f.moneda) + '</b>' + (+f.saldo > 0.009 ? '<span class="po-sal">Pendiente ' + plata(f.saldo, f.moneda) + '</span>' : '<span class="po-pag">Pagada</span>') + (f.link_pdf ? '<a href="' + esc(f.link_pdf) + '" target="_blank" rel="noopener" data-seg="' + esc(f.id) + '" data-segd="' + esc((f.tipo === 'Invoice' ? 'Invoice ' : 'Factura ') + (f.numero || '')) + '">PDF ↗</a>' : '') + '</div>').join('') + '</div>' : '') + '</section>';
 }
@@ -344,6 +389,7 @@ const ACT = {
     t.disabled = false; t.innerHTML = txt;
   },
   tab: t => { S.tab = t.dataset.t; render(); window.scrollTo(0, 0); },
+  copiarLink: async t => { try { await navigator.clipboard.writeText(t.dataset.v); toast('Link copiado'); } catch (e) { toast(t.dataset.v); } },
   vista: t => { S.vista = t.dataset.v; if (S.vista === 'revisar' && S.fz === null) S.fz = null; render(); },
   fz: t => { S.fz = t.dataset.k || ''; S.pzId = null; render(); },
   pzMover: t => moverPz(+t.dataset.d),
