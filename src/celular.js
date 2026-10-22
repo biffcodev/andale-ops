@@ -207,9 +207,11 @@ export const CEL_CSS = `
 .cel-nav.osc{position:absolute;left:0;right:0;bottom:0;z-index:3;background:#000;color:#fff;border-top-color:#222}
 .cel-nav svg{width:25px;height:25px}
 /* Perfil de Instagram */
-.cel-pf-h{display:flex;align-items:center;gap:18px;padding:6px 16px 10px}
+.cel-pf-h{display:flex;align-items:center;gap:14px;padding:6px 14px 10px}
+.cel-pf-h .cel-av.xl{width:74px;height:74px}
+.cel-pf-n{flex:1;min-width:0}
 .cel-pf-n > b{display:block;font-size:14px;margin-bottom:6px}
-.cel-pf-n div{display:flex;gap:16px}.cel-pf-n span{display:grid;font-size:12px;color:#333}.cel-pf-n span b{font-size:15px}
+.cel-pf-n div{display:flex;justify-content:space-between;gap:6px}.cel-pf-n span{display:grid;font-size:11px;color:#333;text-align:center}.cel-pf-n span b{font-size:15px}
 .cel-pf-bio{margin:0;padding:0 16px 10px;font-size:13px;white-space:pre-line}
 .cel-pf-bt{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 16px 12px}
 .cel-pf-bt span{background:#efefef;border-radius:8px;text-align:center;padding:7px;font-weight:600;font-size:13px}.cel-pf-bt span:first-child{background:#0095f6;color:#fff}

@@ -9,6 +9,8 @@ import { activarFormato } from './formato.js';
 import './portal.css';
 import { LOGO, ISO } from './marca.js';
 import { fmtColor } from './formatos.js';
+import { celularPieza, celularPerfil, CEL_CSS } from './celular.js';
+{ const st = document.createElement('style'); st.textContent = CEL_CSS; document.head.appendChild(st); }
 import { iconizar, ICON } from './iconos.js';
 import { informeVista } from './informe-vista.js';
 import { sb, configured } from './data.js';
@@ -159,8 +161,8 @@ function vRedes() {
     const hist = ps.filter(z => /histori/i.test(z.formato)).filter(filtrar).sort(ordenPz), modo = feedModo();
     h += '<div class="po-fm" role="group" aria-label="Cómo ver el feed">' + [['grilla', '▦', 'Grilla'], ['scroll', '▤', 'Scroll']].map(([k, i, l]) => '<button data-act="feedModo" data-m="' + k + '" aria-pressed="' + (modo === k) + '"><span aria-hidden="true">' + i + '</span> ' + l + '</button>').join('') + '</div>';
     if (!pubs.length && !hist.length) h += '<p class="muted">No hay piezas con ese estado.</p>';
-    else if (modo === 'scroll') h += '<div class="po-scroll">' + pubs.map(z => detallePieza(z, { post: true })).join('') + (hist.length ? '<h3 class="po-sc-h">Historias</h3>' + hist.map(z => detallePieza(z, { post: true })).join('') : '') + '</div>';
-    else h += '<div class="po-fwrap"><div class="rm-feed po-feed">' + pubs.map(tileFeed).join('') + '</div>' + (hist.length ? '<div class="po-hist"><h3>Historias</h3><div class="po-hs">' + hist.map(tileFeed).join('') + '</div></div>' : '') + '</div>';
+    else h += '<div class="po-feedcel"><div>' + celularPerfil(S.d.cliente || {}, [...hist, ...pubs], arteDe, z => fmtColor(z.formato), { modo, estado: z => { const e = ESTADO_CLI[z.estado]; return e ? '<span class="cel-est" style="--c:var(' + e[1] + ')">' + esc(e[0]) + '</span>' : ''; } }) + '</div>' +
+      '<p class="muted po-feedn">Así se va a ver ' + (modo === 'scroll' ? 'el inicio de Instagram' : 'tu perfil de Instagram') + ' con las piezas del mes. Tocá una para verla en grande, aprobarla o pedir cambios.</p></div>';
   } else if (S.vista === 'calendario') {
     const xs = ps.filter(filtrar).sort(ordenPz), dias = [...new Set(xs.map(z => z.fecha || ''))], cm = S.cal || 'mes';
     h += '<div class="po-fm" role="group" aria-label="Cómo ver el calendario">' + [['mes', '▦', 'Calendario'], ['lista', '▤', 'Lista']].map(([k, i, l]) => '<button data-act="calModo" data-m="' + k + '" aria-pressed="' + (cm === k) + '"><span aria-hidden="true">' + i + '</span> ' + l + '</button>').join('') + '</div>';
@@ -209,7 +211,14 @@ function detallePieza(z, o = {}) {
     : '<div class="po-acc po-acc-g">' + (z.estado === 'Aprobada' ? '<span class="po-okb">✓ La aprobaste</span>' : '<button class="btn primary" data-act="aprobar" data-e="pieza" data-id="' + esc(z.id) + '">✓ Aprobar</button>') + '<button class="btn" data-act="cambios" data-e="pieza" data-id="' + esc(z.id) + '">Pedir cambios</button></div>') : '';
   const nav = o.n ? '<div class="po-nav"><button class="btn ghost sm" data-act="pzMover" data-d="-1"' + (o.i > 0 ? '' : ' disabled') + ' aria-label="Anterior">← Anterior</button><span>' + (o.i + 1) + ' de ' + o.n + '</span><button class="btn ghost sm" data-act="pzMover" data-d="1"' + (o.i < o.n - 1 ? '' : ' disabled') + ' aria-label="Siguiente">Siguiente →</button></div>' : '';
   const cli = S.d.cliente || {}, cab = o.post ? '<header class="po-ig-h">' + (cli.avatar ? '<img src="' + esc(cli.avatar) + '" alt="">' : '<span class="po-ig-av">' + esc((cli.nombre || '?').slice(0, 2).toUpperCase()) + '</span>') + '<span><b>' + esc(cli.nombre || '') + '</b><small>' + esc(z.formato) + (z.fecha ? ' · ' + esc(corta(z.fecha)) : '') + (z.hora ? ' ' + esc(z.hora) : '') + '</small></span>' + pz(z.estado) + '</header>' : '';
-  return (o.panel || o.post ? '' : nav) + '<article class="po-rev' + (o.panel ? ' en-panel' : '') + (o.post ? ' en-post' : '') + '" id="pz-' + esc(z.id) + '">' + cab + '<div class="po-rv-a">' + media +
+  if (!o.post) return (o.panel ? '' : nav) + '<article class="po-rev con-cel' + (o.panel ? ' en-panel' : '') + '" id="pz-' + esc(z.id) + '"><div class="po-rv-a">' + celularPieza(z, S.d.cliente || {}, as, { red: (S.celRed || {})[z.id], fc: fmtColor(z.formato) }) +
+    (as.some(x => x.link) ? '<div class="po-rv-dl">' + as.filter(x => x.link).map((x, i) => '<a href="' + esc(x.link) + '" target="_blank" rel="noopener">Abrir ' + (as.length > 1 ? 'archivo ' + (i + 1) : 'en grande') + ' ↗</a>').join('') + '</div>' : '') + '</div>' +
+    '<div class="po-rv-b"><div class="po-cm"><b>' + esc(z.formato) + '</b>' + (z.red ? ' · ' + esc(z.red) : '') + (z.fecha ? ' · ' + esc(corta(z.fecha)) : '') + (z.hora ? ' ' + esc(z.hora) : '') + pz(z.estado) + (z.extra ? '<span class="pzst" style="--c:var(--muted)">Extra</span>' : '') + '</div>' +
+    (z.tema ? '<h2>' + esc(z.tema) + '</h2>' : '') +
+    (listo && z.estado === 'Para el cliente' ? '<div class="po-listo"><b>Ya hicimos los cambios que pediste</b><span>' + esc(String(listo.texto).replace(/^Listo, hicimos los cambios:?\s*/i, '').replace(/\n?Ya la podés ver de nuevo\.?$/i, '')) + '</span></div>' : '') +
+    (z.copy ? '<details class="po-copyd"' + (o.panel ? '' : ' open') + '><summary>El texto de la publicación</summary><p class="po-copy">' + esc(z.copy) + '</p>' + (z.hashtags ? '<p class="po-tags">' + esc(z.hashtags) + '</p>' : '') + '</details>' : '') +
+    pedHtml + acciones + hiloHtml('pieza', z.id, otros, 'Escribirle al equipo') + '</div></article>';
+  return '<article class="po-rev' + (o.panel ? ' en-panel' : '') + (o.post ? ' en-post' : '') + '" id="pz-' + esc(z.id) + '">' + cab + '<div class="po-rv-a">' + media +
     (as.length > 1 ? '<div class="po-rv-ts">' + as.map(x => x.link ? '<a href="' + esc(x.link) + '" target="_blank" rel="noopener">' + (x.miniatura ? '<img src="' + esc(x.miniatura) + '" alt="">' : '<span>' + (esVideo(x.path) ? '▶' : '▣') + '</span>') + '</a>' : '').join('') + '</div>' : (a && a.link ? '<a class="po-rv-ab" href="' + esc(a.link) + '" target="_blank" rel="noopener">Abrir en grande ↗</a>' : '')) + '</div>' +
     '<div class="po-rv-b"><div class="po-cm"><b>' + esc(z.formato) + '</b>' + (z.red ? ' · ' + esc(z.red) : '') + (z.fecha ? ' · ' + esc(corta(z.fecha)) : '') + (z.hora ? ' ' + esc(z.hora) : '') + pz(z.estado) + (z.extra ? '<span class="pzst" style="--c:var(--muted)">Extra</span>' : '') + '</div>' +
     (z.tema ? '<h2>' + esc(z.tema) + '</h2>' : '') +
@@ -338,7 +347,8 @@ const ACT = {
   vista: t => { S.vista = t.dataset.v; if (S.vista === 'revisar' && S.fz === null) S.fz = null; render(); },
   fz: t => { S.fz = t.dataset.k || ''; S.pzId = null; render(); },
   pzMover: t => moverPz(+t.dataset.d),
-  pzVer: t => { if (S.vista === 'revisar') { S.pzId = t.dataset.id; render(); } else if (S.vista === 'feed') { S.feed = 'scroll'; render(); irAPieza(t.dataset.id, false); } else verPieza(t.dataset.id); },
+  pzVer: t => { if (S.vista === 'revisar') { S.pzId = t.dataset.id; render(); } else verPieza(t.dataset.id); },
+  celRed: t => { (S.celRed ||= {})[t.dataset.id] = t.dataset.r; render(); if (S.panelPz) verPieza(S.panelPz); },
   feedModo: t => { S.feed = t.dataset.m; render(); },
   calModo: t => { S.cal = t.dataset.m; render(); },
   cambioNo: () => { S.pidiendoCambio = null; rerender(); },
