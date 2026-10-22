@@ -2,7 +2,6 @@
 // Vive en clientes.marca.kit; los archivos van al bucket "marcas" (SQL 0044). Los colores y tipografías también se
 // guardan como texto en la ficha (marca.colores / marca.tipografias) para que Mr. Piggy los tenga en cuenta.
 import { ICON } from './iconos.js';
-import { manualHTML, MANUAL_CSS, cargarFuentesManual } from './manual-vista.js';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ROLES_COLOR = ['Principal', 'Secundario', 'Acento', 'Fondo', 'Texto'];
@@ -95,9 +94,9 @@ export function initKit(ctx) {
 
     const uso = m.visual ? '<p class="km-uso">' + esc(m.visual) + '</p>' : vacio('Cómo se usa el logo, qué fondos van, cómo son las fotos…');
 
-    return '<section class="sheet sx km"><div class="sx-h"><span class="sx-i">' + ICON.marca + '</span><h2>Kit de marca</h2>' +
+    return '<section class="sheet sx km"><div class="sx-h"><span class="sx-i">' + ICON.marca + '</span><h2>Kit de marca</h2>' + (kit.demo ? '<span class="km-demo" title="Logos, colores e imágenes de ejemplo para ver cómo queda el manual">Contenido de ejemplo</span>' : '') +
       (can ? '<div class="sx-der toolbar"><label class="btn sm" title="Mr. Piggy lee el manual de marca y completa colores, tipografías y la ficha">' + ICON.ia + 'Completar desde el manual<input type="file" hidden multiple accept=".pdf,.docx,.txt,.md,image/png,image/jpeg,image/webp" data-fmdoc="' + id + '"></label>' +
-        '<button class="btn sm" data-act="kmPrevia" data-id="' + id + '">' + ICON.ojo + 'Ver el manual</button><button class="btn sm primary" data-act="kmManual" data-id="' + id + '">' + ICON.compartir + 'Manual online</button></div>' : '') + '</div>' +
+        '<button class="btn sm" data-act="kmPrevia" data-id="' + id + '">' + ICON.ojo + 'Ver como cliente</button><button class="btn sm primary" data-act="kmManual" data-id="' + id + '">' + ICON.compartir + 'Manual online</button></div>' : '') + '</div>' +
       manualEstado(c) +
       sec('Logos', '', sube('logos', 'Subir logos', 'image/*,.svg,.pdf,.ai,.eps'), logos) +
       sec('Colores', 'Tocá un color para copiar el código', btn('kmNuevo', 'Color', ' data-k="colores"'), cols) +
@@ -153,20 +152,19 @@ export function initKit(ctx) {
       '<div class="field km-sc"><label for="km-resp">Área de respeto del logo</label><input id="km-resp" value="' + esc(man.respeto || '') + '" placeholder="Ej.: la altura de la “a” alrededor"></div>' +
       '<div class="field km-sc"><label for="km-min">Tamaño mínimo</label><input id="km-min" value="' + esc(man.minimo || '') + '" placeholder="Ej.: 24 px de alto / 10 mm"></div>' +
       '<div class="field full km-sc"><label for="km-no">Lo que no se hace con el logo (uno por renglón)</label><textarea id="km-no" rows="4" placeholder="No deformarlo\nNo cambiarle los colores\nNo ponerlo sobre fotos sin contraste\nNo agregarle sombras ni efectos">' + esc(man.no || '') + '</textarea></div>' +
-      '<div class="field full"><span class="lbl">¿Se puede ver?</span>' + radio('km-pub', [['no', 'Sin publicar', 'Solo lo ves vos con “Ver el manual”.'], ['si', 'Publicado', 'Cualquiera con el link lo ve.']], man.publicado ? 'si' : 'no') + '</div>' +
+      '<div class="field full"><span class="lbl">¿Se puede ver?</span>' + radio('km-pub', [['no', 'Sin publicar', 'Solo lo ves vos con “Ver como cliente”.'], ['si', 'Publicado', 'Cualquiera con el link lo ve.']], man.publicado ? 'si' : 'no') + '</div>' +
       (man.slug ? '<p class="formnote full">Link: <b>' + esc(urlManual(man)) + '</b></p>' : '') + '</div>' +
-      '<div class="panel-f"><span><button type="button" class="btn ghost" data-act="kmPrevia" data-id="' + esc(c._id) + '">' + ICON.ojo + 'Vista previa</button></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" id="kmsave">Guardar</button></span></div></form>';
+      '<div class="panel-f"><span><button type="button" class="btn ghost" data-act="kmPrevia" data-id="' + esc(c._id) + '">' + ICON.ojo + 'Ver como cliente</button></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" id="kmsave">Guardar</button></span></div></form>';
     document.getElementById('panel').hidden = false; document.getElementById('scrim').hidden = false;
   }
   const slugDe = n => String(n || 'marca').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) + '-' + Math.random().toString(36).slice(2, 7);
-  // Vista previa adentro de la app (lo mismo que ve la gente con el link)
-  function previa(c) {
-    if (!document.getElementById('mm-css')) { const st2 = document.createElement('style'); st2.id = 'mm-css'; st2.textContent = MANUAL_CSS; document.head.appendChild(st2); }
-    const d = { nombre: c.nombre, avatar: c.avatar || '', marca: c.marca || {} };
-    cargarFuentesManual(kitDeTexto(d.marca));
-    let o = document.getElementById('mm-prev'); if (!o) { o = document.createElement('div'); o.id = 'mm-prev'; document.body.appendChild(o); }
-    o.innerHTML = '<div class="mm-prev-b"><span>Vista previa del ' + (((c.marca || {}).manual || {}).version === 'simple' ? 'la guía' : 'manual') + ' de ' + esc(c.nombre) + '</span><button class="btn sm" data-act="kmPreviaCerrar">Cerrar</button></div><div class="mm-prev-c">' + manualHTML(d) + '</div>';
-    o.hidden = false; document.body.style.overflow = 'hidden';
+  // Ver como cliente: se abre el manual en otra pestaña, igual que lo ve la gente. Si todavía no está publicado,
+  // la pestaña lee los datos que deja la app en este navegador (/m/previa) y avisa que es una vista previa.
+  function verComoCliente(c) {
+    const man = (c.marca || {}).manual || {};
+    if (man.publicado && man.slug) { window.open(urlManual(man), '_blank', 'noopener'); return; }
+    try { localStorage.setItem('mm-previa', JSON.stringify({ nombre: c.nombre, avatar: c.avatar || '', marca: c.marca || {} })); } catch (e) { toast('No se pudo abrir la vista previa en este navegador'); return; }
+    window.open('/m/previa', '_blank');
   }
   async function guardarPanel() {
     const e = st.edit, c = e && cli(e.cid); if (!c) return;
@@ -219,8 +217,7 @@ export function initKit(ctx) {
     kmEditar: t => { const c = cli(t.dataset.id); if (c) panel(c, t.dataset.k, t.dataset.i); },
     kmUso: t => { const c = cli(t.dataset.id); if (c) panelUso(c); },
     kmManual: t => { const c = cli(t.dataset.id); if (c) panelManual(c); },
-    kmPrevia: t => { const c = cli(t.dataset.id); if (c) previa(c); },
-    kmPreviaCerrar: () => { const o = document.getElementById('mm-prev'); if (o) { o.hidden = true; o.innerHTML = ''; } document.body.style.overflow = ''; },
+    kmPrevia: t => { const c = cli(t.dataset.id); if (c) verComoCliente(c); },
     kmBorrar: () => borrar(),
     kmCopiar: async t => { try { await navigator.clipboard.writeText(t.dataset.v); toast(t.dataset.v + ' copiado'); } catch (e) { toast(t.dataset.v); } },
     kmFondo: async t => { const c = cli(t.dataset.id); if (!c) return; const kit = kitDe(c); const logos = kit.logos.map(x => x.id === t.dataset.i ? { ...x, fondo: FONDOS[(FONDOS.indexOf(x.fondo || 'claro') + 1) % FONDOS.length] } : x); try { await guardar(c, { ...kit, logos }); } catch (e) { toast(e.message); } },

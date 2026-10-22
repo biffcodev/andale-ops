@@ -3118,3 +3118,4 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 .mm-prev-c{flex:1;overflow:auto}
 .mm-prev-c .mm{min-height:auto}
 @media (max-width:760px){.km-pub{margin:-4px 14px 12px}.km-seg2{grid-template-columns:1fr}}
+.km-demo{font-size:12px;font-weight:700;padding:3px 10px;border-radius:99px;background:color-mix(in srgb,var(--pz-cliente) 20%,var(--surface));color:color-mix(in srgb,var(--pz-cliente) 60%,var(--fg))}
