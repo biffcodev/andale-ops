@@ -3031,3 +3031,13 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 .rm-kc-f .rm-lc{margin-right:auto}
 .rm-pc .rm-pc-m .rm-lc{order:3;flex:1 1 100%}
 .rm-mes-el{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:600}
+/* Tarea: cómo se ve en el portal del cliente */
+.tk-pb{flex:none;font-style:normal;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--surface-2);color:var(--muted);margin-left:6px}
+.tk-pb.cli{background:color-mix(in srgb,var(--pz-cliente) 18%,var(--surface));color:color-mix(in srgb,var(--pz-cliente) 70%,var(--fg))}
+.tk-portal{flex-wrap:wrap}
+.tk-portal{display:flex}
+.tk-portal label{flex:1 1 auto;cursor:pointer;position:relative}
+.tk-portal input{position:absolute;opacity:0;pointer-events:none}
+.tk-portal span{display:block;text-align:center;padding:6px 10px;border-radius:7px;font-size:13px;font-weight:600;color:var(--muted)}
+.tk-portal input:checked+span{background:var(--surface);box-shadow:var(--elev);color:var(--fg)}
+.tk-portal input:focus-visible+span{outline:2px solid var(--accent)}

@@ -239,3 +239,30 @@ div.po-row{cursor:default}
 .po-ph[style*="--fc"] > b{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--fc)}
 /* Los estados con el color lleno, igual que en la app */
 .pzst{background:var(--c);color:#fff;font-weight:700}
+/* Proyectos: fechas, lo que te toca y la hoja de ruta */
+.po-fechas{margin:4px 0 0;color:var(--muted);font-size:13.5px}
+.po-proy > .po-bar{display:block;height:6px;border-radius:99px;background:color-mix(in srgb,var(--fg) 8%,var(--surface));overflow:hidden}
+.po-proy > .po-bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.po-tuyo{background:color-mix(in srgb,var(--pz-cliente) 10%,var(--surface));border-radius:12px;padding:14px 16px;display:grid;gap:10px}
+.po-tuyo h3{margin:0}
+.po-tuyo > p{margin:-6px 0 0;font-size:13px}
+.po-tk{display:grid;gap:4px;background:var(--surface);border-radius:10px;padding:10px 12px}
+.po-tk .chk{align-items:flex-start;font-size:14.5px}
+.po-tk .chk span{display:grid;gap:2px}
+.po-tk small{color:var(--muted);font-size:12.5px}
+.po-hoja{list-style:none;margin:0;padding:0;display:grid}
+.po-hoja li{display:grid;grid-template-columns:22px 1fr;gap:10px;position:relative;padding:0 0 14px}
+.po-hoja li::before{content:"";position:absolute;left:10px;top:20px;bottom:0;width:2px;background:var(--line)}
+.po-hoja li:last-child::before{display:none}
+.po-hoja li > i{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);background:var(--surface);display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:800;color:#fff;box-sizing:border-box;position:relative;z-index:1}
+.po-hoja li > span{display:grid;gap:1px;font-size:14.5px}
+.po-hoja li small{color:var(--muted);font-size:12.5px}
+.po-hoja li em{display:inline-block;white-space:nowrap;font-style:normal;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--pz-cliente);color:#fff;margin-left:4px;vertical-align:1px}
+.po-hoja li.ok > i{background:var(--pz-aprobada);border-color:var(--pz-aprobada)}
+.po-hoja li.ok b{font-weight:500;color:var(--muted)}
+.po-hoja li.ok::before{background:var(--pz-aprobada)}
+.po-hoja li.ahora > i,.po-hoja li.sig > i{border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 18%,transparent)}
+.po-hoja li.ahora > i{background:var(--accent)}
+.po-hoja li.ahora small,.po-hoja li.sig small{color:var(--accent-text,var(--accent));font-weight:600}
+.po-sig{font-size:13px;color:var(--fg);font-weight:600}
+.po-pc .pzst{justify-self:start}

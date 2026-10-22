@@ -682,6 +682,7 @@ function abrirTarea(pid, i) {
     '<div class="field"><label for="tk-resp">Responsable</label><select id="tk-resp"' + ro + '>' + opt('', 'Sin asignar', x.resp || '') + [...new Set([...personas(), x.resp].filter(Boolean))].map(a => opt(a, a, x.resp || '')).join('') + '</select></div>' +
     '<div class="field"><label for="tk-fecha">Para cuándo</label><input id="tk-fecha" type="date" value="' + esc(x.fecha || '') + '"' + ro + '></div>' +
     (S.T ? (() => { const ets = etapasProyecto(p); return (ets.length ? '<div class="field"><label for="tk-etapa">Etapa</label><select id="tk-etapa"' + ro + '>' + opt('', 'Sin etapa', x.etapa || '') + ets.map(e => opt(e, e, x.etapa || '')).join('') + '</select></div>' : ''); })() : '') +
+    '<div class="field full"><span class="lbl">En el portal del cliente</span><div class="seg tk-portal" role="radiogroup" aria-label="En el portal del cliente">' + [['ver', 'La ve'], ['hace', 'La hace el cliente'], ['oculta', 'Interna (no la ve)']].map(([v, l]) => '<label><input type="radio" name="tk-portal" value="' + v + '"' + ((x.portal || 'ver') === v ? ' checked' : '') + ro + '><span>' + l + '</span></label>').join('') + '</div><span class="hint">“La hace el cliente”: la ve como pendiente suya, la puede tildar y te llega el aviso.</span></div>' +
     '<div class="field full"><label for="tk-nota">Notas</label><textarea id="tk-nota" rows="6" placeholder="Detalles, links, lo que pidió el cliente…"' + ro + '>' + esc(x.nota || '') + '</textarea></div>' +
     (x.fecha && integ('calendario') ? '<div class="toolbar full">' + calBtn(x.n + ' · ' + p.proyecto, x.fecha, 'Tarea del proyecto ' + p.proyecto + ' (' + p.cliente + ')', 'sm') + '</div>' : '') +
     (x.hechaPor ? '<p class="formnote full">Hecha por ' + esc(x.hechaPor) + (x.hechaAt ? ' el ' + fmt(x.hechaAt.slice(0, 10)) : '') + '</p>' : '') +
@@ -695,7 +696,8 @@ async function guardarTareaPanel() {
   const n = ($('#tk-n').value || '').trim(); if (!n) { toast('Escribí la tarea'); $('#tk-n').focus(); return; }
   const base = f.i >= 0 ? etapasDe(p)[f.i] : {};
   const hv = $('#tk-horas') ? $('#tk-horas').value.trim() : (base.horas ?? '');
-  const x = conEst({ ...base, n, resp: $('#tk-resp').value, fecha: $('#tk-fecha').value, prio: $('#tk-prio').value, nota: $('#tk-nota').value.trim(), etapa: $('#tk-etapa') ? $('#tk-etapa').value : (base.etapa || ''), horas: hv === '' ? '' : Math.max(0, +String(hv).replace(',', '.') || 0) }, $('#tk-est').value);
+  const pv = (document.querySelector('input[name="tk-portal"]:checked') || {}).value || 'ver';
+  const x = conEst({ ...base, ...(base.portal !== undefined || pv !== 'ver' ? { portal: pv } : {}), n, resp: $('#tk-resp').value, fecha: $('#tk-fecha').value, prio: $('#tk-prio').value, nota: $('#tk-nota').value.trim(), etapa: $('#tk-etapa') ? $('#tk-etapa').value : (base.etapa || ''), horas: hv === '' ? '' : Math.max(0, +String(hv).replace(',', '.') || 0) }, $('#tk-est').value);
   const next = f.i >= 0 ? etapasDe(p).map((y, i) => i === f.i ? x : y) : [...etapasDe(p), x];
   closeForm(); S.tkf = null;
   await guardarTareas(p, next, f.i >= 0 ? 'Tarea guardada' : 'Tarea agregada');
@@ -714,7 +716,7 @@ function tkRow(p, x, i, can) {
   const pid = esc(p._id), ps = personas(), k = estTk(x);
   return '<div class="tkr' + (x.ok ? ' done' : '') + '" data-tki="' + i + '">' +
     '<input type="checkbox" class="tk-ok" aria-label="Tarea hecha" data-etoggle="' + pid + '" data-i="' + i + '"' + (x.ok ? ' checked' : '') + (can ? '' : ' disabled') + '>' +
-    '<button class="tkr-n" data-act="tkAbrir" data-id="' + pid + '" data-i="' + i + '"><span>' + esc(x.n) + '</span>' + (x.nota ? '<i class="tkr-nota" title="Tiene notas">≡</i>' : '') + '</button>' +
+    '<button class="tkr-n" data-act="tkAbrir" data-id="' + pid + '" data-i="' + i + '"><span>' + esc(x.n) + '</span>' + (x.portal === 'hace' ? '<i class="tk-pb cli" title="La hace el cliente (la ve en su portal)">Cliente</i>' : x.portal === 'oculta' ? '<i class="tk-pb" title="No la ve el cliente en el portal">Interna</i>' : '') + (x.nota ? '<i class="tkr-nota" title="Tiene notas">≡</i>' : '') + '</button>' +
     '<span class="tk-who">' + (x.resp ? av(x.resp, fotoDe(x.resp)) : '<span class="av vacio" title="Sin asignar">+</span>') +
     (can ? '<select aria-label="Quién la hace" data-tk="resp" data-pid="' + pid + '" data-i="' + i + '">' + opt('', 'Sin asignar', x.resp || '') + [...new Set([...ps, x.resp].filter(Boolean))].map(a => opt(a, a, x.resp || '')).join('') + '</select>' : '<span>' + esc(x.resp || '—') + '</span>') + '</span>' +
     (can ? '<label class="tk-date">' + (fechaTarea(x.fecha, x.ok) || '<span class="tk-f vacia">Fecha</span>') + '<input type="date" aria-label="Para cuándo" value="' + esc(x.fecha || '') + '" data-tk="fecha" data-pid="' + pid + '" data-i="' + i + '"></label>' : (fechaTarea(x.fecha, x.ok) || '<span class="muted">—</span>')) +

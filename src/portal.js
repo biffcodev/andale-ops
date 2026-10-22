@@ -89,7 +89,7 @@ function render() {
     (S.clientes.length > 1 ? '<select class="in sm" id="po-cl" aria-label="Empresa">' + S.clientes.map(x => '<option value="' + esc(x.cliente_id) + '"' + (x.cliente_id === S.c.cliente_id ? ' selected' : '') + '>' + esc(x.cliente) + '</option>').join('') + '</select>' : '<b>' + esc(c.nombre) + '</b>');
   $('#me').textContent = (S.d.yo && S.d.yo.nombre) || S.yo.email;
   const tabs = TABS(); if (!tabs.some(t => t[0] === S.tab)) S.tab = 'inicio';
-  const nAprobar = (S.d.meses || []).reduce((a, m) => a + m.piezas.filter(z => z.estado === 'Para el cliente').length, 0) + (S.d.proyectos || []).reduce((a, p) => a + p.entregas.filter(e => e.estado === 'Enviada').length, 0);
+  const nAprobar = (S.d.meses || []).reduce((a, m) => a + m.piezas.filter(z => z.estado === 'Para el cliente').length, 0) + (S.d.proyectos || []).reduce((a, p) => a + p.entregas.filter(e => e.estado === 'Enviada').length + tuyas(p).length, 0);
   $('#tabs').innerHTML = tabs.map(([k, l]) => '<button data-act="tab" data-t="' + k + '"' + (S.tab === k ? ' aria-current="page"' : '') + '>' + l + (k === 'inicio' && nAprobar ? ' <span class="po-n">' + nAprobar + '</span>' : '') + '</button>').join('');
   const V = { inicio: vInicio, redes: vRedes, proyectos: vProyectos, tickets: vTickets, informes: vInformes, cuenta: vCuenta }[S.tab];
   $('#view').innerHTML = V();
@@ -101,9 +101,11 @@ function vInicio() {
   const entregas = (S.d.proyectos || []).flatMap(p => p.entregas.filter(e => e.estado === 'Enviada').map(e => ({ e, p })));
   const tks = (S.d.pedidos || []).filter(t => !['Hecho', 'Descartado'].includes(t.estado));
   const inf = (S.d.informes || [])[0];
-  let h = '<section class="po-hero"><h1>Hola' + (nom ? ', ' + esc(nom) : '') + '</h1><p>' + (piezas.length || entregas.length ? 'Tenés cosas para revisar. Aprobá o pedí cambios desde acá: nos llega al instante.' : 'Está todo al día. Si necesitás algo, cargá un pedido y lo vemos.') + '</p>' +
+  let h = '<section class="po-hero"><h1>Hola' + (nom ? ', ' + esc(nom) : '') + '</h1><p>' + (piezas.length || entregas.length || (S.d.proyectos || []).some(p => tuyas(p).length) ? 'Tenés cosas para revisar. Aprobá o pedí cambios desde acá: nos llega al instante.' : 'Está todo al día. Si necesitás algo, cargá un pedido y lo vemos.') + '</p>' +
     '<div class="po-hq"><button class="btn primary" data-act="tab" data-t="tickets">+ Nuevo pedido</button>' + (S.d.meses.length ? '<button class="btn" data-act="tab" data-t="redes">Ver las redes del mes</button>' : '') + '</div></section>';
   if (piezas.length) h += '<section class="po-sec"><div class="po-sh"><h2>Para aprobar en redes</h2><button class="btn ghost sm" data-act="tab" data-t="redes">Ver todo →</button></div><div class="po-mini">' + piezas.slice(0, 6).map(({ z }) => miniPieza(z)).join('') + '</div></section>';
+  const mias = (S.d.proyectos || []).flatMap(p => tuyas(p).map(t => ({ t, p })));
+  if (mias.length) h += '<section class="po-sec"><div class="po-sh"><h2>Te toca a vos</h2></div>' + mias.map(({ t, p }) => '<button class="po-row" data-act="irProy" data-id="' + esc(p.id) + '"><b>' + esc(t.titulo) + '</b><span>' + esc(p.nombre) + (t.fecha ? ' · para el ' + fecha(t.fecha) : '') + '</span></button>').join('') + '</section>';
   if (entregas.length) h += '<section class="po-sec"><div class="po-sh"><h2>Entregas para revisar</h2></div>' + entregas.map(({ e, p }) => '<button class="po-row" data-act="irProy" data-id="' + esc(p.id) + '"><b>' + esc(p.nombre) + ' · ' + esc(e.titulo) + '</b><span>Enviada el ' + fecha(e.enviada_at) + '</span></button>').join('') + '</section>';
   if ((S.d.proyectos || []).length) h += '<section class="po-sec"><div class="po-sh"><h2>Proyectos</h2></div><div class="po-pcs">' + S.d.proyectos.map(p => proyCard(p)).join('') + '</div></section>';
   if (tks.length) h += '<section class="po-sec"><div class="po-sh"><h2>Tus pedidos abiertos</h2><button class="btn ghost sm" data-act="tab" data-t="tickets">Ver todos →</button></div>' + tks.slice(0, 5).map(t => '<div class="po-row"><b>#' + t.numero + ' · ' + esc(t.titulo) + '</b><span>' + esc(t.estado) + '</span></div>').join('') + '</section>';
@@ -120,7 +122,8 @@ function miniPieza(z) {
 }
 function proyCard(p) {
   const pct = p.avance == null ? null : +p.avance;
-  return '<button class="po-pc" data-act="irProy" data-id="' + esc(p.id) + '"><span class="po-pct">' + esc(p.tipo || 'Proyecto') + '</span><b>' + esc(p.nombre) + '</b>' + (pct != null ? '<span class="po-bar"><i style="width:' + pct + '%"></i></span><span class="muted">' + pct + '% · ' + esc(p.etapa || p.estado) + '</span>' : '<span class="muted">' + esc(p.estado) + '</span>') + (p.entrega ? '<span class="muted">Entrega estimada: ' + fecha(p.entrega) + '</span>' : '') + '</button>';
+  return '<button class="po-pc" data-act="irProy" data-id="' + esc(p.id) + '"><span class="po-pct">' + esc(p.tipo || 'Proyecto') + '</span><b>' + esc(p.nombre) + '</b>' + (pct != null ? '<span class="po-bar"><i style="width:' + pct + '%"></i></span><span class="muted">' + pct + '% · ' + esc(p.etapa || p.estado) + '</span>' : '<span class="muted">' + esc(p.estado) + '</span>') + (() => { const h = p.hoja || [], t = h.find(x => !x.hecha && x.en_curso) || h.find(x => !x.hecha); return t ? '<span class="po-sig">' + (t.en_curso ? 'Ahora: ' : 'Lo que sigue: ') + esc(t.titulo) + '</span>' : ''; })() +
+    (p.entrega ? '<span class="muted">Entrega estimada: ' + fecha(p.entrega) + '</span>' : '') + (tuyas(p).length ? '<span class="pzst" style="--c:var(--pz-cliente)">' + tuyas(p).length + ' te ' + (tuyas(p).length === 1 ? 'toca' : 'tocan') + ' a vos</span>' : '') + '</button>';
 }
 
 /* ---------- Redes: revisar de a una, el feed y el calendario; lo que pediste y qué se hizo, siempre a la vista ---------- */
@@ -206,13 +209,40 @@ function hiloHtml(entidad, id, coms, etiqueta) {
     coms.map(c => '<div class="po-c' + (c.de_cliente ? ' yo' : '') + '"><b>' + esc(c.autor || (c.de_cliente ? 'Vos' : 'àndale')) + '</b><span>' + esc(c.texto) + '</span><small>' + esc(fecha(c.created_at)) + '</small></div>').join('') +
     '<form class="po-cf" data-com="' + esc(entidad) + '" data-id="' + esc(id) + '"><textarea class="in" rows="2" placeholder="Escribí un comentario para el equipo" aria-label="Comentario"></textarea><button class="btn sm">Enviar</button></form></details>';
 }
+// Proyectos: en qué estamos (la hoja de ruta, sin lo interno), lo que le toca al cliente, entregas, sitio y la charla con el equipo.
+const tuyas = p => (p.hoja || []).filter(t => t.hace && !t.hecha);
+const diasA = f => Math.round((new Date(f + 'T12:00') - new Date(new Date().toISOString().slice(0, 10) + 'T12:00')) / 864e5);
+function fechasProy(p) {
+  const d = p.entrega ? diasA(p.entrega) : null;
+  const falta = d == null ? '' : d > 1 ? 'faltan ' + d + ' días' : d === 1 ? 'es mañana' : d === 0 ? 'es hoy' : '';
+  return [p.inicio ? 'Empezamos el ' + fecha(p.inicio) : '', p.entrega ? 'Entrega estimada: ' + fecha(p.entrega) + (falta ? ' (' + falta + ')' : '') : ''].filter(Boolean).join('  ·  ');
+}
+function hojaHtml(p) {
+  const h = p.hoja || []; if (!h.length) return '';
+  const ahora = h.some(t => !t.hecha && t.en_curso), sig = ahora ? null : h.find(t => !t.hecha);
+  return '<h3>En qué estamos</h3><ol class="po-hoja">' + h.map(t => {
+    const k = t.hecha ? 'ok' : t.en_curso ? 'ahora' : t === sig ? 'sig' : '';
+    const sub = t.hecha ? 'Hecho' + (t.hecha_at ? ' · ' + fecha(t.hecha_at) : '') : t.en_curso ? 'En esto estamos' + (t.fecha ? ' · para el ' + fecha(t.fecha) : '') : t === sig ? 'Lo que sigue' + (t.fecha ? ' · ' + fecha(t.fecha) : '') : t.fecha ? fecha(t.fecha) : '';
+    return '<li class="' + k + '"><i aria-hidden="true">' + (t.hecha ? '✓' : '') + '</i><span><b>' + esc(t.titulo) + (t.hace ? ' <em>te toca a vos</em>' : '') + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></li>';
+  }).join('') + '</ol>';
+}
+function tuyasHtml(p) {
+  const ts = tuyas(p); if (!ts.length) return '';
+  const coms = id => (S.d.comentarios || []).filter(c => c.entidad === 'tarea' && c.entidad_id === id);
+  return '<div class="po-tuyo"><h3>Te toca a vos</h3><p class="muted">Cuando lo tengas, tildalo: nos llega el aviso.</p>' + ts.map(t =>
+    '<div class="po-tk"><label class="chk"><input type="checkbox" data-tarea="' + esc(t.id) + '"> <span><b>' + esc(t.titulo) + '</b>' + (t.fecha ? '<small>' + (diasA(t.fecha) < 0 ? 'Era para el ' : 'Para el ') + fecha(t.fecha) + '</small>' : '') + '</span></label>' +
+    hiloHtml('tarea', t.id, coms(t.id), 'Escribir algo sobre esto') + '</div>').join('') + '</div>';
+}
 function vProyectos() {
   const ps = S.d.proyectos || [];
+  if (!ps.length) return '<section class="po-sec"><h1>Proyectos</h1><p class="muted">Todavía no hay proyectos en curso.</p></section>';
   return '<section class="po-sec"><h1>Proyectos</h1>' + ps.map(p => {
-    const s = p.sitio;
-    return '<article class="po-proy" id="py-' + esc(p.id) + '"><div class="po-ph2"><div><span class="po-pct">' + esc(p.tipo || 'Proyecto') + '</span><h2>' + esc(p.nombre) + '</h2></div>' + (p.avance != null ? '<span class="po-ring"><b>' + p.avance + '%</b><span>' + esc(p.etapa || p.estado) + '</span></span>' : '<span class="muted">' + esc(p.estado) + '</span>') + '</div>' +
-      (p.entrega ? '<p class="muted">Entrega estimada: ' + fecha(p.entrega) + '</p>' : '') +
+    const s = p.sitio, fs = fechasProy(p);
+    return '<article class="po-proy" id="py-' + esc(p.id) + '"><div class="po-ph2"><div><span class="po-pct">' + esc(p.tipo || 'Proyecto') + '</span><h2>' + esc(p.nombre) + '</h2>' + (fs ? '<p class="po-fechas">' + esc(fs) + '</p>' : '') + '</div>' + (p.avance != null ? '<span class="po-ring"><b>' + p.avance + '%</b><span>' + esc(p.etapa || p.estado) + '</span></span>' : '<span class="muted">' + esc(p.estado) + '</span>') + '</div>' +
+      (p.avance != null ? '<span class="po-bar"><i style="width:' + p.avance + '%"></i></span>' : '') +
+      tuyasHtml(p) +
       (p.entregas.length ? '<h3>Entregas</h3>' + p.entregas.map(e => entregaHtml(e)).join('') : '') +
+      hojaHtml(p) +
       (s ? sitioHtml(s) : '') + hiloHtml('proyecto', p.id, (S.d.comentarios || []).filter(c => c.entidad === 'proyecto' && c.entidad_id === p.id), 'Escribirle al equipo sobre este proyecto') + '</article>';
   }).join('') + '</section>';
 }
@@ -315,6 +345,7 @@ document.addEventListener('change', async e => {
   const t = e.target;
   if (t.id === 'po-cl') { S.c = S.clientes.find(c => c.cliente_id === t.value) || S.c; try { localStorage.setItem('po-cli', S.c.cliente_id); } catch (er) { } S.mes = null; S.archivos = {}; S.pidiendo.clear(); await cargar(); return; }
   if (t.id === 'po-mes') { S.mes = t.value; render(); pedirArchivos(); return; }
+  if (t.dataset && t.dataset.tarea) { try { check(await sb.rpc('portal_tarea', { p_id: t.dataset.tarea, p_ok: t.checked })); toast('¡Gracias! Le avisamos al equipo.'); await cargar(true); } catch (er) { toast(er.message); t.checked = !t.checked; } return; }
   if (t.dataset && t.dataset.chk) { try { check(await sb.rpc('portal_checklist', { p_sitio: t.dataset.chk, p_i: +t.dataset.i, p_ok: t.checked })); toast('Guardado'); await cargar(true); } catch (er) { toast(er.message); t.checked = !t.checked; } }
 });
 document.addEventListener('submit', async e => {
