@@ -5,8 +5,10 @@ export const ESTADOS_PIEZA = ['Idea', 'En diseño', 'Revisión interna', 'Para e
 export const ESTADOS_MES = ['Planificación', 'Producción', 'Revisión interna', 'Con el cliente', 'Aprobado', 'Programado', 'Cerrado'];
 // Nombres que ve el equipo (en la base siguen guardados los de siempre).
 export const pzNombre = e => ({ 'Revisión interna': 'Lista para mandar', 'Para el cliente': 'Con el cliente', 'Cambios': 'Cambios pedidos' }[e] || e);
-export const PZ_COLOR = { 'Idea': '--s-empezar', 'En diseño': '--s-curso', 'Revisión interna': '--s-confirmar', 'Para el cliente': '--s-revision', 'Cambios': '--s-cancelado', 'Aprobada': '--s-entregado', 'Programada': '--s-presup', 'Publicada': '--s-entregado' };
-const MES_COLOR = { 'Planificación': '--s-empezar', 'Producción': '--s-curso', 'Revisión interna': '--s-confirmar', 'Con el cliente': '--s-revision', 'Aprobado': '--s-entregado', 'Programado': '--s-presup', 'Cerrado': '--s-pausado' };
+// Colores propios de los estados de una pieza (no se comparten con los de proyectos): cada estado se distingue de un vistazo.
+export const PZ_COLOR = { 'Idea': '--pz-idea', 'En diseño': '--pz-diseno', 'Revisión interna': '--pz-lista', 'Para el cliente': '--pz-cliente', 'Cambios': '--pz-cambios', 'Aprobada': '--pz-aprobada', 'Programada': '--pz-programada', 'Publicada': '--pz-publicada' };
+const PZ_CORTO = { 'Idea': 'Idea', 'En diseño': 'Diseño', 'Revisión interna': 'Lista', 'Para el cliente': 'Cliente', 'Cambios': 'Cambios', 'Aprobada': 'Aprobada', 'Programada': 'Programada', 'Publicada': 'Publicada' };
+const MES_COLOR = { 'Planificación': '--pz-idea', 'Producción': '--pz-diseno', 'Revisión interna': '--pz-lista', 'Con el cliente': '--pz-cliente', 'Aprobado': '--pz-aprobada', 'Programado': '--pz-programada', 'Cerrado': '--s-pausado' };
 const REDES = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X'];
 const FORMATOS_DEF = ['Reels', 'Posts', 'Historias', 'Carruseles'];
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
@@ -202,7 +204,7 @@ export function initRedes(ctx) {
         const ps = piezas(m._id), n = ps ? enPlan(ps).filter(z => !z.extra).length : null, nx = ps ? enPlan(ps).filter(z => z.extra).length : 0, plan = Object.values(m.plan || {}).reduce((a, x) => a + (+x || 0), 0);
         const ap = ps ? ps.filter(z => z.estado === 'Para el cliente').length : 0, ca = ps ? ps.filter(z => z.estado === 'Cambios').length : 0;
         return '<tr class="click" data-act="rmAbrir" data-id="' + esc(m._id) + '"><td class="name"><span class="who1">' + av(c, cli.avatar, 'sq') + esc(c) + '</span></td><td>' + etapaPill(m) + '</td><td>' + (m.resp ? esc(m.resp) : '<span class="muted">—</span>') + '</td>' +
-          '<td class="n num">' + (n == null ? '…' : n + (plan ? ' / ' + plan : '') + (nx ? ' <span class="rm-xn" title="Piezas extra, fuera del plan">+' + nx + ' extra' + (nx > 1 ? 's' : '') + '</span>' : '')) + '</td><td class="n">' + (ap ? '<span class="pzst" style="--c:var(--s-revision)">' + ap + ' a aprobar</span>' : '') + (ca ? ' <span class="pzst" style="--c:var(--s-cancelado)">' + ca + (ca > 1 ? ' cambios' : ' cambio') + '</span>' : '') + (!ap && !ca ? '<span class="muted">—</span>' : '') + '</td><td class="r">' + (m.visible ? '<span class="muted" title="El cliente lo ve en el portal">En el portal</span>' : '') + '</td></tr>'; };
+          '<td class="n num">' + (n == null ? '…' : n + (plan ? ' / ' + plan : '') + (nx ? ' <span class="rm-xn" title="Piezas extra, fuera del plan">+' + nx + ' extra' + (nx > 1 ? 's' : '') + '</span>' : '')) + '</td><td class="n">' + (ap ? '<span class="pzst" style="--c:var(--pz-cliente)">' + ap + ' a aprobar</span>' : '') + (ca ? ' <span class="pzst" style="--c:var(--pz-cambios)">' + ca + (ca > 1 ? ' cambios' : ' cambio') + '</span>' : '') + (!ap && !ca ? '<span class="muted">—</span>' : '') + '</td><td class="r">' + (m.visible ? '<span class="muted" title="El cliente lo ve en el portal">En el portal</span>' : '') + '</td></tr>'; };
       return h + '<section class="sheet"><div class="tbl"><table><thead><tr><th>Cliente</th><th>Estado</th><th>Responsable</th><th class="n">Piezas</th><th class="n">Pendiente</th><th></th></tr></thead><tbody>' + vis.map(fila).join('') + '</tbody></table></div><div class="count num">' + vis.length + ' clientes</div></section>';
     }
     h += '<div class="rm-cards">' + vis.map(c => card(c, mesCliente(c, st.mes))).join('') + '</div>';
@@ -228,7 +230,7 @@ export function initRedes(ctx) {
     const ap = ps ? ps.filter(z => z.estado === 'Para el cliente').length : 0, ca = ps ? ps.filter(z => z.estado === 'Cambios').length : 0;
     return '<button class="rm-card" data-act="rmAbrir" data-id="' + esc(m._id) + '"><div class="rm-ch">' + av(c, cli.avatar, 'sq') + '<div><b>' + esc(c) + '</b><span class="muted">' + (m.resp ? esc(m.resp) : 'Sin responsable') + '</span></div>' + etapaPill(m) + '</div>' + (ctx.servChips ? ctx.servChips(c) : '') +
       (ps ? barras(m, ps) : '<p class="muted">Cargando…</p>') +
-      '<div class="rm-cf">' + (ap ? '<span class="pzst" style="--c:var(--s-revision)">' + ap + ' para aprobar</span>' : '') + (ca ? '<span class="pzst" style="--c:var(--s-cancelado)">' + ca + ' con cambios</span>' : '') + (m.visible ? '<span class="rm-vis" title="El cliente lo ve en el portal">👁 En el portal</span>' : '') + '</div></button>';
+      '<div class="rm-cf">' + (ap ? '<span class="pzst" style="--c:var(--pz-cliente)">' + ap + ' para aprobar</span>' : '') + (ca ? '<span class="pzst" style="--c:var(--pz-cambios)">' + ca + ' con cambios</span>' : '') + (m.visible ? '<span class="rm-vis" title="El cliente lo ve en el portal">👁 En el portal</span>' : '') + '</div></button>';
   }
 
   /* ---------- Un mes ---------- */
@@ -347,7 +349,7 @@ export function initRedes(ctx) {
       const agrupar = lista => { const gs = []; lista.forEach(z => { const k = semDe(z), g = gs[gs.length - 1]; if (g && g.k === k) g.zs.push(z); else gs.push({ k, zs: [z] }); }); return gs; };
       const feedV = vis.filter(z => !esHistoria(z)), histV = vis.filter(esHistoria);
       const carta = z => { const a = (z.arte || [])[0], t = a ? st.thumbs.get(a.path) : '';
-        return '<article class="rm-pc' + (sel.has(z._id) ? ' sel' : '') + '" style="--fc:' + fmtColor(z.formato) + '">' +
+        return '<article class="rm-pc' + (sel.has(z._id) ? ' sel' : '') + '" style="--fc:' + fmtColor(z.formato) + ';--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')">' + '<span class="rm-pc-est">' + esc(pzNombre(z.estado)) + '</span>' +
           '<button class="rm-pc-a' + (t ? '' : ' ph') + '" data-act="rmPieza" data-id="' + esc(z._id) + '" aria-label="Abrir ' + esc(z.formato + ' ' + (z.tema || '')) + '">' + (t ? '<img src="' + esc(t) + '" alt="">' : '<span class="rm-pc-ph"><b>' + esc(z.formato) + '</b>' + (z.contenido ? '<span>' + esc(z.contenido.split('\n')[0].replace(/^[^:]{1,20}:\s*/, '')) + '</span>' : '') + '</span>') + '</button>' +
           (can ? '<input type="checkbox" class="rm-pc-sel" data-rmsel="' + esc(z._id) + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar">' : '') +
           '<div class="rm-pc-b"><div class="rm-pc-m">' + (z.fecha ? '<span class="rm-pc-d">' + esc(diaDe(z)) + (z.hora ? ' · ' + esc(z.hora) : '') + '</span>' : '<span class="rm-pc-d muted sf">Sin fecha</span>') + listoCtl(m, z, can) + '</div>' + tags(z, null) +
@@ -415,17 +417,23 @@ export function initRedes(ctx) {
       data.dropbox({ accion: 'miniaturas', paths: lote }).then(r => { Object.entries(r.miniaturas || {}).forEach(([p, u]) => st.thumbs.set(p, u)); lote.forEach(p => { if (!st.thumbs.has(p)) st.thumbs.set(p, ''); }); render(); }, () => {});
     }
   }
+  // Calendario: cada pieza con el color de su estado (franja, fondo y etiqueta) y arriba la leyenda con cuántas hay de cada uno.
+  const calPz = z => '<button class="rm-cp" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ');--fc:' + fmtColor(z.formato) + '" data-act="rmPieza" data-id="' + esc(z._id) + '" title="' + esc(pzNombre(z.estado)) + '"><span class="rm-cph"><b>' + esc((z.hora ? z.hora + ' · ' : '') + z.formato) + '</b><i class="rm-cpe">' + esc(PZ_CORTO[z.estado] || z.estado) + '</i></span><span class="rm-cpt">' + esc(z.tema || 'Sin tema') + '</span></button>';
+  function leyendaEstados(ps) {
+    const n = e => ps.filter(z => z.estado === e).length;
+    return '<div class="rm-ley" role="list" aria-label="Estados">' + ESTADOS_PIEZA.filter(e => n(e)).map(e => '<span class="rm-leyi" role="listitem" style="--c:var(' + PZ_COLOR[e] + ')"><i></i>' + esc(pzNombre(e)) + ' <b>' + n(e) + '</b></span>').join('') + '</div>';
+  }
   function calendario(m, ps) {
     const [y, mm] = m.mes.split('-').map(Number), first = new Date(y, mm - 1, 1), off = (first.getDay() + 6) % 7, n = diasMes(m.mes);
     let cells = '';
     for (let i = 0; i < off; i++) cells += '<div class="rm-cd vacia"></div>';
     for (let d = 1; d <= n; d++) {
       const f = fechaMes(m.mes, d), del = ps.filter(z => z.fecha === f).sort((a, b) => (a.hora || '').localeCompare(b.hora || ''));
-      cells += '<div class="rm-cd' + (f === today() ? ' hoy' : '') + '"><span class="rm-cdn">' + d + '</span>' + del.map(z => '<button class="rm-cp" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ');--fc:' + fmtColor(z.formato) + '" data-act="rmPieza" data-id="' + esc(z._id) + '"><b>' + esc((z.hora ? z.hora + ' · ' : '') + z.formato) + '</b><span>' + esc(z.tema || 'Sin tema') + '</span></button>').join('') + '</div>';
+      cells += '<div class="rm-cd' + (f === today() ? ' hoy' : '') + '"><span class="rm-cdn">' + d + '</span>' + del.map(calPz).join('') + '</div>';
     }
     const sin = ps.filter(z => !z.fecha);
-    return '<section class="sheet"><div class="sheet-b"><div class="rm-cal"><div class="rm-dow">' + ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => '<span>' + x + '</span>').join('') + '</div><div class="rm-grid">' + cells + '</div></div>' +
-      (sin.length ? '<p class="muted" style="margin:12px 0 6px">Sin fecha (' + sin.length + ')</p><div class="rm-sinf">' + sin.map(z => '<button class="rm-cp" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ');--fc:' + fmtColor(z.formato) + '" data-act="rmPieza" data-id="' + esc(z._id) + '"><b>' + esc(z.formato) + '</b><span>' + esc(z.tema || 'Sin tema') + '</span></button>').join('') + '</div>' : '') + '</div></section>';
+    return '<section class="sheet"><div class="sheet-b">' + (ps.length ? leyendaEstados(ps) : '') + '<div class="rm-cal"><div class="rm-dow">' + ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => '<span>' + x + '</span>').join('') + '</div><div class="rm-grid">' + cells + '</div></div>' +
+      (sin.length ? '<p class="muted" style="margin:12px 0 6px">Sin fecha (' + sin.length + ')</p><div class="rm-sinf">' + sin.map(calPz).join('') + '</div>' : '') + '</div></section>';
   }
   function feed(m, ps) {
     const pubs = ps.filter(z => !/histori/i.test(z.formato)).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.hora || '').localeCompare(a.hora || ''));
@@ -580,7 +588,7 @@ export function initRedes(ctx) {
     { mes: 'Aprobado', pz: 'Aprobada', n: 'Aprobado', fin: true }];
   const PROCESO = ['Idea', 'En diseño', 'Revisión interna'], APROB = ['Aprobada', 'Programada', 'Publicada'];
   const grupoDe = e => PROCESO.includes(e) ? 'proceso' : e === 'Para el cliente' ? 'cliente' : e === 'Cambios' ? 'cambios' : e === 'Publicada' ? 'publicada' : 'aprobada';
-  const GRUPOS = [['proceso', 'En proceso', '--s-curso'], ['cliente', 'Con el cliente', '--s-revision'], ['cambios', 'Cambios pedidos', '--s-cancelado'], ['aprobada', 'Aprobadas', '--s-entregado'], ['publicada', 'Publicadas', '--s-presup']];
+  const GRUPOS = [['proceso', 'En proceso', '--pz-diseno'], ['cliente', 'Con el cliente', '--pz-cliente'], ['cambios', 'Cambios pedidos', '--pz-cambios'], ['aprobada', 'Aprobadas', '--pz-aprobada'], ['publicada', 'Publicadas', '--pz-publicada']];
   const etapaDe = m => {
     const ps = piezas(m._id);
     if (ps && ps.length) { if (ps.every(z => APROB.includes(z.estado))) return ETAPAS[2]; if (m.visible || ps.some(z => z.estado === 'Para el cliente' || z.estado === 'Cambios')) return ETAPAS[1]; return ETAPAS[0]; }
@@ -615,8 +623,8 @@ export function initRedes(ctx) {
     const id = esc(z._id), g = grupoDe(z.estado);
     if (g === 'proceso') { const k = PROCESO.indexOf(z.estado);
       return '<span class="rm-step" role="group" aria-label="Avance de la pieza">' + [['Idea', 'Idea'], ['En diseño', 'Diseño'], ['Revisión interna', 'Lista']].map(([e, l], i) => can ? '<button type="button" class="' + (i < k ? 'ok' : i === k ? 'on' : '') + '" data-act="rmEstado" data-id="' + id + '" data-e="' + esc(e) + '"' + (i === k ? ' aria-pressed="true"' : '') + ' title="' + (i === 2 ? 'Lista para mandar al cliente' : 'Pasar a ' + esc(l)) + '">' + (i < k || (i === 2 && k === 2) ? '✓ ' : '') + l + '</button>' : '<span class="' + (i < k ? 'ok' : i === k ? 'on' : '') + '">' + l + '</span>').join('') + '</span>'; }
-    if (g === 'cliente') return '<span class="rm-lc"><span class="pzst" style="--c:var(--s-revision)">Con el cliente</span>' + (can ? '<button class="rm-ok" data-act="rmEstado" data-id="' + id + '" data-e="Aprobada" title="El cliente la aprobó por otro medio (WhatsApp, reunión…)">Aprobó</button>' : '') + '</span>';
-    if (g === 'cambios') return '<span class="rm-lc"><span class="pzst" style="--c:var(--s-cancelado)">Cambios pedidos</span>' + (can ? '<button class="rm-ok" data-act="rmReenviarId" data-id="' + id + '" title="Con los cambios hechos, vuelve al cliente">Mandar de nuevo</button>' : '') + '</span>';
+    if (g === 'cliente') return '<span class="rm-lc"><span class="pzst" style="--c:var(--pz-cliente)">Con el cliente</span>' + (can ? '<button class="rm-ok" data-act="rmEstado" data-id="' + id + '" data-e="Aprobada" title="El cliente la aprobó por otro medio (WhatsApp, reunión…)">Aprobó</button>' : '') + '</span>';
+    if (g === 'cambios') return '<span class="rm-lc"><span class="pzst" style="--c:var(--pz-cambios)">Cambios pedidos</span>' + (can ? '<button class="rm-ok" data-act="rmReenviarId" data-id="' + id + '" title="Con los cambios hechos, vuelve al cliente">Mandar de nuevo</button>' : '') + '</span>';
     return pzPill(z.estado);
   }
   // Arriba del mes: en qué está, cuántas piezas hay en cada estado (tocar uno filtra la planilla) y cuántas faltan.
@@ -1178,7 +1186,7 @@ export function initRedes(ctx) {
   /* ---------- Revisar el contenido con Mr. Piggy ---------- */
   // Revisa las piezas que ya están (tono de la marca, copys, hashtags, lo que va en la pieza) y el mes completo.
   // Devuelve una nota por pieza (bien / mejorar / rehacer) con comentarios y, si hace falta, el texto corregido para aplicar.
-  const NOTA = { bien: ['Bien', '--s-entregado'], mejorar: ['Mejorar', '--s-confirmar'], rehacer: ['Rehacer', '--s-cancelado'] };
+  const NOTA = { bien: ['Bien', '--s-entregado'], mejorar: ['Mejorar', '--s-confirmar'], rehacer: ['Rehacer', '--pz-cambios'] };
   const notaPill = n => { const x = NOTA[n] || [n, '--muted']; return '<span class="pzst" style="--c:var(' + x[1] + ')">' + esc(x[0]) + '</span>'; };
   function abrirRevision(m) {
     const ps = piezas(m._id) || [], rv = st.rev && st.rev.mesId === m._id ? st.rev : null, selN = ps.filter(z => st.sel.has(z._id)).length;

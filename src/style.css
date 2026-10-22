@@ -779,7 +779,7 @@ button.cr:hover{background:var(--surface-2);color:var(--fg)}
 @media print{.topbar{display:none!important}}
 
 /* ---------- Ficha del proyecto (gestor) ---------- */
-.pf-head{display:grid;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px 0;position:relative;overflow:hidden}
+.pf-head{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px 0;position:relative;overflow:hidden}
 .pf-head::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--t)}
 .pf-top{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
 .pf-ico{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--t) 14%,var(--surface));color:color-mix(in srgb,var(--t) 80%,var(--fg));flex:none}
@@ -2428,7 +2428,7 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 .rm-pc-t{font-size:14.5px;line-height:1.35}
 .rm-pc .rm-copy{font-size:13.5px;padding-top:0}
 .rm-pc-f{margin-top:auto;padding-top:8px;border-top:1px solid var(--line)}
-.rm-pl{display:grid;gap:0;min-width:0}
+.rm-pl{display:grid;grid-template-columns:minmax(0,1fr);gap:0;min-width:0}
 .rm-pl>.toolbar.rm-tools{margin-bottom:14px}
 .rm-pl>.bulkbar{margin-bottom:12px}
 .rm-pc-a.ph{aspect-ratio:auto;height:104px}
@@ -2959,3 +2959,34 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 .ct-h3{font-size:14px;margin:10px 0 2px}
 .ct .sx-ns>.sx-n b{font-size:clamp(20px,2.2vw,28px)}
 .ct-aviso{color:var(--fg);background:color-mix(in srgb,var(--s-confirmar) 14%,transparent);border-radius:10px;margin:0 22px 14px;padding:10px 14px}
+
+/* ===== Estados de las piezas de Redes: un color propio y distinto para cada uno ===== */
+:root{
+  --pz-idea:#8A93A3; --pz-diseno:#1CB0F6; --pz-lista:#8B5CF6; --pz-cliente:#F5A300;
+  --pz-cambios:#FF4B4B; --pz-aprobada:#4CB800; --pz-programada:#0FB5A6; --pz-publicada:#2F7D32;
+}
+/* Calendario: la pieza se tiñe con su estado (franja, fondo y etiqueta) */
+.rm-cp{border-left:4px solid var(--c)!important;background:color-mix(in srgb,var(--c) 12%,var(--surface));padding:5px 7px 6px;gap:2px}
+.rm-cp:hover{background:color-mix(in srgb,var(--c) 20%,var(--surface))}
+.rm-cph{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+.rm-cph b{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--fc,var(--muted));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.rm-cpe{flex:none;font-style:normal;font-size:10.5px;font-weight:700;line-height:1;padding:3px 6px;border-radius:99px;background:var(--c);color:#fff}
+.rm-cpt{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+/* Leyenda arriba del calendario */
+.rm-ley{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0 0 12px;font-size:13px;color:var(--muted)}
+.rm-leyi{display:inline-flex;align-items:center;gap:6px}
+.rm-leyi i{width:10px;height:10px;border-radius:3px;background:var(--c)}
+.rm-leyi b{color:var(--fg)}
+@media (max-width:760px){ .rm-cpe{font-size:10px;padding:2px 5px} }
+/* Planilla en tarjetas: franja y etiqueta del estado arriba de cada pieza */
+.rm-pc{border-top:4px solid var(--c,transparent)}
+.rm-pc-est{position:absolute;top:10px;left:10px;z-index:2;font-size:11.5px;font-weight:700;line-height:1;padding:5px 9px;border-radius:99px;background:var(--c);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18);pointer-events:none}
+@media (max-width:760px){
+  /* Encabezado del mes de Redes y de proyectos: que entre en el celular */
+  .pf-top{min-width:0}
+  .pf-tit{min-width:0;flex:1 1 0}
+  .pf-tit h1,.rm-tit{font-size:22px!important;flex-wrap:wrap;min-width:0}
+  .rm-serv{flex-wrap:wrap;min-width:0}
+  .pf-acc{width:100%;margin-left:0;justify-content:flex-start;flex-wrap:wrap}
+  .pf-acc .btn.primary{flex:1 1 auto}
+}

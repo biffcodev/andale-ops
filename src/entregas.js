@@ -11,7 +11,7 @@ const CHECK_WEB = [
   ['Textos de cada sección', 'cliente'], ['Fotos e imágenes', 'cliente'], ['Logo y marca en alta', 'cliente'], ['Acceso al dominio y hosting', 'cliente'], ['Aprobación del diseño', 'cliente'],
   ['Maquetación', 'andale'], ['Versión mobile revisada', 'andale'], ['Formularios y mails probados', 'andale'], ['SEO básico y analytics', 'andale'], ['Publicación', 'andale'],
 ];
-const EST = { Borrador: '--s-empezar', Enviada: '--s-revision', Cambios: '--s-cancelado', Aprobada: '--s-entregado' };
+const EST = { Borrador: '--s-empezar', Enviada: '--pz-cliente', Cambios: '--pz-cambios', Aprobada: '--pz-aprobada' };
 const VER = { Borrador: 'Borrador', Enviada: 'Con el cliente', Cambios: 'Pidió cambios', Aprobada: 'Aprobada' };
 
 export function initEntregas(ctx) {

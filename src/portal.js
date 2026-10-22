@@ -22,7 +22,7 @@ const fecha = d => { if (!d) return ''; const [y, m, dd] = String(d).slice(0, 10
 const corta = d => { if (!d) return ''; const x = new Date(String(d).slice(0, 10) + 'T12:00'); return x.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }); };
 const plata = (n, m) => { try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: m || 'ARS', maximumFractionDigits: 0 }).format(+n || 0); } catch (e) { return (m || '') + ' ' + n; } };
 const IMG = /\.(jpe?g|png|gif|webp|heic)$/i;
-const ESTADO_CLI = { 'Para el cliente': ['Para aprobar', '--s-revision'], 'Cambios': ['Pediste cambios', '--s-cancelado'], 'Aprobada': ['Aprobada', '--s-entregado'], 'Programada': ['Programada', '--s-presup'], 'Publicada': ['Publicada', '--s-entregado'] };
+const ESTADO_CLI = { 'Para el cliente': ['Para aprobar', '--pz-cliente'], 'Cambios': ['Pediste cambios', '--pz-cambios'], 'Aprobada': ['Aprobada', '--pz-aprobada'], 'Programada': ['Programada', '--pz-programada'], 'Publicada': ['Publicada', '--pz-publicada'] };
 const pz = e => { const [l, c] = ESTADO_CLI[e] || [e, '--muted']; return '<span class="pzst" style="--c:var(' + c + ')">' + esc(l) + '</span>'; };
 const S = { yo: null, clientes: [], c: null, d: null, tab: 'inicio', mes: null, archivos: {}, pidiendo: new Set(), vista: 'revisar', fz: null, pzId: null, busy: false, pidiendoCambio: null, feed: null, irA: null };
 
@@ -120,7 +120,7 @@ function proyCard(p) {
 }
 
 /* ---------- Redes: revisar de a una, el feed y el calendario; lo que pediste y qué se hizo, siempre a la vista ---------- */
-const GRUPOS_CLI = [['pend', 'Para revisar', '--s-revision', z => z.estado === 'Para el cliente'], ['cambios', 'Pediste cambios', '--s-cancelado', z => z.estado === 'Cambios'], ['aprob', 'Aprobadas', '--s-entregado', z => ['Aprobada', 'Programada'].includes(z.estado)], ['pub', 'Publicadas', '--s-presup', z => z.estado === 'Publicada']];
+const GRUPOS_CLI = [['pend', 'Para revisar', '--pz-cliente', z => z.estado === 'Para el cliente'], ['cambios', 'Pediste cambios', '--pz-cambios', z => z.estado === 'Cambios'], ['aprob', 'Aprobadas', '--pz-aprobada', z => ['Aprobada', 'Programada'].includes(z.estado)], ['pub', 'Publicadas', '--pz-publicada', z => z.estado === 'Publicada']];
 const grupoCli = k => GRUPOS_CLI.find(g => g[0] === k);
 const ordenPz = (a, b) => (a.fecha || '9').localeCompare(b.fecha || '9') || (a.hora || '').localeCompare(b.hora || '');
 const esVideo = p => /\.(mp4|mov|m4v|webm)$/i.test(p || '');
@@ -214,7 +214,7 @@ function vProyectos() {
 }
 function entregaHtml(e) {
   const as = arteDe(e.id), coms = (S.d.comentarios || []).filter(c => c.entidad === 'entrega' && c.entidad_id === e.id);
-  const est = { Enviada: ['Para revisar', '--s-revision'], Cambios: ['Pediste cambios', '--s-cancelado'], Aprobada: ['Aprobada', '--s-entregado'] }[e.estado] || [e.estado, '--muted'];
+  const est = { Enviada: ['Para revisar', '--pz-cliente'], Cambios: ['Pediste cambios', '--pz-cambios'], Aprobada: ['Aprobada', '--s-entregado'] }[e.estado] || [e.estado, '--muted'];
   return '<div class="po-ent"><div class="po-cm"><b>' + esc(e.tipo) + '</b> · ' + esc(e.titulo) + ' <span class="pzst" style="--c:var(' + est[1] + ')">' + esc(est[0]) + '</span></div>' +
     (e.descripcion ? '<p>' + esc(e.descripcion) + '</p>' : '') +
     ((e.links || []).length || as.length ? '<div class="po-links">' + (e.links || []).map(l => '<a class="btn sm" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.nombre || 'Ver') + ' ↗</a>').join('') + as.map(a => a.link ? '<a class="btn sm" href="' + esc(a.link) + '" target="_blank" rel="noopener">' + esc(a.nombre) + ' ↓</a>' : '').join('') + '</div>' : '') +
