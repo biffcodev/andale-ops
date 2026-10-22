@@ -3103,3 +3103,18 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 .km-seg input:checked+span{background:var(--surface);box-shadow:var(--elev);color:var(--fg)}
 .km-seg input:focus-visible+span{outline:2px solid var(--accent)}
 @media (max-width:760px){.km-s{padding:4px 14px 16px}.km-logos{grid-template-columns:repeat(2,minmax(0,1fr))}.km-cols{grid-template-columns:repeat(2,minmax(0,1fr))}.km-recs{grid-template-columns:repeat(3,minmax(0,1fr))}.km-aa{font-size:44px}}
+/* Manual online: estado, opciones con descripción y vista previa a pantalla completa */
+.km-pub{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 22px 12px;padding:10px 14px;border-radius:12px;background:color-mix(in srgb,var(--pz-aprobada) 10%,var(--surface));font-size:13.5px}
+.km-pub a{font-weight:600}
+.km-pub-d{width:8px;height:8px;border-radius:50%;background:var(--pz-aprobada);flex:none}
+.km-pub .btn{margin-left:auto}
+.km-seg2{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px}
+.km-seg2 span{text-align:left;display:grid;gap:2px;padding:9px 12px;color:var(--fg)}
+.km-seg2 span b{font-size:13.5px}
+.km-seg2 span small{font-weight:400;color:var(--muted);font-size:12px;line-height:1.35}
+#mm-prev{position:fixed;inset:0;z-index:200;background:#fff;display:flex;flex-direction:column}
+#mm-prev[hidden]{display:none}
+.mm-prev-b{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;background:#141414;color:#fff;font-size:13.5px;font-weight:600}
+.mm-prev-c{flex:1;overflow:auto}
+.mm-prev-c .mm{min-height:auto}
+@media (max-width:760px){.km-pub{margin:-4px 14px 12px}.km-seg2{grid-template-columns:1fr}}
