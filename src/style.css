@@ -2992,3 +2992,10 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
   .pf-acc{width:100%;margin-left:0;justify-content:flex-start;flex-wrap:wrap}
   .pf-acc .btn.primary{flex:1 1 auto}
 }
+/* Avance del plan por formato: nombre y número en la misma línea, la barra abajo; cada formato es un bloque separado */
+.rm-plan .rm-fs{gap:12px 32px}
+.rm-f{grid-template-columns:minmax(0,1fr) auto!important;grid-template-areas:"l n" "b b";gap:4px 10px;align-items:baseline}
+.rm-fl{grid-area:l;color:var(--fg);font-weight:600;font-size:13px}
+.rm-fn{grid-area:n;text-align:right;color:var(--muted)}
+.rm-fn b{color:var(--fg)}
+.rm-fb{grid-area:b;height:6px;background:color-mix(in srgb,var(--fg) 9%,var(--surface))}
