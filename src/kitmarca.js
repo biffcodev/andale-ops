@@ -10,7 +10,7 @@ import { perfilRed, CEL_CSS } from './celular.js';
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ROLES_COLOR = ['Principal', 'Secundario', 'Acento', 'Fondo', 'Texto'];
 // Categorías de los archivos del kit (las aplicaciones de la marca)
-export const CATS = [['fotos', 'Fotos'], ['iconos', 'Íconos'], ['papeleria', 'Papelería y documentos'], ['redes', 'Perfiles y portadas de redes'], ['videos', 'Videos'], ['plantillas', 'Plantillas'], ['texturas', 'Patrones y texturas'], ['graficos', 'Ilustraciones y stickers'], ['otros', 'Otros']];
+export const CATS = [['fotos', 'Fotos'], ['mockups', 'Aplicaciones de marca'], ['iconos', 'Íconos'], ['papeleria', 'Papelería y documentos'], ['redes', 'Perfiles y portadas de redes'], ['videos', 'Videos'], ['plantillas', 'Plantillas'], ['texturas', 'Patrones y texturas'], ['graficos', 'Ilustraciones y stickers'], ['otros', 'Otros']];
 // Redes: a qué red va cada perfil, portada o plantilla, y para qué se usa
 export const REDES_KIT = ['instagram', 'facebook', 'linkedin', 'tiktok', 'youtube', 'x'];
 export const redDe = x => x.red || (REDES_KIT.find(k => new RegExp(k === 'x' ? '\\b(twitter|x)\\b' : k, 'i').test(x.n || '')) || '');
@@ -20,6 +20,8 @@ export const catDe = r => r.cat || (/^video\//.test(r.tipo || '') || /\.(mp4|mov
 const ROLES_TIPO = ['Títulos', 'Subtítulos', 'Textos', 'Destacados'];
 const PESOS = [['300', 'Light'], ['400', 'Regular'], ['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extrabold'], ['900', 'Black']];
 const FONDOS = ['claro', 'oscuro', 'marca'];
+// Fuente variable (un solo archivo con todos los pesos)
+export const esVF = t => /(^|[-_ ])(VF|variable)([-_. ]|$)/i.test(String(t.n || '') + ' ' + String(t.url || '').split('/').pop());
 const esImg = (tipo, url) => /^image\//.test(tipo || '') || /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(url || '');
 const ext = u => ((String(u || '').split('?')[0].match(/\.([a-z0-9]{2,5})$/i) || [])[1] || '').toUpperCase();
 const hexOk = h => /^#[0-9a-f]{6}$/i.test(h || '');
@@ -83,7 +85,7 @@ export function initKit(ctx) {
   function cargarFuentes(kit) {
     kit.tipos.forEach(t => {
       const k = t.url || t.familia; if (!k || st.cargadas.has(k)) return; st.cargadas.add(k);
-      if (t.url && window.FontFace) new FontFace('km-' + t.id, 'url(' + t.url + ')').load().then(f => { document.fonts.add(f); }, () => {});
+      if (t.url && window.FontFace) new FontFace('km-' + t.id, 'url(' + t.url + ')', esVF(t) ? { weight: '100 900' } : {}).load().then(f => { document.fonts.add(f); }, () => {});
       else if (t.familia) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(t.familia).replace(/%20/g, '+') + ':wght@300;400;500;600;700;800;900&display=swap'; document.head.appendChild(l); }
     });
   }
@@ -231,12 +233,16 @@ export function initKit(ctx) {
     ['concepto', 'Concepto', 'La idea que ordena todo, en pocas palabras. Ej.: Very cordobés', 2],
     ['punto', 'Punto de partida', 'De dónde viene la marca: su origen y qué faltaba ordenar.'],
     ['proposito', 'Propósito', 'Para qué existe, más allá de lo que vende.'],
+    ['mision', 'Misión', 'Qué hace todos los días, para quién y cómo.'],
+    ['vision', 'Visión', 'Hacia dónde va: qué quiere ser.'],
     ['posicionamiento', 'Posicionamiento', 'Dónde se para frente a las otras opciones.'],
+    ['narrativa', 'Narrativa', 'La historia que cuenta la marca, desde dónde habla.'],
     ['promesa', 'La promesa', 'Lo que la gente puede esperar siempre.', 2],
     ['territorio', 'Territorio', 'El mundo del que habla y en el que se mueve.'],
     ['publico', 'Para quién', 'Quiénes son, qué buscan, qué preguntan antes de comprar.'],
     ['personalidad', 'Personalidad', 'Si la marca fuera una persona, ¿cómo sería?'],
     ['rasgos', 'Rasgos (uno por renglón: Nombre: descripción)', 'Cercana: habla como habla la gente.\nConfiable: lo de ayer y lo de mañana responden al mismo criterio.', 4],
+    ['valores', 'Valores (uno por renglón: Nombre: descripción)', 'Compromiso: está en cada entrega.\nIntegridad: hace lo que dice.', 4],
     ['manifiesto', 'Manifiesto', 'El texto que la define, con su tono.', 6],
   ];
   function panelManual(c) {

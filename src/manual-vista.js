@@ -4,7 +4,7 @@
 // imágenes, aplicaciones (íconos, papelería, redes, videos, plantillas), voz y descargas.
 // Dos versiones: "completo" (la marca la hicimos nosotros) y "simple" (guía con lo que nos pasó el cliente).
 // Lo usan la página pública /m/<link>, "Ver como cliente" desde la app y la pestaña Tu marca del portal (embed).
-import { kitDeTexto, CATS, catDe, formatos, redDe, usoDe, REDES_KIT } from './kitmarca.js';
+import { kitDeTexto, CATS, catDe, formatos, redDe, usoDe, REDES_KIT, esVF } from './kitmarca.js';
 import { perfilRed, plantillaRed, tabsRedes, CEL_CSS } from './celular.js';
 import { nombreRed } from './redes-logos.js';
 import { activarVisor } from './visor.js';
@@ -66,7 +66,7 @@ function rv(html, delay) {
 // Fuentes: las subidas por archivo y las de Google Fonts (variables cuando se puede, así el peso cambia suave).
 export function cargarFuentesManual(kit) {
   (kit.tipos || []).forEach(t => {
-    if (t.url && window.FontFace) { new FontFace('mm-' + t.id, 'url(' + t.url + ')').load().then(f => document.fonts.add(f), () => {}); return; }
+    if (t.url && window.FontFace) { new FontFace('mm-' + t.id, 'url(' + t.url + ')', esVF(t) ? { weight: '100 900' } : {}).load().then(f => document.fonts.add(f), () => {}); return; }
     if (!t.familia || document.querySelector('link[data-mmf="' + t.familia + '"]')) return;
     const base = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(t.familia).replace(/%20/g, '+');
     const l = document.createElement('link'); l.rel = 'stylesheet'; l.dataset.mmf = t.familia; l.href = base + ':wght@100..900&display=swap';
@@ -91,18 +91,21 @@ export function manualHTML(d, o = {}) {
   const card = (k, v) => '<div class="mm-card"><span class="mm-k">' + k + '</span><p>' + esc(v) + '</p></div>';
   const recs = kit.recursos.map(r => ({ ...r, cat: catDe(r) }));
   const secs = []; // [id, título, html, parte]
-  const ver = (x, k) => (esImg(x.tipo, x.url) || esVid(x.tipo, x.url)) ? ' data-visor="' + esc(x.url) + '" data-n="' + esc(x.n || '') + '" data-vk="' + (k || ({ iconos: 'icono', fotos: 'foto', texturas: 'foto' })[x.cat] || 'doc') + '"' : '';
+  const ver = (x, k) => (esImg(x.tipo, x.url) || esVid(x.tipo, x.url)) ? ' data-visor="' + esc(x.url) + '" data-n="' + esc(x.n || '') + '" data-vk="' + (k || ({ iconos: 'icono', fotos: 'foto', texturas: 'foto', mockups: 'foto' })[x.cat] || 'doc') + '"' : '';
 
   // ── Estrategia: esencia y voz primero
   if (completo) {
-    const items = [['Punto de partida', man.punto], ['Propósito', man.proposito], ['Posicionamiento', man.posicionamiento], ['La promesa', man.promesa], ['Territorio', man.territorio], ['Para quién', man.publico || m.publico], ['Qué hacemos', man.punto || man.proposito ? '' : m.rubro]].filter(x => x[1]);
-    const rasgos = lineas(man.rasgos).map(x => { const [a, ...b] = x.split(':'); return [a.trim(), b.join(':').trim()]; });
-    if (man.intro || items.length || man.personalidad || rasgos.length || man.manifiesto || man.concepto) secs.push(['esencia', 'Esencia',
+    const items = [['Punto de partida', man.punto], ['Propósito', man.proposito], ['Misión', man.mision], ['Visión', man.vision], ['Posicionamiento', man.posicionamiento], ['Narrativa', man.narrativa], ['La promesa', man.promesa], ['Territorio', man.territorio], ['Para quién', man.publico || m.publico], ['Qué hacemos', man.punto || man.proposito ? '' : m.rubro]].filter(x => x[1]);
+    const par = t => lineas(t).map(x => { const [a, ...b] = x.split(':'); return [a.trim(), b.join(':').trim()]; });
+    const rasgos = par(man.rasgos), valores = par(man.valores);
+    const tarjetas = xs => '<div class="mm-rasgos">' + xs.map(([a, b], i) => rv('<div class="mm-rasgo"><b>' + esc(a) + '</b>' + (b ? '<p>' + esc(b) + '</p>' : '') + '</div>', (i % 4) * 80)).join('') + '</div>';
+    if (man.intro || items.length || man.personalidad || rasgos.length || valores.length || man.manifiesto || man.concepto) secs.push(['esencia', 'Esencia',
       (man.concepto ? rv('<div class="mm-concepto"><span class="mm-k">Concepto</span><p>' + esc(man.concepto) + '</p></div>') : '') +
       (man.intro ? rv('<p class="mm-big">' + esc(man.intro) + '</p>') : '') +
       (items.length ? '<div class="mm-est">' + items.map(([t, v], i) => rv('<div class="mm-est-i"><span class="mm-est-n">' + String(i + 1).padStart(2, '0') + '</span><h3>' + esc(t) + '</h3><p>' + esc(v) + '</p></div>', (i % 2) * 90)).join('') + '</div>' : '') +
       (man.personalidad || rasgos.length ? '<h3 class="mm-h3 rv">Personalidad</h3>' + (man.personalidad ? rv('<p class="mm-big sm">' + esc(man.personalidad) + '</p>') : '') +
-        (rasgos.length ? '<div class="mm-rasgos">' + rasgos.map(([a, b], i) => rv('<div class="mm-rasgo"><b>' + esc(a) + '</b>' + (b ? '<p>' + esc(b) + '</p>' : '') + '</div>', (i % 4) * 80)).join('') + '</div>' : '') : '') +
+        (rasgos.length ? tarjetas(rasgos) : '') : '') +
+      (valores.length ? '<h3 class="mm-h3 rv">Valores</h3>' + tarjetas(valores) : '') +
       (man.manifiesto ? rv('<div class="mm-manif"><span class="mm-k">Manifiesto</span><p>' + esc(man.manifiesto) + '</p></div>') : ''), 'Estrategia']);
   }
   if (completo && (m.tono || m.palabras_si || m.palabras_no || m.ejemplos)) {
@@ -148,7 +151,7 @@ export function manualHTML(d, o = {}) {
     const familias = '<div class="mm-fams n' + Math.min(kit.tipos.length, 2) + '">' + kit.tipos.map((t, i) => { const w = wDe(t, i), fs = formatos(t);
       return rv('<article class="mm-fam" style="--tf:' + ff(t) + ';--tw:' + w + '"><div class="mm-fam-h"><span class="mm-fam-aa" aria-hidden="true">Aa</span><span class="mm-fam-n"><span class="mm-k">' + esc(t.rol || 'Tipografía') + '</span><b>' + esc(t.familia) + '</b><small>' + esc(PESO[w] || 'Regular') + (fs.length ? ' · archivo propio' : ' · Google Fonts') + '</small></span></div>' +
         '<p class="mm-abc" aria-label="Alfabeto de ' + esc(t.familia) + '">ABCDEFGHIJKLMNÑOPQRSTUVWXYZ<br>abcdefghijklmnñopqrstuvwxyz<br>0123456789 ¿?¡! &amp; @ % $ ( )</p>' +
-        (t.url ? '' : '<div class="mm-pesos">' + [300, 400, 500, 600, 700, 800, 900].map(p => '<span style="font-weight:' + p + '"' + (p === w ? ' class="on"' : '') + '>' + PESO[p] + '</span>').join('') + '</div>') +
+        (t.url && !esVF(t) ? '' : '<div class="mm-pesos">' + [300, 400, 500, 600, 700, 800, 900].map(p => '<span style="font-weight:' + p + '"' + (p === w ? ' class="on"' : '') + '>' + PESO[p] + '</span>').join('') + '</div>') +
         '<div class="mm-fam-dl">' + (fs.length ? bajarX({ ...t, n: t.familia }) : '<a class="mm-btn" href="' + gfLink(t) + '" target="_blank" rel="noopener">' + I.dl + 'Bajar de Google Fonts</a>') + '</div></article>', i * 100); }).join('') + '</div>';
     const T = tit, X = txt || tit, wT = wDe(T, 0), wX = txt && txt !== tit ? wDe(txt, 1) : 400;
     const frase = String(man.intro || m.rubro || '').replace(/\s*\(texto de ejemplo\)\s*/i, ' ').split(/(?<=[.!?])\s/)[0].trim();
@@ -449,6 +452,9 @@ export const MANUAL_CSS = CEL_CSS + `
 .mm-ap-m img{max-width:100%;max-height:100%;object-fit:contain;display:block}
 .g-iconos .mm-ap-m{aspect-ratio:1;padding:22%}
 .g-papeleria .mm-ap-m{padding:8%}
+.mm-app-g.g-mockups{grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr))}
+.g-mockups .mm-ap-m{aspect-ratio:3/2;background:#e9e9e4}
+.g-mockups .mm-ap-m img{width:100%;height:100%;max-width:none;max-height:none;object-fit:cover}
 .g-papeleria .mm-ap-m img{box-shadow:0 20px 30px -18px rgba(0,0,0,.35);border-radius:4px}
 .g-redes,.g-plantillas{align-items:end}
 .g-redes .mm-ap-m,.g-plantillas .mm-ap-m{aspect-ratio:auto;background:none!important;box-shadow:none}

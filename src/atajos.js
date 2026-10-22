@@ -68,20 +68,22 @@ if (typeof document !== 'undefined') {
 const NAV = { i: 'inicio', m: 'mis', p: 'proyectos', r: 'redes', t: 'tickets', c: 'clientes', e: 'equipo' };
 export function initAtajos(ctx) {
   let g = 0;
-  const lista = () => [
+  const general = () => [
     ['/', 'Buscar'], [MOD + ' K', 'Preguntarle a Mr. Piggy'], ['N', 'Nuevo (proyecto, charla, cliente…)'],
     ['F', 'Abrir los filtros de la pantalla'], ['V', 'Cambiar la vista (lista, cuadrícula, tablero…)'],
-    ['[ ]', 'Mes anterior / siguiente (en Redes)'], [MOD + ' Enter', 'Guardar el panel abierto'], ['Esc', 'Cerrar el panel o el menú'],
-    ...Object.entries(NAV).filter(([, v]) => ctx.views().some(x => x[0] === v)).map(([k, v]) => ['G ' + k.toUpperCase(), 'Ir a ' + ctx.views().find(x => x[0] === v)[1]]),
-    ['?', 'Ver estos atajos']];
+    ['[ ]', 'Mes anterior / siguiente (en Redes)'], [MOD + ' Enter', 'Guardar el panel abierto'], ['Esc', 'Cerrar el panel o el menú'], ['?', 'Ver estos atajos']];
+  const irA = () => Object.entries(NAV).filter(([, v]) => ctx.views().some(x => x[0] === v)).map(([k, v]) => ['G ' + k.toUpperCase(), ctx.views().find(x => x[0] === v)[1]]);
+  const teclas = k => k.split(' ').map(x => '<kbd>' + esc(x) + '</kbd>').join('');
   function ayuda() {
-    const bg = document.createElement('div'); bg.className = 'kb-bg';
-    bg.innerHTML = '<div class="kb" role="dialog" aria-modal="true" aria-label="Atajos de teclado"><div class="kb-h"><b>Atajos de teclado</b><button type="button" class="btn ghost sm" aria-label="Cerrar">✕</button></div><dl>' +
-      lista().map(([k, d]) => '<dt>' + k.split(' ').map(x => '<kbd>' + esc(x) + '</kbd>').join(' ') + '</dt><dd>' + esc(d) + '</dd>').join('') + '</dl></div>';
+    const bg = document.createElement('div'); bg.className = 'atj-bg';
+    const ir = irA();
+    bg.innerHTML = '<div class="atj" role="dialog" aria-modal="true" aria-labelledby="atj-t" tabindex="-1"><div class="atj-h"><b id="atj-t">Atajos de teclado</b><button type="button" class="atj-x" aria-label="Cerrar">✕</button></div>' +
+      '<div class="atj-b"><dl class="atj-l">' + general().map(([k, d]) => '<div><dt>' + teclas(k) + '</dt><dd>' + esc(d) + '</dd></div>').join('') + '</dl>' +
+      (ir.length ? '<div class="atj-ir"><span class="atj-k">Ir a… <small>tocá G y después la letra</small></span><dl>' + ir.map(([k, d]) => '<div><dt>' + teclas(k.split(' ')[1]) + '</dt><dd>' + esc(d) + '</dd></div>').join('') + '</dl></div>' : '') + '</div></div>';
     const fin = () => { bg.remove(); document.removeEventListener('keydown', kd, true); };
     const kd = e => { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); e.stopPropagation(); fin(); } };
-    bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('.kb-h button')) fin(); });
-    document.addEventListener('keydown', kd, true); document.body.appendChild(bg); bg.querySelector('.kb-h button').focus();
+    bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('.atj-x')) fin(); });
+    document.addEventListener('keydown', kd, true); document.body.appendChild(bg); bg.querySelector('.atj').focus();
   }
   const visible = el => el && el.offsetParent !== null;
   const panelAbierto = () => { const p = document.getElementById('panel'); return p && !p.hidden; };
@@ -92,7 +94,7 @@ export function initAtajos(ctx) {
       const f = document.querySelector('#panel form'); if (f && !(t.closest && t.closest('[data-hlform]'))) { e.preventDefault(); if (f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); }
       return;
     }
-    if (escribiendo(t) || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('.dlg-bg, .kb-bg')) return;
+    if (escribiendo(t) || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('.dlg-bg, .atj-bg')) return;
     const k = e.key;
     if (g && Date.now() - g < 1200) { g = 0; const v = NAV[k.toLowerCase()]; if (v && ctx.views().some(x => x[0] === v)) { e.preventDefault(); ctx.go(v); } return; }
     g = 0;
