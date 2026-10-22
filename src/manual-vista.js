@@ -4,7 +4,10 @@
 // imágenes, aplicaciones (íconos, papelería, redes, videos, plantillas), voz y descargas.
 // Dos versiones: "completo" (la marca la hicimos nosotros) y "simple" (guía con lo que nos pasó el cliente).
 // Lo usan la página pública /m/<link>, "Ver como cliente" desde la app y la pestaña Tu marca del portal (embed).
-import { kitDeTexto, CATS, catDe, formatos } from './kitmarca.js';
+import { kitDeTexto, CATS, catDe, formatos, redDe, usoDe, REDES_KIT } from './kitmarca.js';
+import { perfilRed, plantillaRed, tabsRedes, CEL_CSS } from './celular.js';
+import { nombreRed } from './redes-logos.js';
+import { activarVisor } from './visor.js';
 import { LOGO } from './marca.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -29,7 +32,19 @@ const I = {
   abajo: S('<path d="M12 5v14"/><path d="m6 13 6 6 6-6"/>', 22),
   copia: S('<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>', 14),
   play: S('<path d="m8 5 11 7-11 7z" fill="currentColor"/>', 22),
+  zoom: S('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M11 8.5v5M8.5 11h5"/>', 17),
 };
+const USO_N = { perfil: 'Foto de perfil', portada: 'Portada', post: 'Plantilla de post', historia: 'Plantilla de historia o reel' };
+const MEDIDAS = {
+  instagram: [['Foto de perfil', '320 × 320 px'], ['Post y carrusel', '1080 × 1350 px (4:5)'], ['Historia y reel', '1080 × 1920 px (9:16)']],
+  facebook: [['Foto de perfil', '320 × 320 px'], ['Portada', '851 × 315 px'], ['Post', '1080 × 1350 px'], ['Historia', '1080 × 1920 px']],
+  linkedin: [['Logo', '400 × 400 px'], ['Portada de página', '1128 × 191 px'], ['Post', '1080 × 1350 px']],
+  tiktok: [['Foto de perfil', '200 × 200 px'], ['Video', '1080 × 1920 px (9:16)']],
+  youtube: [['Foto de perfil', '800 × 800 px'], ['Banner', '2560 × 1440 px (zona segura 1546 × 423)'], ['Miniatura', '1280 × 720 px']],
+  x: [['Foto de perfil', '400 × 400 px'], ['Encabezado', '1500 × 500 px'], ['Imagen en post', '1600 × 900 px']],
+};
+const TAREAS = [['Poner el logo sobre una foto o una pieza', 'PNG (tiene fondo transparente)'], ['La web', 'SVG para el logo; WebP o PNG para imágenes'], ['Publicar en redes', 'PNG o JPG; las plantillas, en Canva o Figma'], ['Imprimir: tarjetas, carteles, packaging', 'PDF, AI o EPS. Que la imprenta confirme el formato y la medida'], ['Encargar o editar piezas nuevas', 'Los editables (AI, PSD, Figma, Canva) y las tipografías'], ['Presentaciones y documentos', 'El PNG del logo y la tipografía instalada']];
+const FMT_DESC = { SVG: 'Vectorial: se agranda sin perder calidad. Ideal para la web.', PNG: 'Con fondo transparente. Para poner encima de otra imagen.', 'JPG/JPEG': 'Imagen terminada, con fondo. Para compartir y vistas previas.', WEBP: 'Liviana, pensada para la web.', PDF: 'Para ver, compartir e imprimir.', AI: 'El original de Illustrator. Para quien diseña o produce.', EPS: 'Vectorial para imprentas y talleres.', PSD: 'El original de Photoshop.', 'INDD/IDML': 'El original de InDesign.', 'FIG/FIGMA': 'Archivo de Figma, editable.', CANVA: 'Plantilla editable en Canva.', 'TTF/OTF': 'Tipografía para instalar en la compu.', 'WOFF/WOFF2': 'Tipografía para usar en la web.', ZIP: 'Paquete: se descomprime y adentro están los archivos.', 'MP4/MOV': 'Video.', 'PPTX/KEY': 'Presentación editable.', 'DOCX': 'Documento editable.' };
 const lineas = v => String(v || '').split('\n').map(x => x.replace(/^[-•·*]\s*/, '').trim()).filter(Boolean);
 function decimos(v) {
   const t = String(v || ''), frases = [...t.matchAll(/[“"«]([^”"»]{3,120})[”"»]/g)].map(m => m[1].trim());
@@ -74,49 +89,21 @@ export function manualHTML(d, o = {}) {
   const tituloDoc = completo ? 'Manual de marca' : 'Guía de marca';
   const card = (k, v) => '<div class="mm-card"><span class="mm-k">' + k + '</span><p>' + esc(v) + '</p></div>';
   const recs = kit.recursos.map(r => ({ ...r, cat: catDe(r) }));
-  const secs = [];
+  const secs = []; // [id, título, html, parte]
+  const ver = x => (esImg(x.tipo, x.url) || esVid(x.tipo, x.url)) ? ' data-visor="' + esc(x.url) + '" data-n="' + esc(x.n || '') + '"' : '';
 
-  if (completo && (man.intro || m.rubro || m.publico)) {
-    secs.push(['esencia', 'Esencia', (man.intro ? rv('<p class="mm-big">' + esc(man.intro) + '</p>') : '') +
-      '<div class="mm-row2">' + (m.rubro ? rv(card('Qué hacemos', m.rubro)) : '') + (m.publico ? rv(card('Para quién', m.publico), 120) : '') + '</div>']);
+  // ── Estrategia: esencia y voz primero
+  if (completo) {
+    const items = [['Punto de partida', man.punto], ['Propósito', man.proposito], ['Posicionamiento', man.posicionamiento], ['La promesa', man.promesa], ['Territorio', man.territorio], ['Para quién', man.publico || m.publico], ['Qué hacemos', man.punto || man.proposito ? '' : m.rubro]].filter(x => x[1]);
+    const rasgos = lineas(man.rasgos).map(x => { const [a, ...b] = x.split(':'); return [a.trim(), b.join(':').trim()]; });
+    if (man.intro || items.length || man.personalidad || rasgos.length || man.manifiesto || man.concepto) secs.push(['esencia', 'Esencia',
+      (man.concepto ? rv('<div class="mm-concepto"><span class="mm-k">Concepto</span><p>' + esc(man.concepto) + '</p></div>') : '') +
+      (man.intro ? rv('<p class="mm-big">' + esc(man.intro) + '</p>') : '') +
+      (items.length ? '<div class="mm-est">' + items.map(([t, v], i) => rv('<div class="mm-est-i"><span class="mm-est-n">' + String(i + 1).padStart(2, '0') + '</span><h3>' + esc(t) + '</h3><p>' + esc(v) + '</p></div>', (i % 2) * 90)).join('') + '</div>' : '') +
+      (man.personalidad || rasgos.length ? '<h3 class="mm-h3 rv">Personalidad</h3>' + (man.personalidad ? rv('<p class="mm-big sm">' + esc(man.personalidad) + '</p>') : '') +
+        (rasgos.length ? '<div class="mm-rasgos">' + rasgos.map(([a, b], i) => rv('<div class="mm-rasgo"><b>' + esc(a) + '</b>' + (b ? '<p>' + esc(b) + '</p>' : '') + '</div>', (i % 4) * 80)).join('') + '</div>' : '') : '') +
+      (man.manifiesto ? rv('<div class="mm-manif"><span class="mm-k">Manifiesto</span><p>' + esc(man.manifiesto) + '</p></div>') : ''), 'Estrategia']);
   }
-  if (kit.logos.length) {
-    const stage = imgL.length ? '<div class="mm-stage" data-bg="claro"><div class="mm-stage-bgs" role="group" aria-label="Fondo">' + [['claro', 'Claro'], ['oscuro', 'Oscuro'], ['marca', 'Color']].map(([k, l], i) => '<button data-mmbg="' + k + '"' + (i === 0 ? ' class="on"' : '') + '>' + l + '</button>').join('') + (man.respeto ? '<button data-mmresp class="mm-resp-b">Área de respeto</button>' : '') + '</div>' +
-      '<div class="mm-stage-in">' + ['claro', 'oscuro', 'marca'].map(k => '<img class="mm-sl" data-for="' + k + '" src="' + esc(logoPara(k).url) + '" alt="' + esc(d.nombre) + '">').join('') + '<span class="mm-safe" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div></div>' : '';
-    const specs = [man.respeto ? ['Área de respeto', man.respeto] : null, man.minimo ? ['Tamaño mínimo', man.minimo] : null].filter(Boolean);
-    const nos = lineas(man.no), base = logoPara('claro');
-    secs.push(['logo', 'Logo', (stage ? rv(stage) : '') +
-      (specs.length ? '<div class="mm-specs n' + specs.length + '">' + specs.map(([k, v], i) => rv(card(k, v), i * 100)).join('') + '</div>' : '') +
-      '<h3 class="mm-h3 rv">Versiones</h3><div class="mm-logos">' + kit.logos.map((l, i) => rv('<figure class="mm-logo"><div class="mm-lf f-' + esc(l.fondo || 'claro') + '">' + (esImg(l.tipo, l.url) ? '<img src="' + esc(l.url) + '" alt="' + esc(l.n) + '" loading="lazy">' : '<span class="mm-ext">' + esc(ext(l.url) || 'ARCHIVO') + '</span>') + '</div><figcaption><b>' + esc(l.n) + '</b>' + bajarX(l) + '</figcaption></figure>', (i % 4) * 80)).join('') + '</div>' +
-      (nos.length ? '<h3 class="mm-h3 rv">Lo que no hacemos con el logo</h3><div class="mm-nos">' + nos.map((x, i) => rv('<div class="mm-no">' + (base ? '<div class="mm-no-v"><img src="' + esc(base.url) + '" alt="" style="' + MAL[i % MAL.length] + '"><span class="mm-x" aria-hidden="true"></span></div>' : '') + '<p>' + esc(x) + '</p></div>', (i % 3) * 80)).join('') + '</div>' : '')]);
-  }
-  if (cols.length) {
-    const peso = c => /principal/i.test(c.rol) ? 3 : /fondo|texto/i.test(c.rol) ? 1.3 : 1.8;
-    secs.push(['color', 'Color', rv('<div class="mm-bars">' + cols.map(c => '<button class="mm-bar-c" style="--c:' + esc(c.hex) + ';--co:' + sobre(c.hex) + ';--g:' + peso(c) + '" data-copiar="' + esc(c.hex) + '" aria-label="Copiar ' + esc(c.hex) + '"><span class="mm-bar-r">' + esc(c.rol || '') + '</span><span class="mm-bar-n">' + esc(c.n || c.hex) + '</span><span class="mm-bar-h">' + esc(c.hex) + I.copia + '</span></button>').join('') + '</div>') +
-      '<div class="mm-cols">' + cols.map((c, i) => { const [r, g, b] = rgb(c.hex);
-        return rv('<div class="mm-col"><div class="mm-col-h"><i style="background:' + esc(c.hex) + '"></i><span><b>' + esc(c.n || c.hex) + '</b>' + (c.rol ? '<small>' + esc(c.rol) + '</small>' : '') + '</span></div><dl>' +
-          [['HEX', c.hex], ['RGB', r + ' ' + g + ' ' + b], ['CMYK', cmyk(c.hex)], c.pantone ? ['Pantone', c.pantone] : null].filter(Boolean).map(([k, v]) => '<button data-copiar="' + esc(v) + '"><dt>' + k + '</dt><dd>' + esc(v) + '</dd></button>').join('') + '</dl></div>', (i % 4) * 60); }).join('') + '</div>']);
-  }
-  if (kit.tipos.length) {
-    secs.push(['tipografia', 'Tipografía', kit.tipos.map((t, i) => {
-      const w = +(t.peso || (i === 0 ? 800 : 400)), f = esc(fam(t)) + 'system-ui,sans-serif', ejemplo = i === 0 ? d.nombre : 'Así se lee un texto de la marca, claro y cercano.';
-      return rv('<article class="mm-tipo" style="--tf:' + f + ';--tw:' + w + '">' +
-        '<header class="mm-tipo-h"><span class="mm-k">' + esc(t.rol || 'Tipografía') + '</span><h3>' + esc(t.familia) + '</h3><small>' + esc(PESO[w] || 'Regular') + '</small>' +
-        (t.url ? '<a class="mm-btn" ' + dlAttr(t.url, t.n || t.familia) + '>' + I.dl + 'Descargar</a>' : '<a class="mm-btn" href="https://fonts.google.com/specimen/' + esc(String(t.familia || '').replace(/ /g, '+')) + '" target="_blank" rel="noopener">' + I.ext + 'Google Fonts</a>') + '</header>' +
-        '<div class="mm-tipo-b"><div class="mm-aa" aria-hidden="true"><span>Aa</span></div><div class="mm-glyphs" aria-hidden="true">' + 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZabcdefghijklmnñopqrstuvwxyz0123456789&@?!'.split('').map(ch => '<span>' + esc(ch) + '</span>').join('') + '</div></div>' +
-        (t.url ? '' : '<div class="mm-pesos">' + [300, 400, 500, 600, 700, 800, 900].map(p => '<span style="font-weight:' + p + '">' + PESO[p] + '</span>').join('') + '</div>') +
-        '<div class="mm-test"><div class="mm-try" contenteditable="true" spellcheck="false" data-mmout aria-label="Escribí para probar la tipografía">' + esc(ejemplo) + '</div>' +
-        '<div class="mm-ctrl"><span class="mm-k">Probala: escribí arriba</span><label>Tamaño<input type="range" min="24" max="96" value="' + (i === 0 ? 64 : 34) + '" data-mmsize></label>' + (t.url ? '' : '<label>Peso<input type="range" min="300" max="900" step="1" value="' + w + '" data-mmw></label>') + '</div></div></article>', 0);
-    }).join('')]);
-  }
-  const fotos = recs.filter(r => ['fotos', 'texturas'].includes(r.cat) && esImg(r.tipo, r.url));
-  if (fotos.length || m.visual) secs.push(['imagenes', completo ? 'Imágenes y estilo' : 'Estilo', (m.visual ? rv('<p class="mm-big sm">' + esc(m.visual) + '</p>') : '') +
-    (fotos.length ? '<div class="mm-imgs">' + fotos.map((r, i) => rv('<figure class="mm-img"><img src="' + esc(r.url) + '" alt="' + esc(r.n) + '" loading="lazy"></figure>', (i % 3) * 90)).join('') + '</div>' : '')]);
-  // Aplicaciones: la marca puesta en uso, por tipo
-  const apps = CATS.filter(([k]) => !['fotos', 'texturas', 'otros'].includes(k)).map(([k, l]) => [k, l, recs.filter(r => r.cat === k)]).filter(x => x[2].length);
-  if (apps.length) secs.push(['aplicaciones', 'Aplicaciones', apps.map(([k, l, xs]) => '<div class="mm-app"><h3 class="mm-h3 rv">' + esc(l) + '</h3><div class="mm-app-g g-' + k + '">' + xs.map((r, i) => rv('<figure class="mm-ap' + (/perfil|avatar/i.test(r.n) ? ' perfil' : '') + '">' +
-    (esVid(r.tipo, r.url) ? '<div class="mm-ap-m vid"><video src="' + esc(r.url) + '" controls playsinline preload="metadata"></video></div>' : esImg(r.tipo, r.url) ? '<div class="mm-ap-m"><img src="' + esc(r.url) + '" alt="' + esc(r.n) + '" loading="lazy"></div>' : '<div class="mm-ap-m doc"><span>' + esc(ext(r.url) || 'ARCHIVO') + '</span></div>') +
-    '<figcaption><b>' + esc(r.n) + '</b>' + bajarX(r) + '</figcaption></figure>', (i % 4) * 70)).join('') + '</div></div>').join('')]);
   if (completo && (m.tono || m.palabras_si || m.palabras_no || m.ejemplos)) {
     const ds = decimos(m.palabras_si), no = oraciones(m.palabras_no), pil = lineas(m.pilares).map(x => { const [a, ...b] = x.split(':'); return [a.trim(), b.join(':').trim()]; });
     const ej = lineas(m.ejemplos).slice(0, 3), av = d.avatar ? '<img src="' + esc(d.avatar) + '" alt="">' : '<i>' + esc(String(d.nombre || '?').slice(0, 2)) + '</i>';
@@ -127,13 +114,93 @@ export function manualHTML(d, o = {}) {
         ((ds.palabras.length || ds.frases.length) ? rv('<div class="si"><span class="mm-k">Decimos</span>' + (ds.palabras.length ? '<div class="mm-pills">' + ds.palabras.map(x => '<span>' + esc(x) + '</span>').join('') + '</div>' : '') + (ds.frases.length ? '<ul class="mm-frases">' + ds.frases.map(x => '<li>“' + esc(x) + '”</li>').join('') + '</ul>' : '') + '</div>') : '') +
         (no.length ? rv('<div class="no"><span class="mm-k">No decimos ni hacemos</span><ul>' + no.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>', 120) : '') + '</div>' : '') +
       (pil.length ? '<h3 class="mm-h3 rv">De qué hablamos</h3><div class="mm-pil">' + pil.map(([a, b], i) => rv('<div class="mm-pil-i"><span>' + String(i + 1).padStart(2, '0') + '</span><b>' + esc(a) + '</b>' + (b ? '<p>' + esc(b) + '</p>' : '') + '</div>', (i % 3) * 70)).join('') + '</div>' : '') +
-      (ej.length ? '<h3 class="mm-h3 rv">Así suena</h3><div class="mm-posts">' + ej.map((x, i) => rv('<div class="mm-post"><div class="mm-post-h">' + av + '<b>' + esc(String(d.nombre || '').toLowerCase().replace(/\s+/g, '')) + '</b></div><div class="mm-post-i" aria-hidden="true"><span>' + esc(String(d.nombre || '')) + '</span></div><p>' + esc(x) + (tags.length ? ' <em>' + esc(tags.slice(0, 3).join(' ')) + '</em>' : '') + '</p></div>', i * 100)).join('') + '</div>' : '')]);
+      (ej.length ? '<h3 class="mm-h3 rv">Así suena</h3><div class="mm-posts">' + ej.map((x, i) => rv('<div class="mm-post"><div class="mm-post-h">' + av + '<b>' + esc(String(d.nombre || '').toLowerCase().replace(/\s+/g, '')) + '</b></div><div class="mm-post-i" aria-hidden="true"><span>' + esc(String(d.nombre || '')) + '</span></div><p>' + esc(x) + (tags.length ? ' <em>' + esc(tags.slice(0, 3).join(' ')) + '</em>' : '') + '</p></div>', i * 100)).join('') + '</div>' : ''), 'Estrategia']);
   }
-  const grupos = [['Logos', kit.logos.map(x => ({ ...x }))], ['Tipografías', kit.tipos.filter(t => t.url).map(t => ({ ...t, n: t.n || t.familia }))], ...CATS.map(([k, l]) => [l, recs.filter(r => r.cat === k)])].filter(g => g[1].length);
-  if (grupos.length || kit.links.length) secs.push(['descargas', 'Descargas', grupos.map(([l, xs]) => '<div class="mm-dg"><span class="mm-k rv">' + esc(l) + '</span><div class="mm-files">' + xs.map((x, i) => { const fs = formatos(x), ico = '<span class="mm-fi' + (x.fondo ? ' f-' + esc(x.fondo) : '') + '">' + (esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="" loading="lazy">' : esc((fs[0] || {}).fmt || '·')) + '</span>';
-      return rv(fs.length > 1 ? '<div class="mm-file multi">' + ico + '<span class="mm-fn"><b>' + esc(x.n) + '</b>' + bajarX(x) + '</span></div>'
-        : fs[0] ? fLink(x, fs[0], 'mm-file', ico + '<span class="mm-fn"><b>' + esc(x.n) + '</b><small>' + esc(fs[0].fmt) + '</small></span>' + I.dl) : '', (i % 4) * 50); }).join('') + '</div></div>').join('') +
-    (kit.links.length ? rv('<div class="mm-links">' + kit.links.map(x => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.n) + I.ext + '</a>').join('') + '</div>') : '')]);
+
+  // ── Identidad visual
+  if (kit.logos.length) {
+    const stage = imgL.length ? '<div class="mm-stage" data-bg="claro"><div class="mm-stage-bgs" role="group" aria-label="Fondo">' + [['claro', 'Claro'], ['oscuro', 'Oscuro'], ['marca', 'Color']].map(([k, l], i) => '<button data-mmbg="' + k + '"' + (i === 0 ? ' class="on"' : '') + '>' + l + '</button>').join('') + (man.respeto ? '<button data-mmresp class="mm-resp-b">Área de respeto</button>' : '') + '</div>' +
+      '<div class="mm-stage-in">' + ['claro', 'oscuro', 'marca'].map(k => '<img class="mm-sl" data-for="' + k + '" src="' + esc(logoPara(k).url) + '" alt="' + esc(d.nombre) + '">').join('') + '<span class="mm-safe" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div></div>' : '';
+    const specs = [man.respeto ? ['Área de respeto', man.respeto] : null, man.minimo ? ['Tamaño mínimo', man.minimo] : null].filter(Boolean);
+    const nos = lineas(man.no), base = logoPara('claro');
+    // Sobre cada fondo: el logo que corresponde arriba de cada color de la marca
+    const fondosL = imgL.length ? [...cols.map(c => ({ hex: c.hex, n: c.n || c.hex })), ...(cols.some(c => lum(c.hex) > .9) ? [] : [{ hex: '#ffffff', n: 'Blanco' }])].slice(0, 6) : [];
+    const logoSobre = hex => lum(hex) > .42 ? (imgL.find(l => (l.fondo || 'claro') === 'claro') || imgL[0]) : (imgL.find(l => l.fondo === 'marca') || imgL.find(l => l.fondo === 'oscuro') || imgL[0]);
+    secs.push(['logo', 'Logo', (stage ? rv(stage) : '') +
+      (specs.length ? '<div class="mm-specs n' + specs.length + '">' + specs.map(([k, v], i) => rv(card(k, v), i * 100)).join('') + '</div>' : '') +
+      '<h3 class="mm-h3 rv">Versiones</h3><div class="mm-logos" data-visor-grupo>' + kit.logos.map((l, i) => rv('<figure class="mm-logo"><div class="mm-lf f-' + esc(l.fondo || 'claro') + '"' + ver(l) + '>' + (esImg(l.tipo, l.url) ? '<img src="' + esc(l.url) + '" alt="' + esc(l.n) + '" loading="lazy">' : '<span class="mm-ext">' + esc(ext(l.url) || 'ARCHIVO') + '</span>') + '</div><figcaption><b>' + esc(l.n) + '</b>' + bajarX(l) + '</figcaption></figure>', (i % 4) * 80)).join('') + '</div>' +
+      (fondosL.length > 1 ? '<h3 class="mm-h3 rv">Sobre cada fondo</h3><div class="mm-fondos">' + fondosL.map((f, i) => rv('<div class="mm-fondo" style="background:' + esc(f.hex) + ';color:' + sobre(f.hex) + '"><img src="' + esc(logoSobre(f.hex).url) + '" alt="" loading="lazy"><span>' + esc(f.n) + '</span></div>', (i % 3) * 70)).join('') + '</div>' : '') +
+      (nos.length ? '<h3 class="mm-h3 rv">Lo que no hacemos con el logo</h3><div class="mm-nos">' + nos.map((x, i) => rv('<div class="mm-no">' + (base ? '<div class="mm-no-v"><img src="' + esc(base.url) + '" alt="" style="' + MAL[i % MAL.length] + '"><span class="mm-x" aria-hidden="true"></span></div>' : '') + '<p>' + esc(x) + '</p></div>', (i % 3) * 80)).join('') + '</div>' : ''), 'Identidad visual']);
+  }
+  if (cols.length) {
+    const peso = c => /principal/i.test(c.rol) ? 3 : /fondo|texto/i.test(c.rol) ? 1.3 : 1.8;
+    secs.push(['color', 'Color', rv('<div class="mm-bars">' + cols.map(c => '<button class="mm-bar-c" style="--c:' + esc(c.hex) + ';--co:' + sobre(c.hex) + ';--g:' + peso(c) + '" data-copiar="' + esc(c.hex) + '" aria-label="Copiar ' + esc(c.hex) + '"><span class="mm-bar-r">' + esc(c.rol || '') + '</span><span class="mm-bar-n">' + esc(c.n || c.hex) + '</span><span class="mm-bar-h">' + esc(c.hex) + I.copia + '</span></button>').join('') + '</div>') +
+      '<div class="mm-cols">' + cols.map((c, i) => { const [r, g, b] = rgb(c.hex);
+        return rv('<div class="mm-col"><div class="mm-col-h"><i style="background:' + esc(c.hex) + '"></i><span><b>' + esc(c.n || c.hex) + '</b>' + (c.rol ? '<small>' + esc(c.rol) + '</small>' : '') + '</span></div><dl>' +
+          [['HEX', c.hex], ['RGB', r + ' ' + g + ' ' + b], ['CMYK', cmyk(c.hex)], c.pantone ? ['Pantone', c.pantone] : null].filter(Boolean).map(([k, v]) => '<button data-copiar="' + esc(v) + '"><dt>' + k + '</dt><dd>' + esc(v) + '</dd></button>').join('') + '</dl></div>', (i % 4) * 60); }).join('') + '</div>', 'Identidad visual']);
+  }
+  const gfLink = t => 'https://fonts.google.com/specimen/' + esc(String(t.familia || '').replace(/ /g, '+'));
+  if (kit.tipos.length) {
+    secs.push(['tipografia', 'Tipografía', kit.tipos.map((t, i) => {
+      const w = +(t.peso || (i === 0 ? 800 : 400)), f = esc(fam(t)) + 'system-ui,sans-serif', ejemplo = i === 0 ? d.nombre : 'Así se lee un texto de la marca, claro y cercano.', fs = formatos(t);
+      return rv('<article class="mm-tipo" style="--tf:' + f + ';--tw:' + w + '">' +
+        '<header class="mm-tipo-h"><span class="mm-k">' + esc(t.rol || 'Tipografía') + '</span><h3>' + esc(t.familia) + '</h3><small>' + esc(PESO[w] || 'Regular') + '</small>' +
+        (fs.length ? '<span class="mm-tipo-dl">' + bajarX({ ...t, n: t.familia }) + '</span>' : '<a class="mm-btn" href="' + gfLink(t) + '" target="_blank" rel="noopener">' + I.dl + 'Bajar de Google Fonts</a>') + '</header>' +
+        '<div class="mm-tipo-b"><div class="mm-aa" aria-hidden="true"><span>Aa</span></div><div class="mm-glyphs" aria-hidden="true">' + 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZabcdefghijklmnñopqrstuvwxyz0123456789&@?!'.split('').map(ch => '<span>' + esc(ch) + '</span>').join('') + '</div></div>' +
+        (t.url ? '' : '<div class="mm-pesos">' + [300, 400, 500, 600, 700, 800, 900].map(p => '<span style="font-weight:' + p + '">' + PESO[p] + '</span>').join('') + '</div>') +
+        '<div class="mm-test"><div class="mm-try" contenteditable="true" spellcheck="false" data-mmout aria-label="Escribí para probar la tipografía">' + esc(ejemplo) + '</div>' +
+        '<div class="mm-ctrl"><span class="mm-k">Probala: escribí arriba</span><label>Tamaño<input type="range" min="24" max="96" value="' + (i === 0 ? 64 : 34) + '" data-mmsize></label>' + (t.url ? '' : '<label>Peso<input type="range" min="300" max="900" step="1" value="' + w + '" data-mmw></label>') + '</div></div></article>', 0);
+    }).join(''), 'Identidad visual']);
+  }
+  const fotos = recs.filter(r => ['fotos', 'texturas'].includes(r.cat) && esImg(r.tipo, r.url)), graf = recs.filter(r => r.cat === 'graficos');
+  if (fotos.length || graf.length || m.visual) secs.push(['imagenes', completo ? 'Imágenes y estilo' : 'Estilo', (m.visual ? rv('<p class="mm-big sm">' + esc(m.visual) + '</p>') : '') +
+    (fotos.length ? '<div class="mm-imgs" data-visor-grupo>' + fotos.map((r, i) => rv('<figure class="mm-img"' + ver(r) + '><img src="' + esc(r.url) + '" alt="' + esc(r.n) + '" loading="lazy"></figure>', (i % 3) * 90)).join('') + '</div>' : '') +
+    (graf.length ? '<h3 class="mm-h3 rv">Ilustraciones y stickers</h3>' + appGrid('graficos', graf) : ''), 'Identidad visual']);
+
+  // ── Aplicaciones (se amplían antes de bajar)
+  const apps = CATS.filter(([k]) => !['fotos', 'texturas', 'otros', 'redes', 'plantillas', 'graficos'].includes(k)).map(([k, l]) => [k, l, recs.filter(r => r.cat === k)]).filter(x => x[2].length);
+  if (apps.length) secs.push(['aplicaciones', 'Aplicaciones', apps.map(([k, l, xs]) => '<div class="mm-app"><h3 class="mm-h3 rv">' + esc(l) + '</h3>' + appGrid(k, xs) + '</div>').join(''), 'Aplicaciones']);
+  function appGrid(k, xs) {
+    return '<div class="mm-app-g g-' + k + '" data-visor-grupo>' + xs.map((r, i) => rv('<figure class="mm-ap">' +
+      (esVid(r.tipo, r.url) ? '<div class="mm-ap-m vid"><video src="' + esc(r.url) + '" controls playsinline preload="metadata"></video></div>' : esImg(r.tipo, r.url) ? '<div class="mm-ap-m"' + ver(r) + '><img src="' + esc(r.url) + '" alt="' + esc(r.n) + '" loading="lazy"><span class="mm-zoom" aria-hidden="true">' + I.zoom + '</span></div>' : '<div class="mm-ap-m doc"><span>' + esc(ext(r.url) || 'ARCHIVO') + '</span></div>') +
+      '<figcaption><b>' + esc(r.n) + '</b>' + bajarX(r) + '</figcaption></figure>', (i % 4) * 70)).join('') + '</div>';
+  }
+
+  // ── Redes: el perfil en cada red (foto y portada) y las plantillas puestas como publicación o historia
+  const rs = recs.filter(r => r.cat === 'redes' || r.cat === 'plantillas');
+  if (rs.length) {
+    const genericos = rs.some(r => !redDe(r)), marcadas = [...new Set(rs.map(redDe).filter(Boolean))];
+    const redes = REDES_KIT.filter(k => marcadas.includes(k) || (genericos && ['instagram', 'facebook'].includes(k)));
+    const iso = imgL.find(l => /iso|s[ií]mbolo|icono/i.test(l.n)) || imgL[0];
+    const de = (red, uso) => rs.filter(r => (redDe(r) === red || !redDe(r)) && usoDe(r) === uso && esImg(r.tipo, r.url)).sort((a, b) => (redDe(b) === red) - (redDe(a) === red));
+    const copy = lineas(m.ejemplos)[0] || '', bio = (man.intro || m.rubro || '').split(/(?<=[.!?])\s/)[0];
+    const tabla = (red) => (MEDIDAS[red] || []).map(([a, b]) => '<div><dt>' + a + '</dt><dd>' + b + '</dd></div>').join('');
+    const panes = redes.map((red, ri) => {
+      const perfil = de(red, 'perfil')[0], portada = de(red, 'portada')[0], posts = de(red, 'post'), hist = de(red, 'historia');
+      const grid = [...posts.map(r => r.url), ...fotos.map(r => r.url)].slice(0, 9);
+      const mios = rs.filter(r => redDe(r) === red || !redDe(r));
+      const fila = r => '<div class="mm-rf"><span class="mm-rf-i"' + ver(r) + '>' + (esImg(r.tipo, r.url) ? '<img src="' + esc(r.url) + '" alt="" loading="lazy">' : '') + '</span><span class="mm-rf-n"><b>' + esc(r.n) + '</b><small>' + esc(USO_N[usoDe(r)] || 'Archivo') + (redDe(r) ? '' : ' · para todas las redes') + '</small></span>' + bajarX(r) + '</div>';
+      return '<div class="mm-red" data-mmpane="red:' + red + '"' + (ri ? ' hidden' : '') + '>' +
+        '<div class="mm-red-v">' + '<div class="mm-red-c"><span class="mm-k">Perfil</span>' + perfilRed({ nombre: d.nombre, avatar: (perfil || iso || {}).url }, red, { portada: portada && portada.url, posts: grid, historias: hist.map(r => r.url), bio, copy }) + '</div>' +
+          (posts[0] && !['facebook', 'linkedin'].includes(red) ? '<div class="mm-red-c"><span class="mm-k">Publicación</span>' + plantillaRed({ nombre: d.nombre, avatar: (perfil || iso || {}).url }, red, posts[0].url, 'post', copy) + '</div>' : '') +
+          (hist[0] ? '<div class="mm-red-c"><span class="mm-k">' + (red === 'tiktok' ? 'Video' : 'Historia') + '</span>' + plantillaRed({ nombre: d.nombre, avatar: (perfil || iso || {}).url }, red, hist[0].url, 'historia', copy) + '</div>' : '') + '</div>' +
+        '<div class="mm-red-l"><div class="mm-red-f" data-visor-grupo><span class="mm-k">Archivos para ' + esc(nombreRed(red)) + '</span>' + mios.map(fila).join('') + '</div>' +
+          (MEDIDAS[red] ? '<div class="mm-med"><span class="mm-k">Medidas recomendadas</span><dl>' + tabla(red) + '</dl><small>Son de referencia: las redes las cambian cada tanto.</small></div>' : '') + '</div></div>';
+    }).join('');
+    secs.push(['redes', 'Redes sociales', rv('<div class="mm-red-tabs">' + tabsRedes(redes, redes[0], k => 'data-mmtab="red" data-v="' + k + '"') + '</div>') + panes, 'Aplicaciones']);
+  }
+
+  // ── Descargas: con una guía corta de qué formato usar
+  const todas = [...kit.logos, ...kit.tipos, ...recs], hay = new Set(todas.flatMap(x => formatos(x).map(f => f.fmt)));
+  const guia = '<div class="mm-guia">' + rv('<div><span class="mm-k">¿Qué bajo para…?</span><dl>' + TAREAS.map(([a, b]) => '<div><dt>' + a + '</dt><dd>' + b + '</dd></div>').join('') + '</dl></div>') +
+    (hay.size ? rv('<div><span class="mm-k">Qué es cada formato</span><dl>' + Object.entries(FMT_DESC).filter(([k]) => k.split('/').some(x => hay.has(x))).map(([a, b]) => '<div><dt>' + a.replace('/', ' / ') + '</dt><dd>' + b + '</dd></div>').join('') + '</dl></div>', 120) : '') + '</div>';
+  const fila = (x, i) => { const fs = formatos(x), ico = '<span class="mm-fi' + (x.fondo ? ' f-' + esc(x.fondo) : '') + '">' + (esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="" loading="lazy">' : x.familia ? '<b style="font-family:' + esc(fam(x)) + 'system-ui">Aa</b>' : esc((fs[0] || {}).fmt || '·')) + '</span>';
+    if (!fs.length && x.familia) return rv('<a class="mm-file" href="' + gfLink(x) + '" target="_blank" rel="noopener">' + ico + '<span class="mm-fn"><b>' + esc(x.familia) + '</b><small>Google Fonts</small></span>' + I.ext + '</a>', (i % 4) * 50);
+    return rv(fs.length > 1 ? '<div class="mm-file multi">' + ico + '<span class="mm-fn"><b>' + esc(x.n || x.familia) + '</b>' + bajarX(x) + '</span></div>'
+      : fs[0] ? fLink(x, fs[0], 'mm-file', ico + '<span class="mm-fn"><b>' + esc(x.n || x.familia) + '</b><small>' + esc(fs[0].fmt) + '</small></span>' + I.dl) : '', (i % 4) * 50); };
+  const grupos = [['Logos', kit.logos], ['Tipografías', kit.tipos.map(t => ({ ...t, n: t.familia }))], ...CATS.map(([k, l]) => [l, recs.filter(r => r.cat === k)])].filter(g => g[1].length);
+  if (grupos.length || kit.links.length) secs.push(['descargas', 'Descargas', guia + grupos.map(([l, xs]) => '<div class="mm-dg"><span class="mm-k rv">' + esc(l) + '</span><div class="mm-files">' + xs.map(fila).join('') + '</div></div>').join('') +
+    (kit.links.length ? rv('<div class="mm-links">' + kit.links.map(x => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.n) + I.ext + '</a>').join('') + '</div>') : ''), 'Archivos']);
 
   const nav = secs.map(([id, t]) => '<a href="#' + id + '" data-mmnav="' + id + '">' + esc(t) + '</a>').join('');
   return '<div class="mm' + (embed ? ' embed' : '') + '" style="' + esc(vars) + '">' + (embed ? '' : '<div class="mm-prog" aria-hidden="true"><i></i></div>' +
@@ -143,7 +210,7 @@ export function manualHTML(d, o = {}) {
     '<h1 class="mm-ht" aria-label="' + tituloDoc + '">' + tituloDoc.split(' ').map((w, i) => '<span class="mm-w" style="--i:' + i + '"><span>' + esc(w) + '</span></span>').join(' ') + '</h1>' +
     (man.intro ? '<p class="mm-hs">' + esc(man.intro.replace(/\s*\(texto de ejemplo\)\s*/i, ' ').split(/(?<=[.!?])\s/)[0].trim()) + '</p>' : '') + '</div></section>' +
     (embed && secs.length ? '<nav class="mm-enav">' + nav + '</nav>' : '') +
-    secs.map(([id, t, h], i) => '<section class="mm-s' + (i % 2 ? ' alt' : '') + '" id="' + id + '"><div class="mm-in"><div class="mm-sh rv"><span>' + String(i + 1).padStart(2, '0') + '</span><h2>' + esc(t) + '</h2></div>' + h + '</div></section>').join('') +
+    secs.map(([id, t, h, parte], i) => '<section class="mm-s' + (i % 2 ? ' alt' : '') + '" id="' + id + '"><div class="mm-in"><div class="mm-sh rv"><span>' + String(i + 1).padStart(2, '0') + (parte && (!secs[i - 1] || secs[i - 1][3] !== parte) ? '<em>' + esc(parte) + '</em>' : '') + '</span><h2>' + esc(t) + '</h2></div>' + h + '</div></section>').join('') +
     (secs.length ? '' : '<section class="mm-s"><div class="mm-in"><p class="mm-big sm">Este manual todavía no tiene contenido.</p></div></section>') +
     '<footer class="mm-pie"><div class="mm-in"><p class="mm-pie-t rv">' + esc(d.nombre) + '</p><div class="mm-pie-b"><span>' + (completo ? 'Marca diseñada por' : 'Guía preparada por') + '</span><a href="https://weareandale.com" target="_blank" rel="noopener" class="mm-andale" aria-label="àndale">' + LOGO + '</a></div></div></footer>' +
     '<div class="mm-toast" role="status" aria-live="polite"></div></div>';
@@ -175,7 +242,9 @@ export function activarManual(root, scroller) {
   };
   sc.addEventListener('scroll', onScroll, { passive: true }); onScroll();
   const toast = t => { const el = mm.querySelector('.mm-toast'); if (!el) return; el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 1500); };
+  activarVisor(mm);
   mm.addEventListener('click', async e => {
+    const tb = e.target.closest('[data-mmtab]'); if (tb) { const g = tb.dataset.mmtab, v = tb.dataset.v; mm.querySelectorAll('[data-mmtab="' + g + '"]').forEach(b => { const on = b === tb; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); mm.querySelectorAll('[data-mmpane^="' + g + ':"]').forEach(p => { p.hidden = p.dataset.mmpane !== g + ':' + v; }); return; }
     const c = e.target.closest('[data-copiar]'); if (c) { try { await navigator.clipboard.writeText(c.dataset.copiar); toast('Copiado ' + c.dataset.copiar); } catch (er) { toast(c.dataset.copiar); } c.classList.add('ok'); setTimeout(() => c.classList.remove('ok'), 700); return; }
     const b = e.target.closest('[data-mmbg]'); if (b) { const st = b.closest('.mm-stage'); st.dataset.bg = b.dataset.mmbg; st.querySelectorAll('[data-mmbg]').forEach(x => x.classList.toggle('on', x === b)); return; }
     const r = e.target.closest('[data-mmresp]'); if (r) { const st = r.closest('.mm-stage'); st.classList.toggle('resp'); r.classList.toggle('on'); return; }
@@ -189,7 +258,7 @@ export function activarManual(root, scroller) {
   mm.querySelectorAll('.mm-tipo').forEach(c => { const s = c.querySelector('[data-mmsize]'); if (s) c.style.setProperty('--ts', s.value + 'px'); });
 }
 
-export const MANUAL_CSS = `
+export const MANUAL_CSS = CEL_CSS + `
 .mm{--mm-soft:color-mix(in srgb,var(--mm-ink) 60%,transparent);--mm-line:color-mix(in srgb,var(--mm-ink) 11%,transparent);--mm-card:color-mix(in srgb,#fff 82%,var(--mm-bg2));--ease:cubic-bezier(.22,.8,.24,1);font-family:var(--mm-fb);color:var(--mm-ink);background:#fff;min-height:100vh;overflow-x:clip;-webkit-font-smoothing:antialiased}
 .mm.embed{min-height:0;border-radius:24px;overflow:hidden}
 .mm *{box-sizing:border-box}
@@ -442,4 +511,74 @@ export const MANUAL_CSS = `
 }
 @media (prefers-reduced-motion:reduce){.mm *,.mm *::before,.mm *::after{animation:none!important;transition:none!important}.mm .rv{opacity:1;transform:none}.mm-sh.rv h2{clip-path:none}.mm-w > span{transform:none}.mm-hl,.mm-hs,.mm-hn{opacity:1;transform:none}.mm-hero-in{transform:none;opacity:1}}
 @media print{.mm-top,.mm-prog,.mm-down,.mm-marq,.mm-orbs,.mm-test,.mm-stage-bgs,.mm-toast,.mm-enav{display:none}.mm .rv{opacity:1;transform:none}.mm-sh.rv h2{clip-path:none}.mm-hero{min-height:auto;padding:60px 0}.mm-hero-in{transform:none;opacity:1}.mm-s{break-inside:avoid-page;padding:48px 0}.mm-hero,.mm-bar-c,.mm-lf,.mm-col i,.mm-s.alt,.mm-aa{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+/* Parte del manual junto al número */
+.mm-sh span em{font-style:normal;color:var(--mm-soft);letter-spacing:.14em;text-transform:uppercase;font-size:11.5px}
+/* Esencia */
+.mm-concepto{margin:0 0 70px}
+.mm-concepto p{margin:0;font-family:var(--mm-fh);font-weight:var(--mm-wh);font-size:clamp(40px,7vw,104px);line-height:.95;letter-spacing:-.035em;color:var(--mm-p);padding-bottom:.06em}
+.mm-est{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:56px 64px;margin-top:10px}
+.mm-est-i{display:grid;grid-template-columns:auto 1fr;column-gap:18px;align-content:start;border-top:1px solid var(--mm-line);padding-top:22px}
+.mm-est-n{grid-row:span 2;font:700 13px var(--mm-fb);letter-spacing:.1em;color:var(--mm-p);padding-top:6px}
+.mm-est-i h3{margin:0 0 10px;font-family:var(--mm-fh);font-weight:var(--mm-wh);font-size:clamp(22px,2.2vw,28px);letter-spacing:-.015em;line-height:1.1}
+.mm-est-i p{margin:0;font-size:16.5px;line-height:1.6;white-space:pre-line;color:color-mix(in srgb,var(--mm-ink) 85%,transparent)}
+.mm-rasgos{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+.mm-rasgo{background:var(--mm-card);border-radius:24px;padding:28px 26px 26px;transition:transform .5s var(--ease),background .5s}
+.mm-s.alt .mm-rasgo{background:#fff}
+.mm-rasgo:hover{transform:translateY(-4px)}
+.mm-rasgo b{display:block;font-family:var(--mm-fh);font-weight:var(--mm-wh);font-size:clamp(24px,2.4vw,32px);letter-spacing:-.02em;text-transform:uppercase;color:var(--mm-p);margin-bottom:12px;line-height:1}
+.mm-rasgo p{margin:0;font-size:15px;line-height:1.55}
+.mm-manif{margin-top:90px;background:var(--mm-p);color:var(--mm-po);border-radius:32px;padding:clamp(36px,6vw,80px)}
+.mm-manif .mm-k{color:inherit;opacity:.7}
+.mm-manif p{margin:0;font-family:var(--mm-fh);font-weight:var(--mm-wh);font-size:clamp(22px,2.6vw,36px);line-height:1.25;letter-spacing:-.015em;white-space:pre-line;max-width:900px}
+/* Logo sobre cada fondo */
+.mm-fondos{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.mm-fondo{position:relative;aspect-ratio:4/3;border-radius:20px;display:grid;place-items:center;padding:34px 30px;box-shadow:inset 0 0 0 1px var(--mm-line)}
+.mm-fondo img{max-width:78%;max-height:62%;object-fit:contain}
+.mm-fondo span{position:absolute;left:16px;bottom:12px;font-size:12px;font-weight:600;opacity:.75}
+/* Aplicaciones: ver en grande */
+.mm-ap-m{position:relative}
+.mm-zoom{position:absolute;right:12px;top:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.92);color:#111;display:grid;place-items:center;opacity:0;transform:scale(.85);transition:opacity .3s,transform .3s var(--ease);box-shadow:0 4px 14px rgba(0,0,0,.15)}
+.mm-ap-m:hover .mm-zoom{opacity:1;transform:none}
+@media (hover:none){.mm-zoom{opacity:1;transform:none}}
+.mm-tipo-dl .mm-fxs{justify-content:flex-start}
+/* Redes */
+.mm-red-tabs{display:flex;justify-content:flex-start;margin-bottom:34px}
+.mm-red-tabs .cel-redes{--fg:var(--mm-ink);--surface:#fff;--muted:var(--mm-soft);background:color-mix(in srgb,var(--mm-ink) 7%,transparent);justify-content:flex-start}
+.mm-red-tabs .cel-redes button{font-family:var(--mm-fb);font-size:14px;padding:9px 16px}
+.mm-red{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:40px;align-items:start}
+.mm-red[hidden]{display:none}
+.mm-red-v{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.mm-red-c{display:grid;gap:10px;flex:0 1 auto;min-width:0}
+.mm-red-c .cel{width:330px;box-shadow:0 0 0 1px var(--mm-line),0 30px 60px -36px rgba(0,0,0,.45)}
+.mm-red-c .cel.t-reel,.mm-red-c .cel.t-historia{width:300px;height:533px}
+.mm-red-l{display:grid;gap:22px;position:sticky;top:90px}
+.mm-red-f{display:grid;gap:8px}
+.mm-rf{display:flex;align-items:center;gap:12px;background:var(--mm-card);border-radius:16px;padding:8px 12px 8px 8px}
+.mm-s.alt .mm-rf{background:#fff}
+.mm-rf-i{flex:none;width:52px;height:52px;border-radius:10px;overflow:hidden;background:color-mix(in srgb,var(--mm-ink) 6%,transparent)}
+.mm-rf-i img{width:100%;height:100%;object-fit:cover}
+.mm-rf-n{display:grid;flex:1;min-width:0}
+.mm-rf-n b{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mm-rf-n small{font-size:12px;color:var(--mm-soft)}
+.mm-rf .mm-fxs{flex:none;max-width:120px}
+.mm-rf .mm-dl{width:34px;height:34px}
+.mm-med dl{margin:0;display:grid;gap:0}
+.mm-med dl div{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--mm-line);font-size:13.5px}
+.mm-med dt{color:var(--mm-soft)}.mm-med dd{margin:0;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.mm-med small{display:block;margin-top:8px;font-size:12px;color:var(--mm-soft)}
+/* Descargas: qué bajar */
+.mm-guia{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;margin-bottom:64px}
+.mm-guia > div{background:var(--mm-card);border-radius:24px;padding:26px 28px}
+.mm-s.alt .mm-guia > div{background:#fff}
+.mm-guia dl{margin:0}
+.mm-guia dl div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;padding:11px 0;border-bottom:1px solid var(--mm-line);font-size:14px;line-height:1.45}
+.mm-guia dl div:last-child{border-bottom:0}
+.mm-guia dt{font-weight:600}.mm-guia dd{margin:0;color:color-mix(in srgb,var(--mm-ink) 75%,transparent)}
+.mm-fi b{font-size:22px;font-weight:600}
+@media (max-width:980px){.mm-red{grid-template-columns:1fr}.mm-red-l{position:static}}
+@media (max-width:720px){.mm-est{grid-template-columns:1fr;gap:36px}.mm-red-c .cel{width:min(330px,100%)}.mm-red-c .cel.t-reel,.mm-red-c .cel.t-historia{width:min(300px,100%);height:auto;aspect-ratio:9/16}.mm-guia dl div{grid-template-columns:1fr;gap:2px}.mm-red-v{justify-content:center}}
+.mm-logo figcaption:has(.mm-fxs),.mm-ap figcaption:has(.mm-fxs){flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:8px}
+.mm-logo figcaption:has(.mm-fxs) .mm-fxs,.mm-ap figcaption:has(.mm-fxs) .mm-fxs{justify-content:flex-start}
+@media (max-width:720px){.mm-red-tabs .cel-redes{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;border-radius:16px}.mm-red-tabs .cel-redes button{flex:none}}
 `;

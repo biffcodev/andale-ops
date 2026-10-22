@@ -2,11 +2,18 @@
 // Vive en clientes.marca.kit; los archivos van al bucket "marcas" (SQL 0044). Los colores y tipografías también se
 // guardan como texto en la ficha (marca.colores / marca.tipografias) para que Mr. Piggy los tenga en cuenta.
 import { ICON } from './iconos.js';
+import { logoRed, REDES } from './redes-logos.js';
+import { activarVisor } from './visor.js';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ROLES_COLOR = ['Principal', 'Secundario', 'Acento', 'Fondo', 'Texto'];
 // Categorías de los archivos del kit (las aplicaciones de la marca)
-export const CATS = [['fotos', 'Fotos'], ['iconos', 'Íconos'], ['papeleria', 'Papelería y documentos'], ['redes', 'Perfiles y portadas de redes'], ['videos', 'Videos'], ['plantillas', 'Plantillas'], ['texturas', 'Patrones y texturas'], ['otros', 'Otros']];
+export const CATS = [['fotos', 'Fotos'], ['iconos', 'Íconos'], ['papeleria', 'Papelería y documentos'], ['redes', 'Perfiles y portadas de redes'], ['videos', 'Videos'], ['plantillas', 'Plantillas'], ['texturas', 'Patrones y texturas'], ['graficos', 'Ilustraciones y stickers'], ['otros', 'Otros']];
+// Redes: a qué red va cada perfil, portada o plantilla, y para qué se usa
+export const REDES_KIT = ['instagram', 'facebook', 'linkedin', 'tiktok', 'youtube', 'x'];
+export const redDe = x => x.red || (REDES_KIT.find(k => new RegExp(k === 'x' ? '\\b(twitter|x)\\b' : k, 'i').test(x.n || '')) || '');
+export const usoDe = x => x.uso || (/perfil|avatar/i.test(x.n || '') ? 'perfil' : /portada|cover|banner|header|encabezado/i.test(x.n || '') ? 'portada' : /histori|story|reel/i.test(x.n || '') ? 'historia' : catDe(x) === 'plantillas' ? 'post' : '');
+const USOS = [['perfil', 'Foto de perfil'], ['portada', 'Portada'], ['post', 'Post'], ['historia', 'Historia o reel']];
 export const catDe = r => r.cat || (/^video\//.test(r.tipo || '') || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(r.url || '') ? 'videos' : /^image\//.test(r.tipo || '') || /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(r.url || '') ? 'fotos' : 'otros');
 const ROLES_TIPO = ['Títulos', 'Subtítulos', 'Textos', 'Destacados'];
 const PESOS = [['300', 'Light'], ['400', 'Regular'], ['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extrabold'], ['900', 'Black']];
@@ -31,6 +38,11 @@ export const bajarFmt = (x, f) => f.link ? f.url : bajar(f.url, String(x.n || 'a
 const pesoTxt = n => !n ? '' : n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB';
 const PREF = ['SVG', 'PNG', 'WEBP', 'JPG', 'JPEG', 'GIF', 'MP4', 'MOV', 'WEBM'];
 const previaDe = fs => [...fs].filter(f => !f.link && (esImg(f.tipo, f.nombre || f.url) || /^video\//.test(f.tipo || ''))).sort((a, b) => (PREF.indexOf(fmtDe(a)) + 99) % 99 - (PREF.indexOf(fmtDe(b)) + 99) % 99)[0] || fs.find(f => !f.link) || fs[0];
+// Google Fonts: la lista (familia, categoría, pesos) se baja una sola vez cuando se abre el buscador.
+let GF = null; const gfLista = () => GF || (GF = fetch('/google-fonts.json').then(r => r.json()).catch(() => []));
+const GF_POP = ['Inter', 'Montserrat', 'Poppins', 'Roboto', 'Open Sans', 'Lato', 'DM Sans', 'Archivo', 'Work Sans', 'Manrope', 'Plus Jakarta Sans', 'Outfit', 'Space Grotesk', 'Raleway', 'Nunito', 'Playfair Display', 'Lora', 'Fraunces', 'Cormorant Garamond', 'Libre Baskerville', 'Bebas Neue', 'Oswald', 'Archivo Black', 'Syne'];
+const GF_CATS = [['', 'Todas'], ['sans', 'Sans'], ['serif', 'Serif'], ['display', 'Display'], ['hand', 'Manuscritas'], ['mono', 'Mono']];
+const sinTilde = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const lindo = nm => String(nm).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 // Lo que Mr. Piggy leyó del manual (texto) pasado a colores y tipografías del kit, si el kit todavía no los tiene.
@@ -94,9 +106,11 @@ export function initKit(ctx) {
     const editar = (k, x) => can ? '<button class="km-ed" data-act="kmEditar" data-k="' + k + '" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Editar y sumar formatos" aria-label="Editar ' + esc(x.n) + '">' + ICON.editar + '</button>' : '';
     const media = x => /^video\//.test(x.tipo || '') || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(x.url || '') ? '<video src="' + esc(x.url) + '" muted playsinline preload="metadata"></video>' : esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="' + esc(x.n) + '" loading="lazy">' : '<span class="km-ext">' + esc((formatos(x)[0] || {}).fmt || 'ARCHIVO') + '</span>';
     const pie = x => '<figcaption><b title="' + esc(x.n) + '">' + esc(x.n) + '</b>' + chips(x) + '</figcaption>';
+    const verGrande = x => (esImg(x.tipo, x.url) || /^video\//.test(x.tipo || '')) ? ' data-visor="' + esc(x.url) + '" data-n="' + esc(x.n) + '"' : '';
+    const redB = x => { if (!['redes', 'plantillas'].includes(catDe(x))) return ''; const r = redDe(x), u = usoDe(x); return '<span class="km-redb">' + (r ? logoRed(r, 14) : '<i>Todas</i>') + (u ? '<i>' + esc((USOS.find(y => y[0] === u) || [])[1] || '') + '</i>' : '') + '</span>'; };
     const vacio = t => '<p class="km-v">' + t + '</p>';
 
-    const logos = kit.logos.length ? '<div class="km-logos">' + kit.logos.map(x => '<figure class="km-t km-logo"><div class="km-lf f-' + esc(x.fondo || 'claro') + '"' + (x.fondo === 'marca' && kit.colores[0] ? ' style="--km:' + esc(kit.colores[0].hex) + '"' : '') + '>' + media(x) +
+    const logos = kit.logos.length ? '<div class="km-logos" data-visor-grupo>' + kit.logos.map(x => '<figure class="km-t km-logo"><div class="km-lf f-' + esc(x.fondo || 'claro') + '"' + (x.fondo === 'marca' && kit.colores[0] ? ' style="--km:' + esc(kit.colores[0].hex) + '"' : '') + verGrande(x) + '>' + media(x) +
       (can ? '<button class="km-fbtn" data-act="kmFondo" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Cambiar el fondo" aria-label="Cambiar el fondo">◐</button>' : '') + editar('logos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div>' : vacio('Subí el logo principal y sus versiones: horizontal, vertical, isotipo, negativo, monocromo. Si subís el mismo logo en SVG, PNG y AI juntos, queda uno solo con sus tres formatos.');
 
     const cols = kit.colores.length ? '<div class="km-cols">' + kit.colores.map(x => { const h = hexOk(x.hex) ? x.hex : '#999999', [r, g, b] = rgb(h);
@@ -106,7 +120,8 @@ export function initKit(ctx) {
     const tipos = kit.tipos.length ? '<div class="km-tipos">' + kit.tipos.map(x => '<div class="km-tipo"><span class="km-rol">' + esc(x.rol || 'Tipografía') + '</span>' +
       '<div class="km-aa" style="font-family:' + esc(fam(x)) + ';font-weight:' + esc(x.peso || '400') + '">Aa</div>' +
       '<p class="km-pan" style="font-family:' + esc(fam(x)) + ';font-weight:' + esc(x.peso || '400') + '">' + esc(c.nombre) + ' · ABCDEFGHIJKLMNÑ abcdefghijklmnñ 0123456789</p>' +
-      '<div class="km-cap"><span><b>' + esc(x.familia) + '</b><small>' + esc((PESOS.find(p => p[0] === x.peso) || [])[1] || 'Regular') + (x.url ? ' · archivo cargado' : '') + '</small></span>' + acc('tipos', x, !!x.url) + '</div></div>').join('') + '</div>' : vacio('Sumá las tipografías de títulos y de textos. Si no es de Google Fonts, subí el archivo para verla y descargarla.');
+      '<div class="km-cap"><span><b>' + esc(x.familia) + '</b><small>' + esc((PESOS.find(p => p[0] === x.peso) || [])[1] || 'Regular') + (x.url ? ' · archivo cargado' : ' · Google Fonts') + '</small></span>' + acc('tipos', x, false) + '</div>' +
+      (formatos(x).length ? chips(x) : '<span class="km-fxs"><a class="km-fx ed" href="https://fonts.google.com/specimen/' + esc(String(x.familia || '').replace(/ /g, '+')) + '" target="_blank" rel="noopener" title="Ver y bajar de Google Fonts">GOOGLE FONTS ↗</a></span>') + '</div>').join('') + '</div>' : vacio('Sumá las tipografías de títulos y de textos. Si no es de Google Fonts, subí el archivo para verla y descargarla.');
 
     // Aplicaciones y archivos, agrupados por tipo (fotos, íconos, papelería, redes, videos…); cada tipo con su botón para subir.
     const ACC = {}; // cualquier archivo: también los editables (AI, PSD, INDD, FIG…)
@@ -115,7 +130,7 @@ export function initKit(ctx) {
     const recursosG = CATS.map(([k, l]) => [k, l, recC.filter(x => x.cat === k)]).filter(g => g[2].length);
     const faltan = CATS.filter(([k]) => !recursosG.some(g => g[0] === k));
     const recursos = (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><div class="km-gh"><h4>' + esc(l) + '</h4><span class="km-n">' + xs.length + '</span><span class="km-sp"></span>' + subeCat(k, 'Subir', 'btn ghost sm km-up') + '</div>' +
-        '<div class="km-recs c-' + k + '">' + xs.map(x => '<figure class="km-t km-rec"><div class="km-rf">' + media(x) + editar('recursos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div></div>').join('') : vacio('Subí cada cosa en su tipo. Si tenés la misma pieza en varios formatos (por ejemplo tarjeta.pdf, tarjeta.png y tarjeta.ai), subilos juntos y quedan como una sola con sus formatos.')) +
+        '<div class="km-recs c-' + k + '" data-visor-grupo>' + xs.map(x => '<figure class="km-t km-rec"><div class="km-rf"' + verGrande(x) + '>' + media(x) + redB(x) + editar('recursos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div></div>').join('') : vacio('Subí cada cosa en su tipo. Si tenés la misma pieza en varios formatos (por ejemplo tarjeta.pdf, tarjeta.png y tarjeta.ai), subilos juntos y quedan como una sola con sus formatos.')) +
       (can && faltan.length ? '<div class="km-mas"><span>' + (recursosG.length ? 'Sumar otro tipo' : 'Subir') + '</span>' + faltan.map(([k, l]) => subeCat(k, l, 'km-cat-b')).join('') + '</div>' : '');
 
     const links = kit.links.length ? '<div class="km-links">' + kit.links.map(x => '<span class="km-link"><a class="btn sm" href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.n) + ' ' + ICON.externo + '</a>' + (can ? '<button class="btn ghost sm" data-act="kmEditar" data-k="links" data-i="' + esc(x.id) + '" data-id="' + id + '" aria-label="Editar">' + ICON.editar + '</button>' : '') + '</span>').join('') + '</div>' : vacio('El manual, la carpeta del Drive, el kit de Canva o el archivo de Figma.');
@@ -140,6 +155,18 @@ export function initKit(ctx) {
     const kit = kitDe(c), x = i ? (kit[k] || []).find(y => y.id === i) : null, nuevo = !x;
     S.form = null; st.edit = { cid: c._id, k, i };
     const radios = (name, opts, val) => '<div class="seg km-seg" role="radiogroup">' + opts.map(o => '<label><input type="radio" name="' + name + '" value="' + esc(o) + '"' + ((val || '') === o ? ' checked' : '') + '><span>' + esc(o || 'Sin rol') + '</span></label>').join('') + '</div>';
+    const radiosV = (name, opts, val, ic) => '<div class="seg km-seg" role="radiogroup">' + opts.map(([v, l]) => '<label><input type="radio" name="' + name + '" value="' + esc(v) + '"' + ((val || '') === v ? ' checked' : '') + '><span>' + (ic ? ic(v) : '') + esc(l) + '</span></label>').join('') + '</div>';
+    const fmtCampo = (x, lbl) => {
+      const fs = x ? formatos(x) : [], prev = x && (fs.find(f => f.url === x.url) || {}).id;
+      const fila = f => '<div class="km-fr"><span class="km-fx' + (f.ed ? ' ed' : '') + '">' + esc(f.fmt) + '</span><span class="km-fn"><b>' + esc(f.link ? f.url.replace(/^https?:\/\/(www\.)?/, '') : f.nombre || (x.n + '.' + f.fmt.toLowerCase())) + '</b><small>' + [f.ed ? 'Editable' : f.fmt === 'PDF' ? 'Para imprimir' : 'Para usar', pesoTxt(f.peso)].filter(Boolean).join(' · ') + '</small></span>' +
+        (!f.link && (esImg(f.tipo, f.nombre || f.url) || /^video\//.test(f.tipo || '')) && fs.length > 1 ? '<label class="km-pv" title="Usar de vista previa"><input type="radio" name="km-prev" value="' + esc(f.id) + '"' + (f.id === prev ? ' checked' : '') + '><span>Vista previa</span></label>' : '') +
+        '<a class="btn ghost sm" href="' + esc(bajarFmt(x, f)) + '"' + (f.link ? ' target="_blank" rel="noopener"' : '') + ' aria-label="' + (f.link ? 'Abrir' : 'Descargar') + '">' + (f.link ? ICON.externo : ICON.descargar) + '</a>' +
+        (fs.length > 1 ? '<button type="button" class="btn ghost sm" data-act="kmFmtQuitar" data-f="' + esc(f.id) + '" aria-label="Quitar este formato" title="Quitar este formato">✕</button>' : '') + '</div>';
+      return '<div class="field full"><span class="lbl">' + lbl + ' <span class="muted">' + fs.length + '</span></span><div class="km-fl">' + fs.map(fila).join('') + '</div>' +
+        '<div class="km-fadd"><label class="btn sm' + (st.subiendo === 'fmt' ? ' disabled' : '') + '">' + ICON.sumar + (st.subiendo === 'fmt' ? 'Subiendo…' : 'Sumar archivos') + '<input type="file" hidden multiple data-kmfmt="1"></label>' +
+        '<span class="km-flink"><input id="km-flink" type="url" placeholder="Link de Canva, Figma o Drive"><button type="button" class="btn sm" data-act="kmFmtLink">Agregar</button></span></div>' +
+        '<span class="hint">' + (k === 'tipos' ? 'Los archivos de la familia (.ttf, .otf, .woff o un .zip). ' : 'Para usar: SVG o PNG. Para imprimir: PDF. Editables: AI, PSD, INDD, Figma o Canva. ') + 'Se guardan apenas los subís.</span></div>';
+    };
     let campos = '', titulo = '';
     if (k === 'colores') { const h = x && hexOk(x.hex) ? x.hex : '#FC4855'; titulo = nuevo ? 'Nuevo color' : 'Color';
       campos = '<div class="field full"><label for="km-hex">Color</label><div class="km-hexr"><input type="color" id="km-pick" value="' + esc(h.toLowerCase()) + '" aria-label="Elegir color"><input id="km-hex" value="' + esc(h) + '" placeholder="#FC4855" maxlength="7"></div></div>' +
@@ -147,29 +174,26 @@ export function initKit(ctx) {
         '<div class="field full"><span class="lbl">Para qué se usa</span>' + radios('km-rol', ['', ...ROLES_COLOR], x && x.rol) + '</div>' +
         '<div class="field full"><label for="km-pms">Pantone (opcional)</label><input id="km-pms" value="' + esc((x && x.pantone) || '') + '" placeholder="Ej.: 185 C"><span class="hint">HEX, RGB y CMYK se calculan solos.</span></div>'; }
     else if (k === 'tipos') { titulo = nuevo ? 'Nueva tipografía' : 'Tipografía';
-      campos = '<div class="field full"><label for="km-fam">Familia</label><input id="km-fam" value="' + esc((x && x.familia) || '') + '" placeholder="Ej.: Montserrat"><span class="hint">Si es de Google Fonts se ve sola. Si no, subí el archivo (.ttf, .otf, .woff).</span></div>' +
+      campos = '<div class="field full km-gfw"><label for="km-fam">Familia</label><input id="km-fam" autocomplete="off" value="' + esc((x && x.familia) || '') + '" placeholder="Buscá en Google Fonts: Montserrat, Inter, Playfair…">' +
+        '<div class="km-gf-cats" role="group" aria-label="Estilo">' + GF_CATS.map(([v, l], i) => '<button type="button" data-act="kmGfCat" data-v="' + v + '"' + (i === 0 ? ' class="on"' : '') + '>' + l + '</button>').join('') + '</div><div id="km-gf" class="km-gf" role="listbox" aria-label="Fuentes de Google Fonts"></div>' +
+        '<span class="hint">Elegila de Google Fonts y se carga sola. Si no está ahí, escribí el nombre y subí los archivos.</span></div>' +
         '<div class="field full"><span class="lbl">Para qué se usa</span>' + radios('km-rol', ['', ...ROLES_TIPO], x && x.rol) + '</div>' +
         '<div class="field full"><span class="lbl">Peso</span>' + radios('km-peso', PESOS.map(p => p[1]), (PESOS.find(p => p[0] === ((x && x.peso) || '400')) || [])[1]) + '</div>' +
-        '<div class="field full"><label for="km-file">Archivo de la tipografía' + (x && x.url ? ' (ya hay uno; subí otro para reemplazarlo)' : '') + '</label><input type="file" id="km-file" accept=".ttf,.otf,.woff,.woff2"></div>'; }
+        (x && formatos(x).length ? fmtCampo(x, 'Archivos de la tipografía') : '<div class="field full"><label for="km-file">Archivos de la tipografía (opcional)</label><input type="file" id="km-file" multiple accept=".ttf,.otf,.woff,.woff2,.zip"><span class="hint">.ttf, .otf, .woff o el .zip con toda la familia. Así se puede descargar desde el manual.</span></div>'); }
     else if (k === 'links') { titulo = nuevo ? 'Nuevo link' : 'Link';
       campos = '<div class="field full"><label for="km-n">Nombre</label><input id="km-n" value="' + esc((x && x.n) || '') + '" placeholder="Ej.: Manual de marca, Kit en Canva, Carpeta del Drive"></div>' +
         '<div class="field full"><label for="km-url">Link</label><input id="km-url" type="url" value="' + esc((x && x.url) || '') + '" placeholder="https://"></div>'; }
     else { titulo = k === 'logos' ? 'Logo' : 'Archivo';
-      const fs = x ? formatos(x) : [], prev = x && (fs.find(f => f.url === x.url) || {}).id;
-      const fila = f => '<div class="km-fr"><span class="km-fx' + (f.ed ? ' ed' : '') + '">' + esc(f.fmt) + '</span><span class="km-fn"><b>' + esc(f.link ? f.url.replace(/^https?:\/\/(www\.)?/, '') : f.nombre || (x.n + '.' + f.fmt.toLowerCase())) + '</b><small>' + [f.ed ? 'Editable' : f.fmt === 'PDF' ? 'Para imprimir' : 'Para usar', pesoTxt(f.peso)].filter(Boolean).join(' · ') + '</small></span>' +
-        (!f.link && (esImg(f.tipo, f.nombre || f.url) || /^video\//.test(f.tipo || '')) && fs.length > 1 ? '<label class="km-pv" title="Usar de vista previa"><input type="radio" name="km-prev" value="' + esc(f.id) + '"' + (f.id === prev ? ' checked' : '') + '><span>Vista previa</span></label>' : '') +
-        '<a class="btn ghost sm" href="' + esc(bajarFmt(x, f)) + '"' + (f.link ? ' target="_blank" rel="noopener"' : '') + ' aria-label="' + (f.link ? 'Abrir' : 'Descargar') + '">' + (f.link ? ICON.externo : ICON.descargar) + '</a>' +
-        (fs.length > 1 ? '<button type="button" class="btn ghost sm" data-act="kmFmtQuitar" data-f="' + esc(f.id) + '" aria-label="Quitar este formato" title="Quitar este formato">✕</button>' : '') + '</div>';
       campos = '<div class="field full"><label for="km-n">Nombre</label><input id="km-n" value="' + esc((x && x.n) || '') + '" placeholder="' + (k === 'logos' ? 'Ej.: Principal, Horizontal, Vertical, Isotipo, Negativo' : 'Ej.: Tarjeta personal, Portada de Facebook') + '"></div>' +
         (k === 'recursos' ? '<div class="field full"><span class="lbl">Tipo</span>' + radios('km-cat', CATS.map(c => c[1]), (CATS.find(c => c[0] === catDe(x || {})) || CATS[0])[1]) + '</div>' : '') +
-        (x ? '<div class="field full"><span class="lbl">Formatos <span class="muted">' + fs.length + '</span></span><div class="km-fl">' + fs.map(fila).join('') + '</div>' +
-          '<div class="km-fadd"><label class="btn sm' + (st.subiendo === 'fmt' ? ' disabled' : '') + '">' + ICON.sumar + (st.subiendo === 'fmt' ? 'Subiendo…' : 'Sumar formatos') + '<input type="file" hidden multiple data-kmfmt="1"></label>' +
-          '<span class="km-flink"><input id="km-flink" type="url" placeholder="Link de Canva, Figma o Drive"><button type="button" class="btn sm" data-act="kmFmtLink">Agregar</button></span></div>' +
-          '<span class="hint">Para usar: SVG o PNG. Para imprimir: PDF. Editables: AI, PSD, INDD, Figma o Canva. Se guardan apenas los subís.</span></div>' : ''); }
+        (k === 'recursos' && x && ['redes', 'plantillas'].includes(catDe(x)) ? '<div class="field full"><span class="lbl">Red</span>' + radiosV('km-red', [['', 'Todas'], ...REDES_KIT.map(r => [r, (REDES.find(y => y[0] === r) || [r, r])[1]])], redDe(x), r => r ? logoRed(r, 15) : '') + '</div>' +
+          '<div class="field full"><span class="lbl">Se usa como</span>' + radiosV('km-uso', [['', 'Sin definir'], ...USOS], usoDe(x)) + '</div>' : '') +
+        (x ? fmtCampo(x, 'Formatos') : ''); }
     document.getElementById('panel').innerHTML = '<form id="kmform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(c.nombre) + ' · Kit de marca</span><h2 id="panel-title">' + titulo + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b">' + campos + '</div><div class="panel-f"><span>' + (nuevo ? '' : '<button type="button" class="btn ghost" data-act="kmBorrar">' + ICON.borrar + 'Borrar</button>') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" id="kmsave">' + (nuevo ? 'Agregar' : 'Guardar') + '</button></span></div></form>';
     document.getElementById('panel').hidden = false; document.getElementById('scrim').hidden = false;
     setTimeout(() => { const f = document.querySelector('#kmform input:not([type=radio]):not([type=color])'); if (f && nuevo) f.focus(); }, 30);
+    if (k === 'tipos') { st.gfCat = ''; gfBuscar().then(async () => { st.gfLista = await gfLista(); if (x && x.familia) gfPesos(x.familia); }); }
   }
   function panelUso(c) {
     S.form = null; st.edit = { cid: c._id, k: 'uso' };
@@ -179,6 +203,18 @@ export function initKit(ctx) {
     document.getElementById('panel').hidden = false; document.getElementById('scrim').hidden = false;
   }
   // Manual online: versión, textos que solo están en el manual, y publicarlo con un link.
+  const ESTRATEGIA = [
+    ['concepto', 'Concepto', 'La idea que ordena todo, en pocas palabras. Ej.: Very cordobés', 2],
+    ['punto', 'Punto de partida', 'De dónde viene la marca: su origen y qué faltaba ordenar.'],
+    ['proposito', 'Propósito', 'Para qué existe, más allá de lo que vende.'],
+    ['posicionamiento', 'Posicionamiento', 'Dónde se para frente a las otras opciones.'],
+    ['promesa', 'La promesa', 'Lo que la gente puede esperar siempre.', 2],
+    ['territorio', 'Territorio', 'El mundo del que habla y en el que se mueve.'],
+    ['publico', 'Para quién', 'Quiénes son, qué buscan, qué preguntan antes de comprar.'],
+    ['personalidad', 'Personalidad', 'Si la marca fuera una persona, ¿cómo sería?'],
+    ['rasgos', 'Rasgos (uno por renglón: Nombre: descripción)', 'Cercana: habla como habla la gente.\nConfiable: lo de ayer y lo de mañana responden al mismo criterio.', 4],
+    ['manifiesto', 'Manifiesto', 'El texto que la define, con su tono.', 6],
+  ];
   function panelManual(c) {
     const man = (c.marca || {}).manual || {};
     S.form = null; st.edit = { cid: c._id, k: 'manual' };
@@ -186,7 +222,10 @@ export function initKit(ctx) {
     document.getElementById('panel').innerHTML = '<form id="kmform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(c.nombre) + '</span><h2 id="panel-title">Manual online</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b"><p class="formnote full">Una página con el logo, los colores, las tipografías y las descargas de la marca, armada con el kit y la ficha. La ve cualquiera que tenga el link, sin entrar a nada.</p>' +
       '<div class="field full"><span class="lbl">Versión</span>' + radio('km-ver', [['completo', 'Manual completo', 'La marca la hicimos nosotros: esencia, logo con sus reglas, color, tipografía, imágenes, voz y descargas.'], ['simple', 'Guía simple', 'Con lo que nos pasó el cliente: logo, color, tipografía, estilo y descargas.']], man.version || 'completo') + '</div>' +
+      '<div class="field full km-est"><h3 class="km-ph">Estrategia <span class="muted">va al principio del manual completo</span></h3></div>' +
       '<div class="field full km-sc"><label for="km-intro">Esencia (abre el manual completo)</label><textarea id="km-intro" rows="4" placeholder="En dos o tres frases: qué es la marca, qué la mueve y cómo quiere que la recuerden.">' + esc(man.intro || '') + '</textarea></div>' +
+      ESTRATEGIA.map(([k, l, ph, rows]) => '<div class="field full km-est"><label for="km-e-' + k + '">' + l + '</label><textarea id="km-e-' + k + '" rows="' + (rows || 3) + '" placeholder="' + esc(ph) + '">' + esc(man[k] || '') + '</textarea></div>').join('') +
+      '<div class="field full"><h3 class="km-ph">Logo</h3></div>' +
       '<div class="field km-sc"><label for="km-resp">Área de respeto del logo</label><input id="km-resp" value="' + esc(man.respeto || '') + '" placeholder="Ej.: la altura de la “a” alrededor"></div>' +
       '<div class="field km-sc"><label for="km-min">Tamaño mínimo</label><input id="km-min" value="' + esc(man.minimo || '') + '" placeholder="Ej.: 24 px de alto / 10 mm"></div>' +
       '<div class="field full km-sc"><label for="km-no">Lo que no se hace con el logo (uno por renglón)</label><textarea id="km-no" rows="4" placeholder="No deformarlo\nNo cambiarle los colores\nNo ponerlo sobre fotos sin contraste\nNo agregarle sombras ni efectos">' + esc(man.no || '') + '</textarea></div>' +
@@ -214,7 +253,7 @@ export function initKit(ctx) {
       if (e.k === 'uso') { await guardar(c, kit, { visual: v('km-uso') }); ctx.closeForm(); toast('Guardado'); return; }
       if (e.k === 'manual') {
         const prev = (c.marca || {}).manual || {}, pub = r('km-pub') === 'si';
-        const man = { ...prev, version: r('km-ver') || 'completo', intro: v('km-intro'), respeto: v('km-resp'), minimo: v('km-min'), no: (document.getElementById('km-no') || {}).value || '', publicado: pub, slug: prev.slug || slugDe(c.nombre) };
+        const man = { ...prev, ...Object.fromEntries(ESTRATEGIA.map(([k]) => [k, (document.getElementById('km-e-' + k) || {}).value || ''])), version: r('km-ver') || 'completo', intro: v('km-intro'), respeto: v('km-resp'), minimo: v('km-min'), no: (document.getElementById('km-no') || {}).value || '', publicado: pub, slug: prev.slug || slugDe(c.nombre) };
         await guardar(c, kit, { manual: man }); ctx.closeForm();
         if (pub) { try { await navigator.clipboard.writeText(urlManual(man)); toast('Manual publicado. Copié el link.'); } catch (er) { toast('Manual publicado'); } } else toast('Guardado');
         return;
@@ -224,10 +263,14 @@ export function initKit(ctx) {
         const f = (document.getElementById('km-file') || {}).files || [];
         if (!v('km-fam') && !f.length) { toast('Escribí la familia o subí el archivo'); listo(); return; }
         Object.assign(x, { familia: v('km-fam') || String(f[0].name).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), rol: r('km-rol'), peso: (PESOS.find(p => p[1] === r('km-peso')) || ['400'])[0] });
-        if (f.length) { const old = x.path, up = await data.kitSubir(c._id, 'tipografias', f[0]); x.path = up.path; x.url = up.url; x.n = f[0].name; if (old) data.kitBorrar([old]); }
+        if (f.length) { x.archivos = [...(x.archivos || [])];
+          for (const fl of f) { const up = await data.kitSubir(c._id, 'tipografias', fl); x.archivos.push({ id: uid(), url: up.url, path: up.path, tipo: fl.type || '', nombre: fl.name, peso: fl.size }); }
+          const pv = x.archivos.find(y => /\.(ttf|otf|woff2?)$/i.test(y.nombre || '')) || x.archivos[0]; Object.assign(x, { url: pv.url, path: pv.path, n: pv.nombre }); }
+        x.google = !!(st.gfSet && st.gfSet.has(x.familia));
       }
       else if (e.k === 'links') { let u = v('km-url'); if (!u) { toast('Pegá el link'); listo(); return; } if (!/^https?:\/\//i.test(u)) u = 'https://' + u; Object.assign(x, { n: v('km-n') || u.replace(/^https?:\/\/(www\.)?/, '').split('/')[0], url: u }); }
-      else { x.n = v('km-n') || x.n; if (e.k === 'recursos') { const cl = r('km-cat'); x.cat = (CATS.find(c => c[1] === cl) || [catDe(x)])[0]; }
+      else { x.n = v('km-n') || x.n; if (e.k === 'recursos') { const cl = r('km-cat'); x.cat = (CATS.find(c => c[1] === cl) || [catDe(x)])[0];
+          if (document.querySelector('input[name="km-red"]')) { x.red = r('km-red'); x.uso = r('km-uso'); } }
         const pv = r('km-prev'), f = pv && (x.archivos || []).find(y => y.id === pv); if (f) Object.assign(x, { url: f.url, path: f.path, tipo: f.tipo || '' }); }
       if (i >= 0) arr[i] = x; else arr.push(x);
       await guardar(c, { ...kit, [e.k]: arr }); ctx.closeForm(); toast(i >= 0 ? 'Guardado' : 'Agregado');
@@ -267,7 +310,8 @@ export function initKit(ctx) {
     const nombre = (document.getElementById('km-n') || {}).value, cat = (document.querySelector('input[name="km-cat"]:checked') || {}).value;
     const x = { ...arr[i] }; x.archivos = (x.archivos && x.archivos.length ? x.archivos : formatos(x).map(f => ({ id: uid(), url: f.url, path: f.path, tipo: f.tipo || '', nombre: lindo(x.n).replace(/\s*\(ejemplo\)/i, '') + '.' + f.fmt.toLowerCase() }))).map(f => ({ ...f }));
     const quitar = await fn(x); if (quitar === false) return;
-    if (!x.archivos.some(f => f.url === x.url)) { const pv = previaDe(x.archivos); if (pv) Object.assign(x, { url: pv.url, path: pv.path, tipo: pv.tipo || '' }); }
+    if (e.k === 'tipos') { const pv = x.archivos.find(f => /\.(ttf|otf|woff2?)$/i.test(f.nombre || f.url)); if (pv) Object.assign(x, { url: pv.url, path: pv.path }); else { delete x.url; delete x.path; } }
+    else if (!x.archivos.some(f => f.url === x.url)) { const pv = previaDe(x.archivos); if (pv) Object.assign(x, { url: pv.url, path: pv.path, tipo: pv.tipo || '' }); }
     arr[i] = x;
     try { await guardar(c, { ...kit, [e.k]: arr }); if (quitar && quitar.length) data.kitBorrar(quitar); } catch (er) { toast(er.message); }
     panel(c, e.k, e.i);
@@ -277,11 +321,33 @@ export function initKit(ctx) {
   const fmtSubir = fs => formatosCambiar(async x => {
     st.subiendo = 'fmt'; const n = document.querySelector('[data-kmfmt]'); if (n) n.parentElement.classList.add('disabled');
     const c = cli(st.edit.cid);
-    try { for (const f of fs) { if (f.size > 50 * 1024 * 1024) { toast(f.name + ' pesa más de 50 MB'); continue; } const up = await data.kitSubir(c._id, st.edit.k === 'logos' ? 'logos' : catDe(x), f); x.archivos.push({ id: uid(), url: up.url, path: up.path, tipo: f.type || '', nombre: f.name, peso: f.size }); } }
+    try { for (const f of fs) { if (f.size > 50 * 1024 * 1024) { toast(f.name + ' pesa más de 50 MB'); continue; } const up = await data.kitSubir(c._id, st.edit.k === 'logos' ? 'logos' : st.edit.k === 'tipos' ? 'tipografias' : catDe(x), f); x.archivos.push({ id: uid(), url: up.url, path: up.path, tipo: f.type || '', nombre: f.name, peso: f.size }); } }
     catch (er) { toast(er.message); }
     st.subiendo = ''; toast(fs.length === 1 ? 'Formato sumado' : 'Formatos sumados'); return [];
   });
 
+  // Buscador de Google Fonts en el panel de tipografía
+  async function gfBuscar() {
+    const box = document.getElementById('km-gf'), inp = document.getElementById('km-fam'); if (!box || !inp) return;
+    const lista = await gfLista(); st.gfSet = new Set(lista.map(f => f[0]));
+    const q = sinTilde(inp.value.trim()), cat = st.gfCat || '';
+    let xs = lista.filter(f => (!cat || f[1] === cat) && (!q || sinTilde(f[0]).includes(q)));
+    if (!q) { const pop = GF_POP.map(n => xs.find(f => f[0] === n)).filter(Boolean); xs = [...pop, ...xs.filter(f => !GF_POP.includes(f[0]))]; }
+    else { const sc = f => sinTilde(f[0]).indexOf(q) * 10 - (GF_POP.includes(f[0]) ? 25 : 0) + f[0].length / 10; xs.sort((a, b) => sc(a) - sc(b)); }
+    xs = xs.slice(0, 24);
+    if (!xs.length) { box.innerHTML = '<p class="km-gf-v">No está en Google Fonts. Dejá el nombre y subí los archivos abajo.</p>'; return; }
+    const txt = [...new Set(xs.map(f => f[0]).join('').split(''))].join('');
+    const href = 'https://fonts.googleapis.com/css2?' + xs.map(f => 'family=' + encodeURIComponent(f[0]).replace(/%20/g, '+')).join('&') + '&text=' + encodeURIComponent(txt) + '&display=swap';
+    if (!document.querySelector('link[data-gfp="' + href + '"]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; l.dataset.gfp = href; document.head.appendChild(l); }
+    const CAT = { sans: 'Sans', serif: 'Serif', display: 'Display', hand: 'Manuscrita', mono: 'Mono' };
+    box.innerHTML = xs.map(f => '<button type="button" class="km-gf-i' + (inp.value.trim() === f[0] ? ' on' : '') + '" data-act="kmGf" data-f="' + esc(f[0]) + '" role="option"><span style="font-family:\'' + esc(f[0]) + '\',system-ui">' + esc(f[0]) + '</span><small>' + esc(CAT[f[1]] || '') + ' · ' + (f[3] ? 'variable' : f[2].split(',').length + (f[2].split(',').length === 1 ? ' peso' : ' pesos')) + '</small></button>').join('');
+  }
+  function gfPesos(fam) {
+    const f = (st.gfLista || []).find(y => y[0] === fam); if (!f) return;
+    const ws = f[3] ? null : f[2].split(',');
+    document.querySelectorAll('input[name="km-peso"]').forEach(i => { const p = (PESOS.find(y => y[1] === i.value) || [])[0]; const no = ws && !ws.includes(p); i.disabled = !!no; i.parentElement.classList.toggle('off', !!no); });
+    const cur = document.querySelector('input[name="km-peso"]:checked'); if (cur && cur.disabled) { const ok = [...document.querySelectorAll('input[name="km-peso"]')].find(i => !i.disabled); if (ok) ok.checked = true; }
+  }
   const acts = {
     kmNuevo: t => { const c = cli(t.dataset.id); if (c) panel(c, t.dataset.k); },
     kmEditar: t => { const c = cli(t.dataset.id); if (c) panel(c, t.dataset.k, t.dataset.i); },
@@ -289,6 +355,8 @@ export function initKit(ctx) {
     kmManual: t => { const c = cli(t.dataset.id); if (c) panelManual(c); },
     kmPrevia: t => { const c = cli(t.dataset.id); if (c) verComoCliente(c); },
     kmBorrar: () => borrar(),
+    kmGf: async t => { const inp = document.getElementById('km-fam'); if (!inp) return; inp.value = t.dataset.f; st.gfLista = await gfLista(); gfPesos(t.dataset.f); document.querySelectorAll('.km-gf-i').forEach(b => b.classList.toggle('on', b === t)); },
+    kmGfCat: t => { st.gfCat = t.dataset.v; document.querySelectorAll('[data-act="kmGfCat"]').forEach(b => b.classList.toggle('on', b === t)); gfBuscar(); },
     kmFmtQuitar: t => formatosCambiar(async x => { const f = x.archivos.find(y => y.id === t.dataset.f); if (!f) return false;
       if (ctx.confirmar && !await ctx.confirmar('Se quita el formato ' + fmtDe(f) + ' de «' + x.n + '».', { titulo: '¿Quitar este formato?', ok: 'Quitar' })) return false;
       x.archivos = x.archivos.filter(y => y.id !== f.id); return f.path ? [f.path] : []; }),
@@ -300,6 +368,7 @@ export function initKit(ctx) {
   document.addEventListener('submit', e => { if (e.target.id === 'kmform') { e.preventDefault(); guardarPanel(); } });
   document.addEventListener('input', e => {
     const t = e.target; if (!t) return;
+    if (t.id === 'km-fam') { clearTimeout(st.gfT); st.gfT = setTimeout(gfBuscar, 140); return; }
     if (t.id === 'km-pick') { const h = document.getElementById('km-hex'); if (h) h.value = t.value.toUpperCase(); }
     else if (t.id === 'km-hex') { const h = normHex(t.value), p = document.getElementById('km-pick'); if (p && hexOk(h)) p.value = h.toLowerCase(); }
   });
@@ -309,5 +378,6 @@ export function initKit(ctx) {
     const c = cli(t.dataset.id), fs = [...(t.files || [])]; t.value = '';
     if (c && fs.length && !st.subiendo) subir(c, t.dataset.kitup, fs, t.dataset.cat || '');
   });
+  activarVisor(document.body);
   return { html, acts };
 }
