@@ -95,14 +95,14 @@ export const tabsRedes = (rs, red, attrs) => '<div class="cel-redes" role="group
 export function celularPieza(z, c, artes, o = {}) {
   const rs = redesPieza(z), red = rs.includes(o.red) ? o.red : rs[0], fc = o.fc || '#888', tipo = tipoDe(z);
   const tabs = rs.length > 1 ? tabsRedes(rs, red, k => 'data-act="celRed" data-id="' + esc(z.id) + '" data-r="' + k + '"') : '<div class="cel-redes uno">' + logoRed(red, 16) + '<span>Así se ve en ' + esc((REDES_CEL.find(x => x[0] === red) || [red, red])[1]) + '</span></div>';
-  return '<div class="cel-w">' + tabs + '<div class="cel red-' + red + ' t-' + (red === 'tiktok' && tipo !== 'historia' ? 'reel' : tipo) + '">' + pantalla(z, c, red, artes, fc) + '</div></div>';
+  return '<div class="cel-w">' + (o.sinTabs ? '' : tabs) + '<div class="cel red-' + red + ' t-' + (red === 'tiktok' && tipo !== 'historia' ? 'reel' : tipo) + '">' + pantalla(z, c, red, artes, fc) + '</div></div>';
 }
 // Así queda el perfil de Instagram (grilla 3:4) o el inicio (las publicaciones una abajo de la otra)
 export function celularPerfil(c, piezas, artesDe, fcDe, o = {}) {
   const u = usuario(c.nombre), hist = piezas.filter(z => tipoDe(z) === 'historia'), pubs = piezas.filter(z => tipoDe(z) !== 'historia');
   const est = z => o.estado ? o.estado(z) : '';
   const tile = z => { const a = (artesDe(z.id) || []).find(x => x.miniatura); return '<button class="cel-t" data-act="pzVer" data-id="' + esc(z.id) + '">' + (a ? '<img src="' + esc(a.miniatura) + '" alt="">' : '<span class="cel-ph" style="--fc:' + fcDe(z) + '"><b>' + esc(z.formato) + '</b><span>' + esc(z.tema || '') + '</span></span>') + (tipoDe(z) === 'reel' ? '<i class="cel-t-i">' + IC.reels + '</i>' : tipoDe(z) === 'carrusel' ? '<i class="cel-t-i">' + IC.car + '</i>' : '') + est(z) + '</button>'; };
-  const hl = hist.length ? '<div class="cel-hl">' + hist.slice(0, 10).map(z => '<button data-act="pzVer" data-id="' + esc(z.id) + '">' + avatar(c, 'ring lg') + '<small>' + esc((z.fecha || '').slice(8, 10) + '/' + (z.fecha || '').slice(5, 7)) + '</small></button>').join('') + '</div>' : '';
+  const hl = hist.length && !o.sinHistorias ? '<div class="cel-hl">' + hist.slice(0, 10).map(z => '<button data-act="pzVer" data-id="' + esc(z.id) + '">' + avatar(c, 'ring lg') + '<small>' + esc((z.fecha || '').slice(8, 10) + '/' + (z.fecha || '').slice(5, 7)) + '</small></button>').join('') + '</div>' : '';
   if (o.modo === 'scroll') return '<div class="cel-w cel-feed">' + (hl ? '<div class="cel red-instagram cel-hl-c">' + hl + '</div>' : '') +
     pubs.map(z => '<div class="cel red-instagram" data-act="pzVer" data-id="' + esc(z.id) + '"><article class="cel-ig">' + igPost(z, c, artesDe(z.id), fcDe(z), textoPost(z, 125)) + '</article>' + est(z) + '</div>').join('') + '</div>';
   return '<div class="cel-w"><div class="cel red-instagram cel-perfil"><div class="cel-top">' + marcaRed('instagram') + '<b>' + esc(u) + '</b><span class="cel-sp"></span>' + IC.sumar + IC.menu + '</div>' +
@@ -116,7 +116,7 @@ const perfilIG = (c, n, bio) => '<div class="cel-pf"><div class="cel-pf-h">' + a
 export function perfilRed(c0, red, o = {}) {
   const c = { ...c0, avatar: o.perfil || c0.avatar }, u = usuario(c.nombre), posts = o.posts || [];
   const port = (ratio, txt) => '<div class="cel-cover" style="aspect-ratio:' + ratio + '">' + (o.portada ? '<img src="' + esc(o.portada) + '" alt="">' : '<span>' + esc(txt) + '</span>') + '</div>';
-  const grid = (ratio, n) => '<div class="cel-grid" style="--r:' + ratio + '">' + (posts.length ? posts : []).concat(Array(Math.max(0, n - posts.length)).fill('')).slice(0, Math.max(n, posts.length)).map(p => '<span class="cel-t">' + (p ? '<img src="' + esc(p) + '" alt="">' : '') + '</span>').join('') + '</div>';
+  const grid = (ratio, n) => '<div class="cel-grid" style="--cr:' + ratio + '">' + (posts.length ? posts : []).concat(Array(Math.max(0, n - posts.length)).fill('')).slice(0, Math.max(n, posts.length)).map(p => '<span class="cel-t">' + (p ? '<img src="' + esc(p) + '" alt="">' : '') + '</span>').join('') + '</div>';
   let h = '';
   if (red === 'instagram') h = '<div class="cel-top">' + marcaRed(red) + '<b>' + esc(u) + '</b><span class="cel-sp"></span>' + IC.sumar + IC.menu + '</div>' + perfilIG(c, posts.length, o.bio) +
     (o.historias && o.historias.length ? '<div class="cel-hl">' + o.historias.slice(0, 5).map(x => '<span>' + avatar({ ...c, avatar: x }, 'ring lg') + '<small>Destacada</small></span>').join('') + '</div>' : '') + '<div class="cel-pf-tabs"><span class="on">' + IC.grilla + '</span><span>' + IC.reels + '</span><span>' + IC.persona + '</span></div>' + grid('3/4', 6);
@@ -241,7 +241,7 @@ export const CEL_CSS = `
 .cel-pf-tabs svg{width:22px;height:22px}
 .cel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
 .red-youtube .cel-grid{grid-template-columns:1fr;gap:10px;padding:0 12px 12px}
-.cel-t{all:unset;cursor:pointer;position:relative;aspect-ratio:var(--r,3/4);overflow:hidden;background:#f0f0f0;display:block}
+.cel-t{all:unset;cursor:pointer;position:relative;aspect-ratio:var(--cr,3/4);overflow:hidden;background:#f0f0f0;display:block}
 .red-youtube .cel-t{border-radius:12px}
 .cel-t img{width:100%;height:100%;object-fit:cover;display:block}
 .cel-t .cel-ph{height:100%;padding:10px;gap:4px}.cel-t .cel-ph span{font-size:12.5px}.cel-t .cel-ph b{font-size:9px}.cel-t .cel-ph::after{display:none}

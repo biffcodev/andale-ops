@@ -2973,7 +2973,7 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 /* ===== Estados de las piezas de Redes: un color propio y distinto para cada uno ===== */
 :root{
   --pz-idea:#8A93A3; --pz-diseno:#1CB0F6; --pz-lista:#8B5CF6; --pz-cliente:#F5A300;
-  --pz-cambios:#FF4B4B; --pz-rechazada:#5B6472; --pz-aprobada:#4CB800; --pz-programada:#0FB5A6; --pz-publicada:#2F7D32;
+  --pz-cambios:#FF4B4B; --pz-rechazada:#B3261E; --pz-aprobada:#4CB800; --pz-programada:#0FB5A6; --pz-publicada:#2F7D32;
 }
 /* Calendario: la pieza se tiñe con su estado (fondo y etiqueta, sin bordes de color) */
 .rm-cp{border-left:0!important;background:color-mix(in srgb,var(--c) 12%,var(--surface));padding:5px 7px 6px;gap:2px}

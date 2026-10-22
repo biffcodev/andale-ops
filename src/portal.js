@@ -9,9 +9,9 @@ import { activarFormato } from './formato.js';
 import './portal.css';
 import { LOGO, ISO } from './marca.js';
 import { fmtColor } from './formatos.js';
-import { celularPieza, celularPerfil, CEL_CSS } from './celular.js';
+import { celularPieza, celularPerfil, CEL_CSS, tabsRedes, redesPieza } from './celular.js';
 import { manualHTML, MANUAL_CSS, cargarFuentesManual, activarManual } from './manual-vista.js';
-import { kitDeTexto, formatos, bajarFmt } from './kitmarca.js';
+import { kitDeTexto, formatos, bajarFmt, CATS, CAT_NOTA, catDe } from './kitmarca.js';
 import { fondosAuto } from './fondo.js';
 import { activarVisor } from './visor.js';
 { const st = document.createElement('style'); st.textContent = CEL_CSS; document.head.appendChild(st); }
@@ -177,12 +177,19 @@ function vRedes() {
       cuantos.map(([k, l, c, n]) => '<button class="po-chip' + (S.fz === k ? ' on' : '') + '" data-act="fz" data-k="' + k + '" style="--c:var(' + c + ')" aria-pressed="' + (S.fz === k) + '"><i></i>' + esc(l) + ' <b>' + n + '</b></button>').join('') + '</div>' : '') + '</div>';
   const filtrar = z => { const g = S.fz && grupoCli(S.fz); return !g || g[3](z); };
   if (S.vista === 'feed') {
+    // El perfil (o el inicio) con las publicaciones; las historias aparte, como se ven: verticales, una al lado de la otra.
     const pubs = ps.filter(z => !/histori/i.test(z.formato)).filter(filtrar).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.hora || '').localeCompare(a.hora || ''));
     const hist = ps.filter(z => /histori/i.test(z.formato)).filter(filtrar).sort(ordenPz), modo = feedModo();
-    h += '<div class="po-feedcel"><div><div class="po-fm" role="group" aria-label="Cómo ver el feed">' + [['grilla', 'Perfil'], ['scroll', 'Inicio']].map(([k, l]) => '<button data-act="feedModo" data-m="' + k + '" aria-pressed="' + (modo === k) + '">' + l + '</button>').join('') + '</div>';
-    if (!pubs.length && !hist.length) h += '<p class="muted">No hay piezas con ese estado.</p></div></div>';
-    else h += celularPerfil(S.d.cliente || {}, [...hist, ...pubs], arteDe, z => fmtColor(z.formato), { modo, estado: z => { const e = ESTADO_CLI[z.estado]; return e ? '<span class="cel-est" style="--c:var(' + e[1] + ')">' + esc(e[0]) + '</span>' : ''; } }) + '</div>' +
-      '<p class="muted po-feedn">Así va a quedar ' + (modo === 'scroll' ? 'el inicio de Instagram' : 'tu perfil de Instagram') + ' con las piezas del mes. Tocá una para revisarla.</p></div>';
+    const estCel = z => { const e = ESTADO_CLI[z.estado]; return e ? '<span class="cel-est" style="--c:var(' + e[1] + ')">' + esc(e[0]) + '</span>' : ''; };
+    const historia = z => { const a = arteDe(z.id).find(x => x.miniatura), e = ESTADO_CLI[z.estado] || [z.estado, '--muted'];
+      return '<button class="po-hs" data-act="pzVer" data-id="' + esc(z.id) + '" style="--fc:' + fmtColor(z.formato) + '"><span class="po-hs-m">' + (a ? '<img src="' + esc(a.miniatura) + '" alt="" loading="lazy">' : '<span class="po-hs-ph">' + esc(z.tema || z.formato) + '</span>') +
+        '<span class="pzst" style="--c:var(' + e[1] + ')">' + esc(e[0]) + '</span></span><span class="po-hs-f">' + esc(z.fecha ? cap(corta(z.fecha)) : 'Sin fecha') + (z.hora ? ' · ' + esc(z.hora) : '') + '</span></button>'; };
+    if (!pubs.length && !hist.length) h += '<p class="muted">No hay piezas con ese estado.</p>';
+    else h += '<div class="po-feed2">' +
+      (pubs.length ? '<div class="po-feed2-p"><div class="po-feed2-h"><h3>' + (modo === 'scroll' ? 'Así se ve en el inicio' : 'Así queda tu perfil') + '</h3><div class="po-fm" role="group" aria-label="Cómo ver el feed">' + [['grilla', 'Perfil'], ['scroll', 'Inicio']].map(([k, l]) => '<button data-act="feedModo" data-m="' + k + '" aria-pressed="' + (modo === k) + '">' + l + '</button>').join('') + '</div></div>' +
+        celularPerfil(S.d.cliente || {}, pubs, arteDe, z => fmtColor(z.formato), { modo, sinHistorias: true, estado: estCel }) + '</div>' : '') +
+      (hist.length ? '<div class="po-feed2-s"><div class="po-feed2-h"><h3>Historias del mes <small>' + hist.length + '</small></h3></div><p class="muted">No quedan en el perfil: se ven 24 horas arriba del inicio de quienes te siguen. Tocá una para revisarla.</p><div class="po-hss">' + hist.map(historia).join('') + '</div></div>' : '') +
+      '</div>';
   } else if (S.vista === 'calendario') {
     const xs = ps.filter(filtrar).sort(ordenPz);
     h += xs.length ? calendarioMes(m, xs) : '<p class="muted">No hay piezas con ese estado.</p>';
@@ -251,10 +258,11 @@ function detallePieza(z, o = {}) {
   const acciones = o.panel || o.foco ? '' : accionesPieza(z);
   const nav = o.n ? '<div class="po-nav"><button class="btn ghost sm" data-act="pzMover" data-d="-1"' + (o.i > 0 ? '' : ' disabled') + ' aria-label="Anterior">← Anterior</button><span>' + (o.i + 1) + ' de ' + o.n + '</span><button class="btn ghost sm" data-act="pzMover" data-d="1"' + (o.i < o.n - 1 ? '' : ' disabled') + ' aria-label="Siguiente">Siguiente →</button></div>' : '';
   const cli = S.d.cliente || {}, cab = o.post ? '<header class="po-ig-h">' + (cli.avatar ? '<img src="' + esc(cli.avatar) + '" alt="">' : '<span class="po-ig-av">' + esc((cli.nombre || '?').slice(0, 2).toUpperCase()) + '</span>') + '<span><b>' + esc(cli.nombre || '') + '</b><small>' + esc(z.formato) + (z.fecha ? ' · ' + esc(corta(z.fecha)) : '') + (z.hora ? ' ' + esc(z.hora) : '') + '</small></span>' + pz(z.estado) + '</header>' : '';
-  if (!o.post) return (o.panel ? '' : nav) + '<article class="po-rev con-cel' + (o.panel ? ' en-panel' : '') + '" id="pz-' + esc(z.id) + '"><div class="po-rv-a">' + celularPieza(z, S.d.cliente || {}, as, { red: (S.celRed || {})[z.id], fc: fmtColor(z.formato) }) +
+  if (!o.post) return (o.panel ? '' : nav) + '<article class="po-rev con-cel' + (o.panel ? ' en-panel' : '') + '" id="pz-' + esc(z.id) + '"><div class="po-rv-a">' + celularPieza(z, S.d.cliente || {}, as, { red: (S.celRed || {})[z.id], fc: fmtColor(z.formato), sinTabs: true }) +
     (as.some(x => x.link) ? '<div class="po-rv-dl">' + as.filter(x => x.link).map((x, i) => '<a href="' + esc(x.link) + '" target="_blank" rel="noopener">Abrir ' + (as.length > 1 ? 'archivo ' + (i + 1) : 'en grande') + ' ↗</a>').join('') + '</div>' : '') + '</div>' +
     '<div class="po-rv-b"><div class="po-cm"><b>' + esc(z.formato) + '</b>' + (z.red ? ' · ' + esc(z.red) : '') + (z.fecha ? ' · ' + esc(corta(z.fecha)) : '') + (z.hora ? ' ' + esc(z.hora) : '') + pz(z.estado) + (z.extra ? '<span class="pzst" style="--c:var(--muted)">Extra</span>' : '') + '</div>' +
     (z.tema ? '<h2>' + esc(z.tema) + '</h2>' : '') + (o.foco ? accionesPieza(z, 'linea') : '') +
+    (() => { const rs = redesPieza(z); if (rs.length < 2) return ''; const r = rs.includes((S.celRed || {})[z.id]) ? S.celRed[z.id] : rs[0]; return '<div class="po-rv-red"><span>Ver cómo queda en</span>' + tabsRedes(rs, r, k => 'data-act="celRed" data-id="' + esc(z.id) + '" data-r="' + k + '"') + '</div>'; })() +
     (listo && z.estado === 'Para el cliente' ? '<div class="po-listo"><b>Ya hicimos los cambios que pediste</b><span>' + esc(String(listo.texto).replace(/^Listo, hicimos los cambios:?\s*/i, '').replace(/\n?Ya la podés ver de nuevo\.?$/i, '')) + '</span></div>' : '') +
     (z.copy ? '<details class="po-copyd"' + (o.panel && !o.foco ? '' : ' open') + '><summary>El texto de la publicación</summary><p class="po-copy">' + esc(z.copy) + '</p>' + (z.hashtags ? '<p class="po-tags">' + esc(z.hashtags) + '</p>' : '') + '</details>' : '') +
     pedHtml + acciones + hiloHtml('pieza', z.id, otros, 'Escribirle al equipo') + '</div></article>';
@@ -420,7 +428,15 @@ function vMarca() {
   if (cols.length) h += '<h2 class="po-mk-h">Colores <small>Tocá uno para copiar el código</small></h2><div class="po-mk-cols">' + cols.map(c => '<button class="po-mk-col" data-act="copiarLink" data-v="' + esc(c.hex) + '"><i style="background:' + esc(c.hex) + '"></i><b>' + esc(c.n || c.hex) + '</b><span>' + esc(c.hex) + (c.rol ? ' · ' + esc(c.rol) : '') + '</span></button>').join('') + '</div>';
   if (kit.tipos.length) h += '<h2 class="po-mk-h">Tipografías</h2><div class="po-mk-tps">' + kit.tipos.map(t => '<div class="po-mk-tp"><span class="po-mk-aa" style="font-family:' + esc(fam(t)) + ';font-weight:' + esc(t.peso || '400') + '">Aa</span><span><small>' + esc(t.rol || 'Tipografía') + '</small><b style="font-family:' + esc(fam(t)) + '">' + esc(t.familia) + '</b></span>' + (formatos(t).length ? chips({ ...t, n: t.familia }) : '<a class="btn sm" href="https://fonts.google.com/specimen/' + esc(String(t.familia || '').replace(/ /g, '+')) + '" target="_blank" rel="noopener">Bajar ↗</a>') + '</div>').join('') + '</div>';
   const nArch = kit.recursos.length;
-  if (nArch) h += '<button class="po-mk-mas" data-act="abrirManual" data-ir="descargas"><span><b>' + nArch + ' archivos más</b><small>Papelería, íconos, plantillas, perfiles de redes y más, en el manual</small></span><span aria-hidden="true">→</span></button>';
+  if (nArch) {
+    // Los demás archivos, acá mismo: por tipo, con su vista previa (se amplía) y los formatos para bajar. Los mockups, aparte y sin descarga.
+    const recs = kit.recursos.map(r => ({ ...r, cat: catDe(r) })), grupos = CATS.map(([k, l]) => [k, l, recs.filter(r => r.cat === k)]).filter(g => g[2].length);
+    const tiposTxt = grupos.filter(g => g[0] !== 'mockups').map(g => g[1].toLowerCase()).slice(0, 4).join(', ');
+    h += '<button class="po-mk-mas" data-act="mkArch" aria-expanded="' + !!S.mkArch + '"><span><b>' + (S.mkArch ? 'Todos los archivos' : nArch + ' archivos más') + '</b><small>' + esc(cap(tiposTxt || 'Archivos de la marca')) + (S.mkArch ? '' : ' · tocá para verlos') + '</small></span><span aria-hidden="true">' + (S.mkArch ? '▴' : '▾') + '</span></button>';
+    if (S.mkArch) h += '<div class="po-mk-arch">' + grupos.map(([k, l, xs]) => '<h3 class="po-mk-h3">' + esc(l) + ' <small>' + xs.length + '</small></h3>' + (CAT_NOTA[k] ? '<p class="muted po-mk-nota">' + esc(CAT_NOTA[k]) + '</p>' : '') +
+      '<div class="po-mk-logos po-mk-r c-' + k + '" data-visor-grupo>' + xs.map(r => '<figure class="po-mk-lg"><div class="po-mk-lf"' + (img(r) ? ' data-visor="' + esc(r.url) + '" data-n="' + esc(r.n) + '" data-vk="' + (['fotos', 'mockups', 'texturas'].includes(k) ? 'foto' : k === 'iconos' ? 'icono' : 'doc') + '" data-autobg="' + esc(r.url) + '"' : '') + '>' +
+        (img(r) ? '<img src="' + esc(r.url) + '" alt="' + esc(r.n) + '" loading="lazy">' : '<b>' + esc((formatos(r)[0] || {}).fmt || 'Archivo') + '</b>') + '</div><figcaption><b>' + esc(String(r.n || '').replace(/\s*\(ejemplo\)/i, '')) + '</b>' + (k === 'mockups' ? '' : chips(r)) + '</figcaption></figure>').join('') + '</div>').join('') + '</div>';
+  }
   setTimeout(() => fondosAuto($('#view')), 0);
   return h + '</section>';
 }
@@ -453,7 +469,9 @@ function vCuenta() {
   if (sv.length) h += '<h2>Lo que tenés con àndale</h2><div class="po-svs">' + sv.map(a => '<article class="po-sv"><span class="po-sv-t">' + esc(a.tipo) + (a.estado !== 'Activo' ? ' <small>' + esc(a.estado) + '</small>' : '') + '</span><b>' + esc(a.plan ? 'Plan ' + a.plan : a.tipo === 'Ads' ? 'Publicidad en redes' : 'Servicio mensual') + '</b>' +
     ((a.redes || []).length ? '<span class="po-sv-r">' + a.redes.map(r => '<i>' + esc(r) + '</i>').join('') + '</span>' : '') + '<span class="muted">Desde ' + esc(cap(mesTxt(a.desde))) + '</span>' + (a.precio ? '<span class="po-sv-p">' + plata(a.precio.monto, a.precio.moneda) + ' <small>por mes</small></span>' : '') + '</article>').join('') + '</div>';
   // Equipo de àndale
-  if (eq.length) h += '<h2>Tu equipo en àndale</h2><div class="po-eq">' + eq.map(p => '<div class="po-eqp">' + (p.avatar ? '<img src="' + esc(p.avatar) + '" alt="">' : '<span>' + ini(p.nombre) + '</span>') + '<div><b>' + esc(p.nombre) + '</b><small>' + esc([(p.roles || []).join(' · '), p.puesto].filter(Boolean)[0] || '') + '</small></div></div>').join('') + '</div>';
+  if (eq.length) h += '<h2>Tu equipo en àndale</h2><p class="muted po-eq-t">Escribile directo a quien necesites: le llega a esa persona y la respuesta te aparece en Pedidos.</p><div class="po-eq">' + eq.map(p => { const pn = String(p.nombre || p.alias || '').split(' ')[0];
+    return '<div class="po-eqp"><div class="po-eqp-h">' + (p.avatar ? '<img src="' + esc(p.avatar) + '" alt="">' : '<span>' + ini(p.nombre) + '</span>') + '<div><b>' + esc(p.nombre) + '</b><small>' + esc([(p.roles || []).join(' · '), p.puesto].filter(Boolean)[0] || '') + '</small></div></div>' +
+      '<div class="po-eqp-a"><button class="btn sm" data-act="eqEscribir" data-a="' + esc(p.alias || '') + '" data-n="' + esc(pn) + '">Escribirle</button><button class="btn sm ghost" data-act="eqReunion" data-a="' + esc(p.alias || '') + '" data-n="' + esc(pn) + '">Pedir reunión</button></div></div>'; }).join('') + '</div>';
   // Datos y contactos
   h += '<div class="po-cols2"><div><h2>Tus datos</h2><div class="po-box">' + dato('Empresa', esc(d.nombre || S.d.cliente.nombre)) + dato('Web', d.web ? '<a href="' + esc(/^https?:/.test(d.web) ? d.web : 'https://' + d.web) + '" target="_blank" rel="noopener">' + esc(d.web.replace(/^https?:\/\//, '')) + '</a>' : '') + dato('Email', esc(d.email || '')) + dato('Teléfono', esc(d.tel || '')) +
     (redes.length ? dato('Redes', redes.map(([k, v]) => '<a href="' + esc(/^https?:/.test(v) ? v : '#') + '" target="_blank" rel="noopener">' + esc(k) + '</a>').join(' · ')) : '') + dato('Clientes desde', d.desde ? esc(cap(mesTxt(d.desde))) : '') +
@@ -473,6 +491,16 @@ function cuentaFacturacion() {
 }
 
 /* ---------- Acciones ---------- */
+// Escribirle a alguien del equipo: queda como pedido (con su respuesta en Pedidos) y le llega a esa persona.
+// Sin el SQL 0051 queda como pedido para el equipo, con el nombre en el título.
+async function aEquipo(alias, nombre, titulo, detalle, ok) {
+  if (S.busy) return; S.busy = true;
+  try {
+    let r = await sb.rpc('portal_pedido', { p_cliente: S.c.cliente_id, p_titulo: titulo, p_detalle: detalle, p_para: null, p_para_alias: alias || null });
+    if (r.error && /p_para_alias|function|schema cache/i.test(r.error.message || '')) r = await sb.rpc('portal_pedido', { p_cliente: S.c.cliente_id, p_titulo: titulo, p_detalle: detalle, p_para: null });
+    check(r); toast(ok); await cargar(true);
+  } catch (e) { toast(e.message); } finally { S.busy = false; }
+}
 async function comentar(entidad, id, texto, ok) {
   if (S.busy) return; S.busy = true;
   try { check(await sb.rpc('portal_comentar', { p_entidad: entidad, p_id: id, p_texto: texto })); toast(ok || 'Enviado'); await cargar(true); }
@@ -518,6 +546,9 @@ const ACT = {
   pyMaterial: t => pedirTexto('Mandar material', 'Pegá los links (Drive, WeTransfer, Dropbox…) y contanos qué es: logos, fotos, textos, datos.', txt => comentar('proyecto', t.dataset.id, '📎 Material: ' + txt, '¡Recibido! Le avisamos al equipo.')),
   pyReunion: t => pedirTexto('Pedir una reunión', '¿De qué querés hablar y qué días y horarios te quedan bien?', txt => comentar('proyecto', t.dataset.id, '📅 Pedido de reunión: ' + txt, 'Listo, te escribimos para coordinar.')),
   pyCalificar: t => { const n = +t.dataset.n; pedirTexto('Gracias por tu ' + '★'.repeat(n), '¿Querés contarnos algo más? Es opcional.', txt => comentar('proyecto', t.dataset.id, '⭐ Calificación: ' + n + '/5' + (txt ? ' — ' + txt : ''), '¡Gracias!'), { opcional: true }); },
+  eqEscribir: t => pedirTexto('Escribirle a ' + t.dataset.n, 'Le llega directo a ' + t.dataset.n + '. La respuesta te aparece en Pedidos.', txt => aEquipo(t.dataset.a, t.dataset.n, 'Mensaje para ' + t.dataset.n + ': ' + txt.split('\n')[0].slice(0, 80), txt, 'Listo, le llegó a ' + t.dataset.n + '.')),
+  eqReunion: t => pedirTexto('Reunión con ' + t.dataset.n, '¿De qué querés hablar y qué días y horarios te quedan bien?', txt => aEquipo(t.dataset.a, t.dataset.n, 'Reunión con ' + t.dataset.n, txt, 'Listo, ' + t.dataset.n + ' te escribe para coordinar.')),
+  mkArch: () => { S.mkArch = !S.mkArch; render(); },
   abrirManual: t => { const { completo, lc, lp } = manualDe(), u = completo ? lc || lp : lp; if (u) { window.open(u + (t.dataset.ir ? '#' + t.dataset.ir : ''), '_blank', 'noopener'); return; } abrirManual(t.dataset.ir); },
   cerrarManual: () => cerrarManual(),
   revisar: () => { const m = mesActual(); if (!m) return; const z = [...m.piezas].sort(ordenPz).find(x => x.estado === 'Para el cliente'); if (z) abrirFoco(z.id); },
