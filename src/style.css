@@ -3048,6 +3048,13 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 .tk-pb.camb{background:color-mix(in srgb,#f0a020 20%,var(--surface));color:color-mix(in srgb,#f0a020 45%,var(--fg))}
 .pf-cli .lnk{all:unset;cursor:pointer;color:var(--accent,#1d8fe1);font-weight:600}
 .pf-cli .lnk:hover{text-decoration:underline}
+.pf-close{display:flex;align-items:center;gap:14px;margin:14px 0 0;padding:14px 18px;border-radius:16px;background:color-mix(in srgb,var(--s-entregado) 12%,var(--surface));border:1px solid color-mix(in srgb,var(--s-entregado) 30%,var(--line))}
+.pf-close > div{flex:1;min-width:0}
+.pf-close b{font-size:14.5px}
+.pf-close p{margin:3px 0 0;font-size:13px;color:var(--muted);line-height:1.4}
+.pf-close-i{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--s-entregado);color:#fff}
+.pf-close-i svg{width:18px;height:18px}
+@media (max-width:640px){.pf-close{flex-wrap:wrap}.pf-close .toolbar{width:100%;justify-content:flex-end}}
 .pf-card.pf-cli{display:block}
 .pf-cli h3{margin:0 0 12px}
 .pf-cli ul{list-style:none;margin:0;padding:0;display:grid;gap:12px}

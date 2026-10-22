@@ -324,7 +324,8 @@ function ahoraHtml(p) {
   let out = '<div class="po-now">';
   if (paraOk) out += '<div class="po-now-b"><span class="po-now-k">Terminamos</span><b>' + esc(paraOk.titulo) + '</b><p class="muted">¿Te parece bien? Si lo aprobás, seguimos con lo que viene.</p><div class="po-acc"><button class="btn primary" data-act="pyAprobar" data-id="' + esc(paraOk.id) + '" data-n="' + esc(paraOk.titulo) + '">✓ Aprobar</button><button class="btn" data-act="pyCambios" data-id="' + esc(paraOk.id) + '" data-n="' + esc(paraOk.titulo) + '">Tengo cambios</button></div></div>';
   if (actual) out += '<div class="po-now-b"><span class="po-now-k">' + (actual.en_curso ? 'Ahora estamos en' : 'Lo que sigue') + '</span><b>' + esc(actual.titulo) + '</b><p class="muted">' + (actual.fecha ? 'Para el ' + fecha(actual.fecha) + '. ' : '') + (actual.hace ? 'Esta parte la necesitamos de vos.' : 'Si tenés algo para sumar, contanos.') + '</p><div class="po-acc"><button class="btn" data-act="pyComentar" data-id="' + esc(actual.id) + '" data-n="' + esc(actual.titulo) + '">Comentar esta etapa</button></div></div>';
-  if (!paraOk && !actual) out += '<div class="po-now-b"><span class="po-now-k">Todas las etapas están hechas</span><b>Estamos cerrando el proyecto</b><p class="muted">En breve te mandamos la entrega final.</p></div>';
+  const finOk = (p.entregas || []).some(e => e.tipo === 'Entrega final' && e.estado === 'Aprobada');
+  if (!paraOk && !actual) out += '<div class="po-now-b"><span class="po-now-k">' + (finOk ? 'Aprobaste la entrega final' : 'Todas las etapas están hechas') + '</span><b>Estamos cerrando el proyecto</b><p class="muted">' + (finOk ? '¡Gracias! En breve lo damos por terminado y te queda acá todo lo que podés bajar.' : 'En breve te mandamos la entrega final.') + '</p></div>';
   return out + '</div>';
 }
 // El cierre: cuando el proyecto se entrega, un resumen, lo que se puede bajar, una calificación y qué sigue.

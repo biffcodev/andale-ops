@@ -857,7 +857,26 @@ function vProyectoFicha() {
     '<div class="toolbar pf-acc">' + (isStaff() ? '<button class="btn ico-b" data-act="mail" data-cliente="' + esc(p.cliente) + '" title="Escribirle un mail a ' + esc(p.cliente) + '" aria-label="Escribirle un mail a ' + esc(p.cliente) + '">' + ICON.mail + '</button>' : '') + calBtn('Entrega: ' + p.proyecto + ' · ' + p.cliente, isOpen(p) ? p.entrega : '', 'Entrega pactada del proyecto ' + p.proyecto + ' (' + p.cliente + ')') + (can ? '<button class="btn primary" data-act="edit" data-kind="proyecto" data-id="' + esc(p._id) + '">Editar proyecto</button>' : '') + '</div></div>' +
     '<div class="pf-meta">' + estado + (p.etapaActual ? '<span class="pf-etapa" title="Etapa del flujo">Etapa: <b>' + esc(p.etapaActual) + '</b></span>' : '') + prioSelect(p) + (p.tipo ? '<span class="tag svc" style="--c:var(' + (TIPO_COLOR[p.tipo] || '--s-empezar') + ')">' + esc(p.tipo) + '</span>' : '') + fechas + daysBadge(p) +
     '<span class="pf-prog" title="' + pct + '% de las tareas hechas"><span class="pf-bar"><i style="width:' + pct + '%"></i></span><b>' + pct + '%</b><span class="muted">' + e.filter(x => x.ok).length + '/' + e.length + '</span></span></div>' +
-    '<nav class="pf-tabs" aria-label="Secciones del proyecto">' + tabs.map(([k, l]) => '<button data-act="ptab" data-t="' + k + '"' + (tab === k ? ' aria-current="page"' : '') + '>' + l + '</button>').join('') + '</nav></div>' + body;
+    '<nav class="pf-tabs" aria-label="Secciones del proyecto">' + tabs.map(([k, l]) => '<button data-act="ptab" data-t="' + k + '"' + (tab === k ? ' aria-current="page"' : '') + '>' + l + '</button>').join('') + '</nav></div>' + pfCierre(p, can) + body;
+}
+// Cerrar el proyecto: cuando el cliente aprobó la entrega final o están todas las tareas hechas, se ofrece pasarlo a Entregado.
+// Así el cliente ve el cierre en su portal (descargas y calificación) y deja de figurar como en curso.
+function pfCierre(p, can) {
+  if (!can || ['Entregado', 'Cancelado'].includes(p.estado) || (S.cierreNo && S.cierreNo.has(p._id))) return '';
+  const e = etapasDe(p), pend = e.filter(x => !x.ok).length;
+  const fin = (Array.isArray(S.EN) ? S.EN : []).find(x => x.proyectoId === p._id && x.tipo === 'Entrega final' && x.estado === 'Aprobada');
+  if (!fin && (pend || !e.length)) return '';
+  return '<div class="pf-close"><span class="pf-close-i" aria-hidden="true">' + ICON.check + '</span><div><b>' + (fin ? esc(fin.aprobadoPor || 'El cliente') + ' aprobó la entrega final' : 'Están todas las tareas hechas') + '</b>' +
+    '<p>¿Cerramos el proyecto? Pasa a Entregado y el cliente ve el cierre en su portal, con lo que puede bajar y para calificarnos.' + (pend ? ' Quedan ' + pend + ' tarea' + (pend > 1 ? 's' : '') + ' sin tildar: se marcan hechas.' : '') + '</p></div>' +
+    '<span class="toolbar"><button class="btn sm ghost" data-act="pCerrarNo" data-id="' + esc(p._id) + '">Todavía no</button><button class="btn sm primary" data-act="pCerrar" data-id="' + esc(p._id) + '">Cerrar proyecto</button></span></div>';
+}
+async function cerrarProyecto(id) {
+  const p = S.P.find(x => x._id === id); if (!p) return;
+  const pend = etapasDe(p).filter(x => !x.ok).length;
+  if (pend && !(await confirmar('¿Cerramos ' + p.proyecto + '?\nQuedan ' + pend + ' tarea' + (pend > 1 ? 's' : '') + ' sin tildar: se marcan hechas y el proyecto pasa a Entregado.', { ok: 'Cerrar proyecto' }))) return;
+  if (pend) await guardarTareas(p, etapasDe(p).map(x => x.ok ? x : conEst(x, 'hecha')), '');
+  await upd('proyecto', id, { estado: 'Entregado', ...(p.entregaReal ? {} : { entregaReal: today() }) }, null, true);
+  toast('Proyecto cerrado: ' + p.proyecto + '. El cliente ya ve el cierre en su portal.');
 }
 
 /* ---------- Imprimir, exportar y compartir (en todas las vistas) ---------- */
@@ -1952,6 +1971,8 @@ const ACT = {
   gqTarea: t => { ACT.pver(t); setTimeout(() => abrirTarea(t.dataset.id, +t.dataset.i), 0); },
   gqPiggy: () => { const q = $('#gq').value; $('#gq').value = ''; $('#gqres').hidden = true; if (IA) { IA.abrir(q); } },
   ptab: t => { S.ptab = t.dataset.t; render(); },
+  pCerrar: t => cerrarProyecto(t.dataset.id).catch(err => toast(err.message)),
+  pCerrarNo: t => { (S.cierreNo || (S.cierreNo = new Set())).add(t.dataset.id); render(); },
   tkGrp: t => { const g = t.dataset.g, k = t.dataset.hecha ? g + ':open' : g; if (S.gcl.has(k)) S.gcl.delete(k); else S.gcl.add(k); lsSet('gcl', JSON.stringify([...S.gcl])); render(); },
   tkAbrir: t => abrirTarea(t.dataset.id, +t.dataset.i),
   tkVista: t => { S.tkVista = t.dataset.v; lsSet('tkVista', S.tkVista); render(); },
