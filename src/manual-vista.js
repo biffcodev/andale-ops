@@ -213,7 +213,7 @@ export const MANUAL_CSS = `
 .mm-top nav a.on{opacity:1;background:color-mix(in srgb,currentColor 12%,transparent)}
 .mm-enav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,#fff 90%,transparent);backdrop-filter:blur(12px);padding:10px 24px;border-bottom:1px solid var(--mm-line)}
 /* Portada */
-.mm-hero{position:relative;min-height:min(78svh,760px);background:var(--mm-p);color:var(--mm-po);display:flex;flex-direction:column;justify-content:center;overflow:hidden;isolation:isolate}
+.mm-hero{position:relative;min-height:100vh;min-height:100svh;background:var(--mm-p);color:var(--mm-po);display:flex;flex-direction:column;justify-content:center;overflow:hidden;isolation:isolate}
 .mm.embed .mm-hero{min-height:420px}
 .mm-orbs{position:absolute;inset:0;z-index:-1;pointer-events:none}
 .mm-orbs i{position:absolute;border-radius:50%;background:radial-gradient(circle at 35% 35%,color-mix(in srgb,var(--c) 70%,#fff),var(--c) 60%);opacity:.38;filter:blur(2px);animation:mmFloat 22s ease-in-out infinite alternate;animation-delay:calc(var(--i) * -7s)}
