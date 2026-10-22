@@ -148,40 +148,55 @@ const mesActual = () => { const ms = S.d.meses || []; return ms.find(x => x.id =
 // En el feed: grilla (como el perfil de Instagram) o scroll (como el inicio). En el celular arranca en scroll.
 const feedModo = () => S.feed || (window.matchMedia && matchMedia('(max-width: 720px)').matches ? 'scroll' : 'grilla');
 const listaRevisar = m => { const g = S.fz && grupoCli(S.fz); return [...m.piezas].filter(z => !g || g[3](z)).sort(ordenPz); };
+// Redes: una bandeja de revisión. Arriba el mes (con flechas) y cuánto falta revisar; a la izquierda las piezas del mes
+// por día; al lado, la pieza como se ve en la red con su texto y las acciones. Calendario y Feed son otras formas de mirar
+// el mismo mes: tocar una pieza ahí la abre en la bandeja.
 function vRedes() {
   const ms = S.d.meses || [];
   if (!ms.length) return '<section class="po-sec"><p class="muted">Todavía no hay contenido para revisar.</p></section>';
   const m = mesActual(), ps = m.piezas, pend = ps.filter(z => z.estado === 'Para el cliente').length;
   if (S.fz === null && S.vista === 'revisar') S.fz = pend ? 'pend' : '';
   const plan = Object.entries(m.plan || {}).map(([f, n]) => n + ' ' + f.toLowerCase()).join(' · ');
-  let h = '<section class="po-sec"><div class="po-sh"><div><h1>Redes · ' + esc(cap(mesTxt(m.mes))) + '</h1><p class="muted">' + (plan ? 'Tu plan: ' + esc(plan) + '.' : '') + (m.aprobado_at ? ' ✓ Aprobaste el mes el ' + fecha(m.aprobado_at) + '.' : '') + '</p></div>' +
-    (ms.length > 1 ? '<select class="in" id="po-mes" aria-label="Mes">' + ms.map(x => '<option value="' + esc(x.id) + '"' + (x.id === m.id ? ' selected' : '') + '>' + esc(cap(mesTxt(x.mes))) + '</option>').join('') + '</select>' : '') + '</div>';
-  if (!ps.length) return h + '<p class="muted">Todavía no hay piezas para revisar este mes.</p></section>';
-  // Resumen por estado: también filtra lo que se ve.
-  h += '<div class="po-est" role="group" aria-label="Piezas por estado">' + GRUPOS_CLI.map(([k, l, c, f]) => { const n = ps.filter(f).length; return n || S.fz === k ? '<button class="po-eb' + (S.fz === k ? ' on' : '') + '" data-act="fz" data-k="' + k + '" style="--c:var(' + c + ')"><b>' + n + '</b><span>' + l + '</span></button>' : ''; }).join('') +
-    '<button class="po-eb' + (!S.fz ? ' on' : '') + '" data-act="fz" data-k="" style="--c:var(--muted)"><b>' + ps.length + '</b><span>Todas</span></button></div>';
-  h += '<div class="po-bar2"><div class="seg">' + [['revisar', 'Revisar de a una'], ['feed', 'Así queda el feed'], ['calendario', 'Calendario']].map(([k, l]) => '<button data-act="vista" data-v="' + k + '" aria-pressed="' + (S.vista === k) + '">' + l + '</button>').join('') + '</div>' +
-    (pend > 1 ? '<button class="btn" data-act="aprobarMes" data-id="' + esc(m.id) + '">Aprobar las ' + pend + ' pendientes</button>' : '') + '</div>';
+  const i = ms.indexOf(m), ant = ms[i + 1], sig = ms[i - 1];
+  const flecha = (x, d, l) => '<button class="po-mn-b" data-act="mesNav" data-id="' + esc(x ? x.id : '') + '"' + (x ? '' : ' disabled') + ' aria-label="' + l + (x ? ': ' + esc(cap(mesTxt(x.mes))) : '') + '">' + (d < 0 ? '‹' : '›') + '</button>';
+  const hechas = ps.length - pend, pct = ps.length ? Math.round(hechas / ps.length * 100) : 0;
+  let h = '<section class="po-sec po-redes"><header class="po-rd-h"><div class="po-mn">' + flecha(ant, -1, 'Mes anterior') + '<h1>' + esc(cap(mesTxt(m.mes))) + '</h1>' + flecha(sig, 1, 'Mes siguiente') + '</div>' +
+    '<div class="po-rd-av"><div class="po-rd-t">' + (!ps.length ? 'Todavía no hay piezas este mes.' : pend ? '<b>Te ' + (pend === 1 ? 'queda 1 pieza' : 'quedan ' + pend + ' piezas') + ' para revisar</b>' : '<b>✓ Revisaste todo el mes</b>') +
+      (ps.length ? '<span class="muted"> · ' + hechas + ' de ' + ps.length + ' revisadas</span>' : '') + (plan ? '<span class="muted po-rd-plan">Tu plan: ' + esc(plan) + '</span>' : '') + '</div>' +
+      (ps.length ? '<span class="po-rd-bar" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100" aria-label="Avance de la revisión"><i style="width:' + pct + '%"></i></span>' : '') + '</div>' +
+    (pend > 1 ? '<button class="btn primary po-rd-all" data-act="aprobarMes" data-id="' + esc(m.id) + '">✓ Aprobar las ' + pend + '</button>' : '') + '</header>';
+  if (!ps.length) return h + '</section>';
+  // Cómo mirar el mes y qué piezas
+  const vistas = [['revisar', 'Piezas', '▤'], ['calendario', 'Calendario', '▦'], ['feed', 'Feed', '◫']];
+  h += '<div class="po-rd-tools"><div class="seg po-rd-v" role="tablist" aria-label="Cómo ver el mes">' + vistas.map(([k, l, ic]) => '<button role="tab" data-act="vista" data-v="' + k + '" aria-selected="' + (S.vista === k) + '" aria-pressed="' + (S.vista === k) + '"><span aria-hidden="true">' + ic + '</span>' + l + '</button>').join('') + '</div>' +
+    '<div class="po-chips" role="group" aria-label="Filtrar por estado">' + GRUPOS_CLI.map(([k, l, c, f]) => { const n = ps.filter(f).length; return n || S.fz === k ? '<button class="po-chip' + (S.fz === k ? ' on' : '') + '" data-act="fz" data-k="' + k + '" style="--c:var(' + c + ')" aria-pressed="' + (S.fz === k) + '"><i></i>' + esc(l) + ' <b>' + n + '</b></button>' : ''; }).join('') +
+    '<button class="po-chip' + (!S.fz ? ' on' : '') + '" data-act="fz" data-k="" aria-pressed="' + !S.fz + '">Todas <b>' + ps.length + '</b></button></div></div>';
   const filtrar = z => { const g = S.fz && grupoCli(S.fz); return !g || g[3](z); };
   if (S.vista === 'feed') {
     const pubs = ps.filter(z => !/histori/i.test(z.formato)).filter(filtrar).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.hora || '').localeCompare(a.hora || ''));
     const hist = ps.filter(z => /histori/i.test(z.formato)).filter(filtrar).sort(ordenPz), modo = feedModo();
-    h += '<div class="po-fm" role="group" aria-label="Cómo ver el feed">' + [['grilla', '▦', 'Grilla'], ['scroll', '▤', 'Scroll']].map(([k, i, l]) => '<button data-act="feedModo" data-m="' + k + '" aria-pressed="' + (modo === k) + '"><span aria-hidden="true">' + i + '</span> ' + l + '</button>').join('') + '</div>';
-    if (!pubs.length && !hist.length) h += '<p class="muted">No hay piezas con ese estado.</p>';
-    else h += '<div class="po-feedcel"><div>' + celularPerfil(S.d.cliente || {}, [...hist, ...pubs], arteDe, z => fmtColor(z.formato), { modo, estado: z => { const e = ESTADO_CLI[z.estado]; return e ? '<span class="cel-est" style="--c:var(' + e[1] + ')">' + esc(e[0]) + '</span>' : ''; } }) + '</div>' +
-      '<p class="muted po-feedn">Así se va a ver ' + (modo === 'scroll' ? 'el inicio de Instagram' : 'tu perfil de Instagram') + ' con las piezas del mes. Tocá una para verla en grande, aprobarla o pedir cambios.</p></div>';
+    h += '<div class="po-feedcel"><div><div class="po-fm" role="group" aria-label="Cómo ver el feed">' + [['grilla', 'Perfil'], ['scroll', 'Inicio']].map(([k, l]) => '<button data-act="feedModo" data-m="' + k + '" aria-pressed="' + (modo === k) + '">' + l + '</button>').join('') + '</div>';
+    if (!pubs.length && !hist.length) h += '<p class="muted">No hay piezas con ese estado.</p></div></div>';
+    else h += celularPerfil(S.d.cliente || {}, [...hist, ...pubs], arteDe, z => fmtColor(z.formato), { modo, estado: z => { const e = ESTADO_CLI[z.estado]; return e ? '<span class="cel-est" style="--c:var(' + e[1] + ')">' + esc(e[0]) + '</span>' : ''; } }) + '</div>' +
+      '<p class="muted po-feedn">Así va a quedar ' + (modo === 'scroll' ? 'el inicio de Instagram' : 'tu perfil de Instagram') + ' con las piezas del mes. Tocá una para revisarla.</p></div>';
   } else if (S.vista === 'calendario') {
-    const xs = ps.filter(filtrar).sort(ordenPz), dias = [...new Set(xs.map(z => z.fecha || ''))], cm = S.cal || 'mes';
-    h += '<div class="po-fm" role="group" aria-label="Cómo ver el calendario">' + [['mes', '▦', 'Calendario'], ['lista', '▤', 'Lista']].map(([k, i, l]) => '<button data-act="calModo" data-m="' + k + '" aria-pressed="' + (cm === k) + '"><span aria-hidden="true">' + i + '</span> ' + l + '</button>').join('') + '</div>';
-    if (!xs.length) h += '<p class="muted">No hay piezas con ese estado.</p>';
-    else if (cm === 'lista') h += dias.map(d => '<div class="po-dia"><h3>' + (d ? esc(cap(corta(d))) : 'Sin fecha') + '</h3>' + xs.filter(z => (z.fecha || '') === d).map(filaPieza).join('') + '</div>').join('');
-    else h += calendarioMes(m, xs);
+    const xs = ps.filter(filtrar).sort(ordenPz);
+    h += xs.length ? calendarioMes(m, xs) : '<p class="muted">No hay piezas con ese estado.</p>';
   } else {
     const xs = listaRevisar(m);
     if (!xs.length) h += '<div class="po-vacio"><b>' + (S.fz === 'pend' ? '¡Listo! No te queda nada para revisar.' : 'No hay piezas con ese estado.') + '</b><button class="btn sm" data-act="fz" data-k="">Ver todas</button></div>';
-    else { let i = xs.findIndex(z => z.id === S.pzId); if (i < 0) i = 0; S.pzId = xs[i].id; h += detallePieza(xs[i], { i, n: xs.length }); }
+    else { let j = xs.findIndex(z => z.id === S.pzId); if (j < 0) j = 0; S.pzId = xs[j].id; h += '<div class="po-rd">' + railPiezas(xs) + '<div class="po-rd-main" id="po-rd-main">' + detallePieza(xs[j], { i: j, n: xs.length }) + '</div></div>'; }
   }
   return h + '</section>';
+}
+// La lista de piezas del mes, por día: miniatura, tema, formato y estado. La elegida se ve al lado.
+function railPiezas(xs) {
+  const dias = [...new Set(xs.map(z => z.fecha || ''))];
+  const item = z => { const a = arteDe(z.id)[0], e = ESTADO_CLI[z.estado] || [z.estado, '--muted'], v = /reel|histori|tiktok|video/i.test(z.formato), on = z.id === S.pzId;
+    return '<button class="po-ri' + (on ? ' on' : '') + '" data-act="pzVer" data-id="' + esc(z.id) + '"' + (on ? ' aria-current="true"' : '') + ' style="--c:var(' + e[1] + ')">' +
+      '<span class="po-ri-t' + (v ? ' v' : '') + '" style="--fc:' + fmtColor(z.formato) + '">' + (a && a.miniatura ? '<img src="' + esc(a.miniatura) + '" alt="" loading="lazy">' : '<b>' + esc(String(z.formato || '?').slice(0, 1)) + '</b>') + '</span>' +
+      '<span class="po-ri-x"><b>' + esc(z.tema || z.formato) + '</b><small>' + esc(z.formato) + (z.hora ? ' · ' + esc(z.hora) : '') + '</small><span class="po-ri-e"><i></i>' + esc(e[0]) + '</span></span></button>'; };
+  return '<nav class="po-rail" aria-label="Piezas del mes">' + dias.map(d => '<div class="po-rg"><h4>' + esc(d ? cap(corta(d)) : 'Sin fecha') + '</h4>' + xs.filter(z => (z.fecha || '') === d).map(item).join('') + '</div>').join('') + '</nav>';
 }
 // Calendario del mes como grilla (lunes a domingo); cada pieza con el color de su estado. Tocar una la abre.
 function calendarioMes(m, xs) {
@@ -404,7 +419,10 @@ const ACT = {
   vista: t => { S.vista = t.dataset.v; if (S.vista === 'revisar' && S.fz === null) S.fz = null; render(); },
   fz: t => { S.fz = t.dataset.k || ''; S.pzId = null; render(); },
   pzMover: t => moverPz(+t.dataset.d),
-  pzVer: t => { if (S.vista === 'revisar') { S.pzId = t.dataset.id; render(); } else verPieza(t.dataset.id); },
+  pzVer: t => { const id = t.dataset.id, m = mesActual(), z = m && m.piezas.find(x => x.id === id);
+    if (S.tab === 'redes' && z) { const g = S.fz && grupoCli(S.fz); if (g && !g[3](z)) S.fz = ''; const desde = S.vista; S.vista = 'revisar'; S.pzId = id; S.pidiendoCambio = null; S.rechazando = null; render(); verPiezaArriba(desde !== 'revisar'); return; }
+    verPieza(id); },
+  mesNav: t => { if (!t.dataset.id) return; S.mes = t.dataset.id; S.pzId = null; S.fz = null; render(); pedirArchivos(); },
   celRed: t => { (S.celRed ||= {})[t.dataset.id] = t.dataset.r; render(); if (S.panelPz) verPieza(S.panelPz); },
   feedModo: t => { S.feed = t.dataset.m; render(); },
   calModo: t => { S.cal = t.dataset.m; render(); },
@@ -423,6 +441,8 @@ document.addEventListener('click', e => { const t = e.target.closest('[data-act]
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#panel').hidden) cerrar();
   if (S.tab === 'redes' && S.vista === 'revisar' && $('#panel').hidden && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '') && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) moverPz(e.key === 'ArrowRight' ? 1 : -1); });
 // Revisar de a una: anterior / siguiente, y después de responder pasa sola a la próxima pendiente.
+// En celular, la pieza elegida queda abajo de la tira: se lleva a la vista. Si venís del calendario o el feed, arriba de todo.
+function verPiezaArriba(todo) { setTimeout(() => { const el = document.getElementById('po-rd-main'); if (!el) return; const r = el.getBoundingClientRect(); if (todo || r.top < 0 || r.top > window.innerHeight * .6) window.scrollTo({ top: Math.max(0, r.top + window.scrollY - (window.innerWidth < 821 ? 150 : 80)), behavior: 'smooth' }); }, 30); }
 function moverPz(d) { const m = mesActual(); if (!m) return; const xs = listaRevisar(m), i = xs.findIndex(z => z.id === S.pzId), j = Math.min(xs.length - 1, Math.max(0, (i < 0 ? 0 : i) + d)); if (xs[j]) { S.pzId = xs[j].id; render(); } }
 function siguientePend(id) { const m = mesActual(); if (!m) return null; const xs = [...m.piezas].sort(ordenPz), i = xs.findIndex(z => z.id === id); return (xs.slice(i + 1).find(z => z.estado === 'Para el cliente' && z.id !== id) || xs.find(z => z.estado === 'Para el cliente' && z.id !== id) || {}).id || null; }
 function despues(sig) { S.pidiendoCambio = null; S.rechazando = null; if (S.panelPz) { cerrar(); S.panelPz = null; } if (S.vista === 'revisar') { S.pzId = sig; if (!sig && S.fz === 'pend') S.fz = 'pend'; } render(); if (S.vista === 'feed' && feedModo() === 'scroll' && sig) irAPieza(sig, true); }
