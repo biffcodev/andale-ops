@@ -512,3 +512,30 @@ html.po-foco-on{overflow:hidden}
 .po-man-x{position:fixed;right:18px;bottom:18px;z-index:90;border:0;cursor:pointer;font:600 14px Inter,system-ui,sans-serif;padding:12px 18px;border-radius:99px;background:#141414;color:#fff;box-shadow:0 12px 30px -10px rgba(0,0,0,.5)}
 .po-man-x:focus-visible{outline:2px solid #fff;outline-offset:2px}
 @media (max-width:820px){.po-mk-hero{grid-template-columns:1fr}.po-mk-l{min-height:160px;padding:28px}.po-mk-t{padding:22px 20px}.po-mk-b .btn{flex:1;justify-content:center}.po-mk-logos{grid-template-columns:repeat(2,minmax(0,1fr))}.po-mk-cols{grid-template-columns:repeat(2,minmax(0,1fr))}.po-mk-tps{grid-template-columns:1fr}}
+/* Revisar una pieza adentro del portal */
+.po-rvm{gap:14px}
+.po-rvbar{display:flex;align-items:center;gap:12px}
+.po-rvbar-n{flex:1;text-align:center;font-size:14px;font-variant-numeric:tabular-nums}
+.po-rvbar-nav{display:flex;gap:6px}
+.po-rvm .po-rev{display:grid;grid-template-columns:auto minmax(0,1fr);background:var(--surface);border-radius:20px;box-shadow:var(--elev);overflow:hidden}
+.po-rvm .po-rv-a{position:static;min-height:0;padding:6px 10px;background:color-mix(in srgb,var(--fg) 4%,var(--surface))}
+.po-rvm .po-rv-b{padding:24px 28px;min-width:0;display:grid;gap:14px;align-content:start}
+.po-rvm .po-rv-b h2{margin:0;font-size:22px;letter-spacing:-.01em}
+.po-acc-l{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.po-acc-l .btn{padding:9px 16px;font-size:14px}
+.po-acc-l .btn.ghost{color:var(--muted)}
+.po-acc-l .btn.ghost:hover{color:var(--fg)}
+.po-acc-l .po-okb{flex:none;padding:9px 14px;font-size:14px}
+.po-rvm .po-cambio{background:color-mix(in srgb,var(--fg) 3.5%,var(--surface));border-radius:14px;padding:14px}
+.po-rvm .po-copyd{margin:0}
+@media (max-width:820px){
+  .po-rvbar .btn{padding:6px 8px}
+  .po-rvbar-n .muted{display:none}
+  .po-rvm .po-rev{grid-template-columns:minmax(0,1fr);border-radius:16px}
+  .po-rvm .po-rv-b{padding:16px 16px 88px}
+  /* En celular, los botones quedan fijos abajo, en una sola línea */
+  .po-rvm .po-acc-l{position:fixed;left:0;right:0;bottom:0;z-index:30;flex-wrap:nowrap;gap:6px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--surface);box-shadow:0 -1px 0 var(--line),0 -10px 24px -18px rgba(0,0,0,.35)}
+  .po-rvm .po-acc-l .btn{flex:1 1 auto;justify-content:center;padding:10px 8px;font-size:13.5px;min-width:0;white-space:nowrap}
+  .po-rvm .po-acc-l .btn.ghost{flex:0 0 auto;padding:10px 6px}
+  .po-rvm .po-cambio{position:fixed;left:0;right:0;bottom:0;z-index:31;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px -12px rgba(0,0,0,.35);padding:14px 14px calc(14px + env(safe-area-inset-bottom))}
+}
