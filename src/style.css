@@ -2450,7 +2450,6 @@ label.btn.disabled{opacity:.55;pointer-events:none}
 .rm-hsep span{white-space:nowrap}
 .rm-tbl tr.rm-hrow td{padding:2px 14px 0;background:var(--surface)}
 .rm-tbl tr.rm-hrow .rm-hsep{margin:8px 0 4px}
-.rm-pcs.hist{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
 .rm-pcs.hist .rm-pc-a.ph{height:78px}
 .rm-pc-d.sf{text-transform:none;font-weight:600}
 .ag-alc{border:0;padding:0;margin:0;display:grid;gap:6px}
