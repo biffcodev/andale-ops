@@ -37,6 +37,8 @@ if (typeof document !== 'undefined') {
     if (el === tipEl) return;
     ocultar();
     if (!el || el.closest('.tip') || el.matches('input, textarea, select, iframe') || !textoDe(el)) return;
+    // El title se saca apenas entra el mouse: si no, el navegador muestra el suyo además del nuestro.
+    if (el.hasAttribute('title')) { el.dataset.tip = el.getAttribute('title'); el.removeAttribute('title'); }
     tipEl = el; tipT = setTimeout(() => { if (tipEl === el && el.isConnected) mostrar(el); }, 450);
   });
   document.addEventListener('mouseout', e => { if (tipEl && (!e.relatedTarget || !tipEl.contains(e.relatedTarget))) ocultar(); });

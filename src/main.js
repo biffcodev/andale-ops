@@ -1164,11 +1164,11 @@ function portalDe(cliente) {
   return S.PTL.get(cliente) || {};
 }
 function portalItem(c, z) {
-  const ap = /^✓ Aprobado/.test(c.texto || ''), que = c.pedido || /^Pidió cambios:/.test(c.texto || '') ? 'Pidió cambios en' : ap ? 'Aprobó' : 'Escribió en';
+  const ap = /^✓ Aprobado/.test(c.texto || ''), rech = /^Rechazó la pieza/.test(c.texto || ''), que = rech ? 'Rechazó' : c.pedido || /^Pidió cambios:/.test(c.texto || '') ? 'Pidió cambios en' : ap ? 'Aprobó' : 'Escribió en';
   const pz = c.entidad === 'pieza' ? z.get(c.entidadId) : null;
   const donde = { pieza: pz ? 'la pieza «' + (pz.tema || pz.formato || '') + '»' : 'una pieza de Redes', mes: 'el mes de Redes', entrega: 'una entrega', pedido: 'un ticket', proyecto: 'un proyecto', sitio: 'el sitio web' }[c.entidad] || 'el portal';
   const link = c.entidad === 'pieza' && pz ? '#redes/' + pz.mesId + '?p=' + c.entidadId : c.entidad === 'mes' ? '#redes/' + c.entidadId : c.entidad === 'entrega' && c.proyectoId ? '#proyectos/' + c.proyectoId + '?e=' + c.entidadId : c.entidad === 'pedido' ? '#tickets?k=' + c.entidadId : c.entidad === 'proyecto' ? '#proyectos/' + c.entidadId : '';
-  const tx = String(c.texto || '').replace(/^Pidió cambios:\s*/i, '').replace(/^✓ Aprobado:?\s*/, '');
+  const tx = String(c.texto || '').replace(/^Pidió cambios:\s*/i, '').replace(/^Rechazó la pieza:\s*/i, '').replace(/^✓ Aprobado:?\s*/, '');
   return '<div class="ti ti-pt">' + (link ? '<button type="button" class="ti-ver" data-act="irLink" data-l="' + esc(link) + '" aria-label="Abrir"></button>' : '') + '<div class="meta"><span class="mono">' + esc(fmt(String(c.creado).slice(0, 10))) + '</span><span class="tag tag-pt">Portal</span><b style="color:var(--fg)">' + esc(c.autor || 'Cliente') + '</b></div>' +
     '<p class="ti-tema">' + esc(que + ' ' + donde) + '</p>' + (tx ? '<p class="ti-res">“' + esc(tx) + '”</p>' : '') + '</div>';
 }

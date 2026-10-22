@@ -1,12 +1,12 @@
 // Redes: un "mes" por cliente con su planilla de piezas. El plan es una meta (no un molde): las piezas se suman cuando surgen
 // y las que pasan el plan quedan como extras. Dropbox crea las carpetas, guarda el arte y cuenta lo que ya está.
 // Mr. Piggy propone contenido, escribe copys y reparte lo que el cliente dice en un chat.
-export const ESTADOS_PIEZA = ['Idea', 'En diseño', 'Revisión interna', 'Para el cliente', 'Cambios', 'Aprobada', 'Programada', 'Publicada'];
+export const ESTADOS_PIEZA = ['Idea', 'En diseño', 'Revisión interna', 'Para el cliente', 'Cambios', 'Rechazada', 'Aprobada', 'Programada', 'Publicada'];
 export const ESTADOS_MES = ['Planificación', 'Producción', 'Revisión interna', 'Con el cliente', 'Aprobado', 'Programado', 'Cerrado'];
 // Nombres que ve el equipo (en la base siguen guardados los de siempre).
 export const pzNombre = e => ({ 'Revisión interna': 'Lista para mandar', 'Para el cliente': 'Con el cliente', 'Cambios': 'Cambios pedidos' }[e] || e);
 // Colores propios de los estados de una pieza (no se comparten con los de proyectos): cada estado se distingue de un vistazo.
-export const PZ_COLOR = { 'Idea': '--pz-idea', 'En diseño': '--pz-diseno', 'Revisión interna': '--pz-lista', 'Para el cliente': '--pz-cliente', 'Cambios': '--pz-cambios', 'Aprobada': '--pz-aprobada', 'Programada': '--pz-programada', 'Publicada': '--pz-publicada' };
+export const PZ_COLOR = { 'Idea': '--pz-idea', 'En diseño': '--pz-diseno', 'Revisión interna': '--pz-lista', 'Para el cliente': '--pz-cliente', 'Cambios': '--pz-cambios', 'Rechazada': '--pz-rechazada', 'Aprobada': '--pz-aprobada', 'Programada': '--pz-programada', 'Publicada': '--pz-publicada' };
 // El mes: tres etapas que salen de sus piezas. Mismo nombre en Redes, la ficha del cliente y los avisos.
 export const mesNombre = e => ({ 'Planificación': 'En producción', 'Producción': 'En producción', 'Revisión interna': 'En producción', 'Programado': 'Aprobado' }[e] || e);
 const MES_COLOR = { 'Planificación': '--pz-idea', 'Producción': '--pz-diseno', 'Revisión interna': '--pz-lista', 'Con el cliente': '--pz-cliente', 'Aprobado': '--pz-aprobada', 'Programado': '--pz-programada', 'Cerrado': '--s-pausado' };
@@ -15,7 +15,7 @@ const FORMATOS_DEF = ['Reels', 'Posts', 'Historias', 'Carruseles'];
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 // A quién le toca cada estado de una pieza, según el rol que tiene en la cuenta (se edita en Opciones → Flujo de Redes).
 // Varios roles en una etapa van con "+": "Revisión interna=Dirección+Cuentas y programación".
-export const FLUJO_DEF = ['Idea=Cuentas y programación', 'En diseño=Diseño', 'Revisión interna=Dirección', 'Para el cliente=Cuentas y programación', 'Cambios=Diseño', 'Aprobada=Cuentas y programación', 'Programada=Cuentas y programación', 'Publicada='];
+export const FLUJO_DEF = ['Idea=Cuentas y programación', 'En diseño=Diseño', 'Revisión interna=Dirección', 'Para el cliente=Cuentas y programación', 'Cambios=Diseño', 'Rechazada=Diseño+Cuentas y programación', 'Aprobada=Cuentas y programación', 'Programada=Cuentas y programación', 'Publicada='];
 // Hora de publicación por formato (Opciones → Flujo de Redes). Si ese día ya hay otra del mismo formato a esa hora, se corre 3 h.
 export const HORAS_DEF = ['Historias=10:00', 'Posts=12:30', 'Carruseles=12:30', 'Reels=19:00'];
 // Un color por formato, para distinguir historias, posts, carruseles y reels de un vistazo.
@@ -93,7 +93,7 @@ export function initRedes(ctx) {
   const leerRepl = (m, id) => { const v = [...document.querySelectorAll('#' + id + ' input:checked')].map(i => i.value); const r = v.length ? v : redesCuenta(m.cliente).slice(0, 1); st.repl = st.repl || {}; st.repl[m._id] = r; return r; };
   const insPiezas = (m, lista) => data.piezasIns(m, lista.map(u => (u.red ? u : { ...u, red: redesCuenta(m.cliente).join(', ') })));
   const lista2 = (k, def) => (S.L[k] && S.L[k].length ? S.L[k] : def);
-  const flujo = () => { const o = {}; lista2('flujoRedes', FLUJO_DEF).forEach(x => { const i = String(x).indexOf('='); if (i > 0) o[x.slice(0, i)] = x.slice(i + 1).split('+').map(r => r.trim()).filter(Boolean); }); return o; };
+  const flujo = () => { const o = {}; lista2('flujoRedes', FLUJO_DEF).forEach(x => { const i = String(x).indexOf('='); if (i > 0) o[x.slice(0, i)] = x.slice(i + 1).split('+').map(r => r.trim()).filter(Boolean); }); if (!o.Rechazada) o.Rechazada = [...new Set([...(o.Cambios || ['Diseño']), ...(o['Para el cliente'] || [])])]; return o; };
   const rolesEtapa = e => flujo()[e] || [];
   const mismoRol = (a, b) => norm(a || '') === norm(b || '');
   // El equipo de la cuenta: alias -> rol (el de Redes manda si está también en Ads).
@@ -186,7 +186,7 @@ export function initRedes(ctx) {
     if (sinMes.length && isStaff()) h += '<div class="rm-bar"><span><b>' + sinMes.length + '</b> cliente' + (sinMes.length > 1 ? 's' : '') + ' sin el mes armado</span><button class="btn sm primary" data-act="rmArrancarTodos">Arrancar ' + esc(monthLabel(st.mes).split(' ')[0]) + ' para todos</button></div>';
     if (!cs.length) return h + '<section class="sheet">' + emptyBox('Todavía no hay clientes en Redes', 'Sumalos desde la pestaña “Clientes y planes”.') + '</section>';
     const rf = S.rf || (S.rf = { q: '', resp: '', estado: '', pend: false }), q = norm(rf.q);
-    const pend = m => { const ps = m && piezas(m._id); return !!(ps && ps.some(z => z.estado === 'Para el cliente' || z.estado === 'Cambios')); };
+    const pend = m => { const ps = m && piezas(m._id); return !!(ps && ps.some(z => ['Para el cliente', 'Cambios', 'Rechazada'].includes(z.estado))); };
     const vis = cs.filter(c => { const m = mesCliente(c, st.mes); return (!q || norm(c).includes(q)) && (!rf.resp || (rf.resp === '__none' ? !(m && m.resp) : m && m.resp === rf.resp)) && (!rf.estado || (rf.estado === '__sin' ? !m : m && etapaDe(m).mes === rf.estado)) && (!rf.pend || pend(m)); });
     h += '<div class="toolbar fbar2"><input class="in" type="search" id="rfq" data-bind="rf.q" placeholder="Buscar cliente" value="' + esc(rf.q) + '">' +
       (isStaff() ? '<button class="btn mio' + (rf.resp === S.me.alias ? ' on' : '') + '" data-act="soloMio" data-p="redes" aria-pressed="' + (rf.resp === S.me.alias) + '">Solo lo mío</button>' : '') +
@@ -362,12 +362,12 @@ export function initRedes(ctx) {
       if (sem !== semPrev) cab += '<tr class="rm-sem"><td colspan="' + cols + '"><div class="rm-semr"><span>' + esc(sem) + '</span>' + (sem === 'Sin fecha' ? agendaBtn : '') + '</div></td></tr>';
       semPrev = sem; histPrev = h;
       // Lista compacta: una línea por pieza, solo lo justo para ubicarla. Tocar la fila abre la pieza para editarla.
-      return cab + '<tr class="rm-row ' + (sel.has(z._id) ? 'sel ' : '') + (z.estado === 'Cambios' ? 'cambios' : '') + '" style="--fc:' + fmtColor(z.formato) + ';--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-act="rmPieza" data-id="' + id + '" title="Abrir para editar">' +
+      return cab + '<tr class="rm-row ' + (sel.has(z._id) ? 'sel ' : '') + (z.estado === 'Cambios' || z.estado === 'Rechazada' ? 'cambios' : '') + '" style="--fc:' + fmtColor(z.formato) + ';--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-act="rmPieza" data-id="' + id + '" title="Abrir para editar">' +
         (can ? '<td class="sel"><input type="checkbox" data-rmsel="' + id + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar"></td>' : '') +
         '<td class="rm-art">' + arteMini(z) + '</td>' +
         '<td class="rm-cuando">' + (z.fecha ? '<span class="rm-dia">' + esc(diaDe(z)) + '</span>' + (z.hora ? '<span class="rm-hora">' + esc(z.hora) + '</span>' : '') : '<span class="muted">Sin fecha</span>') + '</td>' +
         '<td class="rm-tema">' + tags(z, null) + '<b class="rm-tt">' + esc(z.tema || 'Sin tema') + '</b>' +
-        (z.respuesta && z.estado === 'Cambios' ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 160)) + '”</span>' : '') + '</td>' +
+        (z.respuesta && (z.estado === 'Cambios' || z.estado === 'Rechazada') ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 160)) + '”</span>' : '') + '</td>' +
         '<td class="rm-etc">' + listoCtl(m, z, can) + '</td>' +
         '<td class="rm-qc">' + quien(z, true) + '</td>' +
         '<td class="rm-ir" aria-hidden="true">›</td></tr>';
@@ -377,7 +377,7 @@ export function initRedes(ctx) {
   }
   // Tablero: una columna por estado; arrastrar una pieza a otra columna le cambia el estado (a Diseño, con una nota).
   function tablero(m, vis, can, qz) {
-    const cols = ['Idea', 'En diseño', 'Revisión interna', 'Para el cliente', 'Cambios', 'Aprobada', 'Programada', 'Publicada'].filter(e => !['Cambios', 'Programada', 'Publicada'].includes(e) || vis.some(z => z.estado === e));
+    const cols = ['Idea', 'En diseño', 'Revisión interna', 'Para el cliente', 'Cambios', 'Rechazada', 'Aprobada', 'Programada', 'Publicada'].filter(e => !['Cambios', 'Rechazada', 'Programada', 'Publicada'].includes(e) || vis.some(z => z.estado === e));
     const dia = z => z.fecha ? new Date(z.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '') + (z.hora ? ' · ' + z.hora : '') : 'Sin fecha';
     const carta = z => '<article class="rm-kc"' + (can ? ' draggable="true" data-drag="' + esc(z._id) + '"' : '') + ' style="--fc:' + fmtColor(z.formato) + '">' +
       '<button class="rm-kc-a" data-act="rmPieza" data-id="' + esc(z._id) + '"><span class="rm-kc-m"><b>' + esc(z.formato) + '</b> · ' + esc(dia(z)) + '</span><span class="rm-kc-t">' + esc(z.tema || 'Sin tema') + '</span></button>' +
@@ -614,6 +614,7 @@ export function initRedes(ctx) {
     'En diseño': ['Revisión interna', 'Está lista', 'rmEstado', 'Pasa a Lista para mandar'],
     'Para el cliente': ['Aprobada', 'Aprobó', 'rmEstado', 'El cliente la aprobó por otro medio (WhatsApp, reunión…)'],
     'Cambios': ['', 'Mandar de nuevo', 'rmReenviarId', 'Con los cambios hechos, vuelve al cliente'],
+    'Rechazada': ['En diseño', 'Hacer otra', 'rmEstado', 'Vuelve a diseño para hacer una nueva. Si no va, borrala'],
     'Aprobada': ['Programada', 'Ya la programé', 'rmEstado', 'Pasa a Programada'] };
   function listoCtl(m, z, can, corto) {
     const s = can && SIGUE[z.estado];
@@ -896,8 +897,8 @@ export function initRedes(ctx) {
     return ESTADOS_PIEZA.filter(e => o[e]).map(e => [e, o[e]]);
   }
   // Tareas de Redes de una persona: por mes y etapa, las piezas que le tocan (la Planificación va aparte, como "revisar la planificación")
-  const VERBO = { 'En diseño': 'Diseñar', 'Revisión interna': 'Revisar y mandar', 'Cambios': 'Hacer los cambios de', 'Aprobada': 'Programar', 'Idea': 'Planificar' };
-  const PRIO = { 'Cambios': 0, 'En diseño': 1, 'Revisión interna': 2, 'Idea': 3, 'Aprobada': 4 };
+  const VERBO = { 'Rechazada': 'Rehacer o sacar', 'En diseño': 'Diseñar', 'Revisión interna': 'Revisar y mandar', 'Cambios': 'Hacer los cambios de', 'Aprobada': 'Programar', 'Idea': 'Planificar' };
+  const PRIO = { 'Rechazada': 0, 'Cambios': 0, 'En diseño': 1, 'Revisión interna': 2, 'Idea': 3, 'Aprobada': 4 };
   const pedidosDe = id => (st.ped || []).filter(c => c.entidadId === id);
   // Todo lo que le toca hacer ya, pieza por pieza, sin importar en qué etapa esté el mes:
   // lo que volvió del cliente (una por pieza, con lo que pidió), lo que hay que diseñar, mandar o programar.
@@ -913,7 +914,7 @@ export function initRedes(ctx) {
         if (z.estado === 'Idea' && m.estado === 'Planificación') return; // va como "revisar la planificación"
         if (z.estado === 'Aprobada' && ['Programado', 'Cerrado'].includes(m.estado)) return;
         if (!quienes(m.cliente, z, eq).gente.includes(alias)) return;
-        if (z.estado === 'Cambios') { out.push({ m, estado: 'Cambios', n: 1, z, verbo: VERBO.Cambios, pedidos: pedidosDe(z._id) }); return; }
+        if (z.estado === 'Cambios' || z.estado === 'Rechazada') { out.push({ m, estado: z.estado, n: 1, z, verbo: VERBO[z.estado], pedidos: pedidosDe(z._id) }); return; }
         o[z.estado] = (o[z.estado] || 0) + 1;
       });
       Object.keys(o).forEach(e => out.push({ m, estado: e, n: o[e], verbo: VERBO[e] || e }));
@@ -1052,7 +1053,7 @@ export function initRedes(ctx) {
   /* ---------- Pasar el contenido del mes a otra etapa ---------- */
   // Mueve todas las piezas de una etapa a la siguiente (p. ej. de Planificación a En diseño), actualiza el estado del mes
   // y avisa a quienes les toca la etapa nueva (campanita y Slack).
-  const MES_DE = { 'Idea': 'Planificación', 'En diseño': 'Producción', 'Cambios': 'Producción', 'Revisión interna': 'Revisión interna', 'Para el cliente': 'Con el cliente', 'Aprobada': 'Aprobado', 'Programada': 'Programado', 'Publicada': 'Cerrado' };
+  const MES_DE = { 'Idea': 'Planificación', 'En diseño': 'Producción', 'Cambios': 'Producción', 'Rechazada': 'Producción', 'Revisión interna': 'Revisión interna', 'Para el cliente': 'Con el cliente', 'Aprobada': 'Aprobado', 'Programada': 'Programado', 'Publicada': 'Cerrado' };
   function abrirPasar(m, desde) {
     const ps = piezas(m._id) || [], cnt = {}; ps.forEach(z => { cnt[z.estado] = (cnt[z.estado] || 0) + 1; });
     const de = desde && cnt[desde] ? desde : (ESTADOS_PIEZA.find(e => cnt[e]) || 'Idea');

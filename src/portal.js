@@ -27,7 +27,7 @@ const fecha = d => { if (!d) return ''; const [y, m, dd] = String(d).slice(0, 10
 const corta = d => { if (!d) return ''; const x = new Date(String(d).slice(0, 10) + 'T12:00'); return x.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }); };
 const plata = (n, m) => { try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: m || 'ARS', maximumFractionDigits: 0 }).format(+n || 0); } catch (e) { return (m || '') + ' ' + n; } };
 const IMG = /\.(jpe?g|png|gif|webp|heic)$/i;
-const ESTADO_CLI = { 'Para el cliente': ['Para aprobar', '--pz-cliente'], 'Cambios': ['Pediste cambios', '--pz-cambios'], 'Aprobada': ['Aprobada', '--pz-aprobada'], 'Programada': ['Programada', '--pz-programada'], 'Publicada': ['Publicada', '--pz-publicada'] };
+const ESTADO_CLI = { 'Para el cliente': ['Para aprobar', '--pz-cliente'], 'Cambios': ['Pediste cambios', '--pz-cambios'], 'Rechazada': ['La rechazaste', '--pz-rechazada'], 'Aprobada': ['Aprobada', '--pz-aprobada'], 'Programada': ['Programada', '--pz-programada'], 'Publicada': ['Publicada', '--pz-publicada'] };
 const pz = e => { const [l, c] = ESTADO_CLI[e] || [e, '--muted']; return '<span class="pzst" style="--c:var(' + c + ')">' + esc(l) + '</span>'; };
 const S = { yo: null, clientes: [], c: null, d: null, tab: 'inicio', mes: null, archivos: {}, pidiendo: new Set(), vista: 'revisar', fz: null, pzId: null, busy: false, pidiendoCambio: null, feed: null, irA: null };
 
@@ -136,11 +136,11 @@ function proyCard(p) {
 }
 
 /* ---------- Redes: revisar de a una, el feed y el calendario; lo que pediste y qué se hizo, siempre a la vista ---------- */
-const GRUPOS_CLI = [['pend', 'Para aprobar', '--pz-cliente', z => z.estado === 'Para el cliente'], ['cambios', 'Pediste cambios', '--pz-cambios', z => z.estado === 'Cambios'], ['aprob', 'Aprobadas', '--pz-aprobada', z => ['Aprobada', 'Programada'].includes(z.estado)], ['pub', 'Publicadas', '--pz-publicada', z => z.estado === 'Publicada']];
+const GRUPOS_CLI = [['pend', 'Para aprobar', '--pz-cliente', z => z.estado === 'Para el cliente'], ['cambios', 'Pediste cambios', '--pz-cambios', z => z.estado === 'Cambios'], ['rech', 'Rechazadas', '--pz-rechazada', z => z.estado === 'Rechazada'], ['aprob', 'Aprobadas', '--pz-aprobada', z => ['Aprobada', 'Programada'].includes(z.estado)], ['pub', 'Publicadas', '--pz-publicada', z => z.estado === 'Publicada']];
 const grupoCli = k => GRUPOS_CLI.find(g => g[0] === k);
 const ordenPz = (a, b) => (a.fecha || '9').localeCompare(b.fecha || '9') || (a.hora || '').localeCompare(b.hora || '');
 const esVideo = p => /\.(mp4|mov|m4v|webm)$/i.test(p || '');
-const sinPrefijo = t => String(t || '').replace(/^Pidió cambios:\s*/i, '').replace(/^Anotamos tu pedido:\s*/i, '');
+const sinPrefijo = t => String(t || '').replace(/^Pidió cambios:\s*/i, '').replace(/^Anotamos tu pedido:\s*/i, '').replace(/^Rechazó la pieza:\s*/i, 'La rechazaste: ');
 const comsDe = id => (S.d.comentarios || []).filter(c => c.entidad === 'pieza' && c.entidad_id === id);
 const esPedido = c => c.pedido || (c.de_cliente && /^Pidió cambios:/i.test(c.texto || ''));
 const mesActual = () => { const ms = S.d.meses || []; return ms.find(x => x.id === S.mes) || ms[0]; };
@@ -213,9 +213,7 @@ function detallePieza(z, o = {}) {
   const listo = [...coms].reverse().find(c => !c.de_cliente && /^Listo, hicimos los cambios/i.test(c.texto || ''));
   const media = a ? (esVideo(a.path) && a.link ? '<video src="' + esc(a.link) + '" controls playsinline preload="metadata"' + (a.miniatura ? ' poster="' + esc(a.miniatura) + '"' : '') + '></video>' : a.miniatura ? '<img src="' + esc(a.miniatura) + '" alt="">' : '<span class="po-ph">' + (esVideo(a.path) ? '▶ Video' : 'Archivo') + '</span>') : '<span class="po-ph' + (/reel|histori/i.test(z.formato) ? ' po-ph-v' : '') + '" style="--fc:' + fmtColor(z.formato) + '"><b>' + esc(z.formato) + '</b><small>El arte todavía no está cargado</small></span>';
   const pedHtml = ped.length ? '<div class="po-ped"><b>Lo que pediste</b>' + ped.map(c => '<div class="po-pi' + (c.resuelto_at ? ' ok' : '') + '"><span class="po-pic">' + (c.resuelto_at ? '✓' : '…') + '</span><span>' + esc(sinPrefijo(c.texto)) + '<small>' + esc(fecha(c.created_at)) + ' · ' + (c.resuelto_at ? 'hecho' : 'lo estamos haciendo') + '</small></span></div>').join('') + '</div>' : '';
-  const acciones = ['Para el cliente', 'Cambios', 'Aprobada'].includes(z.estado) ? (S.pidiendoCambio === z.id
-    ? '<form class="po-cambio" data-cambio="' + esc(z.id) + '"><label for="po-cambio-t">¿Qué cambiarías?</label><textarea id="po-cambio-t" class="in" rows="3" placeholder="Cuanto más concreto, mejor: textos, colores, fotos…" required></textarea><div class="po-acc"><button class="btn primary">Mandar el pedido</button><button type="button" class="btn ghost" data-act="cambioNo">Cancelar</button></div></form>'
-    : '<div class="po-acc po-acc-g">' + (z.estado === 'Aprobada' ? '<span class="po-okb">✓ La aprobaste</span>' : '<button class="btn primary" data-act="aprobar" data-e="pieza" data-id="' + esc(z.id) + '">✓ Aprobar</button>') + '<button class="btn" data-act="cambios" data-e="pieza" data-id="' + esc(z.id) + '">Pedir cambios</button></div>') : '';
+  const acciones = o.panel ? '' : accionesPieza(z);
   const nav = o.n ? '<div class="po-nav"><button class="btn ghost sm" data-act="pzMover" data-d="-1"' + (o.i > 0 ? '' : ' disabled') + ' aria-label="Anterior">← Anterior</button><span>' + (o.i + 1) + ' de ' + o.n + '</span><button class="btn ghost sm" data-act="pzMover" data-d="1"' + (o.i < o.n - 1 ? '' : ' disabled') + ' aria-label="Siguiente">Siguiente →</button></div>' : '';
   const cli = S.d.cliente || {}, cab = o.post ? '<header class="po-ig-h">' + (cli.avatar ? '<img src="' + esc(cli.avatar) + '" alt="">' : '<span class="po-ig-av">' + esc((cli.nombre || '?').slice(0, 2).toUpperCase()) + '</span>') + '<span><b>' + esc(cli.nombre || '') + '</b><small>' + esc(z.formato) + (z.fecha ? ' · ' + esc(corta(z.fecha)) : '') + (z.hora ? ' ' + esc(z.hora) : '') + '</small></span>' + pz(z.estado) + '</header>' : '';
   if (!o.post) return (o.panel ? '' : nav) + '<article class="po-rev con-cel' + (o.panel ? ' en-panel' : '') + '" id="pz-' + esc(z.id) + '"><div class="po-rv-a">' + celularPieza(z, S.d.cliente || {}, as, { red: (S.celRed || {})[z.id], fc: fmtColor(z.formato) }) +
@@ -233,9 +231,22 @@ function detallePieza(z, o = {}) {
     (z.copy ? '<p class="po-copy">' + esc(z.copy) + '</p>' : '') + (z.hashtags ? '<p class="po-tags">' + esc(z.hashtags) + '</p>' : '') +
     pedHtml + acciones + hiloHtml('pieza', z.id, otros, 'Escribirle al equipo') + '</div></article>';
 }
+// Lo que puede hacer el cliente con una pieza: aprobarla, pedir cambios, rechazarla o comentar.
+function accionesPieza(z, panel) {
+  if (!['Para el cliente', 'Cambios', 'Rechazada', 'Aprobada'].includes(z.estado)) return '';
+  const id = esc(z.id);
+  if (S.pidiendoCambio === z.id) return '<form class="po-cambio" data-cambio="' + id + '"><label for="po-cambio-t">¿Qué cambiarías?</label><textarea id="po-cambio-t" class="in" rows="3" placeholder="Cuanto más concreto, mejor: textos, colores, fotos…" required></textarea><div class="po-acc"><button class="btn primary">Mandar el pedido</button><button type="button" class="btn ghost" data-act="cambioNo">Cancelar</button></div></form>';
+  if (S.rechazando === z.id) return '<form class="po-cambio" data-rechazo="' + id + '"><label for="po-rech-t">¿Por qué no va esta pieza?</label><textarea id="po-rech-t" class="in" rows="3" placeholder="Por ejemplo: no queremos hablar de este tema, ya no tenemos ese producto…" required></textarea><p class="po-rech-n">La pieza no se publica. El equipo te propone otra o la saca del mes.</p><div class="po-acc"><button class="btn primary">Rechazar la pieza</button><button type="button" class="btn ghost" data-act="cambioNo">Cancelar</button></div></form>';
+  const est = z.estado === 'Aprobada' ? '<span class="po-okb">✓ La aprobaste</span>' : z.estado === 'Rechazada' ? '<span class="po-okb no">✕ La rechazaste</span>' : '';
+  return '<div class="po-acc po-acc-g' + (panel ? ' en-pie' : '') + '">' + (est || '<button class="btn primary" data-act="aprobar" data-e="pieza" data-id="' + id + '">✓ Aprobar</button>') +
+    (z.estado === 'Rechazada' ? '<button class="btn" data-act="aprobar" data-e="pieza" data-id="' + id + '">Mejor sí, aprobarla</button>' : '') +
+    '<button class="btn" data-act="cambios" data-e="pieza" data-id="' + id + '">Pedir cambios</button>' +
+    '<span class="po-acc-sec">' + (z.estado !== 'Rechazada' ? '<button class="btn ghost sm" data-act="rechazar" data-id="' + id + '">Rechazar</button>' : '') + '<button class="btn ghost sm" data-act="comentarPz">Comentar</button></span></div>';
+}
 function verPieza(id) {
   const m = mesActual(), z = m && m.piezas.find(x => x.id === id); if (!z) return;
-  $('#panel').innerHTML = '<div class="panel-h"><div><h2 id="panel-title">' + esc(z.tema || z.formato) + '</h2></div><button type="button" class="btn ghost" data-act="cerrar" aria-label="Cerrar">✕</button></div><div class="panel-b po-pb">' + detallePieza(z, { panel: true }) + '</div>';
+  $('#panel').innerHTML = '<div class="panel-h"><div><h2 id="panel-title">' + esc(z.tema || z.formato) + '</h2></div><button type="button" class="btn ghost" data-act="cerrar" aria-label="Cerrar">✕</button></div><div class="panel-b po-pb">' + detallePieza(z, { panel: true }) + '</div>' +
+    (accionesPieza(z) ? '<div class="panel-f po-pf">' + accionesPieza(z, true) + '</div>' : '');
   $('#panel').hidden = false; $('#scrim').hidden = false; S.panelPz = id;
 }
 function hiloHtml(entidad, id, coms, etiqueta) {
@@ -348,7 +359,7 @@ function vCuenta() {
   // Datos y contactos
   h += '<div class="po-cols2"><div><h2>Tus datos</h2><div class="po-box">' + dato('Empresa', esc(d.nombre || S.d.cliente.nombre)) + dato('Web', d.web ? '<a href="' + esc(/^https?:/.test(d.web) ? d.web : 'https://' + d.web) + '" target="_blank" rel="noopener">' + esc(d.web.replace(/^https?:\/\//, '')) + '</a>' : '') + dato('Email', esc(d.email || '')) + dato('Teléfono', esc(d.tel || '')) +
     (redes.length ? dato('Redes', redes.map(([k, v]) => '<a href="' + esc(/^https?:/.test(v) ? v : '#') + '" target="_blank" rel="noopener">' + esc(k) + '</a>').join(' · ')) : '') + dato('Clientes desde', d.desde ? esc(cap(mesTxt(d.desde))) : '') +
-    '<p class="muted po-cambio">¿Algo cambió? <button class="btn link" data-act="tab" data-t="tickets">Avisanos con un pedido</button></p></div></div>' +
+    '<p class="muted po-cta-nota">¿Algo cambió? <button class="btn link" data-act="tab" data-t="tickets">Avisanos con un pedido</button></p></div></div>' +
     (ks.length ? '<div><h2>Tu gente</h2><div class="po-box">' + ks.map(x => '<div class="po-k"><span class="po-k-a">' + ini(x.nombre) + '</span><div><b>' + esc(x.nombre || x.email) + (x.yo ? ' <small class="po-yo">Vos</small>' : '') + '</b><small>' + esc([x.rol, x.email].filter(Boolean).join(' · ')) + '</small><span class="po-k-b">' + (x.principal ? '<i>Principal</i>' : '') + (x.cobros ? '<i>Facturación</i>' : '') + (x.portal ? '<i class="ok">Entra al portal</i>' : '') + '</span></div></div>').join('') + '</div></div>' : '') + '</div>';
   // Facturación (solo quien la recibe)
   h += cuentaFacturacion();
@@ -369,7 +380,7 @@ function pedirTexto(titulo, ayuda, cb) {
   $('#panel').hidden = false; $('#scrim').hidden = false; setTimeout(() => $('#po-t').focus(), 30);
   S.cbTexto = cb;
 }
-const cerrar = () => { $('#panel').hidden = true; $('#scrim').hidden = true; S.cbTexto = null; S.panelPz = null; S.pidiendoCambio = null; };
+const cerrar = () => { $('#panel').hidden = true; $('#scrim').hidden = true; S.cbTexto = null; S.panelPz = null; S.pidiendoCambio = null; S.rechazando = null; };
 async function responder(entidad, id, accion, texto) {
   if (S.busy) return; S.busy = true;
   try { check(await sb.rpc('portal_responder', { p_entidad: entidad, p_id: id, p_accion: accion, p_texto: texto || '' })); toast(accion === 'aprobar' ? '¡Gracias! Le avisamos al equipo.' : 'Listo, le llegó al equipo.'); await cargar(true); }
@@ -397,13 +408,15 @@ const ACT = {
   celRed: t => { (S.celRed ||= {})[t.dataset.id] = t.dataset.r; render(); if (S.panelPz) verPieza(S.panelPz); },
   feedModo: t => { S.feed = t.dataset.m; render(); },
   calModo: t => { S.cal = t.dataset.m; render(); },
-  cambioNo: () => { S.pidiendoCambio = null; rerender(); },
+  cambioNo: () => { S.pidiendoCambio = null; S.rechazando = null; rerender(); },
+  rechazar: t => { S.rechazando = t.dataset.id; S.pidiendoCambio = null; rerender(); setTimeout(() => { const x = $('#po-rech-t'); if (x) x.focus(); }, 30); },
+  comentarPz: t => { const root = t.closest('#panel') || t.closest('.po-rev') || document; const d = root.querySelector('.po-hilo'); if (!d) return; d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => { const x = d.querySelector('textarea'); if (x) x.focus(); }, 250); },
   salir: async () => { await sb.auth.signOut(); location.reload(); },
   cerrar: () => cerrar(),
   pieza: t => { S.tab = 'redes'; S.vista = 'revisar'; S.fz = 'pend'; S.pzId = t.dataset.id; render(); window.scrollTo(0, 0); },
   irProy: t => { S.tab = 'proyectos'; render(); setTimeout(() => { const el = document.getElementById('py-' + t.dataset.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); },
   aprobar: async t => { const sig = t.dataset.e === 'pieza' ? siguientePend(t.dataset.id) : null; await responder(t.dataset.e, t.dataset.id, 'aprobar', ''); if (t.dataset.e === 'pieza') despues(sig); },
-  cambios: t => { if (t.dataset.e === 'pieza') { S.pidiendoCambio = t.dataset.id; rerender(); setTimeout(() => { const x = $('#po-cambio-t'); if (x) x.focus(); }, 30); return; } pedirTexto('¿Qué cambiarías?', 'Contanos qué cambiar. Cuanto más concreto, mejor (textos, colores, fotos…).', txt => responder(t.dataset.e, t.dataset.id, 'cambios', txt)); },
+  cambios: t => { if (t.dataset.e === 'pieza') { S.pidiendoCambio = t.dataset.id; S.rechazando = null; rerender(); setTimeout(() => { const x = $('#po-cambio-t'); if (x) x.focus(); }, 30); return; } pedirTexto('¿Qué cambiarías?', 'Contanos qué cambiar. Cuanto más concreto, mejor (textos, colores, fotos…).', txt => responder(t.dataset.e, t.dataset.id, 'cambios', txt)); },
   aprobarMes: async t => { const m = (S.d.meses || []).find(x => x.id === t.dataset.id); if (!m) return; if (!await confirmar('¿Aprobás todas las piezas pendientes de ' + mesTxt(m.mes) + '?')) return; responder('mes', m.id, 'aprobar', ''); },
 };
 document.addEventListener('click', e => { const t = e.target.closest('[data-act]'); if (!t || t.tagName === 'A') return; const fn = ACT[t.dataset.act]; if (fn) { e.preventDefault(); fn(t); } });
@@ -412,7 +425,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#panel
 // Revisar de a una: anterior / siguiente, y después de responder pasa sola a la próxima pendiente.
 function moverPz(d) { const m = mesActual(); if (!m) return; const xs = listaRevisar(m), i = xs.findIndex(z => z.id === S.pzId), j = Math.min(xs.length - 1, Math.max(0, (i < 0 ? 0 : i) + d)); if (xs[j]) { S.pzId = xs[j].id; render(); } }
 function siguientePend(id) { const m = mesActual(); if (!m) return null; const xs = [...m.piezas].sort(ordenPz), i = xs.findIndex(z => z.id === id); return (xs.slice(i + 1).find(z => z.estado === 'Para el cliente' && z.id !== id) || xs.find(z => z.estado === 'Para el cliente' && z.id !== id) || {}).id || null; }
-function despues(sig) { S.pidiendoCambio = null; if (S.panelPz) { cerrar(); S.panelPz = null; } if (S.vista === 'revisar') { S.pzId = sig; if (!sig && S.fz === 'pend') S.fz = 'pend'; } render(); if (S.vista === 'feed' && feedModo() === 'scroll' && sig) irAPieza(sig, true); }
+function despues(sig) { S.pidiendoCambio = null; S.rechazando = null; if (S.panelPz) { cerrar(); S.panelPz = null; } if (S.vista === 'revisar') { S.pzId = sig; if (!sig && S.fz === 'pend') S.fz = 'pend'; } render(); if (S.vista === 'feed' && feedModo() === 'scroll' && sig) irAPieza(sig, true); }
 // En el scroll: lleva a una pieza (la que tocaste en la grilla, o la próxima para revisar después de responder).
 function irAPieza(id, suave) { setTimeout(() => { const el = document.getElementById('pz-' + id); if (!el) return; const y = el.getBoundingClientRect().top + window.scrollY - 70; window.scrollTo({ top: Math.max(0, y), behavior: suave ? 'smooth' : 'auto' }); }, 30); }
 const rerender = () => { if (S.panelPz && !$('#panel').hidden) verPieza(S.panelPz); else render(); };
@@ -425,6 +438,7 @@ document.addEventListener('change', async e => {
 });
 document.addEventListener('submit', async e => {
   const f = e.target; e.preventDefault();
+  if (f.dataset && f.dataset.rechazo) { const txt = (f.querySelector('textarea').value || '').trim(); if (!txt) return; const id = f.dataset.rechazo, sig = siguientePend(id); await responder('pieza', id, 'rechazar', txt); despues(sig); return; }
   if (f.dataset && f.dataset.cambio) { const txt = (f.querySelector('textarea').value || '').trim(); if (!txt) return; const id = f.dataset.cambio, sig = siguientePend(id); await responder('pieza', id, 'cambios', txt); despues(sig); return; }
   if (f.id === 'login') {
     const email = f.querySelector('input').value.trim(), btn = f.querySelector('button'), msg = $('#login-msg'); if (!email) return;
