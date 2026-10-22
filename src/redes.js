@@ -7,7 +7,8 @@ export const ESTADOS_MES = ['Planificación', 'Producción', 'Revisión interna'
 export const pzNombre = e => ({ 'Revisión interna': 'Lista para mandar', 'Para el cliente': 'Con el cliente', 'Cambios': 'Cambios pedidos' }[e] || e);
 // Colores propios de los estados de una pieza (no se comparten con los de proyectos): cada estado se distingue de un vistazo.
 export const PZ_COLOR = { 'Idea': '--pz-idea', 'En diseño': '--pz-diseno', 'Revisión interna': '--pz-lista', 'Para el cliente': '--pz-cliente', 'Cambios': '--pz-cambios', 'Aprobada': '--pz-aprobada', 'Programada': '--pz-programada', 'Publicada': '--pz-publicada' };
-const PZ_CORTO = { 'Idea': 'Idea', 'En diseño': 'Diseño', 'Revisión interna': 'Lista', 'Para el cliente': 'Cliente', 'Cambios': 'Cambios', 'Aprobada': 'Aprobada', 'Programada': 'Programada', 'Publicada': 'Publicada' };
+// El mes: tres etapas que salen de sus piezas. Mismo nombre en Redes, la ficha del cliente y los avisos.
+export const mesNombre = e => ({ 'Planificación': 'En producción', 'Producción': 'En producción', 'Revisión interna': 'En producción', 'Programado': 'Aprobado' }[e] || e);
 const MES_COLOR = { 'Planificación': '--pz-idea', 'Producción': '--pz-diseno', 'Revisión interna': '--pz-lista', 'Con el cliente': '--pz-cliente', 'Aprobado': '--pz-aprobada', 'Programado': '--pz-programada', 'Cerrado': '--s-pausado' };
 const REDES = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X'];
 const FORMATOS_DEF = ['Reels', 'Posts', 'Historias', 'Carruseles'];
@@ -67,9 +68,6 @@ export function initRedes(ctx) {
   const st = { mes: thisMonth(), sel: new Set(), fOff: new Set(), mio: false, vis: [], ia: {}, abiertos: new Set(), tab: lsGet('rmTab') || 'planilla', cargando: new Set(), thumbs: new Map(), pidiendo: new Set(), fpz: null, abrirPieza: null };
   const P = new Map(); // mesId -> piezas
   st.pedPz = new Map(); // piezas de los pedidos que no están en los meses cargados
-  // Lo que ve el equipo: pocos estados. En la base siguen los de siempre (Idea, En diseño y Revisión interna son "En proceso").
-  const VISIBLE = { 'Idea': 'En proceso', 'En diseño': 'En proceso', 'Revisión interna': 'En proceso', 'Para el cliente': 'Con el cliente', 'Cambios': 'Cambios pedidos' };
-  const estadoVisible = e => VISIBLE[e] || e;
 
   const formatos = () => (S.L.formatosRedes && S.L.formatosRedes.length ? S.L.formatosRedes : FORMATOS_DEF);
   const meses = () => S.RM || [];
@@ -165,7 +163,6 @@ export function initRedes(ctx) {
   const PH_CONT = f => /carrus/i.test(f) ? 'Slide 1: …\nSlide 2: …' : /reel/i.test(f) ? 'Gancho (0-3 s): …\n1. …\nAudio: …' : /histori/i.test(f) ? 'Texto: …\nSticker: encuesta (Sí / No)' : 'Título: …\nBajada: …\nImagen: …';
   const conteoPorFormato = ps => { const o = {}; enPlan(ps).forEach(z => { o[z.formato] = (o[z.formato] || 0) + 1; }); return o; };
   const pzPill = e => '<span class="pzst" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')">' + esc(pzNombre(e)) + '</span>';
-  const mesPill = e => pill(e, MES_COLOR[e] || '--muted');
   // En listas y tarjetas: la etapa del mes con su nombre de hoy (Diseño, Revisión, Cliente…)
   const etapaPill = m => { const E = etapaDe(m); return pill(E.n, MES_COLOR[E.mes] || '--muted'); };
   const fechaMes = (mes, d) => mes + '-' + String(d).padStart(2, '0');
@@ -230,7 +227,7 @@ export function initRedes(ctx) {
     const ap = ps ? ps.filter(z => z.estado === 'Para el cliente').length : 0, ca = ps ? ps.filter(z => z.estado === 'Cambios').length : 0;
     return '<button class="rm-card" data-act="rmAbrir" data-id="' + esc(m._id) + '"><div class="rm-ch">' + av(c, cli.avatar, 'sq') + '<div><b>' + esc(c) + '</b><span class="muted">' + (m.resp ? esc(m.resp) : 'Sin responsable') + '</span></div>' + etapaPill(m) + '</div>' + (ctx.servChips ? ctx.servChips(c) : '') +
       (ps ? barras(m, ps) : '<p class="muted">Cargando…</p>') +
-      '<div class="rm-cf">' + (ap ? '<span class="pzst" style="--c:var(--pz-cliente)">' + ap + ' para aprobar</span>' : '') + (ca ? '<span class="pzst" style="--c:var(--pz-cambios)">' + ca + ' con cambios</span>' : '') + (m.visible ? '<span class="rm-vis" title="El cliente lo ve en el portal">👁 En el portal</span>' : '') + '</div></button>';
+      '<div class="rm-cf">' + (ap ? '<span class="pzst" style="--c:var(--pz-cliente)">' + ap + ' con el cliente</span>' : '') + (ca ? '<span class="pzst" style="--c:var(--pz-cambios)">' + ca + ' con cambios pedidos</span>' : '') + (m.visible ? '<span class="rm-vis" title="El cliente lo ve en el portal">👁 En el portal</span>' : '') + '</div></button>';
   }
 
   /* ---------- Un mes ---------- */
@@ -294,7 +291,7 @@ export function initRedes(ctx) {
     const presentes = [...new Set([...fs.filter(f => ps.some(z => z.formato === f)), ...ps.map(z => z.formato).filter(Boolean)])];
     const qz = new Map(ps.map(z => [z._id, quienes(m.cliente, z, eq)]));
     const mias = ps.filter(z => yo && qz.get(z._id).gente.includes(yo));
-    const vis = ordenadas.filter(z => !st.fOff.has(z.formato) && (!st.mio || mias.includes(z)) && (st.fGr == null || grupoDe(z.estado) === st.fGr));
+    const vis = ordenadas.filter(z => !st.fOff.has(z.formato) && (!st.mio || mias.includes(z)) && (st.fGr == null || z.estado === st.fGr));
     st.vis = vis.map(z => z._id);
     const activos = presentes.filter(f => st.fOff.has(f)).length + (st.mio ? 1 : 0);
     const filtros = ps.length ? filtrosMenu('rmpz', '<span class="lbl">Formatos</span><div data-todos="rmff" data-todos-dentro style="display:flex;flex-direction:column">' + presentes.map(f => '<label class="chk rm-fck" style="--fc:' + fmtColor(f) + '"><input type="checkbox" data-rmff="' + esc(f) + '"' + (st.fOff.has(f) ? '' : ' checked') + '> <i class="rm-dot"></i>' + esc(f) + ' <span class="muted num">' + ps.filter(z => z.formato === f).length + '</span></label>').join('') + '</div>' +
@@ -380,15 +377,14 @@ export function initRedes(ctx) {
       vis.map(fila).join('') + '</tbody></table></div></section></div>';
   }
   // Tablero: una columna por estado; arrastrar una pieza a otra columna le cambia el estado (a Diseño, con una nota).
-  const COL_TAB = { 'Idea': 'Idea', 'En diseño': 'En diseño', 'Revisión interna': 'Lista para mandar', 'Para el cliente': 'Con el cliente', 'Cambios': 'Cambios pedidos', 'Aprobada': 'Aprobada' };
   function tablero(m, vis, can, qz) {
     const cols = ['Idea', 'En diseño', 'Revisión interna', 'Para el cliente', 'Cambios', 'Aprobada', 'Programada', 'Publicada'].filter(e => !['Cambios', 'Programada', 'Publicada'].includes(e) || vis.some(z => z.estado === e));
     const dia = z => z.fecha ? new Date(z.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '') + (z.hora ? ' · ' + z.hora : '') : 'Sin fecha';
     const carta = z => '<article class="rm-kc"' + (can ? ' draggable="true" data-drag="' + esc(z._id) + '"' : '') + ' style="--fc:' + fmtColor(z.formato) + '">' +
       '<button class="rm-kc-a" data-act="rmPieza" data-id="' + esc(z._id) + '"><span class="rm-kc-m"><b>' + esc(z.formato) + '</b> · ' + esc(dia(z)) + '</span><span class="rm-kc-t">' + esc(z.tema || 'Sin tema') + '</span></button>' +
-      '<div class="rm-kc-f">' + (grupoDe(z.estado) === 'proceso' ? '' : listoCtl(m, z, can)) + ((qz.get(z._id) || {}).gente || []).map(a => av(a, fotoDe(a))).join('') + '</div></article>';
+      '<div class="rm-kc-f">' + listoCtl(m, z, can, true) + ((qz.get(z._id) || {}).gente || []).map(a => av(a, fotoDe(a))).join('') + '</div></article>';
     return '<div class="rm-kb" role="list">' + cols.map(e => { const zs = vis.filter(z => z.estado === e).sort((a, b) => (a.fecha || '9').localeCompare(b.fecha || '9'));
-      return '<section class="rm-kcol" data-drop="' + esc(e) + '" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')"><header><b>' + esc(COL_TAB[e] || pzNombre(e)) + '</b><span class="muted num">' + zs.length + '</span></header><div class="rm-kcs">' + (zs.length ? zs.map(carta).join('') : '<p class="muted rm-kv">—</p>') + '</div></section>'; }).join('') + '</div>';
+      return '<section class="rm-kcol" data-drop="' + esc(e) + '" style="--c:var(' + (PZ_COLOR[e] || '--muted') + ')"><header><b>' + esc(pzNombre(e)) + '</b><span class="muted num">' + zs.length + '</span></header><div class="rm-kcs">' + (zs.length ? zs.map(carta).join('') : '<p class="muted rm-kv">—</p>') + '</div></section>'; }).join('') + '</div>';
   }
   async function soltar(id, T) {
     const x = pzDe(id); if (!x) return; const { m, z } = x; if (T === z.estado) return;
@@ -417,12 +413,8 @@ export function initRedes(ctx) {
       data.dropbox({ accion: 'miniaturas', paths: lote }).then(r => { Object.entries(r.miniaturas || {}).forEach(([p, u]) => st.thumbs.set(p, u)); lote.forEach(p => { if (!st.thumbs.has(p)) st.thumbs.set(p, ''); }); render(); }, () => {});
     }
   }
-  // Calendario: cada pieza con el color de su estado (franja, fondo y etiqueta) y arriba la leyenda con cuántas hay de cada uno.
-  const calPz = z => '<button class="rm-cp" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ');--fc:' + fmtColor(z.formato) + '" data-act="rmPieza" data-id="' + esc(z._id) + '" title="' + esc(pzNombre(z.estado)) + '"><span class="rm-cph"><b>' + esc((z.hora ? z.hora + ' · ' : '') + z.formato) + '</b><i class="rm-cpe">' + esc(PZ_CORTO[z.estado] || z.estado) + '</i></span><span class="rm-cpt">' + esc(z.tema || 'Sin tema') + '</span></button>';
-  function leyendaEstados(ps) {
-    const n = e => ps.filter(z => z.estado === e).length;
-    return '<div class="rm-ley" role="list" aria-label="Estados">' + ESTADOS_PIEZA.filter(e => n(e)).map(e => '<span class="rm-leyi" role="listitem" style="--c:var(' + PZ_COLOR[e] + ')"><i></i>' + esc(pzNombre(e)) + ' <b>' + n(e) + '</b></span>').join('') + '</div>';
-  }
+  // Calendario: cada pieza con el color de su estado (fondo y etiqueta con el mismo nombre que en el resto). Cuántas hay de cada estado está arriba, en el mes.
+  const calPz = z => '<button class="rm-cp" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ');--fc:' + fmtColor(z.formato) + '" data-act="rmPieza" data-id="' + esc(z._id) + '" title="' + esc(pzNombre(z.estado)) + '"><i class="rm-cpe">' + esc(pzNombre(z.estado)) + '</i><span class="rm-cpt">' + esc(z.tema || 'Sin tema') + '</span><span class="rm-cph"><b>' + esc((z.hora ? z.hora + ' · ' : '') + z.formato) + '</b></span></button>';
   function calendario(m, ps) {
     const [y, mm] = m.mes.split('-').map(Number), first = new Date(y, mm - 1, 1), off = (first.getDay() + 6) % 7, n = diasMes(m.mes);
     let cells = '';
@@ -432,7 +424,7 @@ export function initRedes(ctx) {
       cells += '<div class="rm-cd' + (f === today() ? ' hoy' : '') + '"><span class="rm-cdn">' + d + '</span>' + del.map(calPz).join('') + '</div>';
     }
     const sin = ps.filter(z => !z.fecha);
-    return '<section class="sheet"><div class="sheet-b">' + (ps.length ? leyendaEstados(ps) : '') + '<div class="rm-cal"><div class="rm-dow">' + ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => '<span>' + x + '</span>').join('') + '</div><div class="rm-grid">' + cells + '</div></div>' +
+    return '<section class="sheet"><div class="sheet-b"><div class="rm-cal"><div class="rm-dow">' + ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => '<span>' + x + '</span>').join('') + '</div><div class="rm-grid">' + cells + '</div></div>' +
       (sin.length ? '<p class="muted" style="margin:12px 0 6px">Sin fecha (' + sin.length + ')</p><div class="rm-sinf">' + sin.map(calPz).join('') + '</div>' : '') + '</div></section>';
   }
   function feed(m, ps) {
@@ -523,7 +515,7 @@ export function initRedes(ctx) {
     h += [...porCli.keys()].sort(cmp).map(cli => { const c = S.C.find(x => x.nombre === cli) || {};
       return '<section class="sheet pd-cli"><div class="sheet-h"><h2 class="who1">' + av(cli, c.avatar, 'sq') + esc(cli) + '</h2><span class="muted">' + porCli.get(cli).reduce((a, id) => a + porPieza.get(id).length, 0) + ' sin resolver</span></div>' +
         porCli.get(cli).map(id => { const z = piezaLocal(id) || {}, cs = porPieza.get(id);
-          return '<article class="pd-pz"><div class="pd-h">' + ((z.arte || []).length ? arteMini(z).replace('data-act="rmPieza"', 'data-act="rmPedAbrir"') : '<span class="rm-sin">—</span>') + '<div class="pd-t"><b>' + esc(z.formato || 'Pieza') + (z.fecha ? ' · ' + esc(fmtShort ? fmtShort(z.fecha) : fmt(z.fecha)) : '') + '</b><span>' + esc(z.tema || '') + '</span></div>' + (z.estado ? '<span class="pzst" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')">' + esc(estadoVisible(z.estado)) + '</span>' : '') + '<button class="btn sm" data-act="rmPedAbrir" data-id="' + esc(id) + '">Abrir pieza</button></div>' +
+          return '<article class="pd-pz"><div class="pd-h">' + ((z.arte || []).length ? arteMini(z).replace('data-act="rmPieza"', 'data-act="rmPedAbrir"') : '<span class="rm-sin">—</span>') + '<div class="pd-t"><b>' + esc(z.formato || 'Pieza') + (z.fecha ? ' · ' + esc(fmtShort ? fmtShort(z.fecha) : fmt(z.fecha)) : '') + '</b><span>' + esc(z.tema || '') + '</span></div>' + (z.estado ? '<span class="pzst" style="--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')">' + esc(pzNombre(z.estado)) + '</span>' : '') + '<button class="btn sm" data-act="rmPedAbrir" data-id="' + esc(id) + '">Abrir pieza</button></div>' +
             '<div class="pd-its">' + cs.map(x => '<label class="pd-it"><input type="checkbox" data-pdok="' + esc(x._id) + '"' + (isStaff() ? '' : ' disabled') + '><span class="pd-tx">' + esc(sinPref(x.texto)) + '</span><span class="pd-m">' + esc(x.autor || 'Cliente') + ' · ' + esc(hace(x.creado)) + '</span></label>').join('') + '</div></article>'; }).join('') + '</section>'; }).join('');
     return h;
   }
@@ -587,8 +579,6 @@ export function initRedes(ctx) {
     { mes: 'Con el cliente', pz: 'Para el cliente', n: 'Con el cliente', cliente: true },
     { mes: 'Aprobado', pz: 'Aprobada', n: 'Aprobado', fin: true }];
   const PROCESO = ['Idea', 'En diseño', 'Revisión interna'], APROB = ['Aprobada', 'Programada', 'Publicada'];
-  const grupoDe = e => PROCESO.includes(e) ? 'proceso' : e === 'Para el cliente' ? 'cliente' : e === 'Cambios' ? 'cambios' : e === 'Publicada' ? 'publicada' : 'aprobada';
-  const GRUPOS = [['proceso', 'En proceso', '--pz-diseno'], ['cliente', 'Con el cliente', '--pz-cliente'], ['cambios', 'Cambios pedidos', '--pz-cambios'], ['aprobada', 'Aprobadas', '--pz-aprobada'], ['publicada', 'Publicadas', '--pz-publicada']];
   const etapaDe = m => {
     const ps = piezas(m._id);
     if (ps && ps.length) { if (ps.every(z => APROB.includes(z.estado))) return ETAPAS[2]; if (m.visible || ps.some(z => z.estado === 'Para el cliente' || z.estado === 'Cambios')) return ETAPAS[1]; return ETAPAS[0]; }
@@ -619,21 +609,24 @@ export function initRedes(ctx) {
     render(); toast((ids.length === 1 ? 'Volvió' : 'Volvieron') + ' a diseño' + (q.gente.length ? '; le avisé a ' + q.gente.join(', ') : ''));
   }
   // Control de la pieza en la planilla, el tablero y su panel: en proceso, tres pasos para tocar; después, su estado.
-  function listoCtl(m, z, can) {
-    const id = esc(z._id), g = grupoDe(z.estado);
-    if (g === 'proceso') { const k = PROCESO.indexOf(z.estado);
-      return '<span class="rm-step" role="group" aria-label="Avance de la pieza">' + [['Idea', 'Idea'], ['En diseño', 'Diseño'], ['Revisión interna', 'Lista']].map(([e, l], i) => can ? '<button type="button" class="' + (i < k ? 'ok' : i === k ? 'on' : '') + '" data-act="rmEstado" data-id="' + id + '" data-e="' + esc(e) + '"' + (i === k ? ' aria-pressed="true"' : '') + ' title="' + (i === 2 ? 'Lista para mandar al cliente' : 'Pasar a ' + esc(l)) + '">' + (i < k || (i === 2 && k === 2) ? '✓ ' : '') + l + '</button>' : '<span class="' + (i < k ? 'ok' : i === k ? 'on' : '') + '">' + l + '</span>').join('') + '</span>'; }
-    if (g === 'cliente') return '<span class="rm-lc"><span class="pzst" style="--c:var(--pz-cliente)">Con el cliente</span>' + (can ? '<button class="rm-ok" data-act="rmEstado" data-id="' + id + '" data-e="Aprobada" title="El cliente la aprobó por otro medio (WhatsApp, reunión…)">Aprobó</button>' : '') + '</span>';
-    if (g === 'cambios') return '<span class="rm-lc"><span class="pzst" style="--c:var(--pz-cambios)">Cambios pedidos</span>' + (can ? '<button class="rm-ok" data-act="rmReenviarId" data-id="' + id + '" title="Con los cambios hechos, vuelve al cliente">Mandar de nuevo</button>' : '') + '</span>';
-    return pzPill(z.estado);
+  // El estado de una pieza se muestra igual en todos lados: su etiqueta y, al lado, el paso que sigue (si lo hay).
+  const SIGUE = {
+    'Idea': ['En diseño', 'Pasar a diseño', 'rmEstado', 'Pasa a En diseño y le avisa a quien diseña'],
+    'En diseño': ['Revisión interna', 'Está lista', 'rmEstado', 'Pasa a Lista para mandar'],
+    'Para el cliente': ['Aprobada', 'Aprobó', 'rmEstado', 'El cliente la aprobó por otro medio (WhatsApp, reunión…)'],
+    'Cambios': ['', 'Mandar de nuevo', 'rmReenviarId', 'Con los cambios hechos, vuelve al cliente'],
+    'Aprobada': ['Programada', 'Ya la programé', 'rmEstado', 'Pasa a Programada'] };
+  function listoCtl(m, z, can, corto) {
+    const s = can && SIGUE[z.estado];
+    return '<span class="rm-lc">' + pzPill(z.estado) + (s && !corto ? '<button type="button" class="rm-ok" data-act="' + s[2] + '" data-id="' + esc(z._id) + '"' + (s[0] ? ' data-e="' + esc(s[0]) + '"' : '') + ' title="' + esc(s[3]) + '">' + esc(s[1]) + '</button>' : '') + '</span>';
   }
   // Arriba del mes: en qué está, cuántas piezas hay en cada estado (tocar uno filtra la planilla) y cuántas faltan.
   function etapasHtml(m, ps) {
-    const E = etapaDe(m), cnt = Object.fromEntries(GRUPOS.map(([k]) => [k, ps.filter(z => grupoDe(z.estado) === k).length]));
-    const chips = GRUPOS.filter(([k]) => cnt[k] || st.fGr === k).map(([k, l, c]) => '<button class="rm-gr' + (st.fGr === k ? ' sel' : '') + '" data-act="rmGrFiltro" data-k="' + k + '" style="--c:var(' + c + ')" title="' + (st.fGr === k ? 'Ver todas' : 'Ver solo estas') + '"><i></i>' + l + ' <span class="num">' + cnt[k] + '</span></button>').join('');
+    const E = etapaDe(m), cnt = Object.fromEntries(ESTADOS_PIEZA.map(e => [e, ps.filter(z => z.estado === e).length]));
+    const chips = ESTADOS_PIEZA.filter(k => cnt[k] || st.fGr === k).map(k => [k, pzNombre(k), PZ_COLOR[k]]).map(([k, l, c]) => '<button class="rm-gr' + (st.fGr === k ? ' sel' : '') + '" data-act="rmGrFiltro" data-k="' + esc(k) + '" style="--c:var(' + c + ')" title="' + (st.fGr === k ? 'Ver todas' : 'Ver solo estas') + '"><i></i>' + l + ' <span class="num">' + cnt[k] + '</span></button>').join('');
     const a = avance(m, ps);
     const prog = !ps.length ? '' : E === ETAPAS[0] ? '<span class="rm-prog"><b>' + a.h + '/' + a.t + '</b> listas para mandar<span class="rm-pbar"><i style="width:' + Math.round(a.h / a.t * 100) + '%"></i></span></span>' : E.cliente ? '<span class="rm-prog"><b>' + a.h + '/' + a.t + '</b> aprobadas</span>' : '';
-    return '<span class="pzst rm-mes-e" style="--c:var(' + (MES_COLOR[E.mes] || '--muted') + ')">' + esc(E.n) + '</span>' + (chips ? '<div class="rm-grs" role="group" aria-label="Piezas por estado">' + chips + '</div>' : '') + prog;
+    return '<span class="rm-mes-el">El mes: <span class="pzst rm-mes-e" style="--c:var(' + (MES_COLOR[E.mes] || '--muted') + ')">' + esc(E.n) + '</span></span>' + (chips ? '<div class="rm-grs" role="group" aria-label="Piezas por estado">' + chips + '</div>' : '') + prog;
   }
 
   /* ---------- Acciones ---------- */
@@ -1274,7 +1267,7 @@ export function initRedes(ctx) {
   function abrirExtras(m) {
     const ps = piezas(m._id) || [], r = extrasResumen(m.cliente, ps), cfg = r.cfg, can = isStaff();
     const fila = z => { const p = precioX(z, cfg), sc = seCobra(z, cfg);
-      return '<div class="xp-r" style="--fc:' + fmtColor(z.formato) + '"><span class="rm-fpill">' + esc(z.formato) + '</span><span class="xp-t"><b>' + esc(z.tema || 'Sin tema') + '</b><small>' + (z.fecha ? esc(fmtShort(z.fecha)) : 'Sin fecha') + ' · ' + esc(z.estado) + '</small></span>' +
+      return '<div class="xp-r" style="--fc:' + fmtColor(z.formato) + '"><span class="rm-fpill">' + esc(z.formato) + '</span><span class="xp-t"><b>' + esc(z.tema || 'Sin tema') + '</b><small>' + (z.fecha ? esc(fmtShort(z.fecha)) : 'Sin fecha') + ' · ' + esc(pzNombre(z.estado)) + '</small></span>' +
         '<select class="in sm" data-xcobro="' + esc(z._id) + '"' + (can ? '' : ' disabled') + ' aria-label="¿Se cobra?">' + opt('', cfg.admin ? 'Según la cuenta' : 'Según lo arreglado', z.extraCobro || '') + opt('si', 'Se cobra', z.extraCobro || '') + opt('no', 'Sin cargo', z.extraCobro || '') + '</select>' +
         (cfg.admin ? '<span class="xp-m num">' + (sc ? (p == null ? '<span class="muted">sin precio</span>' : esc(ctx.money ? ctx.money(p, cfg.moneda) : String(p))) : '<span class="muted">—</span>') + '</span>' : '') + '</div>'; };
     $('#panel').innerHTML = '<div style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Piezas extra</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +

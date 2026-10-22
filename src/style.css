@@ -3023,3 +3023,11 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
   .rm-tbl.tbl-cel tr.rm-row .rm-tt{white-space:normal}
   .rm-tbl.tbl-cel tr.rm-row .rm-qc .rm-quien{font-size:13px}
 }
+/* Calendario: arriba el estado (mismo nombre que en el resto), después el tema y la hora con el formato */
+.rm-cp .rm-cpe{justify-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px}
+.rm-cp .rm-cph b{font-size:10.5px}
+/* El estado con el paso que sigue: igual en planilla, lista, tablero y la pieza */
+.rm-lc .pzst{background:var(--c);color:#fff;font-weight:700}
+.rm-kc-f .rm-lc{margin-right:auto}
+.rm-pc .rm-pc-m .rm-lc{order:3;flex:1 1 100%}
+.rm-mes-el{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:600}

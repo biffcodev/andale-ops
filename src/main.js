@@ -13,7 +13,7 @@ import { initMails } from './mails.js';
 import { initIntegraciones } from './integraciones.js';
 import { initTrabajo } from './trabajo.js';
 import { initHilos } from './hilos.js';
-import { initRedes, FLUJO_DEF, HORAS_DEF, PZ_COLOR, REDES_G, redChips, pzNombre } from './redes.js';
+import { initRedes, FLUJO_DEF, HORAS_DEF, PZ_COLOR, REDES_G, redChips, pzNombre, mesNombre } from './redes.js';
 import { initTickets } from './tickets.js';
 import { initEntregas } from './entregas.js';
 import { initInformes } from './informes.js';
@@ -1308,7 +1308,7 @@ function redesFicha(c) {
   if (!S.RM || !S.A.some(a => a.cliente === c.nombre && a.tipo === 'Redes')) return '';
   const ms = S.RM.filter(m => m.cliente === c.nombre).sort((a, b) => b.mes.localeCompare(a.mes)).slice(0, 4);
   return '<section class="sheet"><div class="sheet-h"><h2>Redes</h2>' + (isStaff() ? '<button class="btn sm" data-act="go" data-view="redes">Ver todos</button>' : '') + '</div>' +
-    (ms.length ? '<div class="rows">' + ms.map(m => '<button class="row" data-act="rmAbrir" data-id="' + esc(m._id) + '"><span class="d">' + esc(cap1(monthLabel(m.mes)).split(' ')[0]) + '</span><span class="t"><b>' + esc(m.estado) + '</b><span>' + esc([m.resp || 'sin responsable', Object.entries(m.plan || {}).map(([f, n]) => n + ' ' + f).join(', ')].filter(Boolean).join(' · ')) + '</span></span>' + (m.visible ? '<span class="rm-vis">👁 En el portal</span>' : '') + '</button>').join('') + '</div>' : emptyBox('Todavía no se armó ningún mes', 'Desde Redes arrancás el mes con su plan.')) + '</section>';
+    (ms.length ? '<div class="rows">' + ms.map(m => '<button class="row" data-act="rmAbrir" data-id="' + esc(m._id) + '"><span class="d">' + esc(cap1(monthLabel(m.mes)).split(' ')[0]) + '</span><span class="t"><b>' + esc(mesNombre(m.estado)) + '</b><span>' + esc([m.resp || 'sin responsable', Object.entries(m.plan || {}).map(([f, n]) => n + ' ' + f).join(', ')].filter(Boolean).join(' · ')) + '</span></span>' + (m.visible ? '<span class="rm-vis">👁 En el portal</span>' : '') + '</button>').join('') + '</div>' : emptyBox('Todavía no se armó ningún mes', 'Desde Redes arrancás el mes con su plan.')) + '</section>';
 }
 // Una charla: el título es su tema (o el comienzo de lo que se habló, en las viejas). Tocarla la abre para leerla.
 const temaCharla = m => m.tema || (m.resumen ? m.resumen.split(/[.\n]/)[0].slice(0, 80) : 'Charla con ' + (m.cliente || 'el cliente'));
