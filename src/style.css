@@ -3258,3 +3258,13 @@ a.km-fx:hover{background:color-mix(in srgb,var(--accent) 18%,var(--surface))}
 .km-lf.bg-osc{background:#141414;border-color:transparent}
 .km-redb{right:8px;bottom:8px;max-width:calc(100% - 16px)}
 @media (max-width:1100px){.km-red-w{grid-template-columns:1fr}.km-red-p{position:static;max-width:380px}}
+
+/* Kit: seleccionar varios para borrar */
+.km-t,.km-col,.km-tipo{position:relative}
+.km-ck{position:absolute;top:8px;left:8px;z-index:3;display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--surface);box-shadow:0 2px 6px rgba(0,0,0,.18);cursor:pointer}
+.km-ck input{width:17px;height:17px;margin:0;cursor:pointer;accent-color:var(--accent)}
+.km-on > .km-lf,.km-on > .km-rf,.km-col.km-on .km-sw,.km-tipo.km-on{outline:3px solid var(--accent);outline-offset:-3px}
+.km-cktodos{font-size:13px;margin-left:6px}
+.km-selbar{position:sticky;bottom:14px;z-index:20;display:flex;align-items:center;gap:10px;margin:18px 0 0;padding:10px 14px;border-radius:14px;background:var(--surface);box-shadow:0 12px 32px -10px rgba(20,20,26,.35);border:1px solid var(--line)}
+.km-secs{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px 14px}
+.km-secs small{font-size:11.5px}

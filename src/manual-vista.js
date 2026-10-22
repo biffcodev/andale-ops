@@ -224,6 +224,9 @@ export function manualHTML(d, o = {}) {
   if (grupos.length || kit.links.length) secs.push(['descargas', 'Descargas', guia + grupos.map(([l, xs]) => '<div class="mm-dg"><span class="mm-k rv">' + esc(l) + '</span><div class="mm-files">' + xs.map(fila).join('') + '</div></div>').join('') +
     (kit.links.length ? rv('<div class="mm-links">' + kit.links.map(x => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.n) + I.ext + '</a>').join('') + '</div>') : ''), 'Archivos']);
 
+  // Las secciones que se sacaron del manual (desde Manual online en el kit) no se muestran; se pueden volver a sumar.
+  const ocultas = new Set(Array.isArray(man.ocultas) ? man.ocultas : []);
+  for (let i = secs.length - 1; i >= 0; i--) if (ocultas.has(secs[i][0])) secs.splice(i, 1);
   const nav = secs.map(([id, t]) => '<a href="#' + id + '" data-mmnav="' + id + '">' + esc(t) + '</a>').join('');
   return '<div class="mm' + (embed ? ' embed' : '') + '" style="' + esc(vars) + '">' + (embed ? '' : '<div class="mm-prog" aria-hidden="true"><i></i></div>' +
     '<header class="mm-top"><a class="mm-marca" href="#top">' + (d.avatar ? '<img src="' + esc(d.avatar) + '" alt="">' : '') + '<b>' + esc(d.nombre) + '</b><span>' + tituloDoc + '</span></a><nav>' + nav + '</nav></header>') +

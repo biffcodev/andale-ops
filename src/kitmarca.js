@@ -11,6 +11,8 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const ROLES_COLOR = ['Principal', 'Secundario', 'Acento', 'Fondo', 'Texto'];
 // Categorías de los archivos del kit (las aplicaciones de la marca)
 export const CATS = [['fotos', 'Fotos'], ['iconos', 'Íconos'], ['papeleria', 'Papelería y documentos'], ['redes', 'Perfiles y portadas de redes'], ['videos', 'Videos'], ['plantillas', 'Plantillas'], ['texturas', 'Patrones y texturas'], ['graficos', 'Ilustraciones y stickers'], ['mockups', 'Mockups'], ['otros', 'Otros']];
+// Las secciones del manual (se pueden sacar y volver a sumar desde Manual online)
+export const SECCIONES_MANUAL = [['esencia', 'Esencia', 'Solo en el completo'], ['voz', 'Voz', 'Solo en el completo'], ['logo', 'Logo'], ['color', 'Color'], ['tipografia', 'Tipografía'], ['imagenes', 'Imágenes y estilo'], ['aplicaciones', 'Aplicaciones'], ['mockups', 'Mockups'], ['redes', 'Redes sociales'], ['descargas', 'Descargas']];
 // Lo que hay que aclarar de un tipo: los mockups son ejemplos, no piezas hechas
 export const CAT_NOTA = { mockups: 'Ejemplos de cómo podría verse la marca aplicada. No son piezas hechas ni archivos para producir.' };
 // Redes: a qué red va cada perfil, portada o plantilla, y para qué se usa
@@ -112,6 +114,10 @@ export function initKit(ctx) {
     const sec = (t, sub, add, body) => '<div class="km-s"><div class="km-sh"><div class="km-sht"><h3>' + t + '</h3>' + (sub ? '<p>' + sub + '</p>' : '') + '</div>' + add + '</div>' + body + '</div>';
     // Los formatos de cada pieza: cada chip baja (o abre) ese archivo. Los editables van con borde.
     const chips = x => '<span class="km-fxs">' + formatos(x).map(f => '<a class="km-fx' + (f.ed ? ' ed' : '') + '" href="' + esc(bajarFmt(x, f)) + '"' + (f.link ? ' target="_blank" rel="noopener"' : '') + ' title="' + (f.link ? 'Abrir en ' : 'Descargar ') + esc(f.fmt) + (f.ed ? ' · editable' : '') + '">' + esc(f.fmt) + '</a>').join('') + '</span>';
+    // Seleccionar varios para borrarlos juntos (un grupo entero, por ejemplo todos los perfiles de redes)
+    const sel = can && st.sel && st.sel.cid === c._id ? st.sel : null;
+    const ck = (k, x) => sel ? '<label class="km-ck" title="Seleccionar"><input type="checkbox" data-kmck="' + k + ':' + esc(x.id) + '"' + (sel.ids.has(k + ':' + x.id) ? ' checked' : '') + ' aria-label="Seleccionar ' + esc(x.n || x.familia || x.hex || '') + '"></label>' : '';
+    const ckTodos = (k, xs) => sel && xs.length ? '<label class="chk km-cktodos"><input type="checkbox" data-kmckall="' + esc(xs.map(x => k + ':' + x.id).join(',')) + '"' + (xs.every(x => sel.ids.has(k + ':' + x.id)) ? ' checked' : '') + '> <span>Todos</span></label>' : '';
     const editar = (k, x) => can ? '<button class="km-ed" data-act="kmEditar" data-k="' + k + '" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Editar y sumar formatos" aria-label="Editar ' + esc(x.n) + '">' + ICON.editar + '</button>' : '';
     const media = x => /^video\//.test(x.tipo || '') || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(x.url || '') ? '<video src="' + esc(x.url) + '" muted playsinline preload="metadata"></video>' : esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="' + esc(x.n) + '" loading="lazy">' : '<span class="km-ext">' + esc((formatos(x)[0] || {}).fmt || 'ARCHIVO') + '</span>';
     const pie = x => '<figcaption><b title="' + esc(x.n) + '">' + esc(x.n) + '</b>' + chips(x) + '</figcaption>';
@@ -122,14 +128,14 @@ export function initKit(ctx) {
     const redB = x => { if (!['redes', 'plantillas'].includes(catDe(x))) return ''; const r = redDe(x), u = usoDe(x); return '<span class="km-redb">' + (r ? logoRed(r, 14) : '<i>Todas</i>') + (u ? '<i>' + esc((USOS.find(y => y[0] === u) || [])[1] || '') + '</i>' : '') + '</span>'; };
     const vacio = t => '<p class="km-v">' + t + '</p>';
 
-    const logos = kit.logos.length ? '<div class="km-logos" data-visor-grupo>' + kit.logos.map(x => '<figure class="km-t km-logo"><div class="km-lf f-' + esc(x.fondo || 'claro') + '"' + (x.fondo === 'marca' && kit.colores[0] ? ' style="--km:' + esc(kit.colores[0].hex) + '"' : '') + verGrande(x, 'logo') + '>' + media(x) +
+    const logos = kit.logos.length ? '<div class="km-logos" data-visor-grupo>' + kit.logos.map(x => '<figure class="km-t km-logo' + (sel && sel.ids.has('logos:' + x.id) ? ' km-on' : '') + '">' + ck('logos', x) + '<div class="km-lf f-' + esc(x.fondo || 'claro') + '"' + (x.fondo === 'marca' && kit.colores[0] ? ' style="--km:' + esc(kit.colores[0].hex) + '"' : '') + verGrande(x, 'logo') + '>' + media(x) +
       (can ? '<button class="km-fbtn" data-act="kmFondo" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Cambiar el fondo" aria-label="Cambiar el fondo">◐</button>' : '') + editar('logos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div>' : vacio('Subí el logo principal y sus versiones: horizontal, vertical, isotipo, negativo, monocromo. Si subís el mismo logo en SVG, PNG y AI juntos, queda uno solo con sus tres formatos.');
 
     const cols = kit.colores.length ? '<div class="km-cols">' + kit.colores.map(x => { const h = hexOk(x.hex) ? x.hex : '#999999', [r, g, b] = rgb(h);
-      return '<div class="km-col"><button class="km-sw' + (claro(h) ? ' cl' : '') + '" style="background:' + esc(h) + '" data-act="kmCopiar" data-v="' + esc(h) + '" title="Copiar ' + esc(h) + '">' + (x.rol ? '<i>' + esc(x.rol) + '</i>' : '') + '<span>Copiar</span></button>' +
+      return '<div class="km-col' + (sel && sel.ids.has('colores:' + x.id) ? ' km-on' : '') + '">' + ck('colores', x) + '<button class="km-sw' + (claro(h) ? ' cl' : '') + '" style="background:' + esc(h) + '" data-act="kmCopiar" data-v="' + esc(h) + '" title="Copiar ' + esc(h) + '">' + (x.rol ? '<i>' + esc(x.rol) + '</i>' : '') + '<span>Copiar</span></button>' +
         '<div class="km-cap"><span><b>' + esc(x.n || h) + '</b><small>' + esc(h) + ' · RGB ' + r + ' ' + g + ' ' + b + '</small></span>' + acc('colores', x) + '</div></div>'; }).join('') + '</div>' : vacio('Cargá la paleta: el color principal, los secundarios, el de fondo y el de texto.');
 
-    const tipos = kit.tipos.length ? '<div class="km-tipos">' + kit.tipos.map(x => '<div class="km-tipo"><span class="km-rol">' + esc(x.rol || 'Tipografía') + '</span>' +
+    const tipos = kit.tipos.length ? '<div class="km-tipos">' + kit.tipos.map(x => '<div class="km-tipo' + (sel && sel.ids.has('tipos:' + x.id) ? ' km-on' : '') + '">' + ck('tipos', x) + '<span class="km-rol">' + esc(x.rol || 'Tipografía') + '</span>' +
       '<div class="km-aa" style="font-family:' + esc(fam(x)) + ';font-weight:' + esc(x.peso || '400') + '">Aa</div>' +
       '<p class="km-pan" style="font-family:' + esc(fam(x)) + ';font-weight:' + esc(x.peso || '400') + '">' + esc(c.nombre) + ' · ABCDEFGHIJKLMNÑ abcdefghijklmnñ 0123456789</p>' +
       '<div class="km-cap"><span><b>' + esc(x.familia) + '</b><small>' + esc((PESOS.find(p => p[0] === x.peso) || [])[1] || 'Regular') + (x.url ? ' · archivo cargado' : ' · Google Fonts') + '</small></span>' + acc('tipos', x, false) + '</div>' +
@@ -140,7 +146,7 @@ export function initKit(ctx) {
     const subeCat = (k, txt, cls) => can ? '<label class="' + cls + (st.subiendo === 'recursos:' + k ? ' disabled' : '') + '">' + ICON.sumar + esc(st.subiendo === 'recursos:' + k ? 'Subiendo…' : txt) + '<input type="file" hidden multiple' + (ACC[k] ? ' accept="' + ACC[k] + '"' : '') + ' data-kitup="recursos" data-cat="' + k + '" data-id="' + id + '"></label>' : '';
     const recC = kit.recursos.map(x => ({ ...x, cat: catDe(x) }));
     const recursosG = CATS.map(([k, l]) => [k, l, recC.filter(x => x.cat === k)]).filter(g => g[2].length);
-    const grilla = (k, xs) => '<div class="km-recs c-' + k + '" data-visor-grupo>' + xs.map(x => '<figure class="km-t km-rec"><div class="km-rf"' + verGrande(x) + autoBg(x) + '>' + media(x) + redB(x) + editar('recursos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div>';
+    const grilla = (k, xs) => '<div class="km-recs c-' + k + '" data-visor-grupo>' + xs.map(x => '<figure class="km-t km-rec' + (sel && sel.ids.has('recursos:' + x.id) ? ' km-on' : '') + '">' + ck('recursos', x) + '<div class="km-rf"' + verGrande(x) + autoBg(x) + '>' + media(x) + redB(x) + editar('recursos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div>';
     // Perfiles, portadas y plantillas: se eligen por red (con su logo) y al lado se ve cómo queda el perfil en esa red.
     const redesEnKit = () => { const rs = recC.filter(x => x.cat === 'redes' || x.cat === 'plantillas'), marcadas = [...new Set(rs.map(redDe).filter(Boolean))];
       return { rs, redes: REDES_KIT.filter(r => marcadas.includes(r) || (rs.some(x => !redDe(x)) && ['instagram', 'facebook'].includes(r))) }; };
@@ -157,7 +163,7 @@ export function initKit(ctx) {
       return chips + '<div class="km-red-w">' + grilla(k, vis) + '<div class="km-red-p"><span class="km-red-pt">Así se ve en ' + esc((REDES.find(y => y[0] === sel) || [sel, sel])[1]) + '</span>' + perfilRed({ nombre: c.nombre, avatar: perfil }, sel, { portada, posts, historias: de('historia').map(x => x.url), bio: (m.rubro || '').slice(0, 120) }) + '</div></div>';
     };
     const faltan = CATS.filter(([k]) => !recursosG.some(g => g[0] === k));
-    const recursos = (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><div class="km-gh"><h4>' + esc(l) + '</h4><span class="km-n">' + xs.length + '</span><span class="km-sp"></span>' + subeCat(k, 'Subir', 'btn ghost sm km-up') + '</div>' + (CAT_NOTA[k] ? '<p class="km-gnota">' + esc(CAT_NOTA[k]) + '</p>' : '') +
+    const recursos = (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><div class="km-gh"><h4>' + esc(l) + '</h4><span class="km-n">' + xs.length + '</span>' + ckTodos('recursos', xs) + '<span class="km-sp"></span>' + (sel ? '' : subeCat(k, 'Subir', 'btn ghost sm km-up')) + '</div>' + (CAT_NOTA[k] ? '<p class="km-gnota">' + esc(CAT_NOTA[k]) + '</p>' : '') +
         (k === 'redes' || k === 'plantillas' ? redesBloque(k, xs) : grilla(k, xs)) + '</div>').join('') : vacio('Subí cada cosa en su tipo. Si tenés la misma pieza en varios formatos (por ejemplo tarjeta.pdf, tarjeta.png y tarjeta.ai), subilos juntos y quedan como una sola con sus formatos.')) +
       (can && faltan.length ? '<div class="km-mas"><span>' + (recursosG.length ? 'Sumar otro tipo' : 'Subir') + '</span>' + faltan.map(([k, l]) => subeCat(k, l, 'km-cat-b')).join('') + '</div>' : '');
 
@@ -167,14 +173,15 @@ export function initKit(ctx) {
 
     return '<section class="sheet sx km"><div class="sx-h"><span class="sx-i">' + ICON.marca + '</span><h2>Kit de marca</h2>' + (kit.demo ? '<span class="km-demo" title="Logos, colores e imágenes de ejemplo para ver cómo queda el manual">Contenido de ejemplo</span>' : '') +
       (can ? '<div class="sx-der toolbar"><label class="btn sm" title="Mr. Piggy lee el manual de marca y completa colores, tipografías y la ficha">' + ICON.ia + 'Completar desde el manual<input type="file" hidden multiple accept=".pdf,.docx,.txt,.md,image/png,image/jpeg,image/webp" data-fmdoc="' + id + '"></label>' +
-        '<button class="btn sm" data-act="kmPrevia" data-id="' + id + '">' + ICON.ojo + 'Ver como cliente</button><button class="btn sm primary" data-act="kmManual" data-id="' + id + '">' + ICON.compartir + 'Manual online</button></div>' : '') + '</div>' +
+        '<button class="btn sm' + (sel ? ' primary' : '') + '" data-act="kmSel" data-id="' + id + '" aria-pressed="' + !!sel + '">' + (sel ? 'Listo' : 'Seleccionar') + '</button><button class="btn sm" data-act="kmPrevia" data-id="' + id + '">' + ICON.ojo + 'Ver como cliente</button><button class="btn sm primary" data-act="kmManual" data-id="' + id + '">' + ICON.compartir + 'Manual online</button></div>' : '') + '</div>' +
       manualEstado(c) +
-      sec('Logos', 'Versiones (principal, vertical, isotipo, negativo…) y sus formatos', sube('logos', 'Subir logos', ''), logos) +
-      sec('Colores', 'Tocá un color para copiar el código', btn('kmNuevo', 'Color', ' data-k="colores"'), cols) +
-      sec('Tipografías', '', btn('kmNuevo', 'Tipografía', ' data-k="tipos"'), tipos) +
+      sec('Logos', 'Versiones (principal, vertical, isotipo, negativo…) y sus formatos', sel ? ckTodos('logos', kit.logos) : sube('logos', 'Subir logos', ''), logos) +
+      sec('Colores', 'Tocá un color para copiar el código', sel ? ckTodos('colores', kit.colores) : btn('kmNuevo', 'Color', ' data-k="colores"'), cols) +
+      sec('Tipografías', '', sel ? ckTodos('tipos', kit.tipos) : btn('kmNuevo', 'Tipografía', ' data-k="tipos"'), tipos) +
       sec('Aplicaciones y archivos', 'Cada pieza con todos sus formatos: para usar, para imprimir y los editables', '', recursos) +
       sec('Links', '', btn('kmNuevo', 'Link', ' data-k="links"'), links) +
       sec('Cómo se usa', '', can ? '<button class="btn sm km-add" data-act="kmUso" data-id="' + id + '">' + ICON.editar + (m.visual ? 'Editar' : 'Escribir') + '</button>' : '', uso) +
+      (sel ? '<div class="km-selbar" role="region" aria-label="Selección"><span><b>' + sel.ids.size + '</b> ' + (sel.ids.size === 1 ? 'seleccionado' : 'seleccionados') + '</span><span class="km-sp"></span><button class="btn sm ghost" data-act="kmSel" data-id="' + id + '">Cancelar</button><button class="btn sm primary" data-act="kmSelBorrar" data-id="' + id + '"' + (sel.ids.size ? '' : ' disabled') + '>' + ICON.borrar + 'Borrar</button></div>' : '') +
       '</section>';
   }
 
@@ -255,6 +262,8 @@ export function initKit(ctx) {
       '<div class="panel-b"><p class="formnote full">Dos versiones armadas con el kit y la ficha. La <b>guía</b> es pública: logo, color, tipografía, aplicaciones y descargas, para cualquiera (imprentas, proveedores, medios). El <b>manual completo</b> suma la estrategia y la voz: lo ve el cliente en su portal y tiene su propio link, por si lo quiere compartir.</p>' +
       '<div class="field full"><span class="lbl">Guía de marca (pública)</span>' + radio('km-pub', [['no', 'Sin publicar', 'Solo la ves vos con “Ver”.'], ['si', 'Publicada', 'Cualquiera con el link la ve, sin entrar a nada.']], man.publicado ? 'si' : 'no') + (man.slug ? '<span class="hint">' + esc(urlManual(man)) + '</span>' : '') + '</div>' +
       '<div class="field full"><span class="lbl">Manual completo (para el cliente)</span>' + radio('km-comp', [['no', 'No', 'La marca no la hicimos nosotros: solo la guía.'], ['si', 'Sí', 'Lo ve en su portal, en Tu marca, con su link para compartir.']], conCompleto(man) ? 'si' : 'no') + (man.slug_c ? '<span class="hint">' + esc(urlCompleto(man)) + '</span>' : '') + '</div>' +
+      (() => { const oc = new Set(Array.isArray(man.ocultas) ? man.ocultas : []); return '<div class="field full"><span class="lbl">Secciones del manual <span class="muted">sacá las que no van; las podés volver a sumar cuando quieras</span></span><div class="km-secs">' +
+        SECCIONES_MANUAL.map(([k, l, d]) => '<label class="chk"><input type="checkbox" name="km-sec" value="' + k + '"' + (oc.has(k) ? '' : ' checked') + '> <span>' + esc(l) + (d ? ' <small class="muted">' + esc(d) + '</small>' : '') + '</span></label>').join('') + '</div><span class="hint">Una sección sin contenido no aparece aunque esté tildada.</span></div>'; })() +
       '<div class="field full km-est"><h3 class="km-ph">Estrategia <span class="muted">va al principio del manual completo</span></h3></div>' +
       '<div class="field full km-sc"><label for="km-intro">Esencia en dos o tres frases (abre la portada)</label><textarea id="km-intro" rows="4" placeholder="En dos o tres frases: qué es la marca, qué la mueve y cómo quiere que la recuerden.">' + esc(man.intro || '') + '</textarea></div>' +
       ESTRATEGIA.map(([k, l, ph, rows]) => '<div class="field full km-est"><label for="km-e-' + k + '">' + l + '</label><textarea id="km-e-' + k + '" rows="' + (rows || 3) + '" placeholder="' + esc(ph) + '">' + esc(man[k] || '') + '</textarea></div>').join('') +
@@ -287,6 +296,7 @@ export function initKit(ctx) {
       if (e.k === 'manual') {
         const prev = (c.marca || {}).manual || {}, pub = r('km-pub') === 'si', comp = r('km-comp') === 'si';
         const man = { ...prev, ...Object.fromEntries(ESTRATEGIA.map(([k]) => [k, (document.getElementById('km-e-' + k) || {}).value || ''])), intro: v('km-intro'), respeto: v('km-resp'), minimo: v('km-min'), no: (document.getElementById('km-no') || {}).value || '',
+          ocultas: SECCIONES_MANUAL.map(([k]) => k).filter(k => !document.querySelector('input[name="km-sec"][value="' + k + '"]:checked')),
           publicado: pub, completo: comp, version: comp ? 'completo' : 'simple', slug: prev.slug || slugDe(c.nombre), slug_c: prev.slug_c || (comp ? slugDe(c.nombre) + '-c' : undefined) };
         await guardar(c, kit, { manual: man }); ctx.closeForm();
         if (pub && !prev.publicado) { try { await navigator.clipboard.writeText(urlManual(man)); toast('Guía publicada. Copié el link.'); } catch (er) { toast('Guía publicada'); } } else toast(comp && !conCompleto(prev) ? 'Guardado. El cliente ya ve el manual completo en su portal.' : 'Guardado');
@@ -391,6 +401,15 @@ export function initKit(ctx) {
     kmManual: t => { const c = cli(t.dataset.id); if (c) panelManual(c); },
     kmPrevia: t => { const c = cli(t.dataset.id); if (c) verComoCliente(c, t.dataset.v); },
     kmBorrar: () => borrar(),
+    kmSel: t => { st.sel = st.sel && st.sel.cid === t.dataset.id ? null : { cid: t.dataset.id, ids: new Set() }; render(); },
+    kmSelBorrar: async t => {
+      const c = cli(t.dataset.id); if (!c || !st.sel || !st.sel.ids.size) return;
+      const kit = kitDe(c), ids = st.sel.ids, n = ids.size, paths = [];
+      if (ctx.confirmar && !await ctx.confirmar('Se borran ' + (n === 1 ? '1 elemento' : n + ' elementos') + ' del kit con todos sus archivos. Los podés volver a subir cuando quieras.', { titulo: '¿Borrar lo seleccionado?', ok: 'Borrar' })) return;
+      const nuevo = { ...kit };
+      ['logos', 'colores', 'tipos', 'recursos', 'links'].forEach(k => { nuevo[k] = (kit[k] || []).filter(x => { const fuera = ids.has(k + ':' + x.id); if (fuera) paths.push(x.path, ...(x.archivos || []).map(f => f.path)); return !fuera; }); });
+      try { await guardar(c, nuevo); data.kitBorrar([...new Set(paths.filter(Boolean))]); st.sel = null; toast(n === 1 ? 'Borrado' : n + ' borrados'); render(); } catch (er) { toast(er.message); }
+    },
     kmRed: t => { st.red = t.dataset.r; render(); },
     kmGf: async t => { const inp = document.getElementById('km-fam'); if (!inp) return; inp.value = t.dataset.f; st.gfLista = await gfLista(); gfPesos(t.dataset.f); document.querySelectorAll('.km-gf-i').forEach(b => b.classList.toggle('on', b === t)); },
     kmGfCat: t => { st.gfCat = t.dataset.v; document.querySelectorAll('[data-act="kmGfCat"]').forEach(b => b.classList.toggle('on', b === t)); gfBuscar(); },
@@ -410,6 +429,11 @@ export function initKit(ctx) {
     else if (t.id === 'km-hex') { const h = normHex(t.value), p = document.getElementById('km-pick'); if (p && hexOk(h)) p.value = h.toLowerCase(); }
   });
   document.addEventListener('change', e => {
+    const t0 = e.target;
+    if (t0 && t0.dataset && (t0.dataset.kmck || t0.dataset.kmckall) && st.sel) {
+      const ks = t0.dataset.kmck ? [t0.dataset.kmck] : t0.dataset.kmckall.split(',');
+      ks.forEach(k => { if (t0.checked) st.sel.ids.add(k); else st.sel.ids.delete(k); }); render(); return;
+    }
     const t = e.target; if (t && t.dataset && t.dataset.kmfmt) { const fs = [...(t.files || [])]; t.value = ''; if (fs.length && !st.subiendo) fmtSubir(fs); return; }
     if (!t || !t.dataset || !t.dataset.kitup) return;
     const c = cli(t.dataset.id), fs = [...(t.files || [])]; t.value = '';
