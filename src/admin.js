@@ -379,7 +379,7 @@ export function initAdmin(ctx) {
         { k: 'mensaje', label: 'Mensaje', type: 'textarea', rows: 7, full: 1 },
         { k: 'copia', label: 'Mandarme copia de cada uno', type: 'check' },
       ],
-      extra: '<div class="field full"><span class="lbl">Destinatarios</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' +
+      extra: '<div class="field full"><span class="lbl">Destinatarios</span><div class="rows" data-todos="bulk" style="border:1px solid var(--line);border-radius:8px">' +
         o.items.map((it, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-bulk="' + i + '"' + (it.para ? ' checked' : ' disabled') + '><span class="t"><b>' + esc(it.label) + '</b><span>' + esc(it.para || 'sin email · cargalo en Datos de facturación') + (it.sub ? ' · ' + esc(it.sub) : '') + '</span></span><span class="days far" id="bulk-st-' + i + '"></span></label>').join('') + '</div></div>' +
         firmaBox() + '<p class="formnote" id="bulk-prog" style="grid-column:1/-1" aria-live="polite"></p>',
       onSave: async v => {
@@ -477,7 +477,7 @@ export function initAdmin(ctx) {
         { k: 'asunto', label: 'Asunto', req: 1, full: 1 }, { k: 'mensaje', label: 'Mensaje', type: 'textarea', rows: 6, full: 1 },
         { k: 'copia', label: 'Mandarme copia de cada uno', type: 'check' },
       ],
-      extra: '<div class="field full"><span class="lbl">Qué resúmenes salen</span><div class="rows" style="border:1px solid var(--line);border-radius:8px">' +
+      extra: '<div class="field full"><span class="lbl">Qué resúmenes salen</span><div class="rows" data-todos="epsel" style="border:1px solid var(--line);border-radius:8px">' +
         (items.length ? items.map((it, i) => '<label class="row" style="cursor:pointer"><input type="checkbox" data-epsel="' + esc(it.r.id) + '"' + (it.para && sel.has(it.r.id) ? ' checked' : '') + (it.para ? '' : ' disabled') + '><span class="t"><b>' + esc(it.label) + '</b><span>' + esc(it.para || 'sin email · cargalo en Contactos') + '</span></span><span class="money">' + esc(it.sub) + '</span></label>').join('') : '<p class="muted" style="padding:10px 12px;margin:0">No quedan resúmenes preparados sin enviar.</p>') + '</div></div>',
       onSave: async v => {
         const ids = [...document.querySelectorAll('[data-epsel]:checked')].map(x => x.dataset.epsel);
@@ -1102,7 +1102,7 @@ export function initAdmin(ctx) {
         '<td class="r">' + (futuro ? '<b class="money">' + money(futuro.monto, futuro.moneda) + '</b><span class="sub">desde ' + fmt(futuro.desde) + '</span>' + (futuro.motivo && !/^Aumento \d/i.test(futuro.motivo) ? '<span class="sub muted" title="' + esc(futuro.motivo) + '">' + esc(futuro.motivo.length > 28 ? futuro.motivo.slice(0, 27) + '…' : futuro.motivo) + '</span>' : '') : nuevo ? '<b class="money" style="opacity:.7">' + money(nuevo, cur.moneda) + '</b><span class="sub">vista previa · +' + esc(String(pr).replace('.', ',')) + '%</span>' : '<span class="muted">—</span>') + (reciente && on ? '<span class="sub t-crit">ojo: es reciente</span>' : '') + '</td>' +
         '<td class="r nowrap">' + aviso + '<button class="btn ghost sm" data-act="aPrecio" data-abono="' + esc(a._id) + '" title="' + hist.length + (hist.length === 1 ? ' precio cargado' : ' precios cargados') + '">' + (cur ? 'Cambiar' : 'Cargar precio') + '</button></td></tr>';
     }).join('');
-    return h + '<section class="sheet"><div class="tbl"><table class="pp-t"><thead><tr><th></th><th>Cliente y servicio</th><th class="r">Hoy paga</th><th>Sin aumento</th><th class="r">% propio</th><th class="r">Próximo</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+    return h + '<section class="sheet"><div class="tbl" data-todos="ppsel"><table class="pp-t"><thead><tr><th></th><th>Cliente y servicio</th><th class="r">Hoy paga</th><th>Sin aumento</th><th class="r">% propio</th><th class="r">Próximo</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
   }
 
   /* ---------- Sección en la ficha del cliente ---------- */

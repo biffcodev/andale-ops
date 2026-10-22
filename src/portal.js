@@ -162,14 +162,32 @@ function vRedes() {
     else if (modo === 'scroll') h += '<div class="po-scroll">' + pubs.map(z => detallePieza(z, { post: true })).join('') + (hist.length ? '<h3 class="po-sc-h">Historias</h3>' + hist.map(z => detallePieza(z, { post: true })).join('') : '') + '</div>';
     else h += '<div class="po-fwrap"><div class="rm-feed po-feed">' + pubs.map(tileFeed).join('') + '</div>' + (hist.length ? '<div class="po-hist"><h3>Historias</h3><div class="po-hs">' + hist.map(tileFeed).join('') + '</div></div>' : '') + '</div>';
   } else if (S.vista === 'calendario') {
-    const xs = ps.filter(filtrar).sort(ordenPz), dias = [...new Set(xs.map(z => z.fecha || ''))];
-    h += dias.map(d => '<div class="po-dia"><h3>' + (d ? esc(cap(corta(d))) : 'Sin fecha') + '</h3>' + xs.filter(z => (z.fecha || '') === d).map(filaPieza).join('') + '</div>').join('') || '<p class="muted">No hay piezas con ese estado.</p>';
+    const xs = ps.filter(filtrar).sort(ordenPz), dias = [...new Set(xs.map(z => z.fecha || ''))], cm = S.cal || 'mes';
+    h += '<div class="po-fm" role="group" aria-label="Cómo ver el calendario">' + [['mes', '▦', 'Calendario'], ['lista', '▤', 'Lista']].map(([k, i, l]) => '<button data-act="calModo" data-m="' + k + '" aria-pressed="' + (cm === k) + '"><span aria-hidden="true">' + i + '</span> ' + l + '</button>').join('') + '</div>';
+    if (!xs.length) h += '<p class="muted">No hay piezas con ese estado.</p>';
+    else if (cm === 'lista') h += dias.map(d => '<div class="po-dia"><h3>' + (d ? esc(cap(corta(d))) : 'Sin fecha') + '</h3>' + xs.filter(z => (z.fecha || '') === d).map(filaPieza).join('') + '</div>').join('');
+    else h += calendarioMes(m, xs);
   } else {
     const xs = listaRevisar(m);
     if (!xs.length) h += '<div class="po-vacio"><b>' + (S.fz === 'pend' ? '¡Listo! No te queda nada para revisar.' : 'No hay piezas con ese estado.') + '</b><button class="btn sm" data-act="fz" data-k="">Ver todas</button></div>';
     else { let i = xs.findIndex(z => z.id === S.pzId); if (i < 0) i = 0; S.pzId = xs[i].id; h += detallePieza(xs[i], { i, n: xs.length }); }
   }
   return h + '</section>';
+}
+// Calendario del mes como grilla (lunes a domingo); cada pieza con el color de su estado. Tocar una la abre.
+function calendarioMes(m, xs) {
+  const [y, mm] = String(m.mes).slice(0, 7).split('-').map(Number), primero = new Date(y, mm - 1, 1), off = (primero.getDay() + 6) % 7, n = new Date(y, mm, 0).getDate();
+  const hoy = new Date().toISOString().slice(0, 10), f = d => y + '-' + String(mm).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  let cel = '';
+  for (let i = 0; i < off; i++) cel += '<div class="po-cd vacia"></div>';
+  for (let d = 1; d <= n; d++) {
+    const del = xs.filter(z => z.fecha === f(d));
+    cel += '<div class="po-cd' + (f(d) === hoy ? ' hoy' : '') + (del.length ? '' : ' sin') + '"><span class="po-cdn">' + d + '</span>' + del.map(z => { const e = ESTADO_CLI[z.estado] || [z.estado, '--muted'];
+      return '<button class="po-cp" style="--c:var(' + e[1] + ');--fc:' + fmtColor(z.formato) + '" data-act="pzVer" data-id="' + esc(z.id) + '" title="' + esc(e[0] + ' · ' + (z.tema || z.formato)) + '"><span class="po-cph"><b>' + esc((z.hora ? z.hora + ' · ' : '') + z.formato) + '</b></span><span class="po-cpt">' + esc(z.tema || z.formato) + '</span><i>' + esc(e[0]) + '</i></button>'; }).join('') + '</div>';
+  }
+  const sin = xs.filter(z => !z.fecha);
+  return '<div class="po-cal"><div class="po-dow">' + ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => '<span>' + x + '</span>').join('') + '</div><div class="po-grid">' + cel + '</div></div>' +
+    (sin.length ? '<div class="po-dia"><h3>Sin fecha</h3>' + sin.map(filaPieza).join('') + '</div>' : '');
 }
 function tileFeed(z) {
   const a = arteDe(z.id)[0];
@@ -322,6 +340,7 @@ const ACT = {
   pzMover: t => moverPz(+t.dataset.d),
   pzVer: t => { if (S.vista === 'revisar') { S.pzId = t.dataset.id; render(); } else if (S.vista === 'feed') { S.feed = 'scroll'; render(); irAPieza(t.dataset.id, false); } else verPieza(t.dataset.id); },
   feedModo: t => { S.feed = t.dataset.m; render(); },
+  calModo: t => { S.cal = t.dataset.m; render(); },
   cambioNo: () => { S.pidiendoCambio = null; rerender(); },
   salir: async () => { await sb.auth.signOut(); location.reload(); },
   cerrar: () => cerrar(),
