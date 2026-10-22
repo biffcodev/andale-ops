@@ -8,6 +8,7 @@ import './style.css';
 import { activarFormato } from './formato.js';
 import './portal.css';
 import { LOGO, ISO } from './marca.js';
+import { fmtColor } from './formatos.js';
 import { iconizar, ICON } from './iconos.js';
 import { informeVista } from './informe-vista.js';
 import { sb, configured } from './data.js';
@@ -110,9 +111,12 @@ function vInicio() {
   return h;
 }
 function arteDe(id) { return ((S.archivos[id] || {}).archivos || []); }
+// Pieza en el inicio: como las tarjetas de la app (tapa con el formato, fecha, estado y tema), sin lo interno.
 function miniPieza(z) {
-  const a = arteDe(z.id)[0];
-  return '<button class="po-pz" data-act="pieza" data-id="' + esc(z.id) + '">' + (a && a.miniatura ? '<img src="' + esc(a.miniatura) + '" alt="">' : '<span class="po-ph">' + esc(z.formato) + '</span>') + '<span class="po-pzt"><b>' + esc(z.tema || z.formato) + '</b><span>' + esc(corta(z.fecha)) + (z.hora ? ' · ' + esc(z.hora) : '') + '</span></span></button>';
+  const a = arteDe(z.id)[0], e = ESTADO_CLI[z.estado];
+  return '<button class="po-pz" data-act="pieza" data-id="' + esc(z.id) + '" style="--fc:' + fmtColor(z.formato) + '">' +
+    (a && a.miniatura ? '<span class="po-pz-a"><img src="' + esc(a.miniatura) + '" alt=""></span>' : '<span class="po-pz-a ph"><b>' + esc(z.formato) + '</b></span>') +
+    '<span class="po-pzt"><span class="po-pzd">' + esc(corta(z.fecha)) + (z.hora ? ' · ' + esc(z.hora) : '') + '</span>' + (e ? '<span class="po-pze" style="--c:var(' + e[1] + ')">' + esc(e[0]) + '</span>' : '') + '<b>' + esc(z.tema || z.formato) + '</b></span></button>';
 }
 function proyCard(p) {
   const pct = p.avance == null ? null : +p.avance;
@@ -177,7 +181,7 @@ function filaPieza(z) {
 function detallePieza(z, o = {}) {
   const as = arteDe(z.id), a = as[0], coms = comsDe(z.id), ped = coms.filter(esPedido), otros = coms.filter(c => !esPedido(c) && !/^✓ Aprobado$/.test(c.texto || ''));
   const listo = [...coms].reverse().find(c => !c.de_cliente && /^Listo, hicimos los cambios/i.test(c.texto || ''));
-  const media = a ? (esVideo(a.path) && a.link ? '<video src="' + esc(a.link) + '" controls playsinline preload="metadata"' + (a.miniatura ? ' poster="' + esc(a.miniatura) + '"' : '') + '></video>' : a.miniatura ? '<img src="' + esc(a.miniatura) + '" alt="">' : '<span class="po-ph">' + (esVideo(a.path) ? '▶ Video' : 'Archivo') + '</span>') : '<span class="po-ph' + (/reel|histori/i.test(z.formato) ? ' po-ph-v' : '') + '">' + esc(z.formato) + '<small>El arte todavía no está cargado</small></span>';
+  const media = a ? (esVideo(a.path) && a.link ? '<video src="' + esc(a.link) + '" controls playsinline preload="metadata"' + (a.miniatura ? ' poster="' + esc(a.miniatura) + '"' : '') + '></video>' : a.miniatura ? '<img src="' + esc(a.miniatura) + '" alt="">' : '<span class="po-ph">' + (esVideo(a.path) ? '▶ Video' : 'Archivo') + '</span>') : '<span class="po-ph' + (/reel|histori/i.test(z.formato) ? ' po-ph-v' : '') + '" style="--fc:' + fmtColor(z.formato) + '"><b>' + esc(z.formato) + '</b><small>El arte todavía no está cargado</small></span>';
   const pedHtml = ped.length ? '<div class="po-ped"><b>Lo que pediste</b>' + ped.map(c => '<div class="po-pi' + (c.resuelto_at ? ' ok' : '') + '"><span class="po-pic">' + (c.resuelto_at ? '✓' : '…') + '</span><span>' + esc(sinPrefijo(c.texto)) + '<small>' + esc(fecha(c.created_at)) + ' · ' + (c.resuelto_at ? 'hecho' : 'lo estamos haciendo') + '</small></span></div>').join('') + '</div>' : '';
   const acciones = ['Para el cliente', 'Cambios', 'Aprobada'].includes(z.estado) ? (S.pidiendoCambio === z.id
     ? '<form class="po-cambio" data-cambio="' + esc(z.id) + '"><label for="po-cambio-t">¿Qué cambiarías?</label><textarea id="po-cambio-t" class="in" rows="3" placeholder="Cuanto más concreto, mejor: textos, colores, fotos…" required></textarea><div class="po-acc"><button class="btn primary">Mandar el pedido</button><button type="button" class="btn ghost" data-act="cambioNo">Cancelar</button></div></form>'

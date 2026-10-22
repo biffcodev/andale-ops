@@ -19,7 +19,6 @@ export const FLUJO_DEF = ['Idea=Cuentas y programación', 'En diseño=Diseño', 
 // Hora de publicación por formato (Opciones → Flujo de Redes). Si ese día ya hay otra del mismo formato a esa hora, se corre 3 h.
 export const HORAS_DEF = ['Historias=10:00', 'Posts=12:30', 'Carruseles=12:30', 'Reels=19:00'];
 // Un color por formato, para distinguir historias, posts, carruseles y reels de un vistazo.
-const FMT_COLOR = [[/reel/i, '#8b5cf6'], [/histori|stor/i, '#e0598b'], [/carrus/i, '#14a07a'], [/post/i, '#2f7de1'], [/tiktok/i, '#0f9fb5'], [/video|youtube/i, '#d9822b']];
 // Redes que se gestionan, con el color de cada marca (Instagram con su degradé). TikTok, X y Threads usan el negro de la app (se invierte en modo oscuro).
 export const REDES_G = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'X', 'Pinterest', 'Threads'];
 // Íconos de cada red: Simple Icons (CC0), en blanco sobre el color de la marca.
@@ -54,8 +53,8 @@ export function contenidoHtml(txt) {
   });
   return '<div class="ct">' + out.join('') + '</div>';
 }
-const FMT_OTROS = ['#b5893b', '#6b7fd7', '#c2569b', '#3f9a5f'];
-export const fmtColor = f => { const x = FMT_COLOR.find(([re]) => re.test(f || '')); if (x) return x[1]; let h = 0; for (const c of String(f || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return FMT_OTROS[h % FMT_OTROS.length]; };
+export { fmtColor };
+import { fmtColor } from './formatos.js';
 import { vistaSel, vistaDe, filtrosMenu } from './ui.js';
 import { confirmar, pedirTexto } from './dialogo.js';
 import { ICON } from './iconos.js';
