@@ -141,16 +141,31 @@ export function manualHTML(d, o = {}) {
   }
   const gfLink = t => 'https://fonts.google.com/specimen/' + esc(String(t.familia || '').replace(/ /g, '+'));
   if (kit.tipos.length) {
-    secs.push(['tipografia', 'Tipografía', kit.tipos.map((t, i) => {
-      const w = +(t.peso || (i === 0 ? 800 : 400)), f = esc(fam(t)) + 'system-ui,sans-serif', ejemplo = i === 0 ? d.nombre : 'Así se lee un texto de la marca, claro y cercano.', fs = formatos(t);
-      return rv('<article class="mm-tipo" style="--tf:' + f + ';--tw:' + w + '">' +
-        '<header class="mm-tipo-h"><span class="mm-k">' + esc(t.rol || 'Tipografía') + '</span><h3>' + esc(t.familia) + '</h3><small>' + esc(PESO[w] || 'Regular') + '</small>' +
-        (fs.length ? '<span class="mm-tipo-dl">' + bajarX({ ...t, n: t.familia }) + '</span>' : '<a class="mm-btn" href="' + gfLink(t) + '" target="_blank" rel="noopener">' + I.dl + 'Bajar de Google Fonts</a>') + '</header>' +
-        '<div class="mm-tipo-b"><div class="mm-aa" aria-hidden="true"><span>Aa</span></div><div class="mm-glyphs" aria-hidden="true">' + 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZabcdefghijklmnñopqrstuvwxyz0123456789&@?!'.split('').map(ch => '<span>' + esc(ch) + '</span>').join('') + '</div></div>' +
-        (t.url ? '' : '<div class="mm-pesos">' + [300, 400, 500, 600, 700, 800, 900].map(p => '<span style="font-weight:' + p + '">' + PESO[p] + '</span>').join('') + '</div>') +
-        '<div class="mm-test"><div class="mm-try" contenteditable="true" spellcheck="false" data-mmout aria-label="Escribí para probar la tipografía">' + esc(ejemplo) + '</div>' +
-        '<div class="mm-ctrl"><span class="mm-k">Probala: escribí arriba</span><label>Tamaño<input type="range" min="24" max="96" value="' + (i === 0 ? 64 : 34) + '" data-mmsize></label>' + (t.url ? '' : '<label>Peso<input type="range" min="300" max="900" step="1" value="' + w + '" data-mmw></label>') + '</div></div></article>', 0);
-    }).join(''), 'Identidad visual']);
+    // Las familias, con su alfabeto como texto corrido; la jerarquía de textos (título, subtítulo, bajada, texto, nota,
+    // etiqueta) armada con las tipografías de la marca; y un probador.
+    const ff = t => esc(fam(t)) + 'system-ui,sans-serif', wDe = (t, i) => +(t.peso || (i === 0 ? 800 : 400));
+    const familias = '<div class="mm-fams n' + Math.min(kit.tipos.length, 2) + '">' + kit.tipos.map((t, i) => { const w = wDe(t, i), fs = formatos(t);
+      return rv('<article class="mm-fam" style="--tf:' + ff(t) + ';--tw:' + w + '"><div class="mm-fam-h"><span class="mm-fam-aa" aria-hidden="true">Aa</span><span class="mm-fam-n"><span class="mm-k">' + esc(t.rol || 'Tipografía') + '</span><b>' + esc(t.familia) + '</b><small>' + esc(PESO[w] || 'Regular') + (fs.length ? ' · archivo propio' : ' · Google Fonts') + '</small></span></div>' +
+        '<p class="mm-abc" aria-label="Alfabeto de ' + esc(t.familia) + '">ABCDEFGHIJKLMNÑOPQRSTUVWXYZ<br>abcdefghijklmnñopqrstuvwxyz<br>0123456789 ¿?¡! &amp; @ % $ ( )</p>' +
+        (t.url ? '' : '<div class="mm-pesos">' + [300, 400, 500, 600, 700, 800, 900].map(p => '<span style="font-weight:' + p + '"' + (p === w ? ' class="on"' : '') + '>' + PESO[p] + '</span>').join('') + '</div>') +
+        '<div class="mm-fam-dl">' + (fs.length ? bajarX({ ...t, n: t.familia }) : '<a class="mm-btn" href="' + gfLink(t) + '" target="_blank" rel="noopener">' + I.dl + 'Bajar de Google Fonts</a>') + '</div></article>', i * 100); }).join('') + '</div>';
+    const T = tit, X = txt || tit, wT = wDe(T, 0), wX = txt && txt !== tit ? wDe(txt, 1) : 400;
+    const frase = String(man.intro || m.rubro || '').replace(/\s*\(texto de ejemplo\)\s*/i, ' ').split(/(?<=[.!?])\s/)[0].trim();
+    const NIV = [
+      ['Título', 'Para lo más importante de cada pieza', T, wT, 56, 1.05, '-.03em', esc(man.concepto || d.nombre)],
+      ['Subtítulo', 'Ordena lo que sigue', T, Math.min(wT, 800), 32, 1.15, '-.015em', 'Lo que necesitás saber, en pocas palabras'],
+      ['Bajada', 'Amplía el título; una o dos líneas', X, Math.max(wX, 500) === wX ? wX : 500, 21, 1.45, '-.005em', esc(frase || 'Una frase que acompaña al título y cuenta un poco más.')],
+      ['Texto', 'Párrafos y textos largos', X, wX, 16, 1.6, '0', 'Este es el texto de todos los días: descripciones, posteos, mails y documentos. Va en un tamaño cómodo, con aire entre líneas, para que se lea sin esfuerzo en pantalla y en papel.'],
+      ['Nota', 'Epígrafes, aclaraciones y letra chica', X, wX, 13, 1.5, '0', 'Foto: entrega en obra. Precios válidos hasta agotar stock.'],
+      ['Etiqueta', 'Botones, categorías y datos', X, Math.max(wX, 700), 12, 1.2, '.12em', 'VER MÁS · NOVEDADES'],
+    ];
+    const jer = '<h3 class="mm-h3 rv">Jerarquía de textos</h3><div class="mm-jer">' + NIV.map(([n, u, t, w, px, lh, ls, ej], i) => rv('<div class="mm-jer-r"><div class="mm-jer-m"><b>' + n + '</b><span>' + u + '</span><small>' + esc(t ? t.familia : '') + ' · ' + esc(PESO[w] || w) + '<br>' + px + ' px · ' + Math.round(px * .75) + ' pt · interlineado ' + lh + '</small></div>' +
+      '<p class="mm-jer-e' + (n === 'Nota' ? ' soft' : '') + '" style="font-family:' + ff(t) + ';font-weight:' + w + ';--px:' + px + 'px;line-height:' + lh + ';letter-spacing:' + ls + '">' + ej + '</p></div>', (i % 3) * 60)).join('') + '</div>' +
+      rv('<p class="mm-jer-nota">En celular, los títulos bajan un escalón (título 40 px, subtítulo 26 px); el texto nunca baja de 16 px. En impresos, el texto va entre 9 y 11 pt según la pieza.</p>');
+    const tester = rv('<div class="mm-tipo mm-tester" style="--tf:' + ff(kit.tipos[0]) + ';--tw:' + wDe(kit.tipos[0], 0) + '"><div class="mm-tst-h"><span class="mm-k">Escribí arriba y cambiá el tamaño</span>' + (kit.tipos.length > 1 ? '<span class="mm-tst-f" role="group" aria-label="Tipografía">' + kit.tipos.map((t, i) => '<button data-mmtf="' + ff(t) + '" data-mmtw="' + wDe(t, i) + '"' + (i === 0 ? ' class="on"' : '') + '>' + esc(t.familia) + '</button>').join('') + '</span>' : '') + '</div>' +
+      '<div class="mm-try" contenteditable="true" spellcheck="false" data-mmout aria-label="Escribí para probar la tipografía">' + esc(d.nombre) + ', escribí acá lo que quieras</div>' +
+      '<div class="mm-ctrl"><label>Tamaño<input type="range" min="16" max="96" value="44" data-mmsize></label>' + (kit.tipos.some(t => !t.url) ? '<label>Peso<input type="range" min="300" max="900" step="1" value="' + wDe(kit.tipos[0], 0) + '" data-mmw></label>' : '') + '</div></div>');
+    secs.push(['tipografia', 'Tipografía', familias + jer + '<h3 class="mm-h3 rv">Probala</h3>' + tester, 'Identidad visual']);
   }
   const fotos = recs.filter(r => ['fotos', 'texturas'].includes(r.cat) && esImg(r.tipo, r.url)), graf = recs.filter(r => r.cat === 'graficos');
   if (fotos.length || graf.length || m.visual) secs.push(['imagenes', completo ? 'Imágenes y estilo' : 'Estilo', (m.visual ? rv('<p class="mm-big sm">' + esc(m.visual) + '</p>') : '') +
@@ -246,6 +261,7 @@ export function activarManual(root, scroller) {
   mm.addEventListener('click', async e => {
     const tb = e.target.closest('[data-mmtab]'); if (tb) { const g = tb.dataset.mmtab, v = tb.dataset.v; mm.querySelectorAll('[data-mmtab="' + g + '"]').forEach(b => { const on = b === tb; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); mm.querySelectorAll('[data-mmpane^="' + g + ':"]').forEach(p => { p.hidden = p.dataset.mmpane !== g + ':' + v; }); return; }
     const c = e.target.closest('[data-copiar]'); if (c) { try { await navigator.clipboard.writeText(c.dataset.copiar); toast('Copiado ' + c.dataset.copiar); } catch (er) { toast(c.dataset.copiar); } c.classList.add('ok'); setTimeout(() => c.classList.remove('ok'), 700); return; }
+    const tf = e.target.closest('[data-mmtf]'); if (tf) { const card = tf.closest('.mm-tipo'); card.style.setProperty('--tf', tf.dataset.mmtf); card.style.setProperty('--tw', tf.dataset.mmtw); card.querySelectorAll('[data-mmtf]').forEach(x => x.classList.toggle('on', x === tf)); const w = card.querySelector('[data-mmw]'); if (w) w.value = tf.dataset.mmtw; return; }
     const b = e.target.closest('[data-mmbg]'); if (b) { const st = b.closest('.mm-stage'); st.dataset.bg = b.dataset.mmbg; st.querySelectorAll('[data-mmbg]').forEach(x => x.classList.toggle('on', x === b)); return; }
     const r = e.target.closest('[data-mmresp]'); if (r) { const st = r.closest('.mm-stage'); st.classList.toggle('resp'); r.classList.toggle('on'); return; }
     const a = e.target.closest('a[href^="#"]'); if (a) { const t = mm.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); const y0 = scroller ? 0 : window.scrollY; const y = t.getBoundingClientRect().top + y0 + (scroller ? scroller.scrollTop - scroller.getBoundingClientRect().top : 0) - (top && !scroller ? 64 : 12); sc.scrollTo({ top: y, behavior: reduce ? 'auto' : 'smooth' }); } }
@@ -581,4 +597,36 @@ export const MANUAL_CSS = CEL_CSS + `
 .mm-logo figcaption:has(.mm-fxs),.mm-ap figcaption:has(.mm-fxs){flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:8px}
 .mm-logo figcaption:has(.mm-fxs) .mm-fxs,.mm-ap figcaption:has(.mm-fxs) .mm-fxs{justify-content:flex-start}
 @media (max-width:720px){.mm-red-tabs .cel-redes{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;border-radius:16px}.mm-red-tabs .cel-redes button{flex:none}}
+.mm-fams{display:grid;gap:18px}
+.mm-fams.n2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.mm-fam{background:var(--mm-card);border-radius:28px;padding:30px 32px;display:grid;gap:22px;align-content:start}
+.mm-s.alt .mm-fam{background:#fff}
+.mm-fam-h{display:flex;align-items:center;gap:20px}
+.mm-fam-aa{flex:none;width:92px;height:92px;border-radius:22px;background:var(--mm-p);color:var(--mm-po);display:grid;place-items:center;font-family:var(--tf);font-weight:var(--tw);font-size:46px;letter-spacing:-.03em;line-height:1}
+.mm-fam-n{display:grid;min-width:0}
+.mm-fam-n .mm-k{margin:0 0 2px}
+.mm-fam-n b{font-family:var(--tf);font-weight:var(--tw);font-size:clamp(28px,3vw,40px);line-height:1.05;letter-spacing:-.02em;padding-bottom:.06em}
+.mm-fam-n small{color:var(--mm-soft);font-size:13.5px}
+.mm-abc{margin:0;font-family:var(--tf);font-weight:var(--tw);font-size:clamp(18px,1.7vw,23px);line-height:1.5;letter-spacing:.04em;overflow-wrap:anywhere}
+.mm-fam .mm-pesos{margin:0;padding:16px 0 0;font-size:15px;gap:4px 16px}
+.mm-pesos span{color:var(--mm-soft)}.mm-pesos span.on{color:var(--mm-ink)}
+.mm-fam-dl{display:flex}
+.mm-jer{background:#fff;border-radius:28px;box-shadow:0 0 0 1px var(--mm-line);padding:8px 32px}
+.mm-jer-r{display:grid;grid-template-columns:220px minmax(0,1fr);gap:28px;align-items:baseline;padding:24px 0;border-bottom:1px solid var(--mm-line)}
+.mm-jer-r:last-child{border-bottom:0}
+.mm-jer-m{display:grid;gap:2px;align-self:start}
+.mm-jer-m b{font-size:15px;font-weight:700}
+.mm-jer-m span{font-size:13px;color:var(--mm-ink)}
+.mm-jer-m small{font-size:12px;color:var(--mm-soft);line-height:1.5;margin-top:4px;font-variant-numeric:tabular-nums}
+.mm-jer-e{margin:0;font-size:var(--px);color:var(--mm-ink);overflow-wrap:anywhere;max-width:760px}
+.mm-jer-e.soft{color:var(--mm-soft)}
+.mm-jer-nota{margin:16px 4px 0;font-size:13.5px;color:var(--mm-soft);max-width:760px}
+.mm-tester{margin-bottom:0}
+.mm-tst-h{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.mm-tst-h .mm-k{margin:0}
+.mm-tst-f{display:inline-flex;gap:4px;background:color-mix(in srgb,var(--mm-ink) 6%,transparent);border-radius:99px;padding:4px}
+.mm-tst-f button{all:unset;cursor:pointer;font:600 13.5px var(--mm-fb);padding:7px 14px;border-radius:99px;color:var(--mm-soft)}
+.mm-tst-f button.on{background:#fff;color:var(--mm-ink);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.mm-tester .mm-try{min-height:1.3em;height:auto;max-height:3.6em}
+@media (max-width:820px){.mm-fams.n2{grid-template-columns:1fr}.mm-jer{padding:4px 20px}.mm-jer-r{grid-template-columns:1fr;gap:10px;padding:20px 0}.mm-jer-e{font-size:min(var(--px),calc(var(--px) * .72 + 4px))}.mm-fam{padding:24px}.mm-fam-aa{width:72px;height:72px;font-size:36px}}
 `;
