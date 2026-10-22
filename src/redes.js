@@ -349,7 +349,7 @@ export function initRedes(ctx) {
       const agrupar = lista => { const gs = []; lista.forEach(z => { const k = semDe(z), g = gs[gs.length - 1]; if (g && g.k === k) g.zs.push(z); else gs.push({ k, zs: [z] }); }); return gs; };
       const feedV = vis.filter(z => !esHistoria(z)), histV = vis.filter(esHistoria);
       const carta = z => { const a = (z.arte || [])[0], t = a ? st.thumbs.get(a.path) : '';
-        return '<article class="rm-pc' + (sel.has(z._id) ? ' sel' : '') + '" style="--fc:' + fmtColor(z.formato) + ';--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')">' + '<span class="rm-pc-est">' + esc(pzNombre(z.estado)) + '</span>' +
+        return '<article class="rm-pc' + (sel.has(z._id) ? ' sel' : '') + '" style="--fc:' + fmtColor(z.formato) + ';--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')">' +
           '<button class="rm-pc-a' + (t ? '' : ' ph') + '" data-act="rmPieza" data-id="' + esc(z._id) + '" aria-label="Abrir ' + esc(z.formato + ' ' + (z.tema || '')) + '">' + (t ? '<img src="' + esc(t) + '" alt="">' : '<span class="rm-pc-ph"><b>' + esc(z.formato) + '</b>' + (z.contenido ? '<span>' + esc(z.contenido.split('\n')[0].replace(/^[^:]{1,20}:\s*/, '')) + '</span>' : '') + '</span>') + '</button>' +
           (can ? '<input type="checkbox" class="rm-pc-sel" data-rmsel="' + esc(z._id) + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar">' : '') +
           '<div class="rm-pc-b"><div class="rm-pc-m">' + (z.fecha ? '<span class="rm-pc-d">' + esc(diaDe(z)) + (z.hora ? ' · ' + esc(z.hora) : '') + '</span>' : '<span class="rm-pc-d muted sf">Sin fecha</span>') + listoCtl(m, z, can) + '</div>' + tags(z, null) +
