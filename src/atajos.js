@@ -9,17 +9,34 @@ const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator
 export const MOD = mac ? '⌘' : 'Ctrl';
 
 /* ---------- Tooltips ---------- */
+// Solo donde ayudan: botones de solo ícono, textos cortados (…) y lo marcado a propósito con data-tip.
+// Uno a la vez, con demora, y se va apenas el mouse sale, se hace clic, se escribe o se mueve la pantalla.
+// Los title se pasan a data-tt para que el navegador no muestre además el suyo. En pantallas táctiles, nada.
 let tip = null, tipT = null, tipEl = null;
+const DEMORA = 650;
+const visibleTexto = el => (el.innerText || el.textContent || '').trim();
+const cortado = el => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 2;
 function textoDe(el) {
-  const t = el.dataset.tip || el.getAttribute('title') || '';
-  if (t) return t;
-  // Botón o link sin texto visible: se usa su aria-label
-  if ((el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'SUMMARY') && !(el.textContent || '').trim()) return el.getAttribute('aria-label') || '';
+  if (el.dataset.tip) return el.dataset.tip;
+  const t = el.dataset.tt || el.getAttribute('aria-label') || '';
+  if (!t) return '';
+  const sinTexto = !visibleTexto(el);
+  if (sinTexto) return t; // botón de solo ícono
+  if (cortado(el) && t.trim() !== visibleTexto(el)) return t; // texto cortado con "…"
+  if (cortado(el)) return t;
   return '';
+}
+// El title del navegador no se muestra nunca (queda como data-tt; si no hay nombre accesible, pasa a aria-label)
+function sacarTitle(el) {
+  for (let x = el; x && x !== document.body; x = x.parentElement) {
+    if (x.hasAttribute && x.hasAttribute('title')) {
+      const t = x.getAttribute('title'); x.removeAttribute('title'); if (!x.dataset.tt) x.dataset.tt = t;
+      if (!x.getAttribute('aria-label') && !visibleTexto(x) && /^(BUTTON|A|SUMMARY|LABEL)$/.test(x.tagName)) x.setAttribute('aria-label', t);
+    }
+  }
 }
 function mostrar(el) {
   const txt = textoDe(el); if (!txt) return;
-  if (el.hasAttribute('title')) { el.dataset.tip = el.getAttribute('title'); el.removeAttribute('title'); } // que no salga además el del navegador
   if (!tip) { tip = document.createElement('div'); tip.className = 'tip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
   tip.innerHTML = esc(txt) + (el.dataset.kbd ? ' <span class="tip-k">' + el.dataset.kbd.split(' ').map(k => '<kbd>' + esc(k) + '</kbd>').join('') + '</span>' : '');
   tip.style.left = '0px'; tip.style.top = '0px'; tip.hidden = false; tip.classList.remove('on');
@@ -29,22 +46,23 @@ function mostrar(el) {
   x = Math.max(8, Math.min(x, vw - w - 8));
   tip.style.left = x + 'px'; tip.style.top = y + 'px'; tip.classList.add('on');
 }
-function ocultar() { clearTimeout(tipT); tipT = null; if (tip) { tip.classList.remove('on'); tip.hidden = true; } if (tipEl && tipEl.dataset.tip && !tipEl.hasAttribute('title')) { tipEl.setAttribute('title', tipEl.dataset.tip); delete tipEl.dataset.tip; } tipEl = null; }
-const conTip = el => el && el.closest && el.closest('[title], [data-tip], button[aria-label], a[aria-label], summary[aria-label]');
+function ocultar() { clearTimeout(tipT); tipT = null; if (tip) { tip.classList.remove('on'); tip.hidden = true; } tipEl = null; }
+const candidato = el => el && el.closest && el.closest('[data-tip], [title], [data-tt], button[aria-label], a[aria-label], summary[aria-label], label[aria-label], [role="button"][aria-label]');
 if (typeof document !== 'undefined') {
-  document.addEventListener('mouseover', e => {
-    const el = conTip(e.target);
+  document.addEventListener('pointerover', e => {
+    if (e.pointerType && e.pointerType !== 'mouse') { ocultar(); return; }
+    sacarTitle(e.target);
+    const el = candidato(e.target);
     if (el === tipEl) return;
     ocultar();
-    if (!el || el.closest('.tip') || el.matches('input, textarea, select, iframe') || !textoDe(el)) return;
-    // El title se saca apenas entra el mouse: si no, el navegador muestra el suyo además del nuestro.
-    if (el.hasAttribute('title')) { el.dataset.tip = el.getAttribute('title'); el.removeAttribute('title'); }
-    tipEl = el; tipT = setTimeout(() => { if (tipEl === el && el.isConnected) mostrar(el); }, 450);
+    if (!el || el.matches('input, textarea, select, iframe') || el.closest('.tip')) return;
+    tipEl = el; tipT = setTimeout(() => { if (tipEl === el && el.isConnected && el.matches(':hover')) mostrar(el); }, DEMORA);
   });
-  document.addEventListener('mouseout', e => { if (tipEl && (!e.relatedTarget || !tipEl.contains(e.relatedTarget))) ocultar(); });
-  ['mousedown', 'keydown', 'scroll', 'wheel'].forEach(ev => document.addEventListener(ev, () => { if (tipEl) ocultar(); }, true));
+  document.addEventListener('pointerout', e => { if (tipEl && (!e.relatedTarget || !tipEl.contains(e.relatedTarget))) ocultar(); });
+  // Si la pantalla se redibuja bajo el mouse, el elemento ya no está: el globito se va.
+  document.addEventListener('pointermove', () => { if (tipEl && (!tipEl.isConnected || !tipEl.matches(':hover'))) ocultar(); }, { passive: true });
+  ['pointerdown', 'keydown', 'scroll', 'wheel', 'blur'].forEach(ev => (ev === 'blur' ? window : document).addEventListener(ev, () => { if (tipEl || (tip && !tip.hidden)) ocultar(); }, true));
 }
-
 /* ---------- Atajos ---------- */
 // ctx: { go(view), views() → [[key, label]], isStaff() }
 const NAV = { i: 'inicio', m: 'mis', p: 'proyectos', r: 'redes', t: 'tickets', c: 'clientes', e: 'equipo' };
