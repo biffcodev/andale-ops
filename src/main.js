@@ -712,11 +712,23 @@ function avance(p) { const e = etapasDe(p); return e.length ? Math.round(e.filte
 function tkPrioSel(p, x, i) {
   return '<select class="tk-prio' + (x.prio ? '' : ' vacia') + '" style="--c:var(' + (PRIO_COLOR[x.prio] || '--muted') + ')" aria-label="Prioridad de la tarea" data-tk="prio" data-pid="' + esc(p._id) + '" data-i="' + i + '">' + opt('', '⚑', x.prio || '') + PRIOS.map(v => opt(v, '⚑ ' + v, x.prio || '')).join('') + '</select>';
 }
+// Respuestas del cliente desde el portal (aprobó, pidió cambios, comentó), por proyecto. Se cargan al abrir el proyecto.
+const tipoResp = t => /^✓ Aprobado/.test(t || '') ? 'ok' : /^Pidió cambios/i.test(t || '') ? 'cambios' : /^⭐/.test(t || '') ? 'cal' : 'com';
+function respCli(p) {
+  const r = (S.pcli || (S.pcli = {}))[p._id];
+  if (!r && !(S.pcliCarg || (S.pcliCarg = new Set())).has(p._id)) {
+    S.pcliCarg.add(p._id);
+    (data.respuestasProyecto ? data.respuestasProyecto(p._id) : Promise.resolve([])).then(rows => { S.pcli[p._id] = rows; S.pcliCarg.delete(p._id); if (S.pficha === p._id) render(); }, () => { S.pcli[p._id] = []; S.pcliCarg.delete(p._id); });
+  }
+  return r || [];
+}
+// Lo último que respondió el cliente sobre cada tarea
+const respTarea = (p, id) => id ? respCli(p).find(c => c.entidad === 'tarea' && c.entidad_id === id && tipoResp(c.texto) !== 'com') : null;
 function tkRow(p, x, i, can) {
   const pid = esc(p._id), ps = personas(), k = estTk(x);
   return '<div class="tkr' + (x.ok ? ' done' : '') + '" data-tki="' + i + '">' +
     '<input type="checkbox" class="tk-ok" aria-label="Tarea hecha" data-etoggle="' + pid + '" data-i="' + i + '"' + (x.ok ? ' checked' : '') + (can ? '' : ' disabled') + '>' +
-    '<button class="tkr-n" data-act="tkAbrir" data-id="' + pid + '" data-i="' + i + '"><span>' + esc(x.n) + '</span>' + (x.portal === 'hace' ? '<i class="tk-pb cli" title="La hace el cliente (la ve en su portal)">Cliente</i>' : x.portal === 'oculta' ? '<i class="tk-pb" title="No la ve el cliente en el portal">Interna</i>' : '') + (x.nota ? '<i class="tkr-nota" title="Tiene notas">≡</i>' : '') + '</button>' +
+    '<button class="tkr-n" data-act="tkAbrir" data-id="' + pid + '" data-i="' + i + '"><span>' + esc(x.n) + '</span>' + (() => { const r = respTarea(p, x._id); return r ? (tipoResp(r.texto) === 'ok' ? '<i class="tk-pb aprob" title="' + esc((r.autor_nombre || 'El cliente') + ' la aprobó desde el portal · ' + haceTxt(r.created_at)) + '">✓ Aprobó el cliente</i>' : '<i class="tk-pb camb" title="' + esc(String(r.texto || '').slice(0, 200)) + '">Pidió cambios</i>') : ''; })() + (x.portal === 'hace' ? '<i class="tk-pb cli" title="La hace el cliente (la ve en su portal)">Cliente</i>' : x.portal === 'oculta' ? '<i class="tk-pb" title="No la ve el cliente en el portal">Interna</i>' : '') + (x.nota ? '<i class="tkr-nota" title="Tiene notas">≡</i>' : '') + '</button>' +
     '<span class="tk-who">' + (x.resp ? av(x.resp, fotoDe(x.resp)) : '<span class="av vacio" title="Sin asignar">+</span>') +
     (can ? '<select aria-label="Quién la hace" data-tk="resp" data-pid="' + pid + '" data-i="' + i + '">' + opt('', 'Sin asignar', x.resp || '') + [...new Set([...ps, x.resp].filter(Boolean))].map(a => opt(a, a, x.resp || '')).join('') + '</select>' : '<span>' + esc(x.resp || '—') + '</span>') + '</span>' +
     (can ? '<label class="tk-date">' + (fechaTarea(x.fecha, x.ok) || '<span class="tk-f vacia">Fecha</span>') + '<input type="date" aria-label="Para cuándo" value="' + esc(x.fecha || '') + '" data-tk="fecha" data-pid="' + pid + '" data-i="' + i + '"></label>' : (fechaTarea(x.fecha, x.ok) || '<span class="muted">—</span>')) +
@@ -808,7 +820,12 @@ function pfLado(p) {
   const gente = [...new Set([...resp(p), ...e.map(x => x.resp).filter(Boolean)])];
   const ring = '<svg viewBox="0 0 36 36" class="ring" aria-hidden="true"><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--line)" stroke-width="4"/><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--s-entregado)" stroke-width="4" stroke-linecap="round" stroke-dasharray="' + (pct * 0.974).toFixed(1) + ' 100" transform="rotate(-90 18 18)"/></svg>';
   const L = [['drive', 'Carpeta Drive'], ['slides', 'Presentación'], ['canva', 'Canva']].filter(([k]) => isUrl(p[k]));
-  return '<aside class="pf-side">' +
+  const rs = respCli(p).filter(c => tipoResp(c.texto) !== 'cal').slice(0, 4);
+  const tIdx = id => e.findIndex(x => x._id === id), tN = id => (e.find(x => x._id === id) || {}).n || '';
+  const verbo = c => { const t = tipoResp(c.texto), n = c.entidad === 'tarea' && tN(c.entidad_id) ? '«' + tN(c.entidad_id) + '»' : 'el proyecto'; return t === 'ok' ? 'aprobó ' + n : t === 'cambios' ? 'pidió cambios en ' + n : 'escribió sobre ' + n; };
+  const cliCard = rs.length ? '<section class="pf-card pf-cli"><h3>Del cliente</h3><ul>' + rs.map(c => { const t = tipoResp(c.texto), i = c.entidad === 'tarea' ? tIdx(c.entidad_id) : -1, resto = String(c.texto || '').replace(/^✓ Aprobado:?\s*|^Pidió cambios:\s*/i, '');
+    return '<li><span class="pf-cli-i ' + t + '" aria-hidden="true">' + (t === 'ok' ? '✓' : t === 'cambios' ? '✎' : '💬') + '</span><span><b>' + esc((c.autor_nombre || 'El cliente').split(' ')[0]) + '</b> ' + esc(verbo(c)) + (t !== 'ok' && resto ? '<em>' + esc(resto.slice(0, 140)) + '</em>' : '') + '<small>' + haceTxt(c.created_at) + (i >= 0 ? ' · <button class="lnk" data-act="tkAbrir" data-id="' + esc(p._id) + '" data-i="' + i + '">Ver</button>' : '') + '</small></span></li>'; }).join('') + '</ul></section>' : '';
+  return '<aside class="pf-side">' + cliCard +
     '<section class="pf-card"><div class="pf-av">' + ring + '<b>' + pct + '%</b></div><div class="pf-st"><span><b>' + hechas + '</b> de ' + e.length + ' tareas hechas</span>' + (venc ? '<span class="crit"><b>' + venc + '</b> vencida' + (venc > 1 ? 's' : '') + '</span>' : '') + (prox ? '<span>Próxima: <b>' + esc(prox.n) + '</b> · ' + fechaTarea(prox.fecha) + '</span>' : '') + (p.entrega && isOpen(p) ? '<span>Entrega pactada <b>' + fmt(p.entrega) + '</b> ' + daysBadge(p) + '</span>' : '') + '</div></section>' +
     '<section class="pf-card"><h3>Equipo</h3>' + (gente.length ? '<div class="pf-gente">' + gente.map(a => { const n = e.filter(x => x.resp === a && !x.ok).length; return '<span class="who1">' + av(a, fotoDe(a)) + '<span><b>' + esc(a) + '</b><small>' + (n ? n + ' tarea' + (n > 1 ? 's' : '') + ' pendiente' + (n > 1 ? 's' : '') : 'sin tareas pendientes') + '</small></span></span>'; }).join('') + '</div>' : '<p class="muted">Nadie asignado todavía.</p>') + '<div style="margin-top:8px">' + picker('proyecto', p) + '</div></section>' +
     (L.length ? '<section class="pf-card"><h3>Archivos</h3><div class="pf-links">' + L.map(([k, l]) => '<a class="btn sm" href="' + esc(p[k]) + '" target="_blank" rel="noopener">' + l + ' ↗</a>').join('') + '</div></section>' : '') +
@@ -2293,7 +2310,7 @@ async function start(sess) {
   if (isExt()) S.yo = me.alias; else if (!S.yo) S.yo = me.alias;
   render();
   await reload();
-  data.live(reload, s => { if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') { S.status = 'offline'; render(); } }, (tabla, ev) => { if (tabla === 'piezas') { if (RED) RED.enVivo(ev); } else { hil().enVivo(tabla, ev); if (tabla === 'comentarios' && RED) RED.pedidosVivo(); } });
+  data.live(reload, s => { if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') { S.status = 'offline'; render(); } }, (tabla, ev) => { if (tabla === 'piezas') { if (RED) RED.enVivo(ev); } else { hil().enVivo(tabla, ev); if (tabla === 'comentarios' && RED) RED.pedidosVivo(); if (tabla === 'comentarios') { S.pcli = {}; if (S.view === 'proyectos' && S.pficha) render(); } } });
   window.addEventListener('focus', reload);
 }
 

@@ -3044,6 +3044,19 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 .rm-mes-el{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:600}
 /* Tarea: cómo se ve en el portal del cliente */
 .tk-pb{flex:none;font-style:normal;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--surface-2);color:var(--muted);margin-left:6px}
+.tk-pb.aprob{background:color-mix(in srgb,var(--s-entregado) 18%,var(--surface));color:color-mix(in srgb,var(--s-entregado) 60%,var(--fg))}
+.tk-pb.camb{background:color-mix(in srgb,#f0a020 20%,var(--surface));color:color-mix(in srgb,#f0a020 45%,var(--fg))}
+.pf-cli .lnk{all:unset;cursor:pointer;color:var(--accent,#1d8fe1);font-weight:600}
+.pf-cli .lnk:hover{text-decoration:underline}
+.pf-card.pf-cli{display:block}
+.pf-cli h3{margin:0 0 12px}
+.pf-cli ul{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.pf-cli li{display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;align-items:start;font-size:13.5px;line-height:1.35}
+.pf-cli li em{display:block;font-style:normal;color:var(--muted);margin-top:2px}
+.pf-cli li small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+.pf-cli-i{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;font-size:13px;font-weight:700;background:var(--surface-2)}
+.pf-cli-i.ok{background:color-mix(in srgb,var(--s-entregado) 20%,var(--surface));color:color-mix(in srgb,var(--s-entregado) 60%,var(--fg))}
+.pf-cli-i.cambios{background:color-mix(in srgb,#f0a020 22%,var(--surface));color:color-mix(in srgb,#f0a020 50%,var(--fg))}
 .tk-pb.cli{background:color-mix(in srgb,var(--pz-cliente) 18%,var(--surface));color:color-mix(in srgb,var(--pz-cliente) 70%,var(--fg))}
 .tk-portal{flex-wrap:wrap}
 .tk-portal{display:flex}

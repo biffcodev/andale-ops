@@ -318,7 +318,9 @@ function hojaHtml(p) {
 function ahoraHtml(p) {
   const h = p.hoja || []; if (!h.length) return '';
   const actual = h.find(t => !t.hecha && t.en_curso) || h.find(t => !t.hecha), hechas = h.filter(t => t.hecha);
-  const paraOk = [...hechas].reverse().find(t => !aprobada(t.id) && !comsTarea(t.id).some(c => c.de_cliente && /^Pidió cambios/i.test(c.texto || '')));
+  // Se pide aprobar solo la última etapa terminada: aprobarla da por buenas las anteriores (no se pregunta por cada una).
+  const ultima = hechas[hechas.length - 1];
+  const paraOk = ultima && !aprobada(ultima.id) && !comsTarea(ultima.id).some(c => c.de_cliente && /^Pidió cambios/i.test(c.texto || '')) ? ultima : null;
   let out = '<div class="po-now">';
   if (paraOk) out += '<div class="po-now-b"><span class="po-now-k">Terminamos</span><b>' + esc(paraOk.titulo) + '</b><p class="muted">¿Te parece bien? Si lo aprobás, seguimos con lo que viene.</p><div class="po-acc"><button class="btn primary" data-act="pyAprobar" data-id="' + esc(paraOk.id) + '" data-n="' + esc(paraOk.titulo) + '">✓ Aprobar</button><button class="btn" data-act="pyCambios" data-id="' + esc(paraOk.id) + '" data-n="' + esc(paraOk.titulo) + '">Tengo cambios</button></div></div>';
   if (actual) out += '<div class="po-now-b"><span class="po-now-k">' + (actual.en_curso ? 'Ahora estamos en' : 'Lo que sigue') + '</span><b>' + esc(actual.titulo) + '</b><p class="muted">' + (actual.fecha ? 'Para el ' + fecha(actual.fecha) + '. ' : '') + (actual.hace ? 'Esta parte la necesitamos de vos.' : 'Si tenés algo para sumar, contanos.') + '</p><div class="po-acc"><button class="btn" data-act="pyComentar" data-id="' + esc(actual.id) + '" data-n="' + esc(actual.titulo) + '">Comentar esta etapa</button></div></div>';

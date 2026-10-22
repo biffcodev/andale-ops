@@ -387,6 +387,10 @@ export async function comentar(row) {
   if (res.error && cols.comentContactos && /menciones_contactos/.test(res.error.message || '')) { cols.comentContactos = false; res = await sb.from('comentarios').insert(fila()).select().single(); }
   return comUI(check(res));
 }
+// Lo que el cliente respondió desde el portal sobre un proyecto y sus etapas (aprobó, pidió cambios, comentó).
+export async function respuestasProyecto(pid) {
+  return check(await sb.from('comentarios').select('id,entidad,entidad_id,autor_nombre,texto,pedido,resuelto_at,created_at').eq('proyecto_id', pid).not('autor_contacto_id', 'is', null).order('created_at', { ascending: false }).limit(60)) || [];
+}
 // Lo que escribieron los contactos de un cliente desde el portal (comentarios, aprobaciones y pedidos de cambio).
 export async function comentariosDeCliente(cliente) {
   const id = idx.clienteId.get(cliente); if (!id) return [];
