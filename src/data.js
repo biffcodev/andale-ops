@@ -333,10 +333,12 @@ function tolerante(q) { return q.then(r => (r.error ? null : r.data || []), () =
 // Tarea en la forma que usa la interfaz (la misma que tenían en proyectos.etapas, más id, etapa, horas y plazo).
 function tareaUI(t) {
   return { _id: t.id, n: t.titulo, ok: !!t.hecha, est: t.en_curso ? 'curso' : '', resp: idx.personaAlias.get(t.responsable_id) || '', fecha: t.fecha || '', prio: t.prioridad || '', nota: t.nota || '',
-    etapa: t.etapa || '', horas: t.horas == null ? '' : +t.horas, plazo: t.plazo_dias == null ? '' : t.plazo_dias, hechaPor: idx.personaAlias.get(t.hecha_por) || '', hechaAt: t.hecha_at || '' };
+    etapa: t.etapa || '', horas: t.horas == null ? '' : +t.horas, plazo: t.plazo_dias == null ? '' : t.plazo_dias, hechaPor: idx.personaAlias.get(t.hecha_por) || '', hechaAt: t.hecha_at || '', portal: t.portal };
 }
 const tareaRow = x => ({ titulo: String(x.n || '').slice(0, 300), hecha: !!x.ok, en_curso: !x.ok && x.est === 'curso', responsable_id: x.resp ? (idx.personaId.get(x.resp) || null) : null,
-  fecha: x.fecha || null, prioridad: x.prio || '', nota: x.nota || '', etapa: x.etapa || '', horas: x.horas === '' || x.horas == null ? null : +x.horas, plazo_dias: x.plazo === '' || x.plazo == null ? null : Math.round(+x.plazo) });
+  fecha: x.fecha || null, prioridad: x.prio || '', nota: x.nota || '', etapa: x.etapa || '', horas: x.horas === '' || x.horas == null ? null : +x.horas, plazo_dias: x.plazo === '' || x.plazo == null ? null : Math.round(+x.plazo),
+  // portal (SQL 0043): 'ver', 'oculta' o 'hace'. Sin la columna no se manda.
+  ...(x.portal !== undefined ? { portal: x.portal || 'ver' } : {}) });
 // Guarda solo lo que cambió (así dos personas tocando tareas distintas del mismo proyecto no se pisan).
 export async function tareasSync(pid, prev, next) {
   const antes = new Map((prev || []).filter(x => x && x._id).map((x, i) => [x._id, { x, i: (prev || []).indexOf(x) }]));

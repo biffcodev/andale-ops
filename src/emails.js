@@ -110,8 +110,8 @@ export const PIES = {
 };
 
 /** Estructura común: fondo blanco, columna de 560px alineada a la izquierda. `filas` = HTML de <tr>. */
-export function layout({ cfg = {}, asunto = '', preheader = '', filas = '' }) {
-  const pie = PIES[cfg.pie_estilo] || PIES.editorial;
+export function layout({ cfg = {}, asunto = '', preheader = '', filas = '', pieEstilo = '' }) {
+  const pie = PIES[pieEstilo] || PIES[cfg.pie_estilo] || PIES.editorial;
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light">' +
     '<title>' + esc(asunto) + '</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">' +
     '<style>@font-face{font-family:Delight;font-weight:700;src:url(' + APP_URL + '/fonts/Delight-Bold.woff2) format("woff2")}body{margin:0;padding:0;background:#ffffff}a{color:' + INK + '}' +
@@ -194,19 +194,14 @@ export function libreEmail(d) {
   return { asunto, html: layout({ cfg: d.cfg, asunto, preheader: (d.mensaje || '').replace(/\s+/g, ' ').slice(0, 90), filas }), texto: textoPlano([d.mensaje, d.botonUrl, d.firma], d.cfg) };
 }
 
-/** Mail personal: se ve como uno escrito a mano (sin logo, sin botón grande, sin pie de agencia).
- *  Para avisos uno a uno (una mención, "tenés para revisar"): Gmail los trata como correspondencia y no como promoción. */
+/** Mail corto (avisos uno a uno: una mención, "tenés para revisar", "respondimos tu comentario").
+ *  Con la estética de àndale pero liviano, como una carta: logotipo, el mensaje, un botón, la firma y un pie de texto sin imágenes.
+ *  Sin etiqueta ni titular grande ni banda: así Gmail lo trata como correspondencia y no como promoción. */
 export function personalEmail(d) {
-  const asunto = d.asunto || 'àndale';
-  const par = t => '<p style="margin:0 0 14px">' + esc(t).replace(/\n/g, '<br>') + '</p>';
-  const cuerpo = String(d.mensaje || '').split(/\n{2,}/).filter(Boolean).map(par).join('') +
-    (d.linkUrl ? '<p style="margin:0 0 14px">' + esc(d.linkTexto || 'Ver') + ': <a href="' + esc(d.linkUrl) + '" style="color:#0B86C4">' + esc(d.linkUrl.replace(/^https?:\/\//, '')) + '</a></p>' : '');
-  const f = d.firma && typeof d.firma === 'object' ? [d.firma.saludo, d.firma.nombre, [d.firma.cargo, d.firma.marca || 'àndale'].filter(Boolean).join(' · '), d.firma.tel].filter(Boolean) : d.firma ? [String(d.firma)] : [];
-  const html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + esc(asunto) + '</title></head><body style="margin:0;padding:0">' +
-    '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2328;max-width:600px;padding:8px 4px">' + cuerpo +
-    (f.length ? '<p style="margin:18px 0 0;color:#444">' + f.map(esc).join('<br>') + '</p>' : '') + '</div></body></html>';
-  const texto = [d.mensaje, d.linkUrl ? (d.linkTexto || 'Ver') + ': ' + d.linkUrl : '', f.join('\n')].filter(Boolean).join('\n\n');
-  return { asunto, html, texto };
+  const asunto = d.asunto || 'àndale', cfg = { ...d.cfg }; if (!(cfg.contacto || []).length) cfg.contacto = [['hello@weareandale.com', 'mailto:hello@weareandale.com'], ['weareandale.com', 'https://weareandale.com/']];
+  const filas = B.mensaje(d.mensaje) + (d.linkUrl ? sp(6) + B.boton(d.linkTexto || 'Ver', d.linkUrl) : '') + sp(32) + B.firma(d.firma);
+  const texto = textoPlano([d.mensaje, d.linkUrl ? (d.linkTexto || 'Ver') + ': ' + d.linkUrl : '', d.firma], cfg);
+  return { asunto, html: layout({ cfg, asunto, preheader: String(d.mensaje || '').replace(/\s+/g, ' ').slice(0, 90), filas, pieEstilo: 'minimo' }), texto };
 }
 
 /** Plantillas para los mails de acceso de Supabase (se pegan en Authentication → Emails). */
