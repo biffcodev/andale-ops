@@ -2998,3 +2998,28 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 .rm-fn{grid-area:n;text-align:right;color:var(--muted)}
 .rm-fn b{color:var(--fg)}
 .rm-fb{grid-area:b;height:6px;background:color-mix(in srgb,var(--fg) 9%,var(--surface))}
+/* Planilla en lista: una línea por pieza, la fila entera abre la pieza */
+.rm-tbl tr.rm-row{cursor:pointer}
+.rm-tbl tr.rm-row td{vertical-align:middle;padding-top:10px;padding-bottom:10px}
+.rm-tbl tr.rm-row:hover td{background:color-mix(in srgb,var(--accent) 5%,var(--surface))}
+.rm-tbl .rm-cuando .rm-dia{margin:0}
+.rm-tbl .rm-hora{display:block;color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+.rm-tbl .rm-tema{min-width:260px;max-width:520px}
+.rm-tbl .rm-tema .rm-tags{margin-bottom:3px}
+.rm-tt{display:block;font-size:14px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rm-tbl .rm-resp-cli{color:var(--muted);font-style:italic;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.rm-tbl .rm-etc .pzst{background:var(--c);color:#fff;font-weight:700}
+.rm-tbl .rm-etc .rm-step .on{background:var(--c);color:#fff}
+.rm-ir{width:28px;text-align:center;color:var(--muted);font-size:20px;line-height:1}
+.rm-tbl tr.rm-row:hover .rm-ir{color:var(--accent-text,var(--accent))}
+@media (max-width:760px){
+  /* Planilla en lista en el celular: arte a la izquierda; cuándo, pieza, estado y quién a la derecha */
+  .rm-tbl.tbl-cel>table>tbody>tr.rm-row{display:grid;grid-template-columns:52px minmax(0,1fr);gap:6px 12px;padding:12px 44px 12px 14px;align-items:start}
+  .rm-tbl.tbl-cel tr.rm-row>td.rm-art{grid-column:1;grid-row:1/span 4;font-size:inherit}
+  .rm-tbl.tbl-cel tr.rm-row>td:not(.rm-art):not(.sel){grid-column:2}
+  .rm-tbl.tbl-cel tr.rm-row .rm-cuando{display:flex;gap:6px;align-items:baseline;font-size:13px}
+  .rm-tbl.tbl-cel tr.rm-row .rm-hora{display:inline}
+  .rm-tbl.tbl-cel tr.rm-row .rm-tema{min-width:0;max-width:none}
+  .rm-tbl.tbl-cel tr.rm-row .rm-tt{white-space:normal}
+  .rm-tbl.tbl-cel tr.rm-row .rm-qc .rm-quien{font-size:13px}
+}

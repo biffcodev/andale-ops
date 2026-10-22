@@ -333,7 +333,7 @@ export function initRedes(ctx) {
     const diaDe = z => z.fecha ? new Date(z.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '') : '';
     const quien = (z, corto) => { const q = qz.get(z._id);
       if (!q.roles.length) return '<span class="muted">—</span>';
-      return '<div class="rm-quien">' + (q.gente.length ? '<span class="avs">' + q.gente.map(a => av(a, fotoDe(a))).join('') + '</span>' : '') + '<span class="rm-qt"><b>' + (q.gente.length ? esc(q.gente.join(', ')) : '<span class="muted">Nadie con ese rol</span>') + '</b>' + (corto ? '' : '<small>' + esc(q.roles.join(' + ')) + (z.resp && q.gente.includes(z.resp) ? ' · elegida' : '') + '</small>') + '</span></div>'; };
+      return '<div class="rm-quien"' + (corto ? ' title="' + esc(q.roles.join(' + ') + (z.resp && q.gente.includes(z.resp) ? ' · elegida' : '')) + '"' : '') + '>' + (q.gente.length ? '<span class="avs">' + q.gente.map(a => av(a, fotoDe(a))).join('') + '</span>' : '') + '<span class="rm-qt"><b>' + (q.gente.length ? esc(q.gente.join(', ')) : '<span class="muted">Nadie con ese rol</span>') + '</b>' + (corto ? '' : '<small>' + esc(q.roles.join(' + ')) + (z.resp && q.gente.includes(z.resp) ? ' · elegida' : '') + '</small>') + '</span></div>'; };
     // Texto de la pieza: copy (o, en historias, lo que va escrito), hashtags y botones para copiar
     const cpsHtml = z => (z.copy || z.hashtags ? '<span class="rm-cps">' + (z.copy ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="copy">' + ICO_COPIAR + ' Copy</button>' : '') + (z.hashtags ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="hashtags">' + ICO_COPIAR + ' Hashtags</button>' : '') + (z.copy && z.hashtags ? '<button class="btn ghost sm" data-act="rmCopiar" data-id="' + esc(z._id) + '" data-k="todo" title="Copy y hashtags juntos, listos para pegar">' + ICO_COPIAR + ' Todo</button>' : '') + '</span>' : '');
     const textos = (z, lineas, sinBotones) => { const hist = esHistoria(z), txt = z.copy || (hist ? z.contenido : '') || '', ab = st.abiertos.has(z._id);
@@ -360,23 +360,23 @@ export function initRedes(ctx) {
     const cols = can ? 7 : 6;
     let semPrev = null, histPrev = false;
     const fila = z => {
-      const id = esc(z._id), d = can ? '' : ' disabled', sem = semDe(z), h = esHistoria(z);
+      const id = esc(z._id), sem = semDe(z), h = esHistoria(z);
       let cab = '';
       if (h && !histPrev) { cab += '<tr class="rm-hrow"><td colspan="' + cols + '">' + histSep(vis.filter(esHistoria).length) + '</td></tr>'; semPrev = null; }
       if (sem !== semPrev) cab += '<tr class="rm-sem"><td colspan="' + cols + '"><div class="rm-semr"><span>' + esc(sem) + '</span>' + (sem === 'Sin fecha' ? agendaBtn : '') + '</div></td></tr>';
       semPrev = sem; histPrev = h;
-      return cab + '<tr class="rm-row ' + (sel.has(z._id) ? 'sel ' : '') + (z.estado === 'Cambios' ? 'cambios' : '') + '" style="--fc:' + fmtColor(z.formato) + '">' +
+      // Lista compacta: una línea por pieza, solo lo justo para ubicarla. Tocar la fila abre la pieza para editarla.
+      return cab + '<tr class="rm-row ' + (sel.has(z._id) ? 'sel ' : '') + (z.estado === 'Cambios' ? 'cambios' : '') + '" style="--fc:' + fmtColor(z.formato) + ';--c:var(' + (PZ_COLOR[z.estado] || '--muted') + ')" data-act="rmPieza" data-id="' + id + '" title="Abrir para editar">' +
         (can ? '<td class="sel"><input type="checkbox" data-rmsel="' + id + '"' + (sel.has(z._id) ? ' checked' : '') + ' aria-label="Seleccionar"></td>' : '') +
         '<td class="rm-art">' + arteMini(z) + '</td>' +
-        '<td class="rm-cuando">' + (z.fecha ? '<span class="rm-dia">' + esc(diaDe(z)) + '</span>' : '') + '<input class="in sm rm-fe" type="date" value="' + esc(z.fecha) + '" data-pz="fecha" data-id="' + id + '"' + d + ' aria-label="Fecha"><input class="in sm rm-ho" type="time" value="' + esc(z.hora) + '" data-pz="hora" data-id="' + id + '"' + d + ' aria-label="Hora"></td>' +
-        '<td class="rm-tema">' + tags(z, d) + '<input class="in sm rm-tin" value="' + esc(z.tema) + '" placeholder="Tema" data-pz="tema" data-id="' + id + '"' + d + ' aria-label="Tema">' +
-        (z.contenido && !esHistoria(z) ? '<div class="rm-cont" title="Qué va en la pieza">' + contenidoHtml(z.contenido) + '</div>' : '') + textos(z, 6) +
+        '<td class="rm-cuando">' + (z.fecha ? '<span class="rm-dia">' + esc(diaDe(z)) + '</span>' + (z.hora ? '<span class="rm-hora">' + esc(z.hora) + '</span>' : '') : '<span class="muted">Sin fecha</span>') + '</td>' +
+        '<td class="rm-tema">' + tags(z, null) + '<b class="rm-tt">' + esc(z.tema || 'Sin tema') + '</b>' +
         (z.respuesta && z.estado === 'Cambios' ? '<span class="rm-resp-cli">“' + esc(z.respuesta.slice(0, 160)) + '”</span>' : '') + '</td>' +
-        '<td>' + listoCtl(m, z, can) + '</td>' +
-        '<td class="rm-qc">' + quien(z) + '</td>' +
-        '<td><button class="btn ghost sm" data-act="rmPieza" data-id="' + id + '" aria-label="Abrir pieza">⋯</button></td></tr>';
+        '<td class="rm-etc">' + listoCtl(m, z, can) + '</td>' +
+        '<td class="rm-qc">' + quien(z, true) + '</td>' +
+        '<td class="rm-ir" aria-hidden="true">›</td></tr>';
     };
-    return '<div class="rm-pl">' + briefHtml(m, can) + tools + bulk + '<section class="sheet"><div class="tbl rm-tbl"><table><thead><tr>' + (can ? '<th class="sel"><input type="checkbox" data-rmselall="' + esc(m._id) + '" aria-label="Seleccionar las que se ven"></th>' : '') + '<th>Arte</th><th>Cuándo</th><th>Pieza</th><th>Etapa</th><th title="Según el rol de cada uno en la cuenta y el estado de la pieza">Le toca a</th><th></th></tr></thead><tbody>' +
+    return '<div class="rm-pl">' + briefHtml(m, can) + tools + bulk + '<section class="sheet"><div class="tbl rm-tbl"><table><thead><tr>' + (can ? '<th class="sel"><input type="checkbox" data-rmselall="' + esc(m._id) + '" aria-label="Seleccionar las que se ven"></th>' : '') + '<th data-cel="sin">Arte</th><th data-cel="sin">Cuándo</th><th data-cel="sin">Pieza</th><th data-cel="sin">Estado</th><th data-cel="sin" title="Según el rol de cada uno en la cuenta y el estado de la pieza">Le toca a</th><th data-cel="no"></th></tr></thead><tbody>' +
       vis.map(fila).join('') + '</tbody></table></div></section></div>';
   }
   // Tablero: una columna por estado; arrastrar una pieza a otra columna le cambia el estado (a Diseño, con una nota).
