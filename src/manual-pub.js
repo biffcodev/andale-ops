@@ -13,9 +13,10 @@ document.head.appendChild(css);
 const msg = t => { doc.innerHTML = '<p class="mm-msg">' + t + '</p>'; };
 
 function pintar(data, previa) {
-  document.title = (data.marca && data.marca.manual && data.marca.manual.version === 'simple' ? 'Guía de marca' : 'Manual de marca') + ' · ' + data.nombre;
+  const v = data.version || (data.marca && data.marca.manual && data.marca.manual.version) || 'completo';
+  document.title = (v === 'simple' ? 'Guía de marca' : 'Manual de marca') + ' · ' + data.nombre;
   cargarFuentesManual(kitDeTexto(data.marca || {}));
-  doc.innerHTML = manualHTML(data) + (previa ? '<div class="mm-aviso">Vista previa · así lo va a ver el cliente cuando lo publiques</div>' : '');
+  doc.innerHTML = manualHTML(data, { version: v }) + (previa ? '<div class="mm-aviso">Vista previa · ' + (v === 'simple' ? 'la guía pública' : 'el manual completo del cliente') + '</div>' : '');
   activarManual(doc);
 }
 async function cargar() {

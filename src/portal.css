@@ -409,3 +409,7 @@ div.po-row{cursor:default}
   .po-ri-x b{font-size:12px;-webkit-line-clamp:2}
   .po-redes .po-rv-b .po-acc-g{position:sticky;bottom:0;z-index:4;background:var(--surface);padding:12px 0 calc(12px + env(safe-area-inset-bottom));box-shadow:0 -12px 18px -16px rgba(0,0,0,.3)}
 }
+.po-mls{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin:0 0 18px}
+.po-ml{display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:14px;box-shadow:var(--elev);padding:12px 14px}
+.po-ml span{flex:1;display:grid;min-width:0}
+.po-ml b{font-size:14.5px}.po-ml small{color:var(--muted);font-size:12.5px}

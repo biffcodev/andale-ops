@@ -87,11 +87,14 @@ export function initKit(ctx) {
   }
   const fam = t => (t.url ? "'km-" + t.id + "', " : '') + "'" + String(t.familia || '').replace(/'/g, '') + "', system-ui, sans-serif";
 
+  // Dos versiones del manual: la guía (pública, para cualquiera) y el manual completo (para el cliente: lo ve en su portal
+  // y tiene su propio link para compartir si quiere). Los manuales viejos con version 'completo' cuentan como completo.
   const urlManual = man => location.origin + '/m/' + man.slug;
+  const urlCompleto = man => location.origin + '/m/' + man.slug_c;
+  const conCompleto = man => man.completo !== undefined ? !!man.completo : man.version !== 'simple' && !!(man.publicado || man.intro);
   function manualEstado(c) {
-    const man = (c.marca || {}).manual || {};
-    if (!man.publicado || !man.slug) return '';
-    return '<div class="km-pub"><span class="km-pub-d"></span><span>' + (man.version === 'simple' ? 'Guía de marca' : 'Manual de marca') + ' publicado: <a href="' + esc(urlManual(man)) + '" target="_blank" rel="noopener">' + esc(urlManual(man).replace(/^https?:\/\//, '')) + '</a></span><button class="btn ghost sm" data-act="kmCopiar" data-v="' + esc(urlManual(man)) + '">' + ICON.copiar + 'Copiar link</button></div>';
+    const man = (c.marca || {}).manual || {}, fila = (t, u) => '<div class="km-pub"><span class="km-pub-d"></span><span>' + t + ': <a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(u.replace(/^https?:\/\//, '')) + '</a></span><button class="btn ghost sm" data-act="kmCopiar" data-v="' + esc(u) + '">' + ICON.copiar + 'Copiar link</button></div>';
+    return (man.publicado && man.slug ? fila('Guía de marca pública', urlManual(man)) : '') + (conCompleto(man) && man.slug_c ? fila('Manual completo (para el cliente)', urlCompleto(man)) : '');
   }
   function html(c) {
     const kit = kitDe(c), can = isStaff(), id = esc(c._id), m = c.marca || {};
@@ -220,42 +223,44 @@ export function initKit(ctx) {
     S.form = null; st.edit = { cid: c._id, k: 'manual' };
     const radio = (name, opts, val) => '<div class="seg km-seg km-seg2" role="radiogroup">' + opts.map(([v, l, d]) => '<label><input type="radio" name="' + name + '" value="' + v + '"' + (val === v ? ' checked' : '') + '><span><b>' + l + '</b>' + (d ? '<small>' + d + '</small>' : '') + '</span></label>').join('') + '</div>';
     document.getElementById('panel').innerHTML = '<form id="kmform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(c.nombre) + '</span><h2 id="panel-title">Manual online</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
-      '<div class="panel-b"><p class="formnote full">Una página con el logo, los colores, las tipografías y las descargas de la marca, armada con el kit y la ficha. La ve cualquiera que tenga el link, sin entrar a nada.</p>' +
-      '<div class="field full"><span class="lbl">Versión</span>' + radio('km-ver', [['completo', 'Manual completo', 'La marca la hicimos nosotros: esencia, logo con sus reglas, color, tipografía, imágenes, voz y descargas.'], ['simple', 'Guía simple', 'Con lo que nos pasó el cliente: logo, color, tipografía, estilo y descargas.']], man.version || 'completo') + '</div>' +
+      '<div class="panel-b"><p class="formnote full">Dos versiones armadas con el kit y la ficha. La <b>guía</b> es pública: logo, color, tipografía, aplicaciones y descargas, para cualquiera (imprentas, proveedores, medios). El <b>manual completo</b> suma la estrategia y la voz: lo ve el cliente en su portal y tiene su propio link, por si lo quiere compartir.</p>' +
+      '<div class="field full"><span class="lbl">Guía de marca (pública)</span>' + radio('km-pub', [['no', 'Sin publicar', 'Solo la ves vos con “Ver”.'], ['si', 'Publicada', 'Cualquiera con el link la ve, sin entrar a nada.']], man.publicado ? 'si' : 'no') + (man.slug ? '<span class="hint">' + esc(urlManual(man)) + '</span>' : '') + '</div>' +
+      '<div class="field full"><span class="lbl">Manual completo (para el cliente)</span>' + radio('km-comp', [['no', 'No', 'La marca no la hicimos nosotros: solo la guía.'], ['si', 'Sí', 'Lo ve en su portal, en Tu marca, con su link para compartir.']], conCompleto(man) ? 'si' : 'no') + (man.slug_c ? '<span class="hint">' + esc(urlCompleto(man)) + '</span>' : '') + '</div>' +
       '<div class="field full km-est"><h3 class="km-ph">Estrategia <span class="muted">va al principio del manual completo</span></h3></div>' +
-      '<div class="field full km-sc"><label for="km-intro">Esencia (abre el manual completo)</label><textarea id="km-intro" rows="4" placeholder="En dos o tres frases: qué es la marca, qué la mueve y cómo quiere que la recuerden.">' + esc(man.intro || '') + '</textarea></div>' +
+      '<div class="field full km-sc"><label for="km-intro">Esencia en dos o tres frases (abre la portada)</label><textarea id="km-intro" rows="4" placeholder="En dos o tres frases: qué es la marca, qué la mueve y cómo quiere que la recuerden.">' + esc(man.intro || '') + '</textarea></div>' +
       ESTRATEGIA.map(([k, l, ph, rows]) => '<div class="field full km-est"><label for="km-e-' + k + '">' + l + '</label><textarea id="km-e-' + k + '" rows="' + (rows || 3) + '" placeholder="' + esc(ph) + '">' + esc(man[k] || '') + '</textarea></div>').join('') +
       '<div class="field full"><h3 class="km-ph">Logo</h3></div>' +
       '<div class="field km-sc"><label for="km-resp">Área de respeto del logo</label><input id="km-resp" value="' + esc(man.respeto || '') + '" placeholder="Ej.: la altura de la “a” alrededor"></div>' +
       '<div class="field km-sc"><label for="km-min">Tamaño mínimo</label><input id="km-min" value="' + esc(man.minimo || '') + '" placeholder="Ej.: 24 px de alto / 10 mm"></div>' +
       '<div class="field full km-sc"><label for="km-no">Lo que no se hace con el logo (uno por renglón)</label><textarea id="km-no" rows="4" placeholder="No deformarlo\nNo cambiarle los colores\nNo ponerlo sobre fotos sin contraste\nNo agregarle sombras ni efectos">' + esc(man.no || '') + '</textarea></div>' +
-      '<div class="field full"><span class="lbl">¿Se puede ver?</span>' + radio('km-pub', [['no', 'Sin publicar', 'Solo lo ves vos con “Ver como cliente”.'], ['si', 'Publicado', 'Cualquiera con el link lo ve.']], man.publicado ? 'si' : 'no') + '</div>' +
-      (man.slug ? '<p class="formnote full">Link: <b>' + esc(urlManual(man)) + '</b></p>' : '') + '</div>' +
-      '<div class="panel-f"><span><button type="button" class="btn ghost" data-act="kmPrevia" data-id="' + esc(c._id) + '">' + ICON.ojo + 'Ver como cliente</button></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" id="kmsave">Guardar</button></span></div></form>';
+      '</div>' +
+      '<div class="panel-f"><span style="display:flex;gap:4px"><button type="button" class="btn ghost" data-act="kmPrevia" data-v="simple" data-id="' + esc(c._id) + '">' + ICON.ojo + 'Ver guía</button><button type="button" class="btn ghost" data-act="kmPrevia" data-v="completo" data-id="' + esc(c._id) + '">' + ICON.ojo + 'Ver completo</button></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" id="kmsave">Guardar</button></span></div></form>';
     document.getElementById('panel').hidden = false; document.getElementById('scrim').hidden = false;
   }
   const slugDe = n => String(n || 'marca').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) + '-' + Math.random().toString(36).slice(2, 7);
   // Ver como cliente: se abre el manual en otra pestaña, igual que lo ve la gente. Si todavía no está publicado,
   // la pestaña lee los datos que deja la app en este navegador (/m/previa) y avisa que es una vista previa.
-  function verComoCliente(c) {
-    const man = (c.marca || {}).manual || {};
-    if (man.publicado && man.slug) { window.open(urlManual(man), '_blank', 'noopener'); return; }
-    try { localStorage.setItem('mm-previa', JSON.stringify({ nombre: c.nombre, avatar: c.avatar || '', marca: c.marca || {} })); } catch (e) { toast('No se pudo abrir la vista previa en este navegador'); return; }
+  function verComoCliente(c, ver) {
+    const man = (c.marca || {}).manual || {}, v = ver || (conCompleto(man) ? 'completo' : 'simple');
+    if (v === 'simple' && man.publicado && man.slug) { window.open(urlManual(man), '_blank', 'noopener'); return; }
+    if (v === 'completo' && conCompleto(man) && man.slug_c) { window.open(urlCompleto(man), '_blank', 'noopener'); return; }
+    try { localStorage.setItem('mm-previa', JSON.stringify({ nombre: c.nombre, avatar: c.avatar || '', marca: c.marca || {}, version: v })); } catch (e) { toast('No se pudo abrir la vista previa en este navegador'); return; }
     window.open('/m/previa', '_blank');
   }
   async function guardarPanel() {
     const e = st.edit, c = e && cli(e.cid); if (!c) return;
-    const kit = kitDe(c), arr = [...(kit[e.k] || [])], i = e.i ? arr.findIndex(y => y.id === e.i) : -1, x = i >= 0 ? { ...arr[i] } : { id: uid() };
+    const kit = kitDe(c), arr = Array.isArray(kit[e.k]) ? [...kit[e.k]] : [], i = e.i ? arr.findIndex(y => y.id === e.i) : -1, x = i >= 0 ? { ...arr[i] } : { id: uid() };
     const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; }, r = n => (document.querySelector('input[name="' + n + '"]:checked') || {}).value || '';
     const b = document.getElementById('kmsave'); const listo = () => { if (b) { b.disabled = false; b.textContent = 'Guardar'; } };
     if (b) { b.disabled = true; b.textContent = 'Guardando…'; }
     try {
       if (e.k === 'uso') { await guardar(c, kit, { visual: v('km-uso') }); ctx.closeForm(); toast('Guardado'); return; }
       if (e.k === 'manual') {
-        const prev = (c.marca || {}).manual || {}, pub = r('km-pub') === 'si';
-        const man = { ...prev, ...Object.fromEntries(ESTRATEGIA.map(([k]) => [k, (document.getElementById('km-e-' + k) || {}).value || ''])), version: r('km-ver') || 'completo', intro: v('km-intro'), respeto: v('km-resp'), minimo: v('km-min'), no: (document.getElementById('km-no') || {}).value || '', publicado: pub, slug: prev.slug || slugDe(c.nombre) };
+        const prev = (c.marca || {}).manual || {}, pub = r('km-pub') === 'si', comp = r('km-comp') === 'si';
+        const man = { ...prev, ...Object.fromEntries(ESTRATEGIA.map(([k]) => [k, (document.getElementById('km-e-' + k) || {}).value || ''])), intro: v('km-intro'), respeto: v('km-resp'), minimo: v('km-min'), no: (document.getElementById('km-no') || {}).value || '',
+          publicado: pub, completo: comp, version: comp ? 'completo' : 'simple', slug: prev.slug || slugDe(c.nombre), slug_c: prev.slug_c || (comp ? slugDe(c.nombre) + '-c' : undefined) };
         await guardar(c, kit, { manual: man }); ctx.closeForm();
-        if (pub) { try { await navigator.clipboard.writeText(urlManual(man)); toast('Manual publicado. Copié el link.'); } catch (er) { toast('Manual publicado'); } } else toast('Guardado');
+        if (pub && !prev.publicado) { try { await navigator.clipboard.writeText(urlManual(man)); toast('Guía publicada. Copié el link.'); } catch (er) { toast('Guía publicada'); } } else toast(comp && !conCompleto(prev) ? 'Guardado. El cliente ya ve el manual completo en su portal.' : 'Guardado');
         return;
       }
       if (e.k === 'colores') { const h = normHex(v('km-hex')); if (!hexOk(h)) { toast('Poné el color como #RRGGBB'); listo(); return; } Object.assign(x, { hex: h, n: v('km-n'), rol: r('km-rol'), pantone: v('km-pms') }); }
@@ -306,7 +311,7 @@ export function initKit(ctx) {
   // Formatos de una pieza (desde el panel): se suben y se guardan al momento.
   async function formatosCambiar(fn) {
     const e = st.edit, c = e && cli(e.cid); if (!c) return;
-    const kit = kitDe(c), arr = [...(kit[e.k] || [])], i = arr.findIndex(y => y.id === e.i); if (i < 0) return;
+    const kit = kitDe(c), arr = Array.isArray(kit[e.k]) ? [...kit[e.k]] : [], i = arr.findIndex(y => y.id === e.i); if (i < 0) return;
     const nombre = (document.getElementById('km-n') || {}).value, cat = (document.querySelector('input[name="km-cat"]:checked') || {}).value;
     const x = { ...arr[i] }; x.archivos = (x.archivos && x.archivos.length ? x.archivos : formatos(x).map(f => ({ id: uid(), url: f.url, path: f.path, tipo: f.tipo || '', nombre: lindo(x.n).replace(/\s*\(ejemplo\)/i, '') + '.' + f.fmt.toLowerCase() }))).map(f => ({ ...f }));
     const quitar = await fn(x); if (quitar === false) return;
@@ -353,7 +358,7 @@ export function initKit(ctx) {
     kmEditar: t => { const c = cli(t.dataset.id); if (c) panel(c, t.dataset.k, t.dataset.i); },
     kmUso: t => { const c = cli(t.dataset.id); if (c) panelUso(c); },
     kmManual: t => { const c = cli(t.dataset.id); if (c) panelManual(c); },
-    kmPrevia: t => { const c = cli(t.dataset.id); if (c) verComoCliente(c); },
+    kmPrevia: t => { const c = cli(t.dataset.id); if (c) verComoCliente(c, t.dataset.v); },
     kmBorrar: () => borrar(),
     kmGf: async t => { const inp = document.getElementById('km-fam'); if (!inp) return; inp.value = t.dataset.f; st.gfLista = await gfLista(); gfPesos(t.dataset.f); document.querySelectorAll('.km-gf-i').forEach(b => b.classList.toggle('on', b === t)); },
     kmGfCat: t => { st.gfCat = t.dataset.v; document.querySelectorAll('[data-act="kmGfCat"]').forEach(b => b.classList.toggle('on', b === t)); gfBuscar(); },

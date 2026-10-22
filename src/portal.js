@@ -348,10 +348,13 @@ function vMarca() {
   const m = (S.cu && S.cu.marca) || {}, man = m.manual || {};
   cargarFuentesManual(kitDeTexto(m));
   seg('portal_vio', 'marca', 'Tu marca');
-  const link = man.publicado && man.slug ? location.origin + '/m/' + man.slug : '';
-  return '<section class="po-sec"><div class="po-sh"><div><h1>Tu marca</h1><p class="muted">Logo, colores, tipografías y todo lo de tu marca, para descargar y compartir con quien lo necesite.</p></div>' +
-    (link ? '<span class="po-mlink"><a class="btn" href="' + esc(link) + '" target="_blank" rel="noopener">Abrir en pantalla completa ↗</a><button class="btn ghost" data-act="copiarLink" data-v="' + esc(link) + '">Copiar link</button></span>' : '') + '</div>' +
-    manualHTML({ nombre: (S.cu.datos || {}).nombre || S.d.cliente.nombre, avatar: S.d.cliente.avatar, marca: m }, { embed: true }) + '</section>';
+  // El cliente ve el manual completo (si la marca la hicimos nosotros) y tiene los dos links: el suyo y la guía pública.
+  const completo = man.completo !== undefined ? !!man.completo : man.version !== 'simple';
+  const lc = completo && man.slug_c ? location.origin + '/m/' + man.slug_c : '', lp = man.publicado && man.slug ? location.origin + '/m/' + man.slug : '';
+  const boton = (u, t, d) => '<div class="po-ml"><span><b>' + t + '</b><small>' + d + '</small></span><a class="btn sm" href="' + esc(u) + '" target="_blank" rel="noopener">Abrir ↗</a><button class="btn ghost sm" data-act="copiarLink" data-v="' + esc(u) + '">Copiar link</button></div>';
+  return '<section class="po-sec"><div class="po-sh"><div><h1>Tu marca</h1><p class="muted">' + (completo ? 'Tu manual de marca completo: la estrategia, la voz, el logo, los colores, las tipografías y todo para descargar.' : 'Logo, colores, tipografías y todo lo de tu marca, para descargar y compartir con quien lo necesite.') + '</p></div></div>' +
+    (lc || lp ? '<div class="po-mls">' + (lc ? boton(lc, 'Manual completo', 'Es tuyo: compartilo con quien quieras.') : '') + (lp ? boton(lp, 'Guía de marca', 'La versión corta, para imprentas, proveedores o medios.') : '') + '</div>' : '') +
+    manualHTML({ nombre: (S.cu.datos || {}).nombre || S.d.cliente.nombre, avatar: S.d.cliente.avatar, marca: m }, { embed: true, version: completo ? 'completo' : 'simple' }) + '</section>';
 }
 // Tu cuenta: sus datos, lo que tiene contratado, el equipo de àndale, su gente, lo hecho juntos y la facturación.
 function vCuenta() {

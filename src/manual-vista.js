@@ -76,7 +76,7 @@ export function cargarFuentesManual(kit) {
 const fam = t => t ? (t.url ? "'mm-" + t.id + "', " : '') + "'" + String(t.familia || '').replace(/'/g, '') + "', " : '';
 
 export function manualHTML(d, o = {}) {
-  const m = d.marca || {}, kit = kitDeTexto(m), man = m.manual || {}, completo = man.version !== 'simple', embed = !!o.embed;
+  const m = d.marca || {}, kit = kitDeTexto(m), man = m.manual || {}, completo = (o.version || d.version) ? (o.version || d.version) === 'completo' : man.version !== 'simple', embed = !!o.embed;
   const cols = kit.colores.filter(c => hexOk(c.hex));
   const pri = (cols.find(c => /principal/i.test(c.rol)) || cols[0] || { hex: '#141414' }).hex, po = sobre(pri);
   const tinta = (cols.find(c => /texto/i.test(c.rol)) || {}).hex || '#141414', fondo = (cols.find(c => /fondo/i.test(c.rol)) || {}).hex || '#f4f2ee';
