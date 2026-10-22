@@ -12,6 +12,7 @@ export const TUTORIALES = {
 
 // Lo nuevo de la app, lo más reciente primero. roles: a quién le interesa (vacío = a todos).
 export const NOVEDADES = [
+  { f: '2026-10-21', t: 'Kit de marca', d: 'En la ficha del cliente → Marca: logos (sobre fondo claro, oscuro o del color de la marca), colores para copiar, tipografías con su muestra, imágenes y archivos para descargar, links y cómo se usa. Mr. Piggy lo puede completar leyendo el manual de marca.', roles: ['admin', 'equipo'] },
   { f: '2026-10-21', t: 'Proyectos en el portal del cliente', d: 'El cliente ve en qué estamos (la hoja de ruta con lo hecho, lo de ahora y lo que sigue), las fechas y lo que le toca a él. En cada tarea elegís si la ve, si la hace el cliente (la tilda desde el portal y te llega el aviso) o si es interna.', roles: ['admin', 'equipo'] },
   { f: '2026-10-21', t: 'Los estados se llaman igual en todos lados', d: 'Idea · En diseño · Lista para mandar · Con el cliente · Cambios pedidos · Aprobada · Programada · Publicada. Cada uno con su color, en la planilla, la lista, el tablero, el calendario y la pieza. Al lado del estado está el paso que sigue (Pasar a diseño, Está lista, Aprobó, Mandar de nuevo, Ya la programé).', roles: ['admin', 'equipo', 'externo'] },
   { f: '2026-10-17', t: 'Configuración ordenada', d: 'Seis pantallas por tema: Facturación, Mails, Trabajo y Redes, Integraciones, Automatizaciones y Datos de la app.', roles: ['admin'] },

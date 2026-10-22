@@ -241,6 +241,15 @@ export async function horasRango(desde, hasta) {
 
 export async function perfilGuardar(u) { const { error } = await sb.rpc('mi_perfil_guardar', { p_nombre: u.nombre || '', p_puesto: u.puesto || '', p_tel: u.tel || '', p_prefs: u.prefs || {} }); if (error) throw new Error(error.message); }
 export async function marcaGuardar(id, marca) { check(await sb.from('clientes').update({ marca }).eq('id', id)); }
+// Kit de marca (SQL 0044): archivos en el bucket público "marcas", en clientes/<id>/<carpeta>/.
+export async function kitSubir(clienteId, carpeta, file) {
+  const limpio = String(file.name || 'archivo').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '-').slice(-80);
+  const path = 'clientes/' + clienteId + '/' + carpeta + '/' + Date.now().toString(36) + '-' + limpio;
+  const up = await sb.storage.from('marcas').upload(path, file, { contentType: file.type || undefined, cacheControl: '31536000' });
+  if (up.error) { if (/bucket not found/i.test(up.error.message || '')) throw new Error('Falta correr el SQL 0044 en Supabase (kit de marca).'); throw friendly(up.error); }
+  return { path, url: sb.storage.from('marcas').getPublicUrl(path).data.publicUrl };
+}
+export async function kitBorrar(paths) { const ps = (paths || []).filter(Boolean); if (ps.length) { try { await sb.storage.from('marcas').remove(ps); } catch (e) { /* si no se pudo, queda el archivo suelto */ } } }
 
 /* ---------- Informes de redes ---------- */
 export function informeUI(x) {

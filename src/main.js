@@ -1271,7 +1271,7 @@ function vFicha() {
   const abRow = a => '<button class="row nod" data-act="edit" data-kind="abono" data-id="' + esc(a._id) + '"><span class="t"><b>' + esc(a.tipo === 'Ads' ? 'Ads' : abonoLabel(a)) + '</b><span>' + (resp(a).length ? [...resp(a)].sort((x, y) => ordenRol(rolDe(a, x)) - ordenRol(rolDe(a, y))).map(x => esc(x) + (rolDe(a, x) ? ' (' + esc(rolDe(a, x)) + ')' : '')).join(', ') : 'sin responsable') + '</span></span>' + abPill(a.estado) + '</button>';
   const preset = esc(JSON.stringify({ cliente: c.nombre }));
   const pendN = ms.filter(m => m.proximo && !m.hecho).length;
-  const tabs = [['resumen', 'Resumen'], ...(isAdmin() && ADM ? [['cuenta', 'Facturación']] : []), ['trabajos', 'Trabajos'], ...(isStaff() ? [['marca', 'Marca y voz' + (c.marca && Object.values(c.marca).some(Boolean) ? '' : ' <span class="tab-dot" title="Sin completar"></span>')]] : []),
+  const tabs = [['resumen', 'Resumen'], ...(isAdmin() && ADM ? [['cuenta', 'Facturación']] : []), ['trabajos', 'Trabajos'], ...(isStaff() ? [['marca', 'Marca' + (c.marca && Object.values(c.marca).some(Boolean) ? '' : ' <span class="tab-dot" title="Sin completar"></span>')]] : []),
     ['conv', 'Conversaciones' + (pendN ? ' <span class="snav-n hot">' + pendN + '</span>' : '')], ...(conTabla() && (isStaff() || contactosDe(c.nombre).length) ? [['contactos', 'Contactos']] : []), ...(isStaff() ? [['seguimiento', 'Seguimiento']] : [])];
   if (S.ctab === 'charlas' || S.ctab === 'mails') S.ctab = 'conv';
   const tab = tabs.some(t => t[0] === S.ctab) ? S.ctab : 'resumen';
@@ -1421,7 +1421,7 @@ const prf = () => PRF || (PRF = initPerfil({ S, esc, toast, data, $, avEditable,
 let FM = null;
 let AUT = null;
 const aut = () => AUT || (AUT = initAutomatizar({ S, esc, opt, toast, data, $, isAdmin, isStaff, render }));
-const fm = () => FM || (FM = initFichaMarca({ S, esc, toast, data, render, emptyBox, isStaff, closeForm }));
+const fm = () => FM || (FM = initFichaMarca({ S, esc, toast, data, render, emptyBox, isStaff, closeForm, confirmar }));
 let RLJ = null;
 const rlj = () => RLJ || (RLJ = initReloj({ S, esc, opt, toast, data, $, today, cmp }));
 let INF = null;

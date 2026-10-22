@@ -2,6 +2,7 @@
 // Es el contexto que usa Mr. Piggy para proponer contenido, escribir copys y armar informes con la voz de la marca.
 // Se puede completar a mano o pedirle a Mr. Piggy que la arme con el brief, las notas y los copys ya aprobados.
 import { ICON } from './iconos.js';
+import { initKit, kitDeTexto } from './kitmarca.js';
 
 export const CAMPOS_MARCA = [
   { k: 'rubro', l: 'Qué hace la marca', rows: 2, ph: 'Ej.: hamburguesería de barrio en Córdoba, con delivery propio y local en Nueva Córdoba' },
@@ -82,12 +83,20 @@ export async function leerArchivos(files) {
   return out;
 }
 const lleno = m => m && CAMPOS_MARCA.some(f => String(m[f.k] || '').trim());
+// Lo visual (colores, tipografías, uso) se carga en el kit de marca; acá queda la parte conceptual.
+const VISUALES = ['colores', 'tipografias', 'visual'];
+const VOZ = CAMPOS_MARCA.filter(f => !VISUALES.includes(f.k));
 
 export function initFichaMarca(ctx) {
   const { S, esc, toast, data, render, emptyBox, isStaff } = ctx;
-  const st = { busy: false, fuentes: null, nota: '' };
+  const st = { busy: false, fuentes: null, nota: '', borr: null };
+  const KIT = initKit(ctx);
 
   function html(c) {
+    if (c.marca === undefined) return voz(c);
+    return KIT.html(c) + voz(c);
+  }
+  function voz(c) {
     const m = c.marca || {}, can = isStaff();
     if (c.marca === undefined) return '<section class="sheet">' + emptyBox('Falta un paso en la base de datos', 'Para guardar la ficha de marca hay que correr el SQL 0018 en Supabase.') + '</section>';
     const piggy = '<button class="btn sm" data-act="fmIA" data-id="' + esc(c._id) + '"' + (st.busy ? ' disabled' : '') + '>' + ICON.ia + (st.busy ? (st.busy === 'doc' ? 'Leyendo los documentos…' : 'Leyendo brief y copys…') : lleno(m) ? 'Actualizar con Mr. Piggy' : 'Que la arme Mr. Piggy') + '</button>' +
@@ -103,14 +112,12 @@ export function initFichaMarca(ctx) {
       (chips(m.pilares).length ? '<div class="fm-i"><span>Pilares de contenido</span><div class="fm-chips">' + chips(m.pilares).map(x => '<b>' + esc(x) + '</b>').join('') + '</div></div>' : '') +
       item('Usa', m.palabras_si) + item('Nunca', m.palabras_no) + item('Hashtags', m.hashtags) + item('Fechas importantes', m.fechas) + item('Referencias', m.referencias) +
       (m.ejemplos ? '<div class="fm-i w2"><span>Copys que suenan a la marca</span><p class="fm-ej">' + esc(m.ejemplos) + '</p></div>' : '') +
-      (m.colores ? '<div class="fm-i w2"><span>Colores</span><div class="fm-cols">' + chips(m.colores).map(x => { const hx = (x.match(/#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/i) || [])[0]; return '<span class="fm-col">' + (hx ? '<i style="background:' + esc(hx) + '"></i>' : '') + esc(x) + '</span>'; }).join('') + '</div></div>' : '') +
-      item('Tipografías', m.tipografias) + item('Estilo visual', m.visual, 'w2') +
       ((m.fuentes || []).length ? '<p class="fm-fuentes">' + ICON.doc + 'Leído de: ' + esc(m.fuentes.map(f => f.nombre).join(', ')) + '</p>' : '') + '</div></section>';
   }
   function editar(c, borrador) {
     const m = borrador || c.marca || {};
-    S.form = null; S.fmf = c._id;
-    const campo = f => '<div class="field' + (f.tipo === 'select' ? '' : ' full') + '"><label for="fm-' + f.k + '">' + esc(f.l) + '</label>' +
+    S.form = null; S.fmf = c._id; st.borr = borrador || null;
+    const campo = f => VISUALES.includes(f.k) ? '' : '<div class="field' + (f.tipo === 'select' ? '' : ' full') + '"><label for="fm-' + f.k + '">' + esc(f.l) + '</label>' +
       (f.tipo === 'select' ? '<select id="fm-' + f.k + '">' + f.opts.map(o => '<option value="' + esc(o) + '"' + ((m[f.k] || '') === o ? ' selected' : '') + '>' + esc(o || '—') + '</option>').join('') + '</select>'
         : f.rows > 1 ? '<textarea id="fm-' + f.k + '" rows="' + f.rows + '" placeholder="' + esc(f.ph || '') + '">' + esc(m[f.k] || '') + '</textarea>' : '<input id="fm-' + f.k + '" value="' + esc(m[f.k] || '') + '" placeholder="' + esc(f.ph || '') + '">') + '</div>';
     document.getElementById('panel').innerHTML = '<form id="fmform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(c.nombre) + '</span><h2 id="panel-title">Marca y voz</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
@@ -120,13 +127,16 @@ export function initFichaMarca(ctx) {
   }
   async function guardar() {
     const c = S.C.find(x => x._id === S.fmf); if (!c) return;
-    const m = {}; CAMPOS_MARCA.forEach(f => { const el = document.getElementById('fm-' + f.k); if (el) m[f.k] = el.value.trim(); });
+    // Se guarda todo lo que ya tenía (kit, horarios…) más lo del formulario; lo que Mr. Piggy leyó de colores y tipografías completa el kit si está vacío.
+    const m = { ...(st.borr || c.marca || {}) }; VOZ.forEach(f => { const el = document.getElementById('fm-' + f.k); if (el) m[f.k] = el.value.trim(); });
+    if (st.borr) m.kit = kitDeTexto(m);
     m.actualizado = new Date().toISOString().slice(0, 10);
     if (c.marca && c.marca.horarios) m.horarios = c.marca.horarios; // los horarios de la cuenta (Redes → Fechas y horarios con Mr. Piggy)
+    if (c.marca && c.marca.kit && !st.borr) m.kit = c.marca.kit;
     const prev = (c.marca && c.marca.fuentes) || [], nuevas = (st.fuentes || []).map(nombre => ({ nombre, fecha: m.actualizado }));
     m.fuentes = [...prev.filter(f => !nuevas.some(n => n.nombre === f.nombre)), ...nuevas].slice(-12);
     const b = document.getElementById('fmsave'); if (b) { b.disabled = true; b.textContent = 'Guardando…'; }
-    try { await data.marcaGuardar(c._id, m); c.marca = m; st.fuentes = null; st.nota = ''; ctx.closeForm(); toast('Ficha de marca guardada'); render(); }
+    try { await data.marcaGuardar(c._id, m); c.marca = m; st.fuentes = null; st.nota = ''; st.borr = null; ctx.closeForm(); toast('Ficha de marca guardada'); render(); }
     catch (e) { toast(/marca/.test(e.message) ? 'Falta correr el SQL 0018 en Supabase' : e.message); if (b) { b.disabled = false; b.textContent = 'Guardar'; } }
   }
   // Mr. Piggy arma (o actualiza) la ficha con lo que hay: brief, notas, servicios y copys aprobados.
@@ -169,5 +179,5 @@ export function initFichaMarca(ctx) {
     const c = S.C.find(x => x._id === t.dataset.fmdoc), fs = [...(t.files || [])]; t.value = '';
     if (c && fs.length && !st.busy) conIA(c, fs);
   });
-  return { html, acts, contexto, lleno };
+  return { html, acts: { ...acts, ...KIT.acts }, contexto, lleno };
 }
