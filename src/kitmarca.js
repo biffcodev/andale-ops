@@ -10,7 +10,9 @@ import { perfilRed, CEL_CSS } from './celular.js';
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ROLES_COLOR = ['Principal', 'Secundario', 'Acento', 'Fondo', 'Texto'];
 // Categorías de los archivos del kit (las aplicaciones de la marca)
-export const CATS = [['fotos', 'Fotos'], ['mockups', 'Aplicaciones de marca'], ['iconos', 'Íconos'], ['papeleria', 'Papelería y documentos'], ['redes', 'Perfiles y portadas de redes'], ['videos', 'Videos'], ['plantillas', 'Plantillas'], ['texturas', 'Patrones y texturas'], ['graficos', 'Ilustraciones y stickers'], ['otros', 'Otros']];
+export const CATS = [['fotos', 'Fotos'], ['iconos', 'Íconos'], ['papeleria', 'Papelería y documentos'], ['redes', 'Perfiles y portadas de redes'], ['videos', 'Videos'], ['plantillas', 'Plantillas'], ['texturas', 'Patrones y texturas'], ['graficos', 'Ilustraciones y stickers'], ['mockups', 'Mockups'], ['otros', 'Otros']];
+// Lo que hay que aclarar de un tipo: los mockups son ejemplos, no piezas hechas
+export const CAT_NOTA = { mockups: 'Ejemplos de cómo podría verse la marca aplicada. No son piezas hechas ni archivos para producir.' };
 // Redes: a qué red va cada perfil, portada o plantilla, y para qué se usa
 export const REDES_KIT = ['instagram', 'facebook', 'linkedin', 'tiktok', 'youtube', 'x'];
 export const redDe = x => x.red || (REDES_KIT.find(k => new RegExp(k === 'x' ? '\\b(twitter|x)\\b' : k, 'i').test(x.n || '')) || '');
@@ -155,7 +157,7 @@ export function initKit(ctx) {
       return chips + '<div class="km-red-w">' + grilla(k, vis) + '<div class="km-red-p"><span class="km-red-pt">Así se ve en ' + esc((REDES.find(y => y[0] === sel) || [sel, sel])[1]) + '</span>' + perfilRed({ nombre: c.nombre, avatar: perfil }, sel, { portada, posts, historias: de('historia').map(x => x.url), bio: (m.rubro || '').slice(0, 120) }) + '</div></div>';
     };
     const faltan = CATS.filter(([k]) => !recursosG.some(g => g[0] === k));
-    const recursos = (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><div class="km-gh"><h4>' + esc(l) + '</h4><span class="km-n">' + xs.length + '</span><span class="km-sp"></span>' + subeCat(k, 'Subir', 'btn ghost sm km-up') + '</div>' +
+    const recursos = (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><div class="km-gh"><h4>' + esc(l) + '</h4><span class="km-n">' + xs.length + '</span><span class="km-sp"></span>' + subeCat(k, 'Subir', 'btn ghost sm km-up') + '</div>' + (CAT_NOTA[k] ? '<p class="km-gnota">' + esc(CAT_NOTA[k]) + '</p>' : '') +
         (k === 'redes' || k === 'plantillas' ? redesBloque(k, xs) : grilla(k, xs)) + '</div>').join('') : vacio('Subí cada cosa en su tipo. Si tenés la misma pieza en varios formatos (por ejemplo tarjeta.pdf, tarjeta.png y tarjeta.ai), subilos juntos y quedan como una sola con sus formatos.')) +
       (can && faltan.length ? '<div class="km-mas"><span>' + (recursosG.length ? 'Sumar otro tipo' : 'Subir') + '</span>' + faltan.map(([k, l]) => subeCat(k, l, 'km-cat-b')).join('') + '</div>' : '');
 

@@ -4,7 +4,7 @@
 // imágenes, aplicaciones (íconos, papelería, redes, videos, plantillas), voz y descargas.
 // Dos versiones: "completo" (la marca la hicimos nosotros) y "simple" (guía con lo que nos pasó el cliente).
 // Lo usan la página pública /m/<link>, "Ver como cliente" desde la app y la pestaña Tu marca del portal (embed).
-import { kitDeTexto, CATS, catDe, formatos, redDe, usoDe, REDES_KIT, esVF } from './kitmarca.js';
+import { kitDeTexto, CATS, CAT_NOTA, catDe, formatos, redDe, usoDe, REDES_KIT, esVF } from './kitmarca.js';
 import { perfilRed, plantillaRed, tabsRedes, CEL_CSS } from './celular.js';
 import { nombreRed } from './redes-logos.js';
 import { activarVisor } from './visor.js';
@@ -177,12 +177,15 @@ export function manualHTML(d, o = {}) {
     (graf.length ? '<h3 class="mm-h3 rv">Ilustraciones y stickers</h3>' + appGrid('graficos', graf) : ''), 'Identidad visual']);
 
   // ── Aplicaciones (se amplían antes de bajar)
-  const apps = CATS.filter(([k]) => !['fotos', 'texturas', 'otros', 'redes', 'plantillas', 'graficos'].includes(k)).map(([k, l]) => [k, l, recs.filter(r => r.cat === k)]).filter(x => x[2].length);
+  const apps = CATS.filter(([k]) => !['fotos', 'texturas', 'otros', 'redes', 'plantillas', 'graficos', 'mockups'].includes(k)).map(([k, l]) => [k, l, recs.filter(r => r.cat === k)]).filter(x => x[2].length);
   if (apps.length) secs.push(['aplicaciones', 'Aplicaciones', apps.map(([k, l, xs]) => '<div class="mm-app"><h3 class="mm-h3 rv">' + esc(l) + '</h3>' + appGrid(k, xs) + '</div>').join(''), 'Aplicaciones']);
-  function appGrid(k, xs) {
+  // Mockups: cómo podría verse la marca aplicada. Van aparte de las piezas hechas, se amplían pero no se bajan.
+  const mocks = recs.filter(r => r.cat === 'mockups' && esImg(r.tipo, r.url));
+  if (mocks.length) secs.push(['mockups', apps.length ? 'Así podría verse' : 'La marca aplicada', rv('<p class="mm-nota">' + esc(CAT_NOTA.mockups) + '</p>') + appGrid('mockups', mocks, true), 'Aplicaciones']);
+  function appGrid(k, xs, sinBajar) {
     return '<div class="mm-app-g g-' + k + '" data-visor-grupo>' + xs.map((r, i) => rv('<figure class="mm-ap">' +
       (esVid(r.tipo, r.url) ? '<div class="mm-ap-m vid"><video src="' + esc(r.url) + '" controls playsinline preload="metadata"></video></div>' : esImg(r.tipo, r.url) ? '<div class="mm-ap-m"' + ver(r) + ' data-autobg="' + esc(r.url) + '"><img src="' + esc(r.url) + '" alt="' + esc(r.n) + '" loading="lazy"><span class="mm-zoom" aria-hidden="true">' + I.zoom + '</span></div>' : '<div class="mm-ap-m doc"><span>' + esc(ext(r.url) || 'ARCHIVO') + '</span></div>') +
-      '<figcaption><b>' + esc(r.n) + '</b>' + bajarX(r) + '</figcaption></figure>', (i % 4) * 70)).join('') + '</div>';
+      '<figcaption><b>' + esc(r.n) + '</b>' + (sinBajar ? '' : bajarX(r)) + '</figcaption></figure>', (i % 4) * 70)).join('') + '</div>';
   }
 
   // ── Redes: el perfil en cada red (foto y portada) y las plantillas puestas como publicación o historia
@@ -217,7 +220,7 @@ export function manualHTML(d, o = {}) {
     if (!fs.length && x.familia) return rv('<a class="mm-file" href="' + gfLink(x) + '" target="_blank" rel="noopener">' + ico + '<span class="mm-fn"><b>' + esc(x.familia) + '</b><small>Google Fonts</small></span>' + I.ext + '</a>', (i % 4) * 50);
     return rv(fs.length > 1 ? '<div class="mm-file multi">' + ico + '<span class="mm-fn"><b>' + esc(x.n || x.familia) + '</b>' + bajarX(x) + '</span></div>'
       : fs[0] ? fLink(x, fs[0], 'mm-file', ico + '<span class="mm-fn"><b>' + esc(x.n || x.familia) + '</b><small>' + esc(fs[0].fmt) + '</small></span>' + I.dl) : '', (i % 4) * 50); };
-  const grupos = [['Logos', kit.logos], ['Tipografías', kit.tipos.map(t => ({ ...t, n: t.familia }))], ...CATS.map(([k, l]) => [l, recs.filter(r => r.cat === k)])].filter(g => g[1].length);
+  const grupos = [['Logos', kit.logos], ['Tipografías', kit.tipos.map(t => ({ ...t, n: t.familia }))], ...CATS.filter(([k]) => k !== 'mockups').map(([k, l]) => [l, recs.filter(r => r.cat === k)])].filter(g => g[1].length);
   if (grupos.length || kit.links.length) secs.push(['descargas', 'Descargas', guia + grupos.map(([l, xs]) => '<div class="mm-dg"><span class="mm-k rv">' + esc(l) + '</span><div class="mm-files">' + xs.map(fila).join('') + '</div></div>').join('') +
     (kit.links.length ? rv('<div class="mm-links">' + kit.links.map(x => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.n) + I.ext + '</a>').join('') + '</div>') : ''), 'Archivos']);
 
@@ -454,6 +457,7 @@ export const MANUAL_CSS = CEL_CSS + `
 .g-papeleria .mm-ap-m{padding:8%}
 .mm-app-g.g-mockups{grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr))}
 .g-mockups .mm-ap-m{aspect-ratio:3/2;background:#e9e9e4}
+.mm-nota{margin:0 0 28px;max-width:62ch;color:var(--mm-soft);font-size:15px;line-height:1.5}
 .g-mockups .mm-ap-m img{width:100%;height:100%;max-width:none;max-height:none;object-fit:cover}
 .g-papeleria .mm-ap-m img{box-shadow:0 20px 30px -18px rgba(0,0,0,.35);border-radius:4px}
 .g-redes,.g-plantillas{align-items:end}
