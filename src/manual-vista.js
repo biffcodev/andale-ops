@@ -4,7 +4,7 @@
 // imágenes, aplicaciones (íconos, papelería, redes, videos, plantillas), voz y descargas.
 // Dos versiones: "completo" (la marca la hicimos nosotros) y "simple" (guía con lo que nos pasó el cliente).
 // Lo usan la página pública /m/<link>, "Ver como cliente" desde la app y la pestaña Tu marca del portal (embed).
-import { kitDeTexto, CATS, catDe } from './kitmarca.js';
+import { kitDeTexto, CATS, catDe, formatos } from './kitmarca.js';
 import { LOGO } from './marca.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -16,6 +16,10 @@ const cmyk = h => { const [r, g, b] = rgb(h).map(v => v / 255), k = 1 - Math.max
 const esImg = (tipo, url) => /^image\//.test(tipo || '') || /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(url || '');
 const esVid = (tipo, url) => /^video\//.test(tipo || '') || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(url || '');
 const ext = u => ((String(u || '').split('?')[0].match(/\.([a-z0-9]{2,5})$/i) || [])[1] || '').toUpperCase();
+// Descargas por formato: si hay uno solo, el botón de bajar; si hay varios, un chip por formato (los editables con borde).
+const fmtN = (x, f) => String(x.n || x.familia || 'archivo').replace(/\s*\(ejemplo\)/i, '') + '.' + f.fmt.toLowerCase();
+const fLink = (x, f, cls, inner, lbl) => '<a class="' + cls + '" ' + (f.link ? 'href="' + esc(f.url) + '" target="_blank" rel="noopener"' : dlAttr(f.url, fmtN(x, f))) + ' title="' + (f.link ? 'Abrir en ' : 'Descargar ') + esc(f.fmt) + (f.ed ? ' (editable)' : '') + '"' + (lbl ? ' aria-label="' + esc(lbl) + '"' : '') + '>' + inner + '</a>';
+const bajarX = x => { const fs = formatos(x); return fs.length > 1 ? '<span class="mm-fxs">' + fs.map(f => fLink(x, f, 'mm-fx' + (f.ed ? ' ed' : ''), esc(f.fmt))).join('') + '</span>' : fs[0] ? fLink(x, fs[0], 'mm-dl', I.dl, 'Descargar ' + (x.n || '')) : ''; };
 const dlAttr = (url, n) => /\/storage\/v1\/object\/public\//.test(url) ? 'href="' + esc(url + (url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(n || '')) + '"' : 'href="' + esc(url) + '" download="' + esc(n || '') + '"';
 const PESO = { 100: 'Thin', 200: 'Extralight', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extrabold', 900: 'Black' };
 const S = (d, w = 18) => '<svg viewBox="0 0 24 24" width="' + w + '" height="' + w + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
@@ -83,7 +87,7 @@ export function manualHTML(d, o = {}) {
     const nos = lineas(man.no), base = logoPara('claro');
     secs.push(['logo', 'Logo', (stage ? rv(stage) : '') +
       (specs.length ? '<div class="mm-specs n' + specs.length + '">' + specs.map(([k, v], i) => rv(card(k, v), i * 100)).join('') + '</div>' : '') +
-      '<h3 class="mm-h3 rv">Versiones</h3><div class="mm-logos">' + kit.logos.map((l, i) => rv('<figure class="mm-logo"><div class="mm-lf f-' + esc(l.fondo || 'claro') + '">' + (esImg(l.tipo, l.url) ? '<img src="' + esc(l.url) + '" alt="' + esc(l.n) + '" loading="lazy">' : '<span class="mm-ext">' + esc(ext(l.url) || 'ARCHIVO') + '</span>') + '</div><figcaption><b>' + esc(l.n) + '</b><a class="mm-dl" ' + dlAttr(l.url, l.n) + ' aria-label="Descargar ' + esc(l.n) + '">' + I.dl + '</a></figcaption></figure>', (i % 4) * 80)).join('') + '</div>' +
+      '<h3 class="mm-h3 rv">Versiones</h3><div class="mm-logos">' + kit.logos.map((l, i) => rv('<figure class="mm-logo"><div class="mm-lf f-' + esc(l.fondo || 'claro') + '">' + (esImg(l.tipo, l.url) ? '<img src="' + esc(l.url) + '" alt="' + esc(l.n) + '" loading="lazy">' : '<span class="mm-ext">' + esc(ext(l.url) || 'ARCHIVO') + '</span>') + '</div><figcaption><b>' + esc(l.n) + '</b>' + bajarX(l) + '</figcaption></figure>', (i % 4) * 80)).join('') + '</div>' +
       (nos.length ? '<h3 class="mm-h3 rv">Lo que no hacemos con el logo</h3><div class="mm-nos">' + nos.map((x, i) => rv('<div class="mm-no">' + (base ? '<div class="mm-no-v"><img src="' + esc(base.url) + '" alt="" style="' + MAL[i % MAL.length] + '"><span class="mm-x" aria-hidden="true"></span></div>' : '') + '<p>' + esc(x) + '</p></div>', (i % 3) * 80)).join('') + '</div>' : '')]);
   }
   if (cols.length) {
@@ -112,7 +116,7 @@ export function manualHTML(d, o = {}) {
   const apps = CATS.filter(([k]) => !['fotos', 'texturas', 'otros'].includes(k)).map(([k, l]) => [k, l, recs.filter(r => r.cat === k)]).filter(x => x[2].length);
   if (apps.length) secs.push(['aplicaciones', 'Aplicaciones', apps.map(([k, l, xs]) => '<div class="mm-app"><h3 class="mm-h3 rv">' + esc(l) + '</h3><div class="mm-app-g g-' + k + '">' + xs.map((r, i) => rv('<figure class="mm-ap' + (/perfil|avatar/i.test(r.n) ? ' perfil' : '') + '">' +
     (esVid(r.tipo, r.url) ? '<div class="mm-ap-m vid"><video src="' + esc(r.url) + '" controls playsinline preload="metadata"></video></div>' : esImg(r.tipo, r.url) ? '<div class="mm-ap-m"><img src="' + esc(r.url) + '" alt="' + esc(r.n) + '" loading="lazy"></div>' : '<div class="mm-ap-m doc"><span>' + esc(ext(r.url) || 'ARCHIVO') + '</span></div>') +
-    '<figcaption><b>' + esc(r.n) + '</b><a class="mm-dl" ' + dlAttr(r.url, r.n) + ' aria-label="Descargar ' + esc(r.n) + '">' + I.dl + '</a></figcaption></figure>', (i % 4) * 70)).join('') + '</div></div>').join('')]);
+    '<figcaption><b>' + esc(r.n) + '</b>' + bajarX(r) + '</figcaption></figure>', (i % 4) * 70)).join('') + '</div></div>').join('')]);
   if (completo && (m.tono || m.palabras_si || m.palabras_no || m.ejemplos)) {
     const ds = decimos(m.palabras_si), no = oraciones(m.palabras_no), pil = lineas(m.pilares).map(x => { const [a, ...b] = x.split(':'); return [a.trim(), b.join(':').trim()]; });
     const ej = lineas(m.ejemplos).slice(0, 3), av = d.avatar ? '<img src="' + esc(d.avatar) + '" alt="">' : '<i>' + esc(String(d.nombre || '?').slice(0, 2)) + '</i>';
@@ -126,20 +130,18 @@ export function manualHTML(d, o = {}) {
       (ej.length ? '<h3 class="mm-h3 rv">Así suena</h3><div class="mm-posts">' + ej.map((x, i) => rv('<div class="mm-post"><div class="mm-post-h">' + av + '<b>' + esc(String(d.nombre || '').toLowerCase().replace(/\s+/g, '')) + '</b></div><div class="mm-post-i" aria-hidden="true"><span>' + esc(String(d.nombre || '')) + '</span></div><p>' + esc(x) + (tags.length ? ' <em>' + esc(tags.slice(0, 3).join(' ')) + '</em>' : '') + '</p></div>', i * 100)).join('') + '</div>' : '')]);
   }
   const grupos = [['Logos', kit.logos.map(x => ({ ...x }))], ['Tipografías', kit.tipos.filter(t => t.url).map(t => ({ ...t, n: t.n || t.familia }))], ...CATS.map(([k, l]) => [l, recs.filter(r => r.cat === k)])].filter(g => g[1].length);
-  if (grupos.length || kit.links.length) secs.push(['descargas', 'Descargas', grupos.map(([l, xs]) => '<div class="mm-dg"><span class="mm-k rv">' + esc(l) + '</span><div class="mm-files">' + xs.map((x, i) => rv('<a class="mm-file" ' + dlAttr(x.url, x.n) + '><span class="mm-fi' + (x.fondo ? ' f-' + esc(x.fondo) : '') + '">' + (esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="" loading="lazy">' : esc(ext(x.url) || '·')) + '</span><span class="mm-fn"><b>' + esc(x.n) + '</b><small>' + esc(ext(x.url) || 'Archivo') + '</small></span>' + I.dl + '</a>', (i % 4) * 50)).join('') + '</div></div>').join('') +
+  if (grupos.length || kit.links.length) secs.push(['descargas', 'Descargas', grupos.map(([l, xs]) => '<div class="mm-dg"><span class="mm-k rv">' + esc(l) + '</span><div class="mm-files">' + xs.map((x, i) => { const fs = formatos(x), ico = '<span class="mm-fi' + (x.fondo ? ' f-' + esc(x.fondo) : '') + '">' + (esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="" loading="lazy">' : esc((fs[0] || {}).fmt || '·')) + '</span>';
+      return rv(fs.length > 1 ? '<div class="mm-file multi">' + ico + '<span class="mm-fn"><b>' + esc(x.n) + '</b>' + bajarX(x) + '</span></div>'
+        : fs[0] ? fLink(x, fs[0], 'mm-file', ico + '<span class="mm-fn"><b>' + esc(x.n) + '</b><small>' + esc(fs[0].fmt) + '</small></span>' + I.dl) : '', (i % 4) * 50); }).join('') + '</div></div>').join('') +
     (kit.links.length ? rv('<div class="mm-links">' + kit.links.map(x => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.n) + I.ext + '</a>').join('') + '</div>') : '')]);
 
-  const marq = (d.nombre + '  ✦  ' + tituloDoc + '  ✦  ').repeat(6);
   const nav = secs.map(([id, t]) => '<a href="#' + id + '" data-mmnav="' + id + '">' + esc(t) + '</a>').join('');
-  const orbes = [pri, sec, ...cols.filter(c => !/fondo|texto/i.test(c.rol)).map(c => c.hex)].slice(0, 3);
   return '<div class="mm' + (embed ? ' embed' : '') + '" style="' + esc(vars) + '">' + (embed ? '' : '<div class="mm-prog" aria-hidden="true"><i></i></div>' +
     '<header class="mm-top"><a class="mm-marca" href="#top">' + (d.avatar ? '<img src="' + esc(d.avatar) + '" alt="">' : '') + '<b>' + esc(d.nombre) + '</b><span>' + tituloDoc + '</span></a><nav>' + nav + '</nav></header>') +
-    '<section class="mm-hero" id="top"><div class="mm-orbs" aria-hidden="true">' + orbes.map((c, i) => '<i style="--c:' + esc(c) + ';--i:' + i + '"></i>').join('') + '</div>' +
+    '<section class="mm-hero" id="top">' +
     '<div class="mm-hero-in">' + (heroLogo ? '<img class="mm-hl" src="' + esc(heroLogo.url) + '" alt="' + esc(d.nombre) + '">' : '<p class="mm-hn">' + esc(d.nombre) + '</p>') +
     '<h1 class="mm-ht" aria-label="' + tituloDoc + '">' + tituloDoc.split(' ').map((w, i) => '<span class="mm-w" style="--i:' + i + '"><span>' + esc(w) + '</span></span>').join(' ') + '</h1>' +
-    (man.intro && completo ? '<p class="mm-hs">' + esc(man.intro.split(/(?<=[.!?])\s/)[0]) + '</p>' : '') + '</div>' +
-    (embed ? '' : '<a class="mm-down" href="#' + (secs[0] ? secs[0][0] : 'top') + '" aria-label="Bajar">' + I.abajo + '</a>') +
-    '<div class="mm-marq" aria-hidden="true"><div><span>' + esc(marq) + '</span><span>' + esc(marq) + '</span></div></div></section>' +
+    (man.intro ? '<p class="mm-hs">' + esc(man.intro.replace(/\s*\(texto de ejemplo\)\s*/i, ' ').split(/(?<=[.!?])\s/)[0].trim()) + '</p>' : '') + '</div></section>' +
     (embed && secs.length ? '<nav class="mm-enav">' + nav + '</nav>' : '') +
     secs.map(([id, t, h], i) => '<section class="mm-s' + (i % 2 ? ' alt' : '') + '" id="' + id + '"><div class="mm-in"><div class="mm-sh rv"><span>' + String(i + 1).padStart(2, '0') + '</span><h2>' + esc(t) + '</h2></div>' + h + '</div></section>').join('') +
     (secs.length ? '' : '<section class="mm-s"><div class="mm-in"><p class="mm-big sm">Este manual todavía no tiene contenido.</p></div></section>') +
@@ -211,18 +213,18 @@ export const MANUAL_CSS = `
 .mm-top nav a.on{opacity:1;background:color-mix(in srgb,currentColor 12%,transparent)}
 .mm-enav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,#fff 90%,transparent);backdrop-filter:blur(12px);padding:10px 24px;border-bottom:1px solid var(--mm-line)}
 /* Portada */
-.mm-hero{position:relative;min-height:100svh;background:var(--mm-p);color:var(--mm-po);display:flex;flex-direction:column;justify-content:center;overflow:hidden;isolation:isolate}
-.mm.embed .mm-hero{min-height:560px}
+.mm-hero{position:relative;min-height:min(78svh,760px);background:var(--mm-p);color:var(--mm-po);display:flex;flex-direction:column;justify-content:center;overflow:hidden;isolation:isolate}
+.mm.embed .mm-hero{min-height:420px}
 .mm-orbs{position:absolute;inset:0;z-index:-1;pointer-events:none}
 .mm-orbs i{position:absolute;border-radius:50%;background:radial-gradient(circle at 35% 35%,color-mix(in srgb,var(--c) 70%,#fff),var(--c) 60%);opacity:.38;filter:blur(2px);animation:mmFloat 22s ease-in-out infinite alternate;animation-delay:calc(var(--i) * -7s)}
 .mm-orbs i:nth-child(1){width:52vmax;height:52vmax;right:-18vmax;top:-20vmax;opacity:.22;filter:blur(40px)}
 .mm-orbs i:nth-child(2){width:22vmax;height:22vmax;right:8vw;bottom:14vh;opacity:1;filter:none;background:var(--c);box-shadow:inset -2.4vmax -2.4vmax 5vmax rgba(0,0,0,.14)}
 .mm-orbs i:nth-child(3){width:9vmax;height:9vmax;right:30vw;top:18vh;opacity:1;filter:none;background:var(--c)}
 @keyframes mmFloat{0%{transform:translate3d(0,0,0) rotate(0)}50%{transform:translate3d(-2vw,3vh,0) rotate(8deg)}100%{transform:translate3d(1.5vw,-2vh,0) rotate(-6deg)}}
-.mm-hero-in{width:100%;max-width:1180px;margin:0 auto;padding:130px 40px 170px;transform:translate3d(0,calc(var(--py,0px) * .18),0);opacity:calc(1 - var(--py,0px) / 900)}
-.mm-hl{display:block;max-width:min(440px,70vw);max-height:150px;object-fit:contain;object-position:left center;opacity:0;transform:translateY(20px);transition:opacity 1.1s var(--ease),transform 1.1s var(--ease)}
+.mm-hero-in{width:100%;max-width:1180px;margin:0 auto;padding:140px 40px 110px;transform:translate3d(0,calc(var(--py,0px) * .18),0);opacity:calc(1 - var(--py,0px) / 900)}
+.mm-hl{display:block;max-width:min(360px,64vw);max-height:120px;object-fit:contain;object-position:left center;opacity:0;transform:translateY(20px);transition:opacity 1.1s var(--ease),transform 1.1s var(--ease)}
 .mm-hn{font-family:var(--mm-fh);font-weight:var(--mm-wh);font-size:30px;margin:0;opacity:0;transition:opacity 1s}
-.mm-ht{font-family:var(--mm-fh);font-weight:var(--mm-wh);font-size:clamp(54px,10.5vw,158px);line-height:.92;letter-spacing:-.035em;margin:44px 0 0;max-width:12ch}
+.mm-ht{font-family:var(--mm-fh);font-weight:var(--mm-wh);font-size:clamp(42px,6.4vw,96px);line-height:.98;letter-spacing:-.03em;margin:48px 0 0}
 .mm-w{display:inline-block;overflow:hidden;vertical-align:top;padding:0 .08em .08em 0;margin-right:-.08em}
 .mm-w > span{display:inline-block;transform:translateY(110%);transition:transform 1.2s var(--ease);transition-delay:calc(250ms + var(--i) * 130ms)}
 .mm-hs{max-width:560px;font-size:clamp(18px,1.7vw,22px);line-height:1.45;margin:30px 0 0;opacity:0;transform:translateY(14px);transition:opacity 1.2s var(--ease) .7s,transform 1.2s var(--ease) .7s}
@@ -411,6 +413,12 @@ export const MANUAL_CSS = `
 .mm-file small{color:var(--mm-soft);font-size:12.5px}
 .mm-fi{flex:none;width:54px;height:54px;border-radius:12px;background:color-mix(in srgb,var(--mm-ink) 5%,transparent);display:grid;place-items:center;font-size:10.5px;font-weight:800;letter-spacing:.04em;overflow:hidden;padding:7px}
 .mm-fi img{max-width:100%;max-height:100%;object-fit:contain}
+.mm-file.multi:hover{transform:none;box-shadow:0 1px 0 var(--mm-line)}
+.mm-file.multi .mm-fxs{justify-content:flex-start;margin-top:6px}
+.mm-fxs{display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end}
+.mm-fx{font:700 11px/1 var(--mm-fb);letter-spacing:.05em;padding:7px 10px;border-radius:99px;background:color-mix(in srgb,var(--mm-ink) 7%,transparent);color:var(--mm-ink);text-decoration:none;transition:background .3s,color .3s,transform .3s var(--ease)}
+.mm-fx.ed{background:transparent;box-shadow:inset 0 0 0 1px var(--mm-line)}
+.mm-fx:hover{background:var(--mm-p);color:var(--mm-po);box-shadow:none;transform:translateY(-1px)}
 .mm-fi.f-oscuro{background:#111}.mm-fi.f-marca{background:var(--mm-p)}
 .mm-links{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}
 .mm-links a{display:inline-flex;align-items:center;gap:8px;background:var(--mm-ink);color:#fff;text-decoration:none;border-radius:99px;padding:14px 22px;font:600 15px var(--mm-fb);transition:transform .4s var(--ease),background .4s,color .4s}
@@ -425,7 +433,7 @@ export const MANUAL_CSS = `
 @media (max-width:1000px){.mm-logos{grid-template-columns:repeat(2,minmax(0,1fr))}.mm-nos,.mm-pil{grid-template-columns:repeat(2,minmax(0,1fr))}.mm-posts{grid-template-columns:1fr 1fr}.mm-glyphs{grid-template-columns:repeat(8,minmax(0,1fr))}}
 @media (max-width:760px){
   .mm-in{padding:0 20px}.mm-top,.mm-top.solido{padding:10px 16px;gap:10px}.mm-marca span{display:none}.mm-top nav a{padding:7px 10px;font-size:13px}
-  .mm-hero-in{padding:110px 20px 160px}.mm-ht{margin-top:30px}.mm-down{left:20px}.mm-s{padding:84px 0}.mm-sh{margin-bottom:38px}
+  .mm-hero-in{padding:110px 20px 80px}.mm-ht{margin-top:30px}.mm-down{left:20px}.mm-s{padding:84px 0}.mm-sh{margin-bottom:38px}
   .mm-specs,.mm-nos,.mm-pil,.mm-posts{grid-template-columns:1fr}.mm-bars{flex-direction:column;height:auto}.mm-bar-c{min-height:96px;flex:none!important}
   .mm-tipo{padding:22px}.mm-tipo-b{grid-template-columns:1fr}.mm-aa{aspect-ratio:2/1}.mm-glyphs{grid-template-columns:repeat(7,minmax(0,1fr))}
   .mm-tipo-h{grid-template-columns:1fr}.mm-tipo-h .mm-btn{grid-column:1;grid-row:auto;justify-self:start;margin-top:10px}

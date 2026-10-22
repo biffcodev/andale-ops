@@ -18,6 +18,20 @@ const normHex = h => { let x = String(h || '').trim(); if (!x.startsWith('#')) x
 const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const claro = h => { const [r, g, b] = rgb(h).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45; };
 const bajar = (url, n) => url + (url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(n || '');
+// Cada logo o archivo puede venir en varios formatos (SVG, PNG, PDF y los editables: AI, PSD, INDD, Figma, Canva…).
+// x.archivos = [{ id, url, path, tipo, nombre, peso, link }]; x.url/x.path/x.tipo es el que se usa de vista previa.
+const EDIT = /^(AI|PSD|INDD|IDML|FIG|FIGMA|CANVA|EPS|SKETCH|XD|DOCX?|PPTX?|KEY|AEP|PRPROJ|CDR|AFDESIGN|ZIP)$/;
+const hostFmt = u => /canva\./i.test(u) ? 'CANVA' : /figma\./i.test(u) ? 'FIGMA' : /drive\.google|docs\.google/i.test(u) ? 'DRIVE' : 'LINK';
+export const fmtDe = f => f.link ? hostFmt(f.url) : ext(f.nombre) || ext(f.url) || String((f.tipo || '').split('/')[1] || 'archivo').toUpperCase().slice(0, 5);
+export function formatos(x) {
+  const fs = x.archivos && x.archivos.length ? x.archivos : x.url ? [{ id: 'p', url: x.url, path: x.path, tipo: x.tipo }] : [];
+  return fs.map(f => { const fmt = fmtDe(f); return { ...f, fmt, ed: EDIT.test(fmt) || !!f.link }; }).sort((a, b) => a.ed - b.ed);
+}
+export const bajarFmt = (x, f) => f.link ? f.url : bajar(f.url, String(x.n || 'archivo').replace(/\s*\(ejemplo\)/i, '') + '.' + f.fmt.toLowerCase());
+const pesoTxt = n => !n ? '' : n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB';
+const PREF = ['SVG', 'PNG', 'WEBP', 'JPG', 'JPEG', 'GIF', 'MP4', 'MOV', 'WEBM'];
+const previaDe = fs => [...fs].filter(f => !f.link && (esImg(f.tipo, f.nombre || f.url) || /^video\//.test(f.tipo || ''))).sort((a, b) => (PREF.indexOf(fmtDe(a)) + 99) % 99 - (PREF.indexOf(fmtDe(b)) + 99) % 99)[0] || fs.find(f => !f.link) || fs[0];
+const lindo = nm => String(nm).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 // Lo que Mr. Piggy leyó del manual (texto) pasado a colores y tipografías del kit, si el kit todavía no los tiene.
 export function kitDeTexto(m) {
@@ -74,13 +88,16 @@ export function initKit(ctx) {
     const btn = (act, txt, extra) => can ? '<button class="btn sm km-add" data-act="' + act + '" data-id="' + id + '"' + (extra || '') + '>' + ICON.sumar + txt + '</button>' : '';
     const acc = (k, x, dl) => '<span class="km-acc">' + (dl ? '<a class="btn ghost sm" href="' + esc(bajar(x.url, x.n)) + '" title="Descargar" aria-label="Descargar">' + ICON.descargar + '</a>' : '') +
       (can ? '<button class="btn ghost sm" data-act="kmEditar" data-k="' + k + '" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Editar" aria-label="Editar">' + ICON.editar + '</button>' : '') + '</span>';
-    const sec = (t, sub, add, body) => '<div class="km-s"><div class="km-sh"><h3>' + t + '</h3>' + (sub ? '<span class="muted">' + sub + '</span>' : '') + '<span class="km-sp"></span>' + add + '</div>' + body + '</div>';
+    const sec = (t, sub, add, body) => '<div class="km-s"><div class="km-sh"><div class="km-sht"><h3>' + t + '</h3>' + (sub ? '<p>' + sub + '</p>' : '') + '</div>' + add + '</div>' + body + '</div>';
+    // Los formatos de cada pieza: cada chip baja (o abre) ese archivo. Los editables van con borde.
+    const chips = x => '<span class="km-fxs">' + formatos(x).map(f => '<a class="km-fx' + (f.ed ? ' ed' : '') + '" href="' + esc(bajarFmt(x, f)) + '"' + (f.link ? ' target="_blank" rel="noopener"' : '') + ' title="' + (f.link ? 'Abrir en ' : 'Descargar ') + esc(f.fmt) + (f.ed ? ' · editable' : '') + '">' + esc(f.fmt) + '</a>').join('') + '</span>';
+    const editar = (k, x) => can ? '<button class="km-ed" data-act="kmEditar" data-k="' + k + '" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Editar y sumar formatos" aria-label="Editar ' + esc(x.n) + '">' + ICON.editar + '</button>' : '';
+    const media = x => /^video\//.test(x.tipo || '') || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(x.url || '') ? '<video src="' + esc(x.url) + '" muted playsinline preload="metadata"></video>' : esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="' + esc(x.n) + '" loading="lazy">' : '<span class="km-ext">' + esc((formatos(x)[0] || {}).fmt || 'ARCHIVO') + '</span>';
+    const pie = x => '<figcaption><b title="' + esc(x.n) + '">' + esc(x.n) + '</b>' + chips(x) + '</figcaption>';
     const vacio = t => '<p class="km-v">' + t + '</p>';
 
-    const logos = kit.logos.length ? '<div class="km-logos">' + kit.logos.map(x => '<div class="km-logo"><div class="km-lf f-' + esc(x.fondo || 'claro') + '"' + (x.fondo === 'marca' && kit.colores[0] ? ' style="--km:' + esc(kit.colores[0].hex) + '"' : '') + '>' +
-      (esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="' + esc(x.n) + '" loading="lazy">' : '<span class="km-ext">' + esc(ext(x.url) || 'ARCHIVO') + '</span>') +
-      (can ? '<button class="km-fbtn" data-act="kmFondo" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Cambiar el fondo" aria-label="Cambiar el fondo">◐</button>' : '') + '</div>' +
-      '<div class="km-cap"><b>' + esc(x.n) + '</b>' + acc('logos', x, true) + '</div></div>').join('') + '</div>' : vacio('Subí el logo principal y sus versiones: isotipo, negativo, monocromo…');
+    const logos = kit.logos.length ? '<div class="km-logos">' + kit.logos.map(x => '<figure class="km-t km-logo"><div class="km-lf f-' + esc(x.fondo || 'claro') + '"' + (x.fondo === 'marca' && kit.colores[0] ? ' style="--km:' + esc(kit.colores[0].hex) + '"' : '') + '>' + media(x) +
+      (can ? '<button class="km-fbtn" data-act="kmFondo" data-i="' + esc(x.id) + '" data-id="' + id + '" title="Cambiar el fondo" aria-label="Cambiar el fondo">◐</button>' : '') + editar('logos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div>' : vacio('Subí el logo principal y sus versiones: horizontal, vertical, isotipo, negativo, monocromo. Si subís el mismo logo en SVG, PNG y AI juntos, queda uno solo con sus tres formatos.');
 
     const cols = kit.colores.length ? '<div class="km-cols">' + kit.colores.map(x => { const h = hexOk(x.hex) ? x.hex : '#999999', [r, g, b] = rgb(h);
       return '<div class="km-col"><button class="km-sw' + (claro(h) ? ' cl' : '') + '" style="background:' + esc(h) + '" data-act="kmCopiar" data-v="' + esc(h) + '" title="Copiar ' + esc(h) + '">' + (x.rol ? '<i>' + esc(x.rol) + '</i>' : '') + '<span>Copiar</span></button>' +
@@ -92,11 +109,14 @@ export function initKit(ctx) {
       '<div class="km-cap"><span><b>' + esc(x.familia) + '</b><small>' + esc((PESOS.find(p => p[0] === x.peso) || [])[1] || 'Regular') + (x.url ? ' · archivo cargado' : '') + '</small></span>' + acc('tipos', x, !!x.url) + '</div></div>').join('') + '</div>' : vacio('Sumá las tipografías de títulos y de textos. Si no es de Google Fonts, subí el archivo para verla y descargarla.');
 
     // Aplicaciones y archivos, agrupados por tipo (fotos, íconos, papelería, redes, videos…); cada tipo con su botón para subir.
-    const ACC = { fotos: 'image/*', iconos: 'image/*,.svg,.pdf,.ai,.eps', papeleria: 'image/*,.pdf,.ai,.eps,.indd,.docx', redes: 'image/*,.mp4,.mov', videos: 'video/*,.mp4,.mov,.webm', plantillas: 'image/*,.pdf,.pptx,.key,.docx,.psd,.ai,.fig,.zip', texturas: 'image/*,.svg', otros: '' };
-    const subeCat = ([k, l]) => can ? '<label class="km-cat-b' + (st.subiendo === 'recursos:' + k ? ' disabled' : '') + '">' + ICON.sumar + esc(st.subiendo === 'recursos:' + k ? 'Subiendo…' : l) + '<input type="file" hidden multiple' + (ACC[k] ? ' accept="' + ACC[k] + '"' : '') + ' data-kitup="recursos" data-cat="' + k + '" data-id="' + id + '"></label>' : '';
+    const ACC = {}; // cualquier archivo: también los editables (AI, PSD, INDD, FIG…)
+    const subeCat = (k, txt, cls) => can ? '<label class="' + cls + (st.subiendo === 'recursos:' + k ? ' disabled' : '') + '">' + ICON.sumar + esc(st.subiendo === 'recursos:' + k ? 'Subiendo…' : txt) + '<input type="file" hidden multiple' + (ACC[k] ? ' accept="' + ACC[k] + '"' : '') + ' data-kitup="recursos" data-cat="' + k + '" data-id="' + id + '"></label>' : '';
     const recC = kit.recursos.map(x => ({ ...x, cat: catDe(x) }));
     const recursosG = CATS.map(([k, l]) => [k, l, recC.filter(x => x.cat === k)]).filter(g => g[2].length);
-    const recursos = (can ? '<div class="km-cats">' + CATS.map(subeCat).join('') + '</div>' : '') + (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><span class="km-grp-t">' + esc(l) + ' <span class="muted num">' + xs.length + '</span></span><div class="km-recs">' + xs.map(x => '<div class="km-rec"><div class="km-rf">' + (esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="' + esc(x.n) + '" loading="lazy">' : '<span class="km-ext">' + esc(ext(x.url) || 'ARCHIVO') + '</span>') + '</div><div class="km-cap"><b>' + esc(x.n) + '</b>' + acc('recursos', x, true) + '</div></div>').join('') + '</div></div>').join('') : vacio('Subí cada cosa en su tipo: fotos, íconos, papelería, perfiles y portadas de redes, videos, plantillas o patrones.'));
+    const faltan = CATS.filter(([k]) => !recursosG.some(g => g[0] === k));
+    const recursos = (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><div class="km-gh"><h4>' + esc(l) + '</h4><span class="km-n">' + xs.length + '</span><span class="km-sp"></span>' + subeCat(k, 'Subir', 'btn ghost sm km-up') + '</div>' +
+        '<div class="km-recs c-' + k + '">' + xs.map(x => '<figure class="km-t km-rec"><div class="km-rf">' + media(x) + editar('recursos', x) + '</div>' + pie(x) + '</figure>').join('') + '</div></div>').join('') : vacio('Subí cada cosa en su tipo. Si tenés la misma pieza en varios formatos (por ejemplo tarjeta.pdf, tarjeta.png y tarjeta.ai), subilos juntos y quedan como una sola con sus formatos.')) +
+      (can && faltan.length ? '<div class="km-mas"><span>' + (recursosG.length ? 'Sumar otro tipo' : 'Subir') + '</span>' + faltan.map(([k, l]) => subeCat(k, l, 'km-cat-b')).join('') + '</div>' : '');
 
     const links = kit.links.length ? '<div class="km-links">' + kit.links.map(x => '<span class="km-link"><a class="btn sm" href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.n) + ' ' + ICON.externo + '</a>' + (can ? '<button class="btn ghost sm" data-act="kmEditar" data-k="links" data-i="' + esc(x.id) + '" data-id="' + id + '" aria-label="Editar">' + ICON.editar + '</button>' : '') + '</span>').join('') + '</div>' : vacio('El manual, la carpeta del Drive, el kit de Canva o el archivo de Figma.');
 
@@ -106,10 +126,10 @@ export function initKit(ctx) {
       (can ? '<div class="sx-der toolbar"><label class="btn sm" title="Mr. Piggy lee el manual de marca y completa colores, tipografías y la ficha">' + ICON.ia + 'Completar desde el manual<input type="file" hidden multiple accept=".pdf,.docx,.txt,.md,image/png,image/jpeg,image/webp" data-fmdoc="' + id + '"></label>' +
         '<button class="btn sm" data-act="kmPrevia" data-id="' + id + '">' + ICON.ojo + 'Ver como cliente</button><button class="btn sm primary" data-act="kmManual" data-id="' + id + '">' + ICON.compartir + 'Manual online</button></div>' : '') + '</div>' +
       manualEstado(c) +
-      sec('Logos', 'Versiones y formatos: principal, horizontal, vertical, isotipo, negativo…', sube('logos', 'Subir logos', 'image/*,.svg,.pdf,.ai,.eps'), logos) +
+      sec('Logos', 'Versiones (principal, vertical, isotipo, negativo…) y sus formatos', sube('logos', 'Subir logos', ''), logos) +
       sec('Colores', 'Tocá un color para copiar el código', btn('kmNuevo', 'Color', ' data-k="colores"'), cols) +
       sec('Tipografías', '', btn('kmNuevo', 'Tipografía', ' data-k="tipos"'), tipos) +
-      sec('Aplicaciones y archivos', 'Fotos, íconos, papelería, redes, videos y plantillas', '', recursos) +
+      sec('Aplicaciones y archivos', 'Cada pieza con todos sus formatos: para usar, para imprimir y los editables', '', recursos) +
       sec('Links', '', btn('kmNuevo', 'Link', ' data-k="links"'), links) +
       sec('Cómo se usa', '', can ? '<button class="btn sm km-add" data-act="kmUso" data-id="' + id + '">' + ICON.editar + (m.visual ? 'Editar' : 'Escribir') + '</button>' : '', uso) +
       '</section>';
@@ -135,10 +155,19 @@ export function initKit(ctx) {
       campos = '<div class="field full"><label for="km-n">Nombre</label><input id="km-n" value="' + esc((x && x.n) || '') + '" placeholder="Ej.: Manual de marca, Kit en Canva, Carpeta del Drive"></div>' +
         '<div class="field full"><label for="km-url">Link</label><input id="km-url" type="url" value="' + esc((x && x.url) || '') + '" placeholder="https://"></div>'; }
     else { titulo = k === 'logos' ? 'Logo' : 'Archivo';
+      const fs = x ? formatos(x) : [], prev = x && (fs.find(f => f.url === x.url) || {}).id;
+      const fila = f => '<div class="km-fr"><span class="km-fx' + (f.ed ? ' ed' : '') + '">' + esc(f.fmt) + '</span><span class="km-fn"><b>' + esc(f.link ? f.url.replace(/^https?:\/\/(www\.)?/, '') : f.nombre || (x.n + '.' + f.fmt.toLowerCase())) + '</b><small>' + [f.ed ? 'Editable' : f.fmt === 'PDF' ? 'Para imprimir' : 'Para usar', pesoTxt(f.peso)].filter(Boolean).join(' · ') + '</small></span>' +
+        (!f.link && (esImg(f.tipo, f.nombre || f.url) || /^video\//.test(f.tipo || '')) && fs.length > 1 ? '<label class="km-pv" title="Usar de vista previa"><input type="radio" name="km-prev" value="' + esc(f.id) + '"' + (f.id === prev ? ' checked' : '') + '><span>Vista previa</span></label>' : '') +
+        '<a class="btn ghost sm" href="' + esc(bajarFmt(x, f)) + '"' + (f.link ? ' target="_blank" rel="noopener"' : '') + ' aria-label="' + (f.link ? 'Abrir' : 'Descargar') + '">' + (f.link ? ICON.externo : ICON.descargar) + '</a>' +
+        (fs.length > 1 ? '<button type="button" class="btn ghost sm" data-act="kmFmtQuitar" data-f="' + esc(f.id) + '" aria-label="Quitar este formato" title="Quitar este formato">✕</button>' : '') + '</div>';
       campos = '<div class="field full"><label for="km-n">Nombre</label><input id="km-n" value="' + esc((x && x.n) || '') + '" placeholder="' + (k === 'logos' ? 'Ej.: Principal, Horizontal, Vertical, Isotipo, Negativo' : 'Ej.: Tarjeta personal, Portada de Facebook') + '"></div>' +
-        (k === 'recursos' ? '<div class="field full"><span class="lbl">Tipo</span>' + radios('km-cat', CATS.map(c => c[1]), (CATS.find(c => c[0] === catDe(x || {})) || CATS[0])[1]) + '</div>' : ''); }
+        (k === 'recursos' ? '<div class="field full"><span class="lbl">Tipo</span>' + radios('km-cat', CATS.map(c => c[1]), (CATS.find(c => c[0] === catDe(x || {})) || CATS[0])[1]) + '</div>' : '') +
+        (x ? '<div class="field full"><span class="lbl">Formatos <span class="muted">' + fs.length + '</span></span><div class="km-fl">' + fs.map(fila).join('') + '</div>' +
+          '<div class="km-fadd"><label class="btn sm' + (st.subiendo === 'fmt' ? ' disabled' : '') + '">' + ICON.sumar + (st.subiendo === 'fmt' ? 'Subiendo…' : 'Sumar formatos') + '<input type="file" hidden multiple data-kmfmt="1"></label>' +
+          '<span class="km-flink"><input id="km-flink" type="url" placeholder="Link de Canva, Figma o Drive"><button type="button" class="btn sm" data-act="kmFmtLink">Agregar</button></span></div>' +
+          '<span class="hint">Para usar: SVG o PNG. Para imprimir: PDF. Editables: AI, PSD, INDD, Figma o Canva. Se guardan apenas los subís.</span></div>' : ''); }
     document.getElementById('panel').innerHTML = '<form id="kmform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(c.nombre) + ' · Kit de marca</span><h2 id="panel-title">' + titulo + '</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
-      '<div class="panel-b">' + campos + '</div><div class="panel-f"><span>' + (nuevo ? '' : '<button type="button" class="btn ghost danger" data-act="kmBorrar">Borrar</button>') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" id="kmsave">' + (nuevo ? 'Agregar' : 'Guardar') + '</button></span></div></form>';
+      '<div class="panel-b">' + campos + '</div><div class="panel-f"><span>' + (nuevo ? '' : '<button type="button" class="btn ghost" data-act="kmBorrar">' + ICON.borrar + 'Borrar</button>') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" id="kmsave">' + (nuevo ? 'Agregar' : 'Guardar') + '</button></span></div></form>';
     document.getElementById('panel').hidden = false; document.getElementById('scrim').hidden = false;
     setTimeout(() => { const f = document.querySelector('#kmform input:not([type=radio]):not([type=color])'); if (f && nuevo) f.focus(); }, 30);
   }
@@ -198,7 +227,8 @@ export function initKit(ctx) {
         if (f.length) { const old = x.path, up = await data.kitSubir(c._id, 'tipografias', f[0]); x.path = up.path; x.url = up.url; x.n = f[0].name; if (old) data.kitBorrar([old]); }
       }
       else if (e.k === 'links') { let u = v('km-url'); if (!u) { toast('Pegá el link'); listo(); return; } if (!/^https?:\/\//i.test(u)) u = 'https://' + u; Object.assign(x, { n: v('km-n') || u.replace(/^https?:\/\/(www\.)?/, '').split('/')[0], url: u }); }
-      else { x.n = v('km-n') || x.n; if (e.k === 'recursos') { const cl = r('km-cat'); x.cat = (CATS.find(c => c[1] === cl) || [catDe(x)])[0]; } }
+      else { x.n = v('km-n') || x.n; if (e.k === 'recursos') { const cl = r('km-cat'); x.cat = (CATS.find(c => c[1] === cl) || [catDe(x)])[0]; }
+        const pv = r('km-prev'), f = pv && (x.archivos || []).find(y => y.id === pv); if (f) Object.assign(x, { url: f.url, path: f.path, tipo: f.tipo || '' }); }
       if (i >= 0) arr[i] = x; else arr.push(x);
       await guardar(c, { ...kit, [e.k]: arr }); ctx.closeForm(); toast(i >= 0 ? 'Guardado' : 'Agregado');
     } catch (er) { toast(er.message); listo(); }
@@ -207,19 +237,50 @@ export function initKit(ctx) {
     const e = st.edit, c = e && cli(e.cid); if (!c) return;
     const kit = kitDe(c), x = (kit[e.k] || []).find(y => y.id === e.i); if (!x) return;
     if (ctx.confirmar && !await ctx.confirmar('Se borra «' + (x.n || x.familia || x.hex) + '» del kit de ' + c.nombre + '.', { titulo: '¿Borrar del kit?', ok: 'Borrar', tipo: 'peligro' })) return;
-    try { await guardar(c, { ...kit, [e.k]: kit[e.k].filter(y => y.id !== e.i) }); if (x.path) data.kitBorrar([x.path]); ctx.closeForm(); toast('Borrado'); } catch (er) { toast(er.message); }
+    try { await guardar(c, { ...kit, [e.k]: kit[e.k].filter(y => y.id !== e.i) }); data.kitBorrar([...new Set([x.path, ...(x.archivos || []).map(f => f.path)])]); ctx.closeForm(); toast('Borrado'); } catch (er) { toast(er.message); }
   }
+  // Archivos con el mismo nombre (tarjeta.svg, tarjeta.pdf, tarjeta.ai) quedan como una sola pieza con varios formatos.
   async function subir(c, k, files, cat) {
-    const kit = kitDe(c), nuevos = []; st.subiendo = k + (cat ? ':' + cat : ''); render();
-    for (const f of files) {
-      if (f.size > 50 * 1024 * 1024) { toast(f.name + ' pesa más de 50 MB'); continue; }
-      try { const up = await data.kitSubir(c._id, cat || k, f); nuevos.push({ id: uid(), n: String(f.name).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), path: up.path, url: up.url, tipo: f.type || '', ...(k === 'logos' ? { fondo: 'claro' } : {}), ...(cat ? { cat } : {}) }); }
-      catch (er) { toast(er.message); break; }
-    }
+    const kit = kitDe(c), nuevos = [], subidos = []; st.subiendo = k + (cat ? ':' + cat : ''); render();
+    const grupos = new Map(); files.forEach(f => { const b = lindo(f.name).toLowerCase(); grupos.set(b, [...(grupos.get(b) || []), f]); });
+    try {
+      for (const fs of grupos.values()) {
+        const archivos = [];
+        for (const f of fs) {
+          if (f.size > 50 * 1024 * 1024) { toast(f.name + ' pesa más de 50 MB'); continue; }
+          const up = await data.kitSubir(c._id, cat || k, f); subidos.push(up.path);
+          archivos.push({ id: uid(), url: up.url, path: up.path, tipo: f.type || '', nombre: f.name, peso: f.size });
+        }
+        if (!archivos.length) continue;
+        const pv = previaDe(archivos);
+        nuevos.push({ id: uid(), n: lindo(fs[0].name), url: pv.url, path: pv.path, tipo: pv.tipo, archivos, ...(k === 'logos' ? { fondo: 'claro' } : {}), ...(cat ? { cat } : {}) });
+      }
+    } catch (er) { toast(er.message); }
     st.subiendo = '';
-    if (nuevos.length) { try { await guardar(c, { ...kit, [k]: [...kit[k], ...nuevos] }); toast(nuevos.length === 1 ? 'Subido' : nuevos.length + ' archivos subidos'); } catch (er) { toast(er.message); data.kitBorrar(nuevos.map(n => n.path)); } }
+    if (nuevos.length) { try { await guardar(c, { ...kit, [k]: [...kit[k], ...nuevos] }); toast(nuevos.length === 1 ? 'Subido' : nuevos.length + ' piezas subidas'); } catch (er) { toast(er.message); data.kitBorrar(subidos); } }
     else render();
   }
+  // Formatos de una pieza (desde el panel): se suben y se guardan al momento.
+  async function formatosCambiar(fn) {
+    const e = st.edit, c = e && cli(e.cid); if (!c) return;
+    const kit = kitDe(c), arr = [...(kit[e.k] || [])], i = arr.findIndex(y => y.id === e.i); if (i < 0) return;
+    const nombre = (document.getElementById('km-n') || {}).value, cat = (document.querySelector('input[name="km-cat"]:checked') || {}).value;
+    const x = { ...arr[i] }; x.archivos = (x.archivos && x.archivos.length ? x.archivos : formatos(x).map(f => ({ id: uid(), url: f.url, path: f.path, tipo: f.tipo || '', nombre: lindo(x.n).replace(/\s*\(ejemplo\)/i, '') + '.' + f.fmt.toLowerCase() }))).map(f => ({ ...f }));
+    const quitar = await fn(x); if (quitar === false) return;
+    if (!x.archivos.some(f => f.url === x.url)) { const pv = previaDe(x.archivos); if (pv) Object.assign(x, { url: pv.url, path: pv.path, tipo: pv.tipo || '' }); }
+    arr[i] = x;
+    try { await guardar(c, { ...kit, [e.k]: arr }); if (quitar && quitar.length) data.kitBorrar(quitar); } catch (er) { toast(er.message); }
+    panel(c, e.k, e.i);
+    const n = document.getElementById('km-n'); if (n && nombre != null) n.value = nombre;
+    if (cat) { const r = document.querySelector('input[name="km-cat"][value="' + cat.replace(/"/g, '') + '"]'); if (r) r.checked = true; }
+  }
+  const fmtSubir = fs => formatosCambiar(async x => {
+    st.subiendo = 'fmt'; const n = document.querySelector('[data-kmfmt]'); if (n) n.parentElement.classList.add('disabled');
+    const c = cli(st.edit.cid);
+    try { for (const f of fs) { if (f.size > 50 * 1024 * 1024) { toast(f.name + ' pesa más de 50 MB'); continue; } const up = await data.kitSubir(c._id, st.edit.k === 'logos' ? 'logos' : catDe(x), f); x.archivos.push({ id: uid(), url: up.url, path: up.path, tipo: f.type || '', nombre: f.name, peso: f.size }); } }
+    catch (er) { toast(er.message); }
+    st.subiendo = ''; toast(fs.length === 1 ? 'Formato sumado' : 'Formatos sumados'); return [];
+  });
 
   const acts = {
     kmNuevo: t => { const c = cli(t.dataset.id); if (c) panel(c, t.dataset.k); },
@@ -228,6 +289,11 @@ export function initKit(ctx) {
     kmManual: t => { const c = cli(t.dataset.id); if (c) panelManual(c); },
     kmPrevia: t => { const c = cli(t.dataset.id); if (c) verComoCliente(c); },
     kmBorrar: () => borrar(),
+    kmFmtQuitar: t => formatosCambiar(async x => { const f = x.archivos.find(y => y.id === t.dataset.f); if (!f) return false;
+      if (ctx.confirmar && !await ctx.confirmar('Se quita el formato ' + fmtDe(f) + ' de «' + x.n + '».', { titulo: '¿Quitar este formato?', ok: 'Quitar' })) return false;
+      x.archivos = x.archivos.filter(y => y.id !== f.id); return f.path ? [f.path] : []; }),
+    kmFmtLink: () => formatosCambiar(async x => { const el = document.getElementById('km-flink'); let u = el ? el.value.trim() : ''; if (!u) { toast('Pegá el link'); return false; } if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+      x.archivos.push({ id: uid(), url: u, link: true }); toast('Link sumado'); return []; }),
     kmCopiar: async t => { try { await navigator.clipboard.writeText(t.dataset.v); toast(t.dataset.v + ' copiado'); } catch (e) { toast(t.dataset.v); } },
     kmFondo: async t => { const c = cli(t.dataset.id); if (!c) return; const kit = kitDe(c); const logos = kit.logos.map(x => x.id === t.dataset.i ? { ...x, fondo: FONDOS[(FONDOS.indexOf(x.fondo || 'claro') + 1) % FONDOS.length] } : x); try { await guardar(c, { ...kit, logos }); } catch (e) { toast(e.message); } },
   };
@@ -238,7 +304,8 @@ export function initKit(ctx) {
     else if (t.id === 'km-hex') { const h = normHex(t.value), p = document.getElementById('km-pick'); if (p && hexOk(h)) p.value = h.toLowerCase(); }
   });
   document.addEventListener('change', e => {
-    const t = e.target; if (!t || !t.dataset || !t.dataset.kitup) return;
+    const t = e.target; if (t && t.dataset && t.dataset.kmfmt) { const fs = [...(t.files || [])]; t.value = ''; if (fs.length && !st.subiendo) fmtSubir(fs); return; }
+    if (!t || !t.dataset || !t.dataset.kitup) return;
     const c = cli(t.dataset.id), fs = [...(t.files || [])]; t.value = '';
     if (c && fs.length && !st.subiendo) subir(c, t.dataset.kitup, fs, t.dataset.cat || '');
   });

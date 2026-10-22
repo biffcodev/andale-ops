@@ -73,7 +73,7 @@ main{padding-block:22px 64px;display:grid;gap:22px}
 .btn.primary:hover{filter:brightness(1.08)}
 .btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
 .btn.ghost:hover{color:var(--fg);background:var(--surface-2)}
-.btn.danger{color:var(--crit)}
+.btn.danger{color:inherit}
 .btn.sm{padding:4px 9px;font-size:13px}
 .btn.link{border:0;background:none;padding:0;font-weight:600;color:var(--fg);text-align:left;white-space:normal;cursor:pointer}
 .btn.link:hover{color:var(--accent)}
@@ -1582,8 +1582,8 @@ details.mas-m>summary:hover,details.mas-m[open]>summary{color:var(--fg)}
 details.mas-m .menu-pop{min-width:220px}
 details.mas-m .menu-pop .btn{gap:10px}
 details.mas-m .menu-pop svg{width:16px;height:16px;color:var(--muted)}
-details.mas-m .menu-pop .btn.danger{color:var(--crit)}
-details.mas-m .menu-pop .btn.danger svg{color:var(--crit)}
+details.mas-m .menu-pop .btn.danger{color:inherit}
+details.mas-m .menu-pop .btn.danger svg{color:inherit}
 .vsel button{display:inline-flex;align-items:center;gap:6px}
 .vsel button svg{width:15px;height:15px}
 @media (max-width:760px){.vsel button span{display:none}}
@@ -3127,3 +3127,61 @@ table.sr-only{left:0;top:0;max-width:1px;table-layout:fixed}
 .km-cat-b.disabled{opacity:.6;pointer-events:none}
 .km-grp + .km-grp{margin-top:16px}
 .km-grp-t{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+/* ===== Kit v2: más aire, jerarquía y piezas con varios formatos ===== */
+.km-s{padding:22px 24px 30px}
+.km-s + .km-s{padding-top:26px}
+.km-sh{align-items:flex-start;gap:14px;margin:0 0 18px;flex-wrap:nowrap}
+.km-sht{flex:1;min-width:0}
+.km-sh h3{font-size:17px;font-weight:700;letter-spacing:-.01em;margin:0}
+.km-sh p{margin:3px 0 0;color:var(--muted);font-size:13px;line-height:1.4}
+.km-sh > .btn,.km-sh > label{flex:none}
+.km-grp + .km-grp{margin-top:30px}
+.km-gh{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+.km-gh h4{margin:0;font-size:14px;font-weight:650}
+.km-n{font-size:11.5px;font-weight:700;min-width:20px;height:20px;padding:0 6px;border-radius:99px;display:inline-grid;place-items:center;background:var(--surface-2);color:var(--muted);font-variant-numeric:tabular-nums}
+.km-up svg{width:14px;height:14px}
+/* Fichas (logos y archivos) */
+.km-t{margin:0;min-width:0;display:grid;gap:0}
+.km-t figcaption{display:grid;gap:7px;padding:10px 2px 0;min-width:0}
+.km-t figcaption b{font-size:13.5px;font-weight:600;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.km-fxs{display:flex;flex-wrap:wrap;gap:4px}
+.km-fx{font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:3px 7px;border-radius:6px;background:var(--surface-2);color:var(--fg);text-decoration:none;line-height:1.2;transition:background .15s}
+.km-fx.ed{background:transparent;box-shadow:inset 0 0 0 1px var(--line)}
+a.km-fx:hover{background:color-mix(in srgb,var(--accent) 18%,var(--surface))}
+.km-ed{position:absolute;top:8px;left:8px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:#222;cursor:pointer;display:grid;place-items:center;opacity:0;transition:opacity .15s;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.km-ed svg{width:15px;height:15px}
+.km-t:hover .km-ed,.km-ed:focus-visible{opacity:1}
+@media (hover:none){.km-ed{opacity:1}}
+.km-logos{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:22px 18px}
+.km-lf{border-radius:14px;padding:22px 26px}
+.km-lf img,.km-lf video{max-width:100%;max-height:100%;object-fit:contain;display:block}
+/* Archivos: cada tipo con su forma */
+.km-recs{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:22px 18px}
+.km-rf{position:relative;aspect-ratio:4/3;border-radius:14px;background:color-mix(in srgb,var(--fg) 3.5%,var(--surface));padding:16px}
+.km-rf img,.km-rf video{width:100%;height:100%;object-fit:contain;display:block}
+.km-recs.c-fotos .km-rf,.km-recs.c-texturas .km-rf,.km-recs.c-videos .km-rf{padding:0}
+.km-recs.c-fotos .km-rf img,.km-recs.c-texturas .km-rf img,.km-recs.c-videos .km-rf video{object-fit:cover}
+.km-recs.c-iconos{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+.km-recs.c-iconos .km-rf{aspect-ratio:1;padding:30%}
+.km-mas{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:28px;padding-top:18px;border-top:1px dashed var(--line)}
+.km-mas > span{font-size:12.5px;color:var(--muted);margin-right:4px}
+/* Panel: lista de formatos */
+.km-fl{display:grid;gap:6px;margin-top:4px}
+.km-fr{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 10px;border-radius:12px;background:var(--surface-2)}
+.km-fr .km-fx{flex:none;min-width:46px;text-align:center;background:var(--surface)}
+.km-fr .km-fx.ed{background:transparent}
+.km-fn{display:grid;min-width:0;flex:1}
+.km-fn b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.km-fn small{font-size:12px;color:var(--muted)}
+.km-fr .btn{padding:4px 7px;min-height:0;flex:none}
+.km-fr .btn svg{width:15px;height:15px}
+.km-pv{flex:none;cursor:pointer;position:relative}
+.km-pv input{position:absolute;opacity:0;pointer-events:none}
+.km-pv span{display:block;font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:99px;color:var(--muted)}
+.km-pv input:checked+span{background:var(--surface);color:var(--fg);box-shadow:var(--elev)}
+.km-pv input:focus-visible+span{outline:2px solid var(--accent)}
+.km-fadd{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.km-fadd label.disabled{opacity:.6;pointer-events:none}
+.km-flink{display:flex;gap:6px;flex:1;min-width:220px}
+.km-flink input{flex:1;min-width:0}
+@media (max-width:760px){.km-s{padding:18px 14px 24px}.km-logos,.km-recs{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}.km-recs.c-iconos{grid-template-columns:repeat(3,minmax(0,1fr))}.km-sh{flex-wrap:wrap}}
