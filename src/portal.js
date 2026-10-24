@@ -60,6 +60,13 @@ async function cargar(silencio) {
   catch (e) { if (!silencio) toast(e.message); return; }
   // Sus datos, servicios, equipo y marca (SQL 0046). Si todavía no está, el portal sigue igual.
   try { S.cu = check(await sb.rpc('portal_cuenta', { p_cliente: S.c.cliente_id })); } catch (e) { S.cu = null; }
+  // La estrategia del mes (SQL 0052), si se la mandaron: se suma a su mes, o como mes nuevo si todavía no hay diseños.
+  try {
+    const es = check(await sb.rpc('portal_estrategias', { p_cliente: S.c.cliente_id })) || [];
+    S.d.meses = S.d.meses || [];
+    es.forEach(e => { const m = S.d.meses.find(x => x.id === e.id); if (m) m.estrategia = e; else S.d.meses.push({ id: e.id, mes: e.mes, plan: e.plan || {}, piezas: [], estrategia: e, soloEstrategia: true }); });
+    S.d.meses.sort((a, b) => String(b.mes).localeCompare(String(a.mes)));
+  } catch (e) { /* sin el SQL 0052 no hay estrategias */ }
   const ms = S.d.meses || [];
   if (!S.mes || !ms.some(m => m.id === S.mes)) S.mes = (ms.find(m => m.mes.slice(0, 7) === new Date().toISOString().slice(0, 7)) || ms[0] || {}).id || null;
   pedirArchivos();
@@ -99,7 +106,7 @@ function render() {
     (S.clientes.length > 1 ? '<select class="in sm" id="po-cl" aria-label="Empresa">' + S.clientes.map(x => '<option value="' + esc(x.cliente_id) + '"' + (x.cliente_id === S.c.cliente_id ? ' selected' : '') + '>' + esc(x.cliente) + '</option>').join('') + '</select>' : '<b>' + esc(c.nombre) + '</b>');
   $('#me').textContent = (S.d.yo && S.d.yo.nombre) || S.yo.email;
   const tabs = TABS(); if (!tabs.some(t => t[0] === S.tab)) S.tab = 'inicio';
-  const nAprobar = (S.d.meses || []).reduce((a, m) => a + m.piezas.filter(z => z.estado === 'Para el cliente').length, 0) + (S.d.proyectos || []).reduce((a, p) => a + p.entregas.filter(e => e.estado === 'Enviada').length + tuyas(p).length, 0);
+  const nAprobar = (S.d.meses || []).reduce((a, m) => a + m.piezas.filter(z => z.estado === 'Para el cliente').length + (m.estrategia && m.estrategia.estado === 'Para el cliente' ? 1 : 0), 0) + (S.d.proyectos || []).reduce((a, p) => a + p.entregas.filter(e => e.estado === 'Enviada').length + tuyas(p).length, 0);
   $('#tabs').innerHTML = tabs.map(([k, l]) => '<button data-act="tab" data-t="' + k + '"' + (S.tab === k ? ' aria-current="page"' : '') + '>' + l + (k === 'inicio' && nAprobar ? ' <span class="po-n">' + nAprobar + '</span>' : '') + '</button>').join('');
   const V = { inicio: vInicio, redes: vRedes, proyectos: vProyectos, tickets: vTickets, informes: vInformes, marca: vMarca, cuenta: vCuenta }[S.tab];
   $('#view').innerHTML = V();
@@ -114,6 +121,8 @@ function vInicio() {
   const inf = (S.d.informes || [])[0];
   let h = '<section class="po-hero"><h1>Hola' + (nom ? ', ' + esc(nom) : '') + '</h1><p>' + (piezas.length || entregas.length || (S.d.proyectos || []).some(p => tuyas(p).length) ? 'Tenés cosas para revisar. Aprobá o pedí cambios desde acá: nos llega al instante.' : 'Está todo al día. Si necesitás algo, cargá un pedido y lo vemos.') + '</p>' +
     '<div class="po-hq"><button class="btn primary" data-act="tab" data-t="tickets">+ Nuevo pedido</button>' + (S.d.meses.length ? '<button class="btn" data-act="tab" data-t="redes">Ver las redes del mes</button>' : '') + '</div></section>';
+  const ests = (S.d.meses || []).filter(m => m.estrategia && m.estrategia.estado === 'Para el cliente');
+  if (ests.length) h += '<section class="po-sec"><div class="po-sh"><h2>Estrategia para validar</h2></div>' + ests.map(m => '<button class="po-row" data-act="verEstrategia" data-id="' + esc(m.id) + '"><b>Los temas de ' + esc(mesTxt(m.mes)) + '</b><span>' + m.estrategia.piezas.length + ' publicaciones propuestas, antes de diseñar · Aprobalas o pedí cambios</span></button>').join('') + '</section>';
   if (piezas.length) h += '<section class="po-sec"><div class="po-sh"><h2>Para aprobar en redes</h2><button class="btn ghost sm" data-act="tab" data-t="redes">Ver todo →</button></div><div class="po-mini">' + piezas.slice(0, 6).map(({ z }) => miniPieza(z)).join('') + '</div></section>';
   const mias = (S.d.proyectos || []).flatMap(p => tuyas(p).map(t => ({ t, p })));
   if (mias.length) h += '<section class="po-sec"><div class="po-sh"><h2>Te toca a vos</h2></div>' + mias.map(({ t, p }) => '<button class="po-row" data-act="irProy" data-id="' + esc(p.id) + '"><b>' + esc(t.titulo) + '</b><span>' + esc(p.nombre) + (t.fecha ? ' · para el ' + fecha(t.fecha) : '') + '</span></button>').join('') + '</section>';
@@ -157,6 +166,7 @@ function vRedes() {
   const ms = S.d.meses || [];
   if (!ms.length) return '<section class="po-sec"><p class="muted">Todavía no hay contenido para revisar.</p></section>';
   const m = mesActual(), ps = m.piezas, pend = ps.filter(z => z.estado === 'Para el cliente').length;
+  if (m.estrategia && (m.soloEstrategia || S.vista === 'estrategia')) return estrategiaHtml(m, ms);
   if (S.fz === null) S.fz = '';
   const zf = S.foco && ps.find(x => x.id === S.foco); if (zf) return revisionHtml(m, zf); else S.foco = null;
   const plan = Object.entries(m.plan || {}).map(([f, n]) => n + ' ' + f.toLowerCase()).join(' · ');
@@ -170,7 +180,7 @@ function vRedes() {
     '<span>' + hechas + ' de ' + ps.length + ' revisadas' + (plan ? ' · Tu plan: ' + esc(plan) : '') + '</span><span class="po-rd-bar" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100" aria-label="Avance"><i style="width:' + pct + '%"></i></span></div>' +
     (pend ? '<div class="po-rd-cta-b"><button class="btn primary" data-act="revisar">Empezar a revisar</button>' + (pend > 1 ? '<button class="btn ghost" data-act="aprobarMes" data-id="' + esc(m.id) + '">Aprobar las ' + pend + '</button>' : '') + '</div>' : '') + '</div>';
   // Cómo mirar el mes
-  const vistas = [['revisar', 'Piezas'], ['calendario', 'Calendario'], ['feed', 'Feed']];
+  const vistas = [['revisar', 'Piezas'], ['calendario', 'Calendario'], ['feed', 'Feed'], ...(m.estrategia ? [['estrategia', 'Estrategia']] : [])];
   const cuantos = GRUPOS_CLI.map(([k, l, c, f]) => [k, l, c, ps.filter(f).length]).filter(x => x[3]);
   h += '<div class="po-rd-tools"><div class="seg po-rd-v" role="tablist" aria-label="Cómo ver el mes">' + vistas.map(([k, l]) => '<button role="tab" data-act="vista" data-v="' + k + '" aria-selected="' + (S.vista === k) + '" aria-pressed="' + (S.vista === k) + '">' + l + '</button>').join('') + '</div>' +
     (cuantos.length > 1 ? '<div class="po-chips" role="group" aria-label="Filtrar por estado"><button class="po-chip' + (!S.fz ? ' on' : '') + '" data-act="fz" data-k="" aria-pressed="' + !S.fz + '">Todas <b>' + ps.length + '</b></button>' +
@@ -198,6 +208,33 @@ function vRedes() {
     h += xs.length ? '<div class="po-pcs">' + xs.map(cardPieza).join('') + '</div>' : '<div class="po-vacio"><b>No hay piezas con ese estado.</b><button class="btn sm" data-act="fz" data-k="">Ver todas</button></div>';
   }
   return h + '</section>';
+}
+// La estrategia del mes: los temas que propone el equipo, con formato y fecha, antes de diseñar. Se aprueba o se piden cambios
+// (en general o sobre un tema). Es para validar el rumbo: los diseños llegan después, para aprobar de a uno.
+function estrategiaHtml(m, ms) {
+  const e = m.estrategia, i = ms.indexOf(m), ant = ms[i + 1], sig = ms[i - 1];
+  const flecha = (x, d, l) => '<button class="po-mn-b" data-act="mesNav" data-id="' + esc(x ? x.id : '') + '"' + (x ? '' : ' disabled') + ' aria-label="' + l + '">' + (d < 0 ? '‹' : '›') + '</button>';
+  let h = '<section class="po-sec po-redes po-estr"><div class="po-mn">' + flecha(ant, -1, 'Mes anterior') + '<h1>' + esc(cap(mesTxt(m.mes))) + '</h1>' + flecha(sig, 1, 'Mes siguiente') + '</div>';
+  if (!m.soloEstrategia) h += '<div class="po-rd-tools"><div class="seg po-rd-v" role="tablist">' + [['revisar', 'Piezas'], ['calendario', 'Calendario'], ['feed', 'Feed'], ['estrategia', 'Estrategia']].map(([k, l]) => '<button role="tab" data-act="vista" data-v="' + k + '" aria-selected="' + (k === 'estrategia') + '" aria-pressed="' + (k === 'estrategia') + '">' + l + '</button>').join('') + '</div></div>';
+  const plan = Object.entries(e.plan || m.plan || {}).map(([f, n]) => n + ' ' + f.toLowerCase()).join(' · ');
+  const estado = e.estado === 'Aprobada' ? '<span class="pzst" style="--c:var(--pz-aprobada)">✓ La aprobaste' + (e.resp_at ? ' el ' + esc(fecha(e.resp_at)) : '') + '</span>' : e.estado === 'Cambios' ? '<span class="pzst" style="--c:var(--pz-cambios)">Pediste cambios</span>' : '<span class="pzst" style="--c:var(--pz-cliente)">Para validar</span>';
+  h += '<div class="po-rd-cta' + (e.estado === 'Aprobada' ? ' ok' : '') + '"><div><b>' + (e.estado === 'Para el cliente' ? 'La estrategia del mes, para validar' : e.estado === 'Aprobada' ? 'Aprobaste la estrategia del mes' : 'Estamos ajustando la estrategia con lo que pediste') + '</b>' +
+    '<span>' + e.piezas.length + ' publicaciones' + (plan ? ' · ' + esc(plan) : '') + '. Son los temas antes de diseñar: los diseños te llegan después, para aprobar de a uno.</span>' + (e.estado === 'Cambios' && e.resp ? '<span class="po-est-r">Lo que pediste: «' + esc(e.resp) + '»</span>' : '') + '</div>' +
+    (e.estado === 'Para el cliente' ? '<div class="po-rd-cta-b"><button class="btn primary" data-act="estAprobar" data-id="' + esc(m.id) + '">Aprobar la estrategia</button><button class="btn" data-act="estCambios" data-id="' + esc(m.id) + '">Pedir cambios</button></div>' : estado) + '</div>';
+  const porSemana = {};
+  e.piezas.forEach(z => { const k = z.fecha ? semanaDe(z.fecha) : 'Sin fecha'; (porSemana[k] = porSemana[k] || []).push(z); });
+  h += Object.entries(porSemana).map(([k, xs]) => '<div class="po-est-s"><h3>' + esc(k) + '</h3>' + xs.map(z => '<article class="po-est-i" style="--fc:' + fmtColor(z.formato) + '"><div class="po-est-d"><b>' + esc(z.fecha ? cap(corta(z.fecha)) : 'Sin fecha') + '</b>' + (z.hora ? '<span>' + esc(z.hora) + '</span>' : '') + '</div>' +
+    '<div class="po-est-t"><span class="po-est-f"><i></i>' + esc(z.formato) + (z.red ? ' · ' + esc(z.red) : '') + '</span><h4>' + esc(z.tema || 'Sin tema todavía') + '</h4>' + (z.contenido ? '<p>' + esc(z.contenido) + '</p>' : '') +
+    (z.copy ? '<details><summary>Texto propuesto</summary><p class="po-copy">' + esc(z.copy) + '</p>' + (z.hashtags ? '<p class="po-tags">' + esc(z.hashtags) + '</p>' : '') + '</details>' : '') + '</div>' +
+    (e.estado !== 'Aprobada' ? '<button class="btn ghost sm" data-act="estTema" data-id="' + esc(m.id) + '" data-t="' + esc(z.tema || z.formato) + '">Cambiar este</button>' : '') + '</article>').join('') + '</div>').join('');
+  return h + '</section>';
+}
+const semanaDe = f => { const d = new Date(f + 'T12:00'), l = new Date(d); l.setDate(d.getDate() - ((d.getDay() + 6) % 7)); const dom = new Date(l); dom.setDate(l.getDate() + 6);
+  const mes = x => x.toLocaleDateString('es-AR', { month: 'short' }).replace('.', ''); return 'Semana del ' + l.getDate() + (l.getMonth() !== dom.getMonth() ? ' ' + mes(l) : '') + ' al ' + dom.getDate() + ' ' + mes(dom); };
+async function responderEstrategia(id, accion, texto, ok) {
+  if (S.busy) return; S.busy = true;
+  try { check(await sb.rpc('portal_estrategia_responder', { p_mes: id, p_accion: accion, p_texto: texto || '' })); toast(ok); await cargar(true); }
+  catch (e) { toast(e.message); } finally { S.busy = false; }
 }
 // Una pieza en la grilla: el arte (o su tapa), el estado arriba, y abajo cuándo sale y de qué se trata.
 function cardPieza(z) {
@@ -548,6 +585,10 @@ const ACT = {
   pyCalificar: t => { const n = +t.dataset.n; pedirTexto('Gracias por tu ' + '★'.repeat(n), '¿Querés contarnos algo más? Es opcional.', txt => comentar('proyecto', t.dataset.id, '⭐ Calificación: ' + n + '/5' + (txt ? ' — ' + txt : ''), '¡Gracias!'), { opcional: true }); },
   eqEscribir: t => pedirTexto('Escribirle a ' + t.dataset.n, 'Le llega directo a ' + t.dataset.n + '. La respuesta te aparece en Pedidos.', txt => aEquipo(t.dataset.a, t.dataset.n, 'Mensaje para ' + t.dataset.n + ': ' + txt.split('\n')[0].slice(0, 80), txt, 'Listo, le llegó a ' + t.dataset.n + '.')),
   eqReunion: t => pedirTexto('Reunión con ' + t.dataset.n, '¿De qué querés hablar y qué días y horarios te quedan bien?', txt => aEquipo(t.dataset.a, t.dataset.n, 'Reunión con ' + t.dataset.n, txt, 'Listo, ' + t.dataset.n + ' te escribe para coordinar.')),
+  verEstrategia: t => { S.tab = 'redes'; S.mes = t.dataset.id; S.vista = 'estrategia'; S.foco = null; render(); window.scrollTo(0, 0); },
+  estAprobar: t => pedirTexto('Aprobar la estrategia', '¿Querés agregar algo para el equipo? Es opcional.', txt => responderEstrategia(t.dataset.id, 'aprobar', txt, '¡Gracias! Pasamos a diseñar.'), { opcional: true }),
+  estCambios: t => pedirTexto('Pedir cambios en la estrategia', 'Contanos qué cambiarías: temas que sacarías, que sumarías o que ajustarías.', txt => responderEstrategia(t.dataset.id, 'cambios', txt, 'Recibido. Ajustamos la estrategia y te la mandamos de nuevo.')),
+  estTema: t => pedirTexto('Cambiar «' + t.dataset.t + '»', '¿Qué cambiarías de este tema? Si preferís otro, contanos cuál.', txt => responderEstrategia(t.dataset.id, 'cambios', '«' + t.dataset.t + '»: ' + txt, 'Recibido. Lo ajustamos y te avisamos.')),
   mkArch: () => { S.mkArch = !S.mkArch; render(); },
   abrirManual: t => { const { completo, lc, lp } = manualDe(), u = completo ? lc || lp : lp; if (u) { window.open(u + (t.dataset.ir ? '#' + t.dataset.ir : ''), '_blank', 'noopener'); return; } abrirManual(t.dataset.ir); },
   cerrarManual: () => cerrarManual(),

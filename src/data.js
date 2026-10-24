@@ -126,9 +126,10 @@ export async function loadAll() {
 export function mesUI(m) {
   return { _id: m.id, cliente: idx.clienteName.get(m.cliente_id) || '', clienteId: m.cliente_id, abonoId: m.abono_id, mes: String(m.mes || '').slice(0, 7), estado: m.estado, resp: idx.personaAlias.get(m.responsable_id) || '',
     plan: m.plan || {}, carpeta: m.carpeta || '', carpetaUrl: m.carpeta_url || '', conteo: m.conteo || {}, conteoAt: m.conteo_at, notas: m.notas || '', visible: !!m.visible_cliente,
-    enviadoAt: m.enviado_at, aprobadoAt: m.aprobado_at, aprobadoPor: m.aprobado_por || '', horas: m.horas == null ? '' : +m.horas, investigacion: m.investigacion || null };
+    enviadoAt: m.enviado_at, aprobadoAt: m.aprobado_at, aprobadoPor: m.aprobado_por || '', horas: m.horas == null ? '' : +m.horas, investigacion: m.investigacion || null,
+    estrategiaAt: m.estrategia_at || null, estrategiaEstado: m.estrategia_estado || '', estrategiaResp: m.estrategia_resp || '', estrategiaRespAt: m.estrategia_resp_at || null, estrategiaPor: m.estrategia_por || '' };
 }
-const MES_COLS = { estado: 'estado', plan: 'plan', carpeta: 'carpeta', carpetaUrl: 'carpeta_url', notas: 'notas', visible: 'visible_cliente', enviadoAt: 'enviado_at', aprobadoAt: 'aprobado_at', aprobadoPor: 'aprobado_por' };
+const MES_COLS = { estado: 'estado', plan: 'plan', carpeta: 'carpeta', carpetaUrl: 'carpeta_url', notas: 'notas', visible: 'visible_cliente', enviadoAt: 'enviado_at', aprobadoAt: 'aprobado_at', aprobadoPor: 'aprobado_por', estrategiaAt: 'estrategia_at', estrategiaEstado: 'estrategia_estado', estrategiaResp: 'estrategia_resp', estrategiaRespAt: 'estrategia_resp_at', estrategiaPor: 'estrategia_por' };
 function mesRow(u) {
   const r = {};
   for (const [k, c] of Object.entries(MES_COLS)) if (k in u) r[c] = u[k];

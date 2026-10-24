@@ -245,7 +245,7 @@ export function initRedes(ctx) {
       '<div class="toolbar pf-acc">' + (can ? carpetaBtn(m) + enviarBtn(m, lista) + (ctx.masMenu ? ctx.masMenu([
         next ? null : { act: 'rmSiguiente', label: 'Arrancar ' + monthLabel(addMonth(m.mes, 1)).split(' ')[0], attrs: ' data-id="' + esc(m._id) + '"', icon: 'calendario' },
         { act: 'rmBorrarMes', label: 'Borrar este mes', attrs: ' data-id="' + esc(m._id) + '"', danger: true, icon: 'alerta' }]) : '') : '') + '</div></div>' +
-      '<div class="pf-meta rm-meta">' + etapasHtml(m, lista) +
+      '<div class="pf-meta rm-meta">' + etapasHtml(m, lista) + estrategiaHtml(m, lista, can) +
 
       (m.aprobadoAt ? '<span class="pzst" style="--c:var(--s-entregado)">Aprobado por ' + esc(m.aprobadoPor || 'el cliente') + '</span>' : '') +
       '</div>' +
@@ -260,6 +260,29 @@ export function initRedes(ctx) {
     return h;
   }
   const carpetaBtn = m => m.carpetaUrl ? '<a class="btn" href="' + esc(m.carpetaUrl) + '" target="_blank" rel="noopener" title="' + esc(m.carpeta) + '">Carpeta ↗</a><button class="btn ghost sm" data-act="rmContar" data-id="' + esc(m._id) + '" title="Contar los archivos de la carpeta">↻</button>' : cfgGet && cfgGet('dropbox', 'crear') === 'si' ? '<button class="btn" data-act="rmCarpeta" data-id="' + esc(m._id) + '">Crear carpetas en Dropbox</button>' : '';
+  // Estrategia del mes (opcional): los temas, formatos y fechas, sin diseños, para que el cliente los valide antes de diseñar.
+  // El mes con los diseños se manda siempre igual, apruebe o no la estrategia.
+  function estrategiaHtml(m, ps, can) {
+    if (!m.estrategiaAt) return can && ps.length && etapaDe(m) === ETAPAS[0] ? '<button class="btn ghost sm rm-est-b" data-act="rmEstrategia" data-id="' + esc(m._id) + '" title="Opcional: el cliente ve los temas, formatos y fechas del mes (sin diseños) y los aprueba o pide cambios antes de diseñar">Validar la estrategia con el cliente</button>' : '';
+    const e = m.estrategiaEstado || 'Para el cliente';
+    const chip = e === 'Aprobada' ? '<span class="pzst" style="--c:var(--pz-aprobada)" title="' + esc(m.estrategiaResp || '') + '">✓ Estrategia aprobada' + (m.estrategiaPor ? ' por ' + esc(m.estrategiaPor.split(' ')[0]) : '') + '</span>'
+      : e === 'Cambios' ? '<span class="pzst" style="--c:var(--pz-cambios)">Estrategia: pidió cambios</span>'
+      : '<span class="pzst" style="--c:var(--pz-cliente)" title="Mandada el ' + esc(String(m.estrategiaAt).slice(0, 10).split('-').reverse().join('/')) + '">Estrategia con el cliente</span>';
+    return '<span class="rm-est">' + chip + (e === 'Cambios' && m.estrategiaResp ? '<span class="rm-est-r">«' + esc(m.estrategiaResp.length > 140 ? m.estrategiaResp.slice(0, 138) + '…' : m.estrategiaResp) + '»</span>' : '') +
+      (can && e !== 'Aprobada' ? '<button class="btn ghost sm" data-act="rmEstrategia" data-id="' + esc(m._id) + '">' + (e === 'Cambios' ? 'Mandar de nuevo' : 'Volver a avisar') + '</button>' : '') + '</span>';
+  }
+  async function mandarEstrategia(m) {
+    const ps = (piezas(m._id) || []).filter(z => z.estado !== 'Rechazada'), sinTema = ps.filter(z => !String(z.tema || '').trim()).length;
+    if (!ps.length) { toast('Todavía no hay piezas en el mes.'); return; }
+    const otra = !!m.estrategiaAt;
+    if (!await confirmar((otra ? 'Le volvemos a mandar a ' + m.cliente + ' la estrategia de ' + monthLabel(m.mes) + ' con los cambios.' : 'Le mandamos a ' + m.cliente + ' la estrategia de ' + monthLabel(m.mes) + ': ' + ps.length + ' temas con su formato y fecha, sin diseños.') +
+      '\nLa ve en su portal y la aprueba o pide cambios. Es opcional: los diseños se mandan después, como siempre.' + (sinTema ? '\nOjo: ' + sinTema + (sinTema === 1 ? ' pieza no tiene tema.' : ' piezas no tienen tema.') : ''), { titulo: otra ? '¿Mandamos la estrategia de nuevo?' : '¿Validamos la estrategia con el cliente?', ok: 'Mandar' })) return;
+    const u = { estrategiaAt: new Date().toISOString(), estrategiaEstado: 'Para el cliente', estrategiaResp: '', estrategiaRespAt: null, estrategiaPor: '' };
+    try { await data.mesUpd(m._id, u); Object.assign(m, u); }
+    catch (e) { toast(/estrategia/.test(e.message || '') ? 'Falta correr el SQL 0052 en Supabase (estrategia para el cliente).' : e.message); return; }
+    render(); toast('Listo: ' + m.cliente + ' ya ve la estrategia en su portal');
+    if (ctx.avisarCliente) ctx.avisarCliente(m.cliente, 'estrategia', m);
+  }
   function enviarBtn(m, ps) {
     if (!ps.length) return '';
     const listas = ps.filter(z => z.estado === 'Revisión interna').length;
@@ -1481,6 +1504,7 @@ export function initRedes(ctx) {
     rmCarpeta: async t => { const m = mesDe(t.dataset.id); if (!m) return; t.disabled = true; t.textContent = 'Creando…'; try { const r = await data.dropbox({ accion: 'carpeta_mes', mes_id: m._id }); m.carpeta = r.carpeta; m.carpetaUrl = r.carpeta_url; toast('Carpetas creadas en Dropbox'); render(); } catch (e) { toast(e.message); t.disabled = false; t.textContent = 'Crear carpetas en Dropbox'; } },
     rmContar: t => { const m = mesDe(t.dataset.id); if (m) contar(m); },
     rmEnviar: t => { const m = mesDe(t.dataset.id); if (m) enviarMes(m); },
+    rmEstrategia: t => { const m = mesDe(t.dataset.id); if (m) mandarEstrategia(m); },
     rmSoltar: t => soltar(t.dataset.id, t.dataset.e),
     rmListoTodas: async t => { const m = mesDe(t.dataset.id); if (!m) return; const ps = (piezas(m._id) || []).filter(z => ['Idea', 'En diseño'].includes(z.estado)); if (ps.length && await confirmar('¿Marco las ' + ps.length + ' piezas que faltan como listas para mandar?')) setEstado(m, ps.map(z => z._id), 'Revisión interna'); },
     rmListoSel: t => { const m = mesDe(t.dataset.id); if (!m) return; const ids = [...st.sel].filter(id => { const z = (piezas(m._id) || []).find(x => x._id === id); return z && ['Idea', 'En diseño'].includes(z.estado); }); st.sel.clear(); if (ids.length) setEstado(m, ids, 'Revisión interna'); else { toast('Esas piezas ya no están en proceso.'); render(); } },
