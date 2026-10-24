@@ -18,7 +18,11 @@ export const CAT_NOTA = { mockups: 'Ejemplos de cómo podría verse la marca apl
 // Redes: a qué red va cada perfil, portada o plantilla, y para qué se usa
 export const REDES_KIT = ['instagram', 'facebook', 'linkedin', 'tiktok', 'youtube', 'x'];
 export const redDe = x => x.red || (REDES_KIT.find(k => new RegExp(k === 'x' ? '\\b(twitter|x)\\b' : k, 'i').test(x.n || '')) || '');
-export const usoDe = x => x.uso || (/perfil|avatar/i.test(x.n || '') ? 'perfil' : /portada|cover|banner|header|encabezado/i.test(x.n || '') ? 'portada' : /histori|story|reel/i.test(x.n || '') ? 'historia' : catDe(x) === 'plantillas' ? 'post' : '');
+// Para qué es cada imagen de redes: lo que se eligió, o lo que dice el nombre, o su forma (cuadrada = perfil, apaisada = portada, vertical = historia)
+const usoPorForma = x => { if (!x.w || !x.h) return ''; const r = x.w / x.h; return catDe(x) === 'plantillas' ? (r < 0.7 ? 'historia' : 'post') : r > 1.7 ? 'portada' : r >= 0.9 && r <= 1.1 ? 'perfil' : r < 0.7 ? 'historia' : 'post'; };
+export const usoDe = x => x.uso || (/perfil|avatar/i.test(x.n || '') ? 'perfil' : /portada|cover|banner|header|encabezado/i.test(x.n || '') ? 'portada' : /histori|story|reel/i.test(x.n || '') ? 'historia' : usoPorForma(x) || (catDe(x) === 'plantillas' ? 'post' : ''));
+// Ancho y alto de una imagen (para saber su forma)
+export const medidas = url => new Promise(res => { const im = new Image(); im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => res(null); im.src = url; setTimeout(() => res(null), 8000); });
 const USOS = [['perfil', 'Foto de perfil'], ['portada', 'Portada'], ['post', 'Post'], ['historia', 'Historia o reel']];
 export const catDe = r => r.cat || (/^video\//.test(r.tipo || '') || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(r.url || '') ? 'videos' : /^image\//.test(r.tipo || '') || /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(r.url || '') ? 'fotos' : 'otros');
 const ROLES_TIPO = ['Títulos', 'Subtítulos', 'Textos', 'Destacados'];
@@ -158,12 +162,13 @@ export function initKit(ctx) {
       if (k !== 'redes' || !sel) return chips + grilla(k, vis);
       const de = uso => rs.filter(x => (redDe(x) === sel || !redDe(x)) && usoDe(x) === uso && esImg(x.tipo, x.url)).sort((a, b) => (redDe(b) === sel) - (redDe(a) === sel));
       const iso = kit.logos.find(l => /iso|s[ií]mbolo/i.test(l.n || '')) || kit.logos[0];
-      const perfil = (de('perfil')[0] || iso || {}).url, portada = (de('portada')[0] || {}).url;
+      const sinUso = rs.filter(x => catDe(x) === 'redes' && !usoDe(x) && esImg(x.tipo, x.url) && (!redDe(x) || redDe(x) === sel));
+      const perfil = (de('perfil')[0] || sinUso[0] || iso || {}).url, portada = (de('portada')[0] || {}).url;
       const posts = de('post').map(x => x.url).concat(recC.filter(x => x.cat === 'fotos' && esImg(x.tipo, x.url)).map(x => x.url)).slice(0, 6);
       return chips + '<div class="km-red-w">' + grilla(k, vis) + '<div class="km-red-p"><span class="km-red-pt">Así se ve en ' + esc((REDES.find(y => y[0] === sel) || [sel, sel])[1]) + '</span>' + perfilRed({ nombre: c.nombre, avatar: perfil }, sel, { portada, posts, historias: de('historia').map(x => x.url), bio: (m.rubro || '').slice(0, 120) }) + '</div></div>';
     };
     const faltan = CATS.filter(([k]) => !recursosG.some(g => g[0] === k));
-    const recursos = (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><div class="km-gh"><h4>' + esc(l) + '</h4><span class="km-n">' + xs.length + '</span>' + ckTodos('recursos', xs) + '<span class="km-sp"></span>' + (sel ? '' : subeCat(k, 'Subir', 'btn ghost sm km-up')) + '</div>' + (CAT_NOTA[k] ? '<p class="km-gnota">' + esc(CAT_NOTA[k]) + '</p>' : '') +
+    const recursos = (recursosG.length ? recursosG.map(([k, l, xs]) => '<div class="km-grp"><div class="km-gh"><h4>' + esc(l) + '</h4><span class="km-n">' + xs.length + '</span>' + ckTodos('recursos', xs) + '<span class="km-sp"></span>' + (sel ? '' : (can && (k === 'redes' || k === 'plantillas') ? '<button class="btn ghost sm" data-act="kmUsos" data-id="' + id + '" data-cat="' + k + '">Para qué es cada una</button>' : '') + subeCat(k, 'Subir', 'btn ghost sm km-up')) + '</div>' + (CAT_NOTA[k] ? '<p class="km-gnota">' + esc(CAT_NOTA[k]) + '</p>' : '') +
         (k === 'redes' || k === 'plantillas' ? redesBloque(k, xs) : grilla(k, xs)) + '</div>').join('') : vacio('Subí cada cosa en su tipo. Si tenés la misma pieza en varios formatos (por ejemplo tarjeta.pdf, tarjeta.png y tarjeta.ai), subilos juntos y quedan como una sola con sus formatos.')) +
       (can && faltan.length ? '<div class="km-mas"><span>' + (recursosG.length ? 'Sumar otro tipo' : 'Subir') + '</span>' + faltan.map(([k, l]) => subeCat(k, l, 'km-cat-b')).join('') + '</div>' : '');
 
@@ -275,6 +280,18 @@ export function initKit(ctx) {
       '<div class="panel-f"><span style="display:flex;gap:4px"><button type="button" class="btn ghost" data-act="kmPrevia" data-v="simple" data-id="' + esc(c._id) + '">' + ICON.ojo + 'Ver guía</button><button type="button" class="btn ghost" data-act="kmPrevia" data-v="completo" data-id="' + esc(c._id) + '">' + ICON.ojo + 'Ver completo</button></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" id="kmsave">Guardar</button></span></div></form>';
     document.getElementById('panel').hidden = false; document.getElementById('scrim').hidden = false;
   }
+  // ¿Para qué es cada una? Red y uso (foto de perfil, portada, post o historia) de varias imágenes de redes a la vez.
+  function panelUsos(c, ids) {
+    const kit = kitDe(c), xs = kit.recursos.filter(x => ids.includes(x.id)); if (!xs.length) return;
+    S.form = null; st.edit = { cid: c._id, k: 'usos', ids: xs.map(x => x.id) };
+    const chips = (name, opts, val, ic) => '<div class="seg km-seg km-usos-s" role="radiogroup">' + opts.map(([v, l]) => '<label><input type="radio" name="' + name + '" value="' + esc(v) + '"' + ((val || '') === v ? ' checked' : '') + '><span>' + (ic ? ic(v) : '') + esc(l) + '</span></label>').join('') + '</div>';
+    document.getElementById('panel').innerHTML = '<form id="kmform" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(c.nombre) + '</span><h2 id="panel-title">¿Para qué es cada una?</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="panel-b"><p class="formnote full">Con esto se arma la vista previa de cada red en el kit y en el manual. Ya marcamos lo que parece por su forma: revisalo.</p>' +
+      xs.map(x => '<div class="field full km-usos"><div class="km-usos-h"><span class="km-usos-i">' + (esImg(x.tipo, x.url) ? '<img src="' + esc(x.url) + '" alt="">' : '') + '</span><b>' + esc(x.n) + '</b>' + (x.w ? '<small class="muted">' + x.w + ' × ' + x.h + ' px</small>' : '') + '</div>' +
+        chips('u-' + x.id, USOS, usoDe(x)) + chips('r-' + x.id, [['', 'Todas las redes'], ...REDES_KIT.map(r => [r, (REDES.find(y => y[0] === r) || [r, r])[1]])], redDe(x), r => r ? logoRed(r, 14) : '') + '</div>').join('') +
+      '</div><div class="panel-f"><span></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Después</button><button class="btn primary">Guardar</button></span></div></form>';
+    document.getElementById('panel').hidden = false; document.getElementById('scrim').hidden = false;
+  }
   const slugDe = n => String(n || 'marca').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) + '-' + Math.random().toString(36).slice(2, 7);
   // Ver como cliente: se abre el manual en otra pestaña, igual que lo ve la gente. Si todavía no está publicado,
   // la pestaña lee los datos que deja la app en este navegador (/m/previa) y avisa que es una vista previa.
@@ -292,6 +309,10 @@ export function initKit(ctx) {
     const b = document.getElementById('kmsave'); const listo = () => { if (b) { b.disabled = false; b.textContent = 'Guardar'; } };
     if (b) { b.disabled = true; b.textContent = 'Guardando…'; }
     try {
+      if (e.k === 'usos') {
+        const recursos = kit.recursos.map(x => { if (!e.ids.includes(x.id)) return x; const u = (document.querySelector('input[name="u-' + x.id + '"]:checked') || {}).value, rr = (document.querySelector('input[name="r-' + x.id + '"]:checked') || {}).value; return { ...x, uso: u || '', red: rr || '' }; });
+        await guardar(c, { ...kit, recursos }); ctx.closeForm(); toast('Listo: ya se ven en cada red'); return;
+      }
       if (e.k === 'uso') { await guardar(c, kit, { visual: v('km-uso') }); ctx.closeForm(); toast('Guardado'); return; }
       if (e.k === 'manual') {
         const prev = (c.marca || {}).manual || {}, pub = r('km-pub') === 'si', comp = r('km-comp') === 'si';
@@ -342,11 +363,14 @@ export function initKit(ctx) {
         const pv = previaDe(archivos);
         // Un logo claro (blanco, negativo) arranca sobre fondo oscuro para que se vea
         const fondo = k === 'logos' ? ((await fondoPara(pv.url)) === 'oscuro' ? 'oscuro' : 'claro') : '';
-        nuevos.push({ id: uid(), n: lindo(fs[0].name), url: pv.url, path: pv.path, tipo: pv.tipo, archivos, ...(fondo ? { fondo } : {}), ...(cat ? { cat } : {}) });
+        const dim = ['redes', 'plantillas'].includes(cat) && esImg(pv.tipo, pv.url) ? await medidas(pv.url) : null;
+        nuevos.push({ id: uid(), n: lindo(fs[0].name), url: pv.url, path: pv.path, tipo: pv.tipo, archivos, ...(fondo ? { fondo } : {}), ...(cat ? { cat } : {}), ...(dim ? { w: dim.w, h: dim.h } : {}) });
       }
     } catch (er) { toast(er.message); }
     st.subiendo = '';
-    if (nuevos.length) { try { await guardar(c, { ...kit, [k]: [...kit[k], ...nuevos] }); toast(nuevos.length === 1 ? 'Subido' : nuevos.length + ' piezas subidas'); } catch (er) { toast(er.message); data.kitBorrar(subidos); } }
+    if (nuevos.length) { try { await guardar(c, { ...kit, [k]: [...kit[k], ...nuevos] }); toast(nuevos.length === 1 ? 'Subido' : nuevos.length + ' piezas subidas');
+      // Perfiles, portadas y plantillas: se pregunta para qué es cada una (con lo que se adivinó ya marcado)
+      if (['redes', 'plantillas'].includes(cat)) panelUsos(cli(c._id) || c, nuevos.map(x => x.id)); } catch (er) { toast(er.message); data.kitBorrar(subidos); } }
     else render();
   }
   // Formatos de una pieza (desde el panel): se suben y se guardan al momento.
@@ -401,6 +425,10 @@ export function initKit(ctx) {
     kmManual: t => { const c = cli(t.dataset.id); if (c) panelManual(c); },
     kmPrevia: t => { const c = cli(t.dataset.id); if (c) verComoCliente(c, t.dataset.v); },
     kmBorrar: () => borrar(),
+    kmUsos: async t => { const c = cli(t.dataset.id); if (!c) return; const kit = kitDe(c), xs = kit.recursos.filter(x => catDe(x) === t.dataset.cat);
+      // Las que no tienen medidas, se miden ahora para adivinar mejor
+      const falta = xs.filter(x => !x.w && esImg(x.tipo, x.url)); if (falta.length) { for (const x of falta) { const d = await medidas(x.url); if (d) Object.assign(x, d); } }
+      panelUsos(c, xs.map(x => x.id)); },
     kmSel: t => { st.sel = st.sel && st.sel.cid === t.dataset.id ? null : { cid: t.dataset.id, ids: new Set() }; render(); },
     kmSelBorrar: async t => {
       const c = cli(t.dataset.id); if (!c || !st.sel || !st.sel.ids.size) return;

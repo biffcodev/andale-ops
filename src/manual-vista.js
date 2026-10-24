@@ -198,7 +198,7 @@ export function manualHTML(d, o = {}) {
     const copy = lineas(m.ejemplos)[0] || '', bio = (man.intro || m.rubro || '').split(/(?<=[.!?])\s/)[0];
     const tabla = (red) => (MEDIDAS[red] || []).map(([a, b]) => '<div><dt>' + a + '</dt><dd>' + b + '</dd></div>').join('');
     const panes = redes.map((red, ri) => {
-      const perfil = de(red, 'perfil')[0], portada = de(red, 'portada')[0], posts = de(red, 'post'), hist = de(red, 'historia');
+      const perfil = de(red, 'perfil')[0] || rs.find(r => r.cat === 'redes' && !usoDe(r) && esImg(r.tipo, r.url) && (!redDe(r) || redDe(r) === red)), portada = de(red, 'portada')[0], posts = de(red, 'post'), hist = de(red, 'historia');
       const grid = [...posts.map(r => r.url), ...fotos.map(r => r.url)].slice(0, 9);
       const mios = rs.filter(r => redDe(r) === red || !redDe(r));
       const fila = r => '<div class="mm-rf"><span class="mm-rf-i"' + ver(r) + '>' + (esImg(r.tipo, r.url) ? '<img src="' + esc(r.url) + '" alt="" loading="lazy">' : '') + '</span><span class="mm-rf-n"><b>' + esc(r.n) + '</b><small>' + esc(USO_N[usoDe(r)] || 'Archivo') + (redDe(r) ? '' : ' · para todas las redes') + '</small></span>' + bajarX(r) + '</div>';
