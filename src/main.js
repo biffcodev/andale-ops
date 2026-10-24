@@ -24,7 +24,7 @@ import { firmaDe, firmanteDe, firmaConfig, firmantes, personaIdDe, FIRMA_YO, FIR
 import { initPerfil, aplicarTema, temaGuardado } from './perfil.js';
 import { masMenu, vistaSel, vistaDe, guardarVista, toastAccion, uiActs, filtrosMenu, reabrir } from './ui.js';
 import * as E from './emails.js';
-import { confirmar, avisar as avisarDlg } from './dialogo.js';
+import { confirmar, avisar as avisarDlg, pedirTexto as pedirTextoDlg } from './dialogo.js';
 import { initAtajos } from './atajos.js';
 import { initAyuda } from './ayuda.js';
 initCombo();
@@ -132,6 +132,7 @@ const S = {
   T: false, FL: null, N: null, sinHilos: true, hq: null, tkVista: lsGet('tkVista') || 'etapa',
 };
 const isAdmin = () => S.me && S.me.rol === 'admin';
+const isSuper = () => !!(S.me && S.me.superadmin);
 const isStaff = () => S.me && (S.me.rol === 'admin' || S.me.rol === 'equipo');
 const isExt = () => S.me && S.me.rol === 'externo';
 const canEditProj = p => isStaff() || (S.me && hasResp(p, S.me.alias));
@@ -1328,6 +1329,7 @@ function vFicha() {
     '</dl></div></section>' + '</div><div class="stack">' +
     '<section class="sheet"><div class="sheet-h"><h2>' + (as.some(a => a.tipo !== 'Redes' && a.tipo !== 'Ads') ? 'Servicios mensuales' : 'Redes') + '</h2>' + (isStaff() && !vivo(servicioRedes(c.nombre).redes) ? '<button class="btn ghost sm" data-act="new" data-kind="abono" data-preset="' + esc(JSON.stringify({ cliente: c.nombre, tipo: 'Redes' })) + '">Sumar a Redes</button>' : isStaff() && !vivo(servicioRedes(c.nombre).ads) ? '<button class="btn ghost sm" data-act="sumarAds" data-c="' + esc(c.nombre) + '">Sumar Ads</button>' : '') + '</div>' + (as.length ? '<div class="sheet-b">' + servChips(c.nombre, { precio: true, todo: true }) + '</div><div class="rows">' + as.map(abRow).join('') + '</div>' : emptyBox('No tiene Redes', '')) + '</section>' +
     '<section class="sheet"><div class="sheet-h"><h2>Proyectos</h2><span class="muted num">' + open.length + ' abiertos · ' + closed.length + ' cerrados</span></div>' + (ps.length ? '<div class="rows">' + open.map(projRow).join('') + closed.map(projRow).join('') + '</div>' : emptyBox('Sin proyectos cargados', '')) + '</section>' + '</div></div>';
+  if (tab === 'resumen' && isSuper()) body += zonaPeligro(c);
   else if (tab === 'marca') body = fm().html(c);
   else if (tab === 'trabajos') body = '<div class="stack">' + (S.T && isStaff() ? tk().fichaHtml(c.nombre) : '') + redesFicha(c) +
     (() => { const hs = historiaCliente(c.nombre); return hs.length ? '<section class="sheet"><div class="sheet-h"><h2>Lo que hicimos juntos</h2><span class="muted num">' + hs.length + '</span></div><ol class="hist">' + hs.map(x => '<li class="' + (x.on ? 'on' : '') + '"><button class="hist-i" data-act="' + x.act + '"' + (x.kind ? ' data-kind="' + x.kind + '"' : '') + ' data-id="' + esc(x.id) + '"><span class="srv' + (x.on ? ' on' : '') + '" style="--c:var(' + (TIPO_COLOR[x.tipo] || '--muted') + ')">' + esc(x.tipo) + '</span><span class="t"><b>' + esc(x.t) + '</b><span>' + esc(x.sub) + '</span></span><span class="mono muted">' + (x.f ? esc(x.f.slice(0, 4)) : '') + '</span></button></li>').join('') + '</ol></section>' : ''; })() + '' + '</div>';
@@ -1341,6 +1343,43 @@ function vFicha() {
     '<nav class="pf-tabs ftabs" aria-label="Secciones del cliente">' + tabs.map(([k, l]) => '<button data-act="ctab" data-t="' + k + '"' + (tab === k ? ' aria-current="page"' : '') + '>' + l + '</button>').join('') + '</nav>' + body;
 }
 
+// Zona de peligro (solo superadmin): borrar la marca del cliente o el cliente entero. Se confirma escribiendo el nombre.
+function zonaPeligro(c) {
+  const m = c.marca || {}, tieneMarca = Object.keys(m).some(k => m[k] && (typeof m[k] !== 'object' || Object.keys(m[k]).length));
+  const fila = (t, d, act, lbl, dis) => '<div class="zp-f"><div><b>' + t + '</b><p>' + d + '</p></div><button class="btn sm zp-b" data-act="' + act + '" data-id="' + esc(c._id) + '"' + (dis ? ' disabled' : '') + '>' + ICON.borrar + lbl + '</button></div>';
+  return '<section class="sheet zp"><div class="sheet-h"><h2>Zona de peligro</h2><span class="muted">Solo superadmin · no se puede deshacer</span></div><div class="zp-b-in">' +
+    fila('Borrar la marca', tieneMarca ? 'El kit (logos, colores, tipografías y archivos), el manual online y la ficha de voz. ' + esc(c.nombre) + ' sigue en la app con todo lo demás.' : 'No tiene marca cargada.', 'zpMarca', 'Borrar la marca', !tieneMarca) +
+    fila('Borrar el cliente', 'Todo lo de ' + esc(c.nombre) + ': proyectos, tareas, redes y piezas, entregas, pedidos, contactos, conversaciones, abonos, horas, su marca y su portal. Los mails enviados, presupuestos y movimientos quedan, sin el cliente.', 'zpCliente', 'Borrar el cliente') +
+    '</div></section>';
+}
+async function zpMarca(id) {
+  const c = S.C.find(x => x._id === id); if (!c || !isSuper()) return;
+  const v = await pedirTextoDlg('Se borran el kit, los archivos, el manual online y la ficha de voz de ' + c.nombre + '. No se puede deshacer.\nPara confirmar, escribí el nombre del cliente: ' + c.nombre, { titulo: '¿Borrar la marca de ' + c.nombre + '?', ok: 'Borrar la marca', tipo: 'peligro', ph: c.nombre });
+  if (v == null) return; if (norm(v) !== norm(c.nombre)) { toast('El nombre no coincide: no se borró nada'); return; }
+  try { const r = await data.borrarMarca(id); toast('Marca borrada' + (r && r.marcas && r.marcas.length ? ' (' + r.marcas.length + ' archivos)' : '')); await reload(); }
+  catch (e) { toast(/borrar_marca|function/.test(e.message || '') ? 'Falta correr el SQL 0053 en Supabase.' : e.message); }
+}
+async function zpCliente(id) {
+  const c = S.C.find(x => x._id === id); if (!c || !isSuper()) return;
+  const v = await pedirTextoDlg('Se borra ' + c.nombre + ' con todo lo suyo: proyectos, tareas, redes, piezas, entregas, pedidos, contactos, conversaciones, abonos, horas, su marca y su portal. No se puede deshacer.\nPara confirmar, escribí el nombre del cliente: ' + c.nombre, { titulo: '¿Borrar ' + c.nombre + ' para siempre?', ok: 'Borrar el cliente', tipo: 'peligro', ph: c.nombre });
+  if (v == null) return; if (norm(v) !== norm(c.nombre)) { toast('El nombre no coincide: no se borró nada'); return; }
+  let r;
+  try { r = await data.borrarCliente(id, false); }
+  catch (e) {
+    const m = String(e.message || ''); const f = m.match(/tiene (\d+) factura/);
+    if (f) { if (!await confirmar(c.nombre + ' tiene ' + f[1] + ' factura(s) emitida(s). Si seguís, se borran también de la app. No anula nada en ARCA: los comprobantes siguen emitidos.', { titulo: '¿Borrar también sus facturas?', ok: 'Borrar todo', tipo: 'peligro' })) return;
+      try { r = await data.borrarCliente(id, true); } catch (e2) { toast(e2.message); return; } }
+    else { toast(/borrar_cliente|function/.test(m) ? 'Falta correr el SQL 0053 en Supabase.' : m); return; }
+  }
+  S.ficha = null; toast(c.nombre + ' se borró'); go('clientes'); await reload();
+}
+// Superadmins (solo los ve un superadmin): quiénes tienen control total.
+function superCard() {
+  if (!isSuper()) return '';
+  const ps = S.E.filter(e => e.activo !== false && e.email).sort((a, b) => (b.superadmin - a.superadmin) || cmp(a.persona, b.persona));
+  return '<section class="sheet zp-super"><div class="sheet-h"><h2>Superadmins</h2><span class="muted">Control total: pueden borrar marcas y clientes enteros y nombrar otros superadmins</span></div><div class="rows">' +
+    ps.map(e => '<label class="row nod zp-s"><span class="who1">' + av(e.persona, e.avatar) + '<span><b>' + esc(e.persona) + '</b><small class="muted">' + esc(e.nombre || '') + '</small></span></span><span class="zp-sp"></span><input type="checkbox" data-super="' + esc(e._id) + '"' + (e.superadmin ? ' checked' : '') + (S.me && e._id === S.me.id && e.superadmin && ps.filter(x => x.superadmin).length === 1 ? ' disabled title="Tiene que quedar al menos un superadmin"' : '') + ' aria-label="' + esc(e.persona) + ' es superadmin"></label>').join('') + '</div></section>';
+}
 // Ficha del cliente: cómo viene el mes de redes.
 function redesFicha(c) {
   if (!S.RM || !S.A.some(a => a.cliente === c.nombre && a.tipo === 'Redes')) return '';
@@ -1374,7 +1413,8 @@ function verCharla(id) {
   $('#panel').hidden = false; $('#scrim').hidden = false; S.form = null;
 }
 
-function vEquipo() {
+function vEquipo() { return vEquipoBase() + superCard(); }
+function vEquipoBase() {
   if (isAdmin() && ADM && ADM.equipoView) return ADM.equipoView();
   const list = [...S.E].sort((a, b) => (b.activo !== false) - (a.activo !== false) || cmp(a.persona, b.persona));
   let h = '<div class="head"><div><h1>Equipo</h1><p>Quién es quién en àndale y en qué está cada uno.</p></div><div class="toolbar">' + addBtn('persona', 'Persona') + '</div></div>';
@@ -1971,6 +2011,8 @@ const ACT = {
   gqTarea: t => { ACT.pver(t); setTimeout(() => abrirTarea(t.dataset.id, +t.dataset.i), 0); },
   gqPiggy: () => { const q = $('#gq').value; $('#gq').value = ''; $('#gqres').hidden = true; if (IA) { IA.abrir(q); } },
   ptab: t => { S.ptab = t.dataset.t; render(); },
+  zpMarca: t => zpMarca(t.dataset.id),
+  zpCliente: t => zpCliente(t.dataset.id),
   pCerrar: t => cerrarProyecto(t.dataset.id).catch(err => toast(err.message)),
   pCerrarNo: t => { (S.cierreNo || (S.cierreNo = new Set())).add(t.dataset.id); render(); },
   tkGrp: t => { const g = t.dataset.g, k = t.dataset.hecha ? g + ':open' : g; if (S.gcl.has(k)) S.gcl.delete(k); else S.gcl.add(k); lsSet('gcl', JSON.stringify([...S.gcl])); render(); },
@@ -2179,6 +2221,12 @@ document.addEventListener('change', async e => {
     (async () => { try { await data.update('cliente', t.dataset.id, pe); toast(c.nombre + (t.value === '__auto' ? ' vuelve al estado automático' : ' → ' + (VER_CL[t.value] || t.value) + (pe.estadoManual ? ' (fijado a mano)' : ''))); await reload(); } catch (err) { toast(err.message); await reload(); } })();
     return;
   }
+  if (t.dataset.super && isSuper()) {
+    const e = S.E.find(x => x._id === t.dataset.super), v = t.checked;
+    (async () => { if (e && v && !await confirmar(e.persona + ' va a tener control total: puede borrar marcas y clientes enteros y nombrar otros superadmins.', { titulo: '¿Hacer superadmin a ' + e.persona + '?', ok: 'Hacer superadmin' })) { t.checked = false; return; }
+      try { await data.setSuperadmin(t.dataset.super, v); if (e) e.superadmin = v; toast(v ? e.persona + ' ahora es superadmin' : e.persona + ' ya no es superadmin'); render(); } catch (err) { t.checked = !v; toast(err.message); } })();
+    return;
+  }
   if (t.dataset.upd) {
     const kind = t.dataset.upd, field = t.dataset.field, val = t.type === 'checkbox' ? t.checked : t.value;
     const patch = { [field]: val };
@@ -2310,6 +2358,8 @@ async function start(sess) {
   let me = null;
   try { me = await data.yo(); } catch (err) { showLogin(err.message); started = false; return; }
   if (!me) { showNoAccess(sess && sess.user && sess.user.email); started = false; return; }
+  // El superadmin tiene control total: cuenta como administrador en toda la app.
+  me.superadmin = await data.esSuperadmin(); if (me.superadmin && me.rol !== 'admin') { me.rolReal = me.rol; me.rol = 'admin'; }
   S.me = me;
   if (me.rol === 'admin' && !ADM) {
     ADM = initAdmin({ red: () => red(), extrasACobrar: (c, m) => red().extrasACobrar(c, m), waHref, WA_ICO, icoMail: ICON.mail, icoTel: ICON.telefono, autoBtn: p => aut().boton(p), autoVista: () => aut().vista(), S, av, avEditable, contactos: n => contactosDe(n), conTabla, subnav, esc, opt, optsFrom, pill, stVar, fmt, monthLabel, thisMonth, addMonth, today, diff, cmp, norm, emptyBox, clienteOpts, toast, $, render, reload, closeForm, copyText });

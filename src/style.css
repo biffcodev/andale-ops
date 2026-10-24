@@ -3272,3 +3272,14 @@ a.km-fx:hover{background:color-mix(in srgb,var(--accent) 18%,var(--surface))}
 /* Redes: estrategia del mes con el cliente */
 .rm-est{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
 .rm-est-r{font-size:12.5px;color:var(--muted);max-width:46ch}
+
+/* Zona de peligro del cliente (solo superadmin) */
+.zp{margin-top:18px;border:1.5px solid color-mix(in srgb,#B3261E 40%,var(--line))}
+.zp-b-in{display:grid}
+.zp-f{display:flex;align-items:center;gap:16px;padding:14px 18px;border-top:1px solid var(--line)}
+.zp-f > div{flex:1;min-width:0}.zp-f p{margin:3px 0 0;font-size:13px;color:var(--muted);line-height:1.45}
+.zp-b{flex:none;background:#B3261E;color:#fff;border-color:#B3261E}.zp-b:hover{background:#951f19}.zp-b:disabled{opacity:.45;cursor:not-allowed}
+.zp-b svg{width:15px;height:15px}
+.zp-super{margin-top:18px}.zp-s{cursor:pointer}.zp-sp{flex:1}.zp-s input{width:18px;height:18px;accent-color:var(--accent)}
+@media (max-width:640px){.zp-f{flex-direction:column;align-items:stretch}}
+.zp-s .who1 > span:last-child{display:grid;line-height:1.3}

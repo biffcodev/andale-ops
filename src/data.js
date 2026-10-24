@@ -104,7 +104,7 @@ export async function loadAll() {
   const meta = r => ({ creado: r.created_at, actualizado: r.updated_at });
 
   return {
-    E: d.personas.map(p => ({ _id: p.id, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, avatar: p.avatar_url || '', prefs: p.prefs || {}, ...meta(p) })),
+    E: d.personas.map(p => ({ _id: p.id, superadmin: !!p.superadmin, persona: p.alias, nombre: p.nombre, puesto: p.puesto, email: p.email || '', tel: p.tel, rol: p.rol, activo: p.activo, notas: p.notas, avatar: p.avatar_url || '', prefs: p.prefs || {}, ...meta(p) })),
     C: d.clientes.map(c => ({ _id: c.id, nombre: c.nombre, desde: month(c.desde), estado: c.estado, estadoManual: !!c.estado_manual, servicio: c.servicio, plan: c.plan, contacto: c.contacto, email: c.email, tel: c.tel, telFijo: c.tel_fijo || '', web: c.web, redes: (c.redes && typeof c.redes === 'object' && !Array.isArray(c.redes)) ? c.redes : {}, carpeta: c.carpeta, notas: c.notas, avatar: c.avatar_url || '', marca: 'marca' in c ? (c.marca || {}) : undefined, responsables: rc.get(c.id) || [], ...meta(c) })),
     A: d.abonos.map(a => ({ _id: a.id, cliente: cname(a.cliente_id), tipo: a.tipo, plan: a.plan, desde: month(a.desde), hasta: month(a.hasta), estado: a.estado, notas: a.notas, redes: Array.isArray(a.redes) ? a.redes : [], responsables: ra.get(a.id) || [], roles: rolA.get(a.id) || {}, ...meta(a) })),
     P: d.proyectos.map(p => ({ _id: p.id, cliente: cname(p.cliente_id), proyecto: p.nombre, tipo: p.tipo, estado: p.estado, fechaInicio: p.fecha_inicio || '', entrega: p.entrega || '', entregaReal: p.entrega_real || '', entregables: p.entregables, drive: p.drive, slides: p.slides, canva: p.canva, notas: p.notas, etapas: trows ? (tks.get(p.id) || []) : (Array.isArray(p.etapas) ? p.etapas : []), etapaActual: p.etapa_actual || '', prioridad: p.prioridad || '', responsables: rp.get(p.id) || [], ...meta(p) })),
@@ -622,6 +622,12 @@ function achicar(file, max) {
   });
 }
 export async function session() { return (await sb.auth.getSession()).data.session; }
+// Superadmin (SQL 0053): control total; el único que borra marcas y clientes enteros y nombra otros superadmins.
+export async function esSuperadmin() { try { const { data: d, error } = await sb.rpc('es_superadmin'); return !error && d === true; } catch (e) { return false; } }
+export async function setSuperadmin(id, valor) { check(await sb.rpc('set_superadmin', { p_persona: id, p_valor: !!valor })); }
+async function borrarDelStorage(bucket, names) { const xs = (names || []).filter(Boolean); for (let i = 0; i < xs.length; i += 100) { try { await sb.storage.from(bucket).remove(xs.slice(i, i + 100)); } catch (e) { /* quedan sueltos */ } } }
+export async function borrarMarca(clienteId) { const r = check(await sb.rpc('borrar_marca', { p_cliente: clienteId })); await borrarDelStorage('marcas', r && r.marcas); return r; }
+export async function borrarCliente(clienteId, conFacturas) { const r = check(await sb.rpc('borrar_cliente', { p_cliente: clienteId, p_con_facturas: !!conFacturas })); await borrarDelStorage('marcas', r && r.marcas); await borrarDelStorage('avatares', r && r.avatares); return r; }
 export async function yo() { const d = check(await sb.rpc('yo')); return d && d[0] ? d[0] : null; }
 export async function rpc(fn, args) { return check(await sb.rpc(fn, args)); }
 export async function sendLink(email) { check(await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin, shouldCreateUser: true } })); }
