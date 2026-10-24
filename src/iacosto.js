@@ -24,7 +24,7 @@ export function gastoIA(rows) {
     // Haiku 5.5 cobra más cuando el pedido pasa los 100 mil tokens (pasa con la búsqueda web)
     const p = /^claude-haiku-5-5/.test(r.modelo || '') && (+r.tokens_in || 0) > 100_000 ? [0.5, 2.5] : precioDe(r.modelo), c = p ? ((+r.tokens_in || 0) * p[0] + (+r.tokens_out || 0) * p[1]) / 1e6 : 0;
     if (!p) sinPrecio++;
-    const b = r.accion === 'redes_investigar' && r.ok !== false ? 5 * BUSQUEDA : 0; busquedas += b;
+    const b = ['redes_investigar', 'redes_tendencias'].includes(r.accion) && r.ok !== false ? 5 * BUSQUEDA : 0; busquedas += b;
     const e = por.get(r.modelo) || { modelo: r.modelo, n: 0, usd: 0 }; e.n++; e.usd += c + b; por.set(r.modelo, e); usd += c + b;
   });
   return { usd, consultas: (rows || []).length, porModelo: [...por.values()].sort((a, b) => b.usd - a.usd), busquedas, sinPrecio };

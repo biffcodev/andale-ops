@@ -1,7 +1,7 @@
 // Mr. Piggy arma el contenido de redes: el plan del mes (qué pieza, qué día, qué va en el diseño) y los copys.
 // Aparte de `ia` para poder ajustar las reglas de escritura sin tocar la función grande. Equipo y admins.
 // verify_jwt apagado: se valida el usuario con rpc('yo'). Misma cuenta de IA que `ia`, con el modelo preciso (escribe mejor).
-// POST { modo: 'redes_ideas' | 'redes_copys' | 'redes_agenda' | 'redes_contenido' | 'redes_revision' | 'redes_investigar', texto, contexto }
+// POST { modo: 'redes_ideas' | 'redes_copys' | 'redes_agenda' | 'redes_contenido' | 'redes_revision' | 'redes_investigar' | 'redes_tendencias', texto, contexto }
 //   redes_ideas → { piezas: [{ formato, fecha, tema, contenido }] }   (los copys se escriben después, en tandas)
 //   redes_copys → texto = JSON [{ id, formato, fecha, tema, contenido, copy_actual }] → { piezas: [{ id, copy, hashtags, contenido? }] }
 //   redes_agenda → contexto con la cuenta, las piezas a ubicar y las que ya tienen lugar → { criterio, horarios: [{ formato, dias, hora }], piezas: [{ id, fecha, hora, motivo }] }
@@ -10,6 +10,7 @@
 //                    → { resumen?, observaciones?, piezas: [{ id, nota, comentarios, copy?, hashtags?, contenido? }] }
 //   redes_investigar → busca en la web (herramienta web_search de Anthropic) fechas del mes y novedades del rubro
 //                    → { fechas: [{ fecha, nombre, tipo, idea, fuente }], novedades: [{ titulo, resumen, idea, fuente, fecha }] }
+//   redes_tendencias → busca en la web tendencias recientes de las redes de la cuenta → { tendencias: [{ red, titulo, resumen, idea, formato, fuente, fecha }] }
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -22,6 +23,7 @@ const BASE = 'Sos Mr. Piggy, community manager senior de àndale, una agencia de
   'Los copys_aprobados y los ejemplos de la ficha muestran cómo suena: tomá el tono, no copies sus frases. Las frases de "palabras que usa" son recursos para usar de vez en cuando, no un cierre fijo: variá los llamados a la acción entre piezas. ' +
   'No inventes precios, promociones, stock, plazos ni datos que no te pasen. Si no hay ficha, escribí neutro y sin inventar datos de la marca. ' +
   'Usá solo datos de la marca que estén en la ficha, las notas o el brief (vos no navegás la web). Lo que en la ficha figura como pendiente ("completar con…", "no se informó", "a definir") NO es un dato: no inventes aniversarios, años de trayectoria, lanzamientos, eventos, sucursales ni fechas propias de la marca. Si una idea necesita un dato que no tenés, elegí otra. ' +
+  'La ficha de marca y sus documentos (brandbook, manual, presentaciones) son una REFERENCIA de voz, estrategia y estilo, no una fuente de datos: nunca los cites como fuente ni los nombres en un copy. Las cifras, volúmenes, años, mercados o datos del sector que traigan pueden estar desactualizados: no los presentes como datos actuales. Los datos actuales salen solo de fechas_y_novedades (buscadas en la web, con su URL). ' +
   'REDACCIÓN: español rioplatense correcto y natural, como lo escribiría una buena redactora. Frases completas y claras, con buena puntuación y concordancia; nada de paréntesis largos ni aclaraciones metidas en medio de la frase, ni frases que suenen a traducción; "del" y "al" (nunca "de el" ni "a el"), sin palabras repetidas. Releé cada texto antes de responder como si lo fuera a publicar.';
 
 const REGLAS_FORMATO = 'QUÉ VA EN CADA FORMATO (campo contenido, para quien diseña o graba):\n' +
@@ -40,7 +42,7 @@ const REGLAS_COPY = 'CÓMO SE ESCRIBE UN COPY (el texto que acompaña la publica
   '- Largo: Posts y Carruseles 350 a 700 caracteres; Reels 200 a 450; Historias: vacío (lo escrito va en contenido).\n' +
   '- Emojis según la ficha: "Sí, con ganas" → 4 a 7, integrados al texto; "Pocos y puntuales" → 2 o 3 por copy, al inicio de un párrafo, de una línea de lista o junto al llamado a la acción (nunca en medio de una palabra ni varios seguidos); "No usa" → ninguno. Sin ficha: 1 o 2. Elegí emojis que tengan que ver con el tema (🔧🧱🚚📦 para obra y entregas, por ejemplo), no caritas genéricas.\n' +
   '- Sin hashtags dentro del copy, sin mayúsculas sostenidas, sin exclamaciones de más.\n' +
-  '- Si la pieza trae fuentes y el copy da un dato concreto que sale de ellas (una cifra, una noticia, un cambio de normativa), cerrá con una línea "Fuente: medio" (el nombre del sitio, sin link). Si solo es una fecha conocida, no hace falta citar.\n' +
+  '- Si la pieza trae fuentes (URLs de la búsqueda web) y el copy da un dato concreto que sale de ellas (una cifra, una noticia, un cambio de normativa), cerrá con una línea "Fuente: medio", donde medio es el nombre del sitio de esa URL (La Nación, Infobae, Gobierno de Argentina…), sin link. Si la pieza no trae fuentes, no pongas ninguna línea "Fuente:" ni des cifras de mercado. Nunca cites la ficha de marca, el brandbook ni un archivo (.pdf, .docx). Si solo es una fecha conocida, no hace falta citar.\n' +
   '- Cada pieza dice en qué redes se publica (redes): el mismo copy se replica en todas, así que tiene que funcionar en cada una. Si va también a LinkedIn: sin "link en bio" ni jerga de Instagram, tono un poco más profesional; si va a TikTok, más corto.\n' +
   'HASHTAGS (campo aparte): 6 a 10, separados por un espacio. Primero los propios de la marca que figuren en la ficha; después de tema, rubro y público. De ubicación solo si la ficha o las notas dicen dónde está la marca. Sin repetir, sin tildes raras ni espacios dentro.';
 
@@ -50,13 +52,16 @@ const TOOL_PLAN = { name: 'plan_del_mes', description: 'Piezas del mes con su fe
     fecha: { type: 'string', description: 'AAAA-MM-DD, dentro del MES A PLANIFICAR' },
     tema: { type: 'string', description: 'título corto de la pieza, de 3 a 10 palabras (no una explicación)' },
     contenido: { type: 'string', description: 'lo que va en la pieza según su formato, con saltos de línea' },
-    fuentes: { type: 'array', items: { type: 'string' }, description: 'URLs exactas (de fechas_y_novedades) de donde sacaste la fecha o el dato de esta pieza; vacío si no usaste ninguna' },
+    fuentes: { type: 'array', items: { type: 'string' }, description: 'URLs exactas (de fechas_y_novedades o tendencias) de donde sacaste la fecha, el dato o la tendencia de esta pieza; vacío si no usaste ninguna. Nunca la ficha de marca ni un archivo' },
   } } } } } };
 const SYS_PLAN = BASE + '\n\nArmás el plan de un mes de redes: qué publicar, qué día y qué va en cada pieza. Temas concretos y variados, repartidos entre los pilares de la marca, propios de su rubro y su público. ' +
   'Usá solo fechas especiales de Argentina que caigan DENTRO del mes a planificar y que tengan sentido para la marca (no fuerces efemérides). ' +
   'Respetá EXACTAMENTE la cantidad por formato que te piden: contalas antes de responder. Repartí las fechas en todo el mes, sin amontonar: posts, carruseles y reels en días distintos; las historias pueden compartir día con otra pieza pero no más de 2 historias por día. ' +
   'No repitas temas de lo ya cargado ni del mes anterior. ' +
   'Si el contexto trae fechas_y_novedades (buscadas en la web y elegidas por el equipo), son tu fuente de fechas especiales y las eligió el equipo: CADA fecha y CADA novedad de esa lista tiene que tener al menos una pieza (en su fecha exacta; un feriado o día no laborable también: saludo, aviso de atención u horarios, en general una historia alcanza), antes que ideas genéricas, con su URL en fuentes; fuera de esa lista no uses otras fechas especiales salvo feriados nacionales de los que estés seguro. Sin esa lista, mejor no uses fechas especiales que no sean feriados nacionales seguros.\n\n' + REGLAS_FORMATO +
+  '\n\nREDES: pensá cada pieza para las redes donde se publica (campo redes). Instagram y TikTok: ganchos visuales en el primer segundo, reels cortos, carruseles que se guardan. Facebook: contenido que se comparte y habla a la comunidad local. LinkedIn: contenido profesional, educativo o de equipo y procesos. Si la cuenta usa LinkedIn, que haya piezas que funcionen bien ahí. ' +
+  'TENDENCIAS: si el contexto trae tendencias (buscadas en la web y elegidas por el equipo), aprovechalas donde sumen: alrededor de un tercio de las piezas del feed debería usar alguna (un formato, un estilo de reel, un tipo de carrusel o de historia interactiva), con la voz y los pilares de la marca y sin forzarlas. Cuando una pieza usa una tendencia, sumá al final de contenido una línea "Tendencia: …" (cuál y cómo se aplica) y poné su URL en fuentes. No uses canciones o audios con nombre propio salvo que la tendencia lo diga. ' +
+  'HISTORIAL: si el contexto trae historial (lo publicado en los últimos meses y lo que dijeron los informes de esos meses), no repitas temas ni enfoques de esos meses; si los informes dicen qué funcionó mejor (destacadas), proponé más de ese tipo de contenido o formato con temas nuevos, y seguí sus recomendaciones.' +
   '\n\nRespondé únicamente llamando una vez a la herramienta plan_del_mes, sin texto antes ni después.';
 
 const TOOL_COPYS = { name: 'escribir_copys', description: 'Copys y hashtags de cada pieza.', input_schema: { type: 'object', required: ['piezas'], properties: {
@@ -118,6 +123,21 @@ const SYS_INV = 'Sos Mr. Piggy, community manager senior de àndale, una agencia
   '3) FUENTES: solo de primer nivel y que el público de la marca conozca: medios nacionales grandes (La Nación, Clarín, Infobae, Ámbito, El Cronista, Perfil), el diario principal de la provincia de la marca (en Córdoba, La Voz), organismos oficiales (argentina.gob.ar, INDEC, ministerios, gobiernos provinciales) y entidades serias del rubro (bolsas de comercio y de cereales, cámaras y colegios profesionales, INTA, INTI, universidades). Nada de blogs, sitios poco conocidos, medios de otras provincias que el público no conoce ni sitios de empresas que venden lo mismo que la marca (su competencia: mirá marca.competencia). Nunca uses los sitios de fuentes_descartadas. Si un dato solo aparece en una fuente floja, dejalo afuera. ' +
   'Solo lo que encontraste, con su URL; no inventes. Priorizá lo que tiene sentido para ESTA marca: hasta 12 fechas y 6 novedades. El nombre de cada fecha y el título de cada novedad: cortos y claros, de 3 a 9 palabras, como un titular ("Día del Arquitecto", "Feriado por la visita del papa"), sin paréntesis ni aclaraciones: los detalles van en idea o en resumen, en frases completas. Cuando termines, llamá una vez a fechas_y_novedades.';
 
+const TOOL_TEND = { name: 'tendencias_de_redes', description: 'Tendencias recientes de las redes de la cuenta, con su fuente.', input_schema: { type: 'object', required: ['tendencias'], properties: {
+  tendencias: { type: 'array', items: { type: 'object', required: ['red', 'titulo', 'resumen'], properties: {
+    red: { type: 'string', enum: ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube', 'general'] },
+    titulo: { type: 'string', description: 'corto y claro, de 3 a 9 palabras, como un titular' },
+    resumen: { type: 'string', description: 'qué es y por qué está funcionando, en 1 o 2 frases' },
+    idea: { type: 'string', description: 'cómo la aplicaría ESTA marca, en una frase concreta' },
+    formato: { type: 'string', description: 'formato donde va: Reels, Carruseles, Posts, Historias u otro' },
+    fuente: { type: 'string', description: 'URL donde lo leíste' }, fecha: { type: 'string', description: 'fecha de la nota, si figura' } } } } } } };
+const SYS_TEND = 'Sos Mr. Piggy, community manager senior de àndale, una agencia de redes de Córdoba, Argentina. Investigás en la web las tendencias actuales (de los últimos 2 meses) de las redes que usa la cuenta del cliente (campo redes; si no hay, Instagram y Facebook) para planificar su mes. Buscá: ' +
+  '1) formatos y estilos que están funcionando ahora en cada red (tipos de reels, carruseles, historias interactivas, series, contenido detrás de escena, educativo, UGC); ' +
+  '2) funciones nuevas o cambios recientes del algoritmo o de la app que convenga aprovechar (por ejemplo, novedades anunciadas por Instagram, TikTok o LinkedIn); ' +
+  '3) tendencias de contenido del rubro o del público de la marca en redes. ' +
+  'FUENTES: blogs y newsrooms oficiales (about.instagram.com, creators.instagram.com, business.instagram.com, about.fb.com, newsroom.tiktok.com, linkedin.com) y medios serios de marketing digital (Social Media Today, Later, Hootsuite, Sprout Social, HubSpot, Meta for Business) o medios nacionales grandes. Nada de blogs desconocidos. ' +
+  'Nada de canciones o audios puntuales con derechos, memes ofensivos, política partidaria ni noticias trágicas. Solo lo que encontraste, con su URL; no inventes. Elegí lo que le sirve a ESTA marca y su público (si le vende a empresas, priorizá LinkedIn y formatos educativos). Hasta 8 tendencias. Cuando termines, llamá una vez a tendencias_de_redes.';
+
 function mesTxt(mes: string) {
   const [y, m] = String(mes || '').split('-').map(Number); if (!y || !m) return '';
   const ult = new Date(y, m, 0).getDate();
@@ -131,7 +151,7 @@ Deno.serve(async req => {
   const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: req.headers.get('Authorization') || '' } }, auth: { persistSession: false } });
   const { data: yoData } = await sb.rpc('yo'); const yo = Array.isArray(yoData) ? yoData[0] : yoData;
   if (!yo || !['admin', 'equipo'].includes(yo.rol)) return json({ error: 'Solo el equipo puede usar la IA.' }, 403);
-  const MODOS = ['redes_ideas', 'redes_copys', 'redes_agenda', 'redes_contenido', 'redes_revision', 'redes_investigar'];
+  const MODOS = ['redes_ideas', 'redes_copys', 'redes_agenda', 'redes_contenido', 'redes_revision', 'redes_investigar', 'redes_tendencias'];
   const modo = MODOS.includes(b.modo) ? b.modo : 'redes_ideas';
   const texto = String(b.texto || '').slice(0, 40_000), ctx = b.contexto ?? {};
   const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -142,13 +162,13 @@ Deno.serve(async req => {
   let elegido = ''; try { const { data } = await svc.from('listas').select('valores').eq('clave', 'integraciones_cfg').maybeSingle(); const v = ((data && data.valores) || []).find((x: string) => String(x).startsWith('ia.modelo_redes=')); if (v && /^claude-[a-z0-9.-]+$/.test(v.slice(16))) elegido = v.slice(16); } catch { elegido = ''; }
   // Buscar en la web y ubicar días y horas no necesitan el modelo que mejor escribe: van con Haiku, rápido y barato
   // (la búsqueda trae muchas páginas y es lo que más tokens consume). Escribir va con el elegido (Sonnet por defecto).
-  const RAPIDO = ['redes_investigar', 'redes_agenda'].includes(modo);
+  const RAPIDO = ['redes_investigar', 'redes_tendencias', 'redes_agenda'].includes(modo);
   let modelo = RAPIDO ? 'claude-haiku-5-5' : (elegido || Deno.env.get('IA_MODEL_REDES') || 'claude-sonnet-5-5');
-  const [tool, system] = ({ redes_copys: [TOOL_COPYS, SYS_COPYS], redes_agenda: [TOOL_AGENDA, SYS_AGENDA], redes_contenido: [TOOL_CONT, SYS_CONT], redes_revision: [TOOL_REV, SYS_REV], redes_investigar: [TOOL_INV, SYS_INV], redes_ideas: [TOOL_PLAN, SYS_PLAN] } as Record<string, [any, string]>)[modo];
+  const [tool, system] = ({ redes_copys: [TOOL_COPYS, SYS_COPYS], redes_agenda: [TOOL_AGENDA, SYS_AGENDA], redes_contenido: [TOOL_CONT, SYS_CONT], redes_revision: [TOOL_REV, SYS_REV], redes_investigar: [TOOL_INV, SYS_INV], redes_tendencias: [TOOL_TEND, SYS_TEND], redes_ideas: [TOOL_PLAN, SYS_PLAN] } as Record<string, [any, string]>)[modo];
   const marca = ctx && ctx.marca ? ctx.marca : null;
   const cab = 'HOY: ' + hoyAR() + (ctx.mes ? '\nMES A PLANIFICAR: ' + mesTxt(ctx.mes) + '. Todas las fechas van dentro de ese mes.' : '') +
     '\nEMOJIS DE LA MARCA: ' + ((marca && marca.emojis) || 'sin dato (usá 1 o 2)') + (marca && marca.hashtags ? '\nHASHTAGS PROPIOS: ' + marca.hashtags : '') + (marca && marca.espaciado ? '\nESPACIO ENTRE BLOQUES: ' + marca.espaciado : '');
-  const user = modo === 'redes_investigar' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 20_000)
+  const user = modo === 'redes_investigar' || modo === 'redes_tendencias' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 20_000)
     : modo === 'redes_agenda' ? cab + '\n\nCUENTA, MES Y PIEZAS:\n' + JSON.stringify(ctx).slice(0, 60_000) + (texto ? '\n\nPEDIDO:\n' + texto : '')
     : modo === 'redes_revision' ? cab + '\n\nCLIENTE Y MES:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\n' + (ctx.general ? 'Además de cada pieza, dame la mirada general del mes (resumen y observaciones) mirando "todas".' : 'No hace falta la mirada general: solo cada pieza.') + (ctx.pedido ? '\n\nPEDIDO DEL EQUIPO (es la prioridad de esta revisión; si dice qué piezas o formatos mirar, revisá y devolvé solo esas): ' + String(ctx.pedido) : '') + '\n\nPIEZAS A REVISAR:\n' + texto
     : modo === 'redes_contenido' ? cab + '\n\nCLIENTE:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPIEZAS:\n' + texto
@@ -156,14 +176,14 @@ Deno.serve(async req => {
     : cab + '\n\nCLIENTE Y MES:\n' + JSON.stringify(ctx).slice(0, 60_000) + '\n\nPEDIDO:\n' + (texto || 'Proponé el contenido que falta del mes.');
   // Algunos modelos no aceptan forzar la herramienta (tool_choice "tool"): en ese caso se pide con "auto" y la instrucción de usarla.
   // Investigar usa además la búsqueda web de Anthropic (hay que tenerla habilitada en la consola de Anthropic).
-  const web = modo === 'redes_investigar';
+  const web = modo === 'redes_investigar' || modo === 'redes_tendencias';
   let forzar = !web, msgs: any[] = [{ role: 'user', content: user }];
   const herramientas = web ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5, user_location: { type: 'approximate', country: 'AR', region: 'Córdoba', city: 'Córdoba', timezone: 'America/Argentina/Cordoba' } }, tool] : [tool];
   // La función tiene 150 s en total: cada pedido se corta antes para poder responder un error claro.
   const t0 = Date.now(), queda = () => 140_000 - (Date.now() - t0);
   const pedir = (max: number) => fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: AbortSignal.timeout(Math.max(5_000, queda())), headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: modelo, max_tokens: max, system, tools: herramientas, tool_choice: forzar ? { type: 'tool', name: tool.name } : { type: 'auto' }, messages: msgs }) });
-  let max = ({ redes_copys: 4000, redes_agenda: 6000, redes_contenido: 3000, redes_revision: 8000, redes_investigar: 8000, redes_ideas: 6000 } as Record<string, number>)[modo] || 8000;
+  let max = ({ redes_copys: 4000, redes_agenda: 6000, redes_contenido: 3000, redes_revision: 8000, redes_investigar: 8000, redes_tendencias: 6000, redes_ideas: 6000 } as Record<string, number>)[modo] || 8000;
   let res: any, out: any;
   try {
   res = await pedir(max); out = await res.json().catch(() => ({}));

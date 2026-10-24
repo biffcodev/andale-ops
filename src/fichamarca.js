@@ -167,7 +167,9 @@ export function initFichaMarca(ctx) {
   function contexto(cliente, piezasCargadas) {
     const c = S.C.find(x => x.nombre === cliente) || {};
     const ej = (piezasCargadas || []).filter(z => z.copy && ['Aprobada', 'Programada', 'Publicada'].includes(z.estado)).slice(-10).map(z => z.copy);
-    return { marca: lleno(c.marca) ? c.marca : null, copys_aprobados: ej, aviso: lleno(c.marca) ? '' : 'Este cliente no tiene ficha de marca: escribí neutro, sin inventar datos de la marca.' };
+    // A la IA va la ficha sin los documentos de los que salió (no son fuente de datos), ni el kit ni el manual (no le sirven y ocupan lugar).
+    const marca = lleno(c.marca) ? (({ fuentes, kit, manual, ...x }) => x)(c.marca) : null;
+    return { marca, copys_aprobados: ej, aviso: lleno(c.marca) ? '' : 'Este cliente no tiene ficha de marca: escribí neutro, sin inventar datos de la marca.' };
   }
   const acts = {
     fmEditar: t => { const c = S.C.find(x => x._id === t.dataset.id); if (c) editar(c); },

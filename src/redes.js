@@ -730,19 +730,22 @@ export function initRedes(ctx) {
   function abrirProponer(m) {
     const ps = piezas(m._id) || [], plan = m.plan || {}, cnt = conteoPorFormato(ps);
     const faltan = Object.entries(plan).map(([f, n]) => [f, Math.max(0, (+n || 0) - (cnt[f] || 0))]).filter(([, n]) => n > 0);
-    const inv = m.investigacion, nInv = inv ? (inv.fechas || []).filter(x => x.usar !== false).length + (inv.novedades || []).filter(x => x.usar !== false).length : 0;
+    const inv = m.investigacion, nInv = inv ? [...(inv.fechas || []), ...(inv.novedades || []), ...(inv.tendencias || [])].filter(x => x.usar !== false).length : 0;
     $('#panel').innerHTML = '<form id="rmprop" novalidate style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b"><div class="field full prop-f"><span class="lbl">Qué va a proponer</span>' + (faltan.length ? '<div class="prop-fs">' + faltan.map(([f, n]) => '<span class="rm-fpill" style="--fc:' + fmtColor(f) + '">' + n + ' ' + esc(f) + '</span>').join('') + '</div><span class="hint">Lo que falta para completar el plan del mes.</span>' : '<p class="muted" style="margin:0">El plan del mes ya está completo: propone 3 ideas extra.</p>') + '</div>' +
       replChips(m, 'prop-redes') +
-      '<label class="chk full"><input type="checkbox" id="prop-web"' + (inv ? '' : ' checked') + '> ' + (inv ? 'Volver a buscar efemérides y noticias en la web (ya hay ' + nInv + ' elegidas)' : 'Buscar antes efemérides del mes y noticias del rubro en la web') + '</label>' +
-      (inv ? '<button type="button" class="btn link sm full" style="justify-self:start" data-act="rmInv" data-id="' + esc(m._id) + '">Ver las efemérides y noticias elegidas</button>' : '') +
+      '<label class="chk full"><input type="checkbox" id="prop-web"' + (inv ? '' : ' checked') + '> ' + (inv ? 'Volver a buscar efemérides, noticias y tendencias en la web (ya hay ' + nInv + ' elegidas)' : 'Buscar antes en la web efemérides del mes, noticias del rubro y tendencias de redes') + '</label>' +
+      (inv ? '<button type="button" class="btn link sm full" style="justify-self:start" data-act="rmInv" data-id="' + esc(m._id) + '">Ver lo elegido: efemérides, noticias y tendencias</button>' : '') +
       '</div><div class="panel-f"><span></span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer</button></span></div></form>';
     st.propMes = m._id; $('#panel').hidden = false; $('#scrim').hidden = false;
   }
   // Las fuentes que usó una pieza: solo URLs que estén en las fechas y novedades buscadas (con su título)
-  function fuentesDe(m, urls) {
-    const inv = m.investigacion || {}, todo = [...(inv.fechas || []).map(x => ({ titulo: x.nombre, url: x.fuente })), ...(inv.novedades || []).map(x => ({ titulo: x.titulo, url: x.fuente }))].filter(x => x.url);
-    return [...new Set((Array.isArray(urls) ? urls : []).map(String))].map(u => todo.find(x => x.url === u) || (/^https?:\/\//.test(u) ? { titulo: '', url: u } : null)).filter(Boolean).slice(0, 5);
+  // Si la IA no dijo de dónde sacó el dato, se reconoce la novedad por las palabras del tema (así el copy cita el medio real y no otra cosa).
+  function fuentesDe(m, urls, tema) {
+    const inv = m.investigacion || {}, todo = [...(inv.fechas || []).map(x => ({ titulo: x.nombre, url: x.fuente })), ...(inv.novedades || []).map(x => ({ titulo: x.titulo, url: x.fuente, nov: true })), ...(inv.tendencias || []).map(x => ({ titulo: x.titulo, url: x.fuente }))].filter(x => x.url);
+    let out = [...new Set((Array.isArray(urls) ? urls : []).map(String))].map(u => todo.find(x => x.url === u) || (/^https?:\/\//.test(u) ? { titulo: '', url: u } : null)).filter(Boolean);
+    if (!out.length && tema) { const ws = new Set(palabras(tema)); out = todo.filter(x => x.nov && palabras(x.titulo).filter(w => ws.has(w)).length >= 2); }
+    return out.map(({ nov, ...x }) => x).slice(0, 5);
   }
   const dominio = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; } };
   // En el copy se cita el medio, corto ("Fuente: La Nación"), no el título de la nota.
@@ -764,7 +767,8 @@ export function initRedes(ctx) {
     trabajando(m, 'Mr. Piggy está armando el plan…');
     let ins = [];
     // Primero las fechas y novedades del mes (búsqueda web), si todavía no se buscaron. Si falla, sigue sin ellas.
-    if (opts.buscar === true || (opts.buscar !== false && !m.investigacion && !st.invFallo)) { trabajando(m, 'Buscando efemérides y noticias del mes…'); try { await investigar(m); } catch (e) { st.invFallo = true; toast('No pude buscar en la web (' + e.message + '). Sigo sin fechas ni novedades.'); } trabajando(m, 'Mr. Piggy está armando el plan…'); }
+    if (opts.buscar === true || (opts.buscar !== false && !m.investigacion && !st.invFallo)) { trabajando(m, 'Buscando efemérides, noticias y tendencias de redes…'); try { await investigar(m); } catch (e) { st.invFallo = true; toast('No pude buscar en la web (' + e.message + '). Sigo sin fechas ni novedades.'); } trabajando(m, 'Mr. Piggy está armando el plan…'); }
+    let hist = null; try { hist = await historialDe(m); } catch (e) { hist = null; }
     try {
       const fmtDe = x => formatos().includes(x) ? x : (formatos().find(f => norm(f).startsWith(norm(x || '').slice(0, 4))) || formatos()[0]);
       const pide = extras ? { _: 3 } : { ...faltan }, nuevas = [], total0 = Object.values(pide).reduce((a, n) => a + n, 0);
@@ -776,8 +780,8 @@ export function initRedes(ctx) {
       const pedirTanda = async (cuantos, extra) => {
         const lista = Object.entries(cuantos).map(([f, n]) => n + ' ' + f).join(', '), total = Object.values(cuantos).reduce((a, n) => a + n, 0);
         const texto = extras ? 'Proponé 3 ideas extra.' : 'Proponé exactamente estas piezas, ni más ni menos: ' + lista + ' (' + total + ' en total). ' + (total < total0 ? 'Son una parte del plan del mes: otras tandas arman el resto, así que elegí temas distintos a ya_cargadas. ' : '') + (extra || '') + 'Contá las de cada formato antes de responder.';
-        const c = ctxIA(m); const pp = c._pp; delete c._pp; const inv = invElegidas(m);
-        const r = await data.ia({ modo: 'redes_ideas', texto, contexto: { ...c, redes: redesP, ...(inv ? { fechas_y_novedades: inv } : {}), ya_cargadas: [...ps, ...nuevas].map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })), mes_anterior: pp.slice(0, 60).map(z => ({ formato: z.formato, tema: z.tema })) } });
+        const c = ctxIA(m); const pp = c._pp; delete c._pp; const inv = invElegidas(m), tend = tendElegidas(m);
+        const r = await data.ia({ modo: 'redes_ideas', texto, contexto: { ...c, redes: redesP, ...(inv ? { fechas_y_novedades: inv } : {}), ...(tend ? { tendencias: tend } : {}), ...(hist ? { historial: hist } : { mes_anterior: pp.slice(0, 60).map(z => ({ formato: z.formato, tema: z.tema })) }), ya_cargadas: [...ps, ...nuevas].map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })) } });
         return (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && x.tema);
       };
       const tomar = xs => { let n = 0;
@@ -786,7 +790,7 @@ export function initRedes(ctx) {
           if (!(pide[k] > 0)) continue; // lo que sobra no se carga
           if (nuevas.some(z => norm(z.tema) === norm(String(x.tema)))) continue;
           const fecha = /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes) ? x.fecha : '';
-          nuevas.push({ formato, red: redesPara(formato, redesP).join(', '), fuentes: fuentesDe(m, x.fuentes), tema: pulir(String(x.tema)).slice(0, 160), contenido: pulir(String(x.contenido || '')).slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...ps, ...nuevas], fecha, formato, m.cliente) : '', estado: 'Idea', extra: extras });
+          nuevas.push({ formato, red: redesPara(formato, redesP).join(', '), fuentes: fuentesDe(m, x.fuentes, x.tema), tema: pulir(String(x.tema)).slice(0, 160), contenido: pulir(String(x.contenido || '')).slice(0, 3000), copy: '', hashtags: '', fecha, hora: fecha ? horaLibre([...ps, ...nuevas], fecha, formato, m.cliente) : '', estado: 'Idea', extra: extras });
           pide[k]--; n++;
         }
         trabajando(m, 'Armando el plan… ' + nuevas.length + ' de ' + total0); return n; };
@@ -993,9 +997,9 @@ export function initRedes(ctx) {
       const c = ctxIA(m); delete c._pp;
       const malas = (z.fuentes || []).map(x => dominio(x.url));
       const r = await data.ia({ modo: 'redes_ideas', texto: 'Reemplazá esta pieza por UNA idea distinta, del mismo formato (' + z.formato + ')' + (z.fecha ? ' y para el mismo día (' + z.fecha + ')' : '') + '. La que hay ahora y NO va: "' + (z.tema || '') + '"' + (malas.length ? ', con fuente de ' + malas.join(', ') + ' (no la uses)' : '') + '.' + (pedido ? ' Lo que pide el equipo: ' + pedido + '.' : '') + ' Proponé exactamente 1 pieza.',
-        contexto: { ...c, redes: redesDe(z.red), ...(invElegidas(m) ? { fechas_y_novedades: invElegidas(m) } : {}), ya_cargadas: (piezas(m._id) || []).filter(y => y._id !== z._id).map(y => ({ fecha: y.fecha, formato: y.formato, tema: y.tema })) } });
+        contexto: { ...c, redes: redesDe(z.red), ...(invElegidas(m) ? { fechas_y_novedades: invElegidas(m) } : {}), ...(tendElegidas(m) ? { tendencias: tendElegidas(m) } : {}), ya_cargadas: (piezas(m._id) || []).filter(y => y._id !== z._id).map(y => ({ fecha: y.fecha, formato: y.formato, tema: y.tema })) } });
       const x = (Array.isArray(r.piezas) ? r.piezas : []).find(y => y && y.tema); if (!x) throw new Error('Mr. Piggy no propuso nada. Probá de nuevo.');
-      const nueva = { _id: z._id, formato: z.formato, red: z.red, fecha: z.fecha, tema: pulir(String(x.tema)).slice(0, 160), contenido: pulir(String(x.contenido || '')).slice(0, 3000), copy: '', hashtags: '', fuentes: fuentesDe(m, x.fuentes) };
+      const nueva = { _id: z._id, formato: z.formato, red: z.red, fecha: z.fecha, tema: pulir(String(x.tema)).slice(0, 160), contenido: pulir(String(x.contenido || '')).slice(0, 3000), copy: '', hashtags: '', fuentes: fuentesDe(m, x.fuentes, x.tema) };
       if (!esHistoria(z)) { btn.textContent = 'Escribiendo el copy…'; const res = await copysIA(m, [nueva]); const u = res.hechos.get(z._id); if (u) Object.assign(nueva, u); }
       const u = { tema: nueva.tema, contenido: nueva.contenido, copy: nueva.copy, hashtags: nueva.hashtags, ...(data.cols && data.cols.piezaFuentes === false ? {} : { fuentes: nueva.fuentes }) };
       const antes = { ...antesDe(z, u), ...(u.fuentes ? { fuentes: z.fuentes || [] } : {}) };
@@ -1115,7 +1119,19 @@ export function initRedes(ctx) {
   // Mr. Piggy busca en la web las fechas que caen en el mes (patrias, internacionales, del rubro, comerciales) y novedades del rubro,
   // con su fuente. Quedan guardadas en el mes; el equipo destilda las que no sirven y "Proponer contenido" usa las elegidas.
   const TIPO_F = { nacional: ['Nacional', '--s-revision'], internacional: ['Internacional', '--s-presup'], rubro: ['Del rubro', '--s-entregado'], comercial: ['Comercial', '--s-confirmar'], local: ['Local', '--s-curso'] };
-  const invElegidas = m => { const v = m.investigacion; if (!v) return null; return { fechas: (v.fechas || []).filter(x => x.usar !== false).map(({ usar, ...x }) => x), novedades: (v.novedades || []).filter(x => x.usar !== false).map(({ usar, ...x }) => x) }; };
+  const invElegidas = m => { const v = m.investigacion; if (!v || (!(v.fechas || []).length && !(v.novedades || []).length)) return null; return { fechas: (v.fechas || []).filter(x => x.usar !== false).map(({ usar, ...x }) => x), novedades: (v.novedades || []).filter(x => x.usar !== false).map(({ usar, ...x }) => x) }; };
+  // Tendencias de las redes elegidas (no hace falta una pieza por cada una: se usan donde sumen).
+  const RED_T = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', linkedin: 'LinkedIn', youtube: 'YouTube', general: 'Redes' };
+  const tendElegidas = m => { const v = m.investigacion; const t = ((v && v.tendencias) || []).filter(x => x.usar !== false).map(({ usar, ...x }) => x); return t.length ? t : null; };
+  // Lo que se publicó en los últimos 3 meses (lo aprobado en la app) y lo que dijeron los informes: para no repetir y repetir lo que funcionó.
+  async function historialDe(m) {
+    const ms = [1, 2, 3].map(i => mesCliente(m.cliente, addMonth(m.mes, -i))).filter(Boolean);
+    try { await cargar(ms.map(x => x._id)); } catch (e) { /* sigue con lo que haya */ }
+    const meses = ms.map(x => ({ mes: x.mes, piezas: (piezas(x._id) || []).filter(z => ['Aprobada', 'Programada', 'Publicada'].includes(z.estado) || x.estado === 'Cerrado').slice(0, 40).map(z => ({ formato: z.formato, tema: z.tema, ...(z.red ? { red: z.red } : {}) })) })).filter(x => x.piezas.length);
+    let informes = [];
+    try { informes = (await data.informesDe(m.cliente)).filter(i => i.mes < m.mes).slice(0, 3).map(i => ({ mes: i.mes, destacadas: ((i.datos || {}).destacadas || []).slice(0, 5), recomendaciones: ((i.datos || {}).recomendaciones || []).slice(0, 5) })).filter(i => i.destacadas.length || i.recomendaciones.length); } catch (e) { informes = []; }
+    return meses.length || informes.length ? { publicado: meses, informes } : null;
+  }
   // Lo elegido que todavía no tiene pieza: se reconoce por la fuente citada o por una palabra distintiva en el tema.
   const STOPW = new Set('argentina argentino argentinas nacional nacionales feriado feriados noviembre diciembre octubre enero febrero marzo abril mayo junio julio agosto septiembre internacional mundial semana campaña producción contenido publicación'.split(' '));
   const palabras = t => norm(t || '').split(/[^a-z0-9ñ]+/).filter(w => w.length >= 5 && !STOPW.has(w) && !/^\d+$/.test(w));
@@ -1133,7 +1149,7 @@ export function initRedes(ctx) {
     const c = ctxIA(m); delete c._pp;
     const texto = 'El equipo eligió estas fechas y novedades y todavía no tienen pieza: ' + JSON.stringify(faltan.map(({ usar, tipoItem, ...x }) => ({ tipo: tipoItem, ...x }))) +
       '. Proponé exactamente UNA pieza para cada una (' + faltan.length + ' en total), en este orden, cada una con su URL en "fuentes". Las fechas van en su día (o el día hábil anterior si es un aviso). Un feriado o día no laborable también lleva pieza: saludo, aviso de atención u horarios, o algo del rubro relacionado; en general una historia alcanza. Formatos posibles: ' + fmts.join(', ') + '.';
-    const r = await data.ia({ modo: 'redes_ideas', texto, contexto: { ...c, redes: redesP, fechas_y_novedades: invElegidas(m), ya_cargadas: base.map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })) } });
+    const r = await data.ia({ modo: 'redes_ideas', texto, contexto: { ...c, redes: redesP, fechas_y_novedades: invElegidas(m), ...(tendElegidas(m) ? { tendencias: tendElegidas(m) } : {}), ya_cargadas: base.map(z => ({ fecha: z.fecha, formato: z.formato, tema: z.tema })) } });
     const out = [];
     (Array.isArray(r.piezas) ? r.piezas : []).filter(x => x && x.tema).slice(0, faltan.length).forEach((x, i) => {
       const formato = fmtDe(x.formato), it = faltan[i] || {};
@@ -1163,12 +1179,20 @@ export function initRedes(ctx) {
   const descartada = u => { const d = String(dominio(u || '')).toLowerCase(); return !!d && fuentesNo().some(x => d === x || d.endsWith('.' + x)); };
   async function investigar(m) {
     const c = ctxIA(m); delete c._pp; delete c.plan;
-    const r = await data.ia({ modo: 'redes_investigar', contexto: { cliente: m.cliente, mes: m.mes, marca: c.marca ? { rubro: c.marca.rubro, publico: c.marca.publico, pilares: c.marca.pilares, fechas: c.marca.fechas, competencia: c.marca.referencias } : null, notas_cliente: c.notas_cliente, servicios: c.servicios, redes: c.redes, fuentes_descartadas: fuentesNo() } });
+    const base = { cliente: m.cliente, mes: m.mes, marca: c.marca ? { rubro: c.marca.rubro, publico: c.marca.publico, pilares: c.marca.pilares, fechas: c.marca.fechas, competencia: c.marca.referencias } : null, notas_cliente: c.notas_cliente, servicios: c.servicios, redes: c.redes, fuentes_descartadas: fuentesNo() };
+    // Las fechas y novedades, y en paralelo las tendencias de las redes de la cuenta. Si una de las dos falla, sigue con la otra.
+    const [ri, rt] = await Promise.allSettled([data.ia({ modo: 'redes_investigar', contexto: base }), data.ia({ modo: 'redes_tendencias', contexto: { ...base, marca: c.marca ? { ...base.marca, tono: c.marca.tono } : null } })]);
+    if (ri.status === 'rejected' && rt.status === 'rejected') throw ri.reason;
+    const r = ri.status === 'fulfilled' ? ri.value : {}, rT = rt.status === 'fulfilled' ? rt.value : {};
     const url = u => /^https?:\/\//.test(u || '') && !descartada(u) ? String(u).slice(0, 500) : '';
     const fechas = (Array.isArray(r.fechas) ? r.fechas : []).filter(x => x && x.nombre && /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') && String(x.fecha).startsWith(m.mes))
       .filter(x => !x.fuente || !descartada(x.fuente)).map(x => ({ fecha: x.fecha, nombre: pulir(String(x.nombre)).slice(0, 120), tipo: TIPO_F[x.tipo] ? x.tipo : 'nacional', idea: pulir(String(x.idea || '')).slice(0, 240), fuente: url(x.fuente), usar: true })).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 15);
     const novedades = (Array.isArray(r.novedades) ? r.novedades : []).filter(x => x && x.titulo && x.fuente && !descartada(x.fuente)).map(x => ({ titulo: pulir(String(x.titulo)).slice(0, 160), resumen: pulir(String(x.resumen || '')).slice(0, 400), idea: pulir(String(x.idea || '')).slice(0, 240), fuente: url(x.fuente), fecha: String(x.fecha || '').slice(0, 20), usar: true })).slice(0, 8);
-    const inv = { at: new Date().toISOString(), fechas, novedades };
+    const REDES_T = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube', 'general'];
+    const tendencias = (Array.isArray(rT.tendencias) ? rT.tendencias : []).filter(x => x && x.titulo && x.fuente && !descartada(x.fuente)).map(x => ({ red: REDES_T.includes(x.red) ? x.red : 'general', titulo: pulir(String(x.titulo)).slice(0, 160), resumen: pulir(String(x.resumen || '')).slice(0, 400), idea: pulir(String(x.idea || '')).slice(0, 240), formato: pulir(String(x.formato || '')).slice(0, 40), fuente: url(x.fuente), fecha: String(x.fecha || '').slice(0, 20), usar: true })).filter(x => x.fuente).slice(0, 8);
+    if (ri.status === 'rejected') toast('No pude buscar efemérides y noticias (' + ri.reason.message + '). Sí encontré tendencias.');
+    else if (rt.status === 'rejected') toast('No pude buscar tendencias de redes (' + rt.reason.message + ').');
+    const inv = { at: new Date().toISOString(), fechas, novedades, tendencias };
     m.investigacion = inv;
     try { if (!await data.mesInvestigacion(m._id, inv)) st.invSinGuardar = true; } catch (e) { st.invSinGuardar = true; }
     return inv;
@@ -1178,15 +1202,16 @@ export function initRedes(ctx) {
     const link = u => u ? ' <a href="' + esc(u) + '" target="_blank" rel="noopener" class="inv-src" title="' + esc(u) + '">' + esc(medioDe(u)) + ' ↗</a>' + (isStaff() ? '<button type="button" class="inv-no" data-act="rmFuenteNo" data-u="' + esc(u) + '" title="Fuente poco conocida, poco seria o de la competencia: no usar más este sitio">No usar este sitio</button>' : '') : '';
     const psInv = piezas(m._id) || [], faltanSet = new Set(inv && psInv.length ? sinPieza(m, psInv).map(x => x.fuente || x.nombre || x.titulo) : []);
     const estadoIt = x => x.usar === false || !psInv.length ? '' : faltanSet.has(x.fuente || x.nombre || x.titulo) ? ' <span class="pzst" style="--c:var(--crit)">Sin pieza</span>' : ' <span class="pzst" style="--c:var(--s-entregado)">✓ Con pieza</span>';
-    let body = '<p class="formnote full">Mr. Piggy busca en la web las fechas que caen en ' + esc(monthLabel(m.mes)) + ' (patrias, internacionales, del rubro y comerciales) y novedades del rubro que le sirvan al público de ' + esc(m.cliente) + ', cada una con su fuente. Destildá lo que no va: “Proponer contenido” usa solo lo elegido.</p>';
+    let body = '<p class="formnote full">Mr. Piggy busca en la web las fechas que caen en ' + esc(monthLabel(m.mes)) + ' (patrias, internacionales, del rubro y comerciales), novedades del rubro que le sirvan al público de ' + esc(m.cliente) + ' y tendencias actuales de sus redes, cada una con su fuente. Destildá lo que no va: “Proponer contenido” usa solo lo elegido. Las tendencias no llevan una pieza cada una: las usa donde sumen.</p>';
     if (busy) body += '<p class="full"><span class="ia-dots"><i></i><i></i><i></i></span> Buscando en la web… puede tardar un minuto.</p>';
     else if (inv) {
       body += '<div class="full inv-s"><h3>Fechas del mes <span class="muted num">' + inv.fechas.length + '</span></h3>' + (inv.fechas.length ? inv.fechas.map((x, i) => '<label class="inv-r"><input type="checkbox" data-invusar="f:' + i + '"' + (x.usar !== false ? ' checked' : '') + '><span class="inv-d">' + esc(new Date(x.fecha + 'T12:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', '')) + '</span><span class="inv-t"><b>' + esc(x.nombre) + '</b> <span class="pzst" style="--c:var(' + (TIPO_F[x.tipo] || TIPO_F.nacional)[1] + ')">' + esc((TIPO_F[x.tipo] || TIPO_F.nacional)[0]) + '</span>' + estadoIt(x) + (x.idea ? '<small>' + esc(x.idea) + '</small>' : '') + link(x.fuente) + '</span></label>').join('') : '<p class="muted">No encontró fechas para este mes.</p>') + '</div>' +
         '<div class="full inv-s"><h3>Novedades del rubro <span class="muted num">' + inv.novedades.length + '</span></h3>' + (inv.novedades.length ? inv.novedades.map((x, i) => '<label class="inv-r"><input type="checkbox" data-invusar="n:' + i + '"' + (x.usar !== false ? ' checked' : '') + '><span class="inv-d">' + esc(/^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') ? new Date(x.fecha + 'T12:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }).replace('.', '') : (x.fecha || '')) + '</span><span class="inv-t"><b>' + esc(x.titulo) + '</b>' + estadoIt(x) + (x.resumen ? '<small>' + esc(x.resumen) + '</small>' : '') + (x.idea ? '<small class="inv-idea">→ ' + esc(x.idea) + '</small>' : '') + link(x.fuente) + '</span></label>').join('') : '<p class="muted">No encontró novedades que sirvan.</p>') + '</div>' +
+        '<div class="full inv-s"><h3>Tendencias de redes <span class="muted num">' + (inv.tendencias || []).length + '</span></h3>' + ((inv.tendencias || []).length ? inv.tendencias.map((x, i) => '<label class="inv-r"><input type="checkbox" data-invusar="t:' + i + '"' + (x.usar !== false ? ' checked' : '') + '><span class="inv-d">' + esc(RED_T[x.red] || 'Redes') + '</span><span class="inv-t"><b>' + esc(x.titulo) + '</b>' + (x.formato ? ' <span class="pzst" style="--c:' + fmtColor(x.formato) + '">' + esc(x.formato) + '</span>' : '') + (x.resumen ? '<small>' + esc(x.resumen) + '</small>' : '') + (x.idea ? '<small class="inv-idea">→ ' + esc(x.idea) + '</small>' : '') + link(x.fuente) + '</span></label>').join('') : '<p class="muted">' + (inv.tendencias ? 'No encontró tendencias que le sirvan a esta cuenta.' : 'Todavía no se buscaron: tocá “Buscar de nuevo”.') + '</p>') + '</div>' +
         (fuentesNo().length ? '<p class="hint full">Sitios descartados: ' + fuentesNo().map(d => esc(d) + ' <button type="button" class="btn link sm" data-act="rmFuenteSi" data-d="' + esc(d) + '" title="Volver a permitirlo">✕</button>').join(' · ') + '</p>' : '') +
         '<p class="hint full">Buscado el ' + esc(fmt(inv.at.slice(0, 10))) + (st.invSinGuardar ? ' · para que quede guardado en el mes falta correr el SQL 0033' : '') + '.</p>';
     }
-    $('#panel').innerHTML = '<div style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Efemérides y noticias</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
+    $('#panel').innerHTML = '<div style="display:contents"><div class="panel-h"><div><span class="eyebrow">' + esc(m.cliente) + ' · ' + esc(cap(monthLabel(m.mes))) + '</span><h2 id="panel-title">Efemérides, noticias y tendencias</h2></div><button type="button" class="btn ghost" data-act="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="panel-b">' + body + '</div><div class="panel-f"><span>' + (inv && !busy ? '<button type="button" class="btn ghost" data-act="rmInvBuscar" data-id="' + esc(m._id) + '">Buscar de nuevo</button>' : '') + '</span><span style="display:flex;gap:8px"><button type="button" class="btn" data-act="close">Cerrar</button>' +
       (busy ? '' : inv && psInv.length && faltanSet.size ? '<button type="button" class="btn primary" data-act="rmInvSumar" data-id="' + esc(m._id) + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Armar ' + faltanSet.size + (faltanSet.size === 1 ? ' pieza' : ' piezas') + ' para lo que falta</button>' : inv ? '<button type="button" class="btn primary" data-act="rmInvProponer" data-id="' + esc(m._id) + '"><span class="pig" aria-hidden="true">' + ISO + '</span> Proponer contenido con esto</button>' : '<button type="button" class="btn primary" data-act="rmInvBuscar" data-id="' + esc(m._id) + '">Buscar en la web</button>') + '</span></div></div>';
     st.invMes = m._id; $('#panel').hidden = false; $('#scrim').hidden = false;
@@ -1196,8 +1221,8 @@ export function initRedes(ctx) {
     try { await investigar(m); } catch (e) { toast(e.message); }
     st.invBusy = null; if (st.invMes === m._id && $('#panel') && !$('#panel').hidden) abrirInvestigacion(m); render();
   }
-  const invBtn = m => { const v = m.investigacion, n = v ? (v.fechas || []).filter(x => x.usar !== false).length + (v.novedades || []).filter(x => x.usar !== false).length : 0;
-    return isStaff() ? '<button class="btn ghost sm" data-act="rmInv" data-id="' + esc(m._id) + '" title="Efemérides del mes y noticias del rubro, buscadas en la web">' + ICON.estrella + ' ' + (v ? 'Efemérides y noticias · ' + n : 'Buscar efemérides y noticias') + '</button>' : ''; };
+  const invBtn = m => { const v = m.investigacion, n = v ? [...(v.fechas || []), ...(v.novedades || []), ...(v.tendencias || [])].filter(x => x.usar !== false).length : 0;
+    return isStaff() ? '<button class="btn ghost sm" data-act="rmInv" data-id="' + esc(m._id) + '" title="Efemérides del mes, noticias del rubro y tendencias de redes, buscadas en la web">' + ICON.estrella + ' ' + (v ? 'Web · ' + n + ' elegidas' : 'Buscar en la web') + '</button>' : ''; };
 
   /* ---------- Revisar el contenido con Mr. Piggy ---------- */
   // Revisa las piezas que ya están (tono de la marca, copys, hashtags, lo que va en la pieza) y el mes completo.
@@ -1440,7 +1465,7 @@ export function initRedes(ctx) {
     if (t.dataset && t.dataset.rmselall) { (piezas(t.dataset.rmselall) || []).filter(z => st.vis.includes(z._id)).forEach(z => t.checked ? st.sel.add(z._id) : st.sel.delete(z._id)); render(); return; }
     if (t.dataset && t.dataset.invusar) {
       const m = st.invMes && mesDe(st.invMes); if (!m || !m.investigacion) return;
-      const [k, i] = t.dataset.invusar.split(':'), arr = k === 'f' ? m.investigacion.fechas : m.investigacion.novedades;
+      const [k, i] = t.dataset.invusar.split(':'), arr = (k === 'f' ? m.investigacion.fechas : k === 't' ? m.investigacion.tendencias : m.investigacion.novedades) || [];
       if (arr[+i]) arr[+i].usar = t.checked;
       try { if (!await data.mesInvestigacion(m._id, m.investigacion)) st.invSinGuardar = true; } catch (er) { toast(er.message); }
       render(); return;
@@ -1483,7 +1508,7 @@ export function initRedes(ctx) {
     rmFuenteNo: async t => {
       const m = mesDe(st.invMes), d = String(dominio(t.dataset.u)).toLowerCase(); if (!d) return;
       const arr = [...new Set([...(S.L.fuentesNo || []), d])]; S.L.fuentesNo = arr;
-      if (m && m.investigacion) { [...(m.investigacion.fechas || []), ...(m.investigacion.novedades || [])].forEach(x => { if (x.fuente && descartada(x.fuente)) x.usar = false; }); try { await data.mesInvestigacion(m._id, m.investigacion); } catch (e) { /* queda en pantalla */ } }
+      if (m && m.investigacion) { [...(m.investigacion.fechas || []), ...(m.investigacion.novedades || []), ...(m.investigacion.tendencias || [])].forEach(x => { if (x.fuente && descartada(x.fuente)) x.usar = false; }); try { await data.mesInvestigacion(m._id, m.investigacion); } catch (e) { /* queda en pantalla */ } }
       try { await data.saveLista('fuentesNo', arr); toast(d + ' no se usa más como fuente. Lo que venía de ahí quedó destildado.'); } catch (e) { toast(e.message); }
       if (m) abrirInvestigacion(m);
     },
